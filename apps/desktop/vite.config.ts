@@ -3,7 +3,15 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   base: "/app/",
-  plugins: [react()],
+  plugins: [
+    react(),
+    {
+      name: "preserve-hatch-placeholder",
+      generateBundle() {
+        this.emitFile({ type: "asset", fileName: ".gitkeep", source: "" });
+      },
+    },
+  ],
   server: {
     host: "127.0.0.1",
     port: 5173,
