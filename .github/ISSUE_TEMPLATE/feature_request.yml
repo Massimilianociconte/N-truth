@@ -1,0 +1,32 @@
+name: Feature request
+description: Proponi un miglioramento software, scientifico o documentale.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problema da risolvere
+      description: Descrivere il bisogno senza includere dati riservati.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposta
+    validations:
+      required: true
+  - type: checkboxes
+    id: impact
+    attributes:
+      label: Contratti potenzialmente interessati
+      options:
+        - label: Schema o grafo
+        - label: Ruleset o semantica scientifica
+        - label: Parser AI
+        - label: Dati, licenze o privacy
+        - label: UI/API/export
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidenze e review necessarie

@@ -1,0 +1,25 @@
+{
+  "id": "UC03",
+  "description": "50 cellule per 6 animali: n allocato = 6, ma n indipendente richiede conferma.",
+  "factor": "treatment",
+  "expect": {
+    "experimental_unit": "Animal",
+    "observational_unit": "Cell",
+    "analytical_unit": "Cell",
+    "n_declared": 300,
+    "n_observational": 300,
+    "n_allocated": 6,
+    "n_independent": null,
+    "inferability": "requires_confirmation",
+    "risk": "likely_pseudoreplication",
+    "alerts_include": [
+      "ANI-003",
+      "GEN-002",
+      "GEN-010"
+    ],
+    "alerts_exclude": [],
+    "abstained": true,
+    "unresolved_conflicts": 0
+  },
+  "prd_reference": "PRD 6.2 UC03"
+}

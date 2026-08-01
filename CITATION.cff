@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+message: "Se usi N-Truth, cita questo software."
+title: "N-Truth: compilatore verificabile del disegno sperimentale biologico"
+abstract: >-
+  Sistema locale, open source e human-in-the-loop che ricostruisce un grafo
+  sperimentale da documenti e sample sheet, mantiene distinti allocazione e
+  applicazione, formalizza target inferenziale ed estimando e valuta separatamente
+  replicazione del disegno, dipendenza analitica e portata dell'inferenza. La
+  baseline deterministica applica regole versionate e si astiene quando
+  l'informazione è insufficiente; non costituisce una validazione scientifica.
+type: software
+authors:
+  - family-names: Ciconte
+    given-names: Massimiliano
+version: 0.1.0
+repository-code: "https://github.com/Massimilianociconte/N-truth"
+url: "https://github.com/Massimilianociconte/N-truth"
+license: Apache-2.0
+keywords:
+  - pseudoreplication
+  - experimental unit
+  - experimental design
+  - estimand
+  - reproducibility
+  - knowledge graph

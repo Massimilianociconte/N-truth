@@ -1,0 +1,27 @@
+{
+  "id": "UC07",
+  "description": "Dodici animali combinati in quattro pool: n analitico = 4 pool, non 12 animali individuali.",
+  "factor": "treatment",
+  "expect": {
+    "experimental_unit": "Animal",
+    "observational_unit": "Pool",
+    "analytical_unit": "Pool",
+    "n_declared": 4,
+    "n_allocated": 12,
+    "n_analyzed": 4,
+    "n_observational": 4,
+    "n_independent": null,
+    "inferability": "conditional",
+    "risk": "insufficient_information",
+    "alerts_include": [
+      "GEN-008",
+      "GEN-010"
+    ],
+    "alerts_exclude": [
+      "GEN-002"
+    ],
+    "abstained": true,
+    "unresolved_conflicts": 0
+  },
+  "prd_reference": "PRD 6.2 UC07"
+}

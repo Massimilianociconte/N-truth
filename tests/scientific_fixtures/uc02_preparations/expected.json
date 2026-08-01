@@ -1,0 +1,27 @@
+{
+  "id": "UC02",
+  "description": "3 preparazioni, 4 pozzetti ciascuna: n = 3 per variabilita tra preparazioni, pozzetti tecnici.",
+  "factor": "treatment",
+  "expect": {
+    "experimental_unit": "CellCulture",
+    "observational_unit": "Cell",
+    "analytical_unit": "Cell",
+    "n_declared": 120,
+    "n_observational": 120,
+    "n_allocated": 3,
+    "n_independent": null,
+    "inferability": "requires_confirmation",
+    "risk": "likely_pseudoreplication",
+    "alerts_include": [
+      "MIC-004",
+      "GEN-002",
+      "GEN-010"
+    ],
+    "alerts_exclude": [
+      "CC-001"
+    ],
+    "abstained": true,
+    "unresolved_conflicts": 0
+  },
+  "prd_reference": "PRD 6.2 UC02"
+}

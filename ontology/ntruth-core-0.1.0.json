@@ -1,0 +1,44 @@
+{
+  "ontology_id": "ntruth-core",
+  "version": "0.1.0",
+  "status": "candidate",
+  "note": "Mapping candidato verso ontologie pubbliche. Ogni riga deve essere verificata da un domain expert prima di essere usata in export RDF o in pubblicazioni: un allineamento sbagliato e un errore scientifico, non un dettaglio di serializzazione (PRD 14, 22.4).",
+  "sources": [
+    { "prefix": "OBI", "name": "Ontology for Biomedical Investigations", "uri": "http://purl.obolibrary.org/obo/OBI_", "license": "CC BY 4.0" },
+    { "prefix": "STATO", "name": "Statistics Ontology", "uri": "http://purl.obolibrary.org/obo/STATO_", "license": "CC BY 3.0" },
+    { "prefix": "EFO", "name": "Experimental Factor Ontology", "uri": "http://www.ebi.ac.uk/efo/EFO_", "license": "Apache-2.0" },
+    { "prefix": "RO", "name": "Relation Ontology", "uri": "http://purl.obolibrary.org/obo/RO_", "license": "CC0" },
+    { "prefix": "PROV", "name": "W3C PROV-O", "uri": "http://www.w3.org/ns/prov#", "license": "W3C Recommendation" }
+  ],
+  "nodes": [
+    { "ntruth": "Study", "candidate": "OBI:0000066", "label": "investigation", "reviewed": false },
+    { "ntruth": "ExperimentBlock", "candidate": null, "label": "nessun equivalente diretto: costrutto di N-Truth", "reviewed": false },
+    { "ntruth": "Factor", "candidate": "EFO:0000001", "label": "experimental factor", "reviewed": false },
+    { "ntruth": "FactorLevel", "candidate": "OBI:0000750", "label": "study design dependent variable value", "reviewed": false },
+    { "ntruth": "Treatment", "candidate": "OBI:0000293", "label": "has specified input / intervention", "reviewed": false },
+    { "ntruth": "Endpoint", "candidate": "STATO:0000251", "label": "outcome variable", "reviewed": false },
+    { "ntruth": "Contrast", "candidate": "STATO:0000085", "label": "contrast", "reviewed": false },
+    { "ntruth": "StatisticalModel", "candidate": "STATO:0000034", "label": "statistical model", "reviewed": false },
+    { "ntruth": "HumanDonor", "candidate": "OBI:0000725", "label": "host organism / donor", "reviewed": false },
+    { "ntruth": "Animal", "candidate": "OBI:0100026", "label": "organism", "reviewed": false },
+    { "ntruth": "Tissue", "candidate": "OBI:0100051", "label": "specimen", "reviewed": false },
+    { "ntruth": "CellLine", "candidate": "OBI:0001876", "label": "cell line", "reviewed": false },
+    { "ntruth": "CellCulture", "candidate": "OBI:0600036", "label": "cell culture", "reviewed": false },
+    { "ntruth": "Organoid", "candidate": null, "label": "da verificare", "reviewed": false },
+    { "ntruth": "Plate", "candidate": "OBI:0400081", "label": "microtiter plate", "reviewed": false },
+    { "ntruth": "Well", "candidate": "OBI:0000915", "label": "well", "reviewed": false },
+    { "ntruth": "Cell", "candidate": "OBI:0100026", "label": "cell (da verificare con CL)", "reviewed": false },
+    { "ntruth": "Batch", "candidate": "OBI:0600014", "label": "batch", "reviewed": false },
+    { "ntruth": "EvidenceSpan", "candidate": "PROV:Entity", "label": "entita di provenance", "reviewed": false },
+    { "ntruth": "UserCorrection", "candidate": "PROV:Activity", "label": "attivita di correzione", "reviewed": false }
+  ],
+  "relations": [
+    { "ntruth": "nested_in", "candidate": "RO:0001025", "label": "located in", "reviewed": false },
+    { "ntruth": "contains", "candidate": "RO:0001019", "label": "contains", "reviewed": false },
+    { "ntruth": "derived_from", "candidate": "RO:0001000", "label": "derives from", "reviewed": false },
+    { "ntruth": "member_of_pool", "candidate": "RO:0002350", "label": "member of", "reviewed": false },
+    { "ntruth": "measured_on", "candidate": "OBI:0000299", "label": "has specified output", "reviewed": false },
+    { "ntruth": "assigned_to", "candidate": "OBI:0000070", "label": "assay / assignment (da verificare)", "reviewed": false },
+    { "ntruth": "supported_by_evidence", "candidate": "PROV:wasDerivedFrom", "label": "derivato da", "reviewed": false }
+  ]
+}

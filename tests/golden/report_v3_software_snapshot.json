@@ -1,0 +1,208 @@
+{
+  "fixture_kind": "deterministic_software_snapshot_not_expert_gold",
+  "content_checksum": "76d7e051620f60070882a2f08fea9cf74a80cf02b4f94654b10692fa9bbef3a6",
+  "projection": {
+    "report_id": "rep-ed5b31f1565e",
+    "project_id": "prj-84e9c3c9fa6f",
+    "versions": {
+      "schema_version": "0.2.0",
+      "parser_version": "0.2.0",
+      "graph_version": "0.2.0",
+      "ruleset_id": "ntruth-core",
+      "ruleset_version": "0.1.0",
+      "ontology_version": "0.1.0",
+      "model_version": null
+    },
+    "totals": {
+      "blocks": 1,
+      "compiler_abstained": 1,
+      "alerts": 6,
+      "critical": 0,
+      "insufficient": 2,
+      "questions": 6,
+      "unresolved_conflicts": 0
+    },
+    "summary": {
+      "block_id": "blk-158be3cbe930",
+      "title": "Materials and Methods",
+      "max_severity": "high",
+      "n_alerts": 6,
+      "n_questions": 6,
+      "n_unresolved_conflicts": 0,
+      "assessments_with_independent_n": 0,
+      "assessments_total": 1,
+      "abstained": true
+    },
+    "block": {
+      "id": "blk-158be3cbe930",
+      "title": "Materials and Methods",
+      "determinability": "MULTIPLE_PLAUSIBLE_GRAPHS",
+      "node_types": [
+        "CellCulture",
+        "Well",
+        "Field",
+        "Cell",
+        "ExperimentBlock",
+        "Factor",
+        "FactorLevel",
+        "FactorLevel",
+        "Endpoint",
+        "Contrast",
+        "StatisticalModel"
+      ],
+      "relation_types": [
+        "nested_in",
+        "derived_from",
+        "nested_in",
+        "nested_in",
+        "has_factor",
+        "has_level",
+        "has_level",
+        "allocated_to",
+        "applied_to",
+        "has_endpoint",
+        "measured_on",
+        "defines_contrast"
+      ],
+      "factor": {
+        "name": "treatment",
+        "levels": [
+          "NGF",
+          "vehicle"
+        ],
+        "allocation_level": "CellCulture",
+        "application_level": "Cell"
+      },
+      "assessment": {
+        "biological_unit": null,
+        "experimental_unit": "CellCulture",
+        "observational_unit": "Cell",
+        "analytical_unit": "Cell",
+        "n_declared": 120,
+        "n_allocated": 3,
+        "n_analyzed": 120,
+        "n_observational": 120,
+        "n_independent": null,
+        "inferability": "requires_confirmation",
+        "risk": "likely_pseudoreplication"
+      },
+      "alerts": [
+        {
+          "rule_id": "GEN-001",
+          "alert_class": "design_replication",
+          "severity": "info"
+        },
+        {
+          "rule_id": "GEN-002",
+          "alert_class": "analytical_dependence",
+          "severity": "high"
+        },
+        {
+          "rule_id": "GEN-004",
+          "alert_class": "analytical_dependence",
+          "severity": "medium"
+        },
+        {
+          "rule_id": "GEN-010",
+          "alert_class": "design_replication",
+          "severity": "insufficient"
+        },
+        {
+          "rule_id": "MIC-001",
+          "alert_class": "analytical_dependence",
+          "severity": "info"
+        },
+        {
+          "rule_id": "MIC-004",
+          "alert_class": "analytical_dependence",
+          "severity": "insufficient"
+        }
+      ],
+      "questions": [
+        {
+          "id": "qst-78f1eeb69def",
+          "priority": 100,
+          "decisive": true,
+          "impact": "analytical_dependence"
+        },
+        {
+          "id": "qst-8eeb03760b6d",
+          "priority": 100,
+          "decisive": true,
+          "impact": "analytical_dependence"
+        },
+        {
+          "id": "qst-9980f88520bf",
+          "priority": 100,
+          "decisive": true,
+          "impact": "La risposta cambia n indipendente per questo gruppo e contrasto."
+        },
+        {
+          "id": "qst-79beaee8397b",
+          "priority": 80,
+          "decisive": true,
+          "impact": "analytical_dependence"
+        },
+        {
+          "id": "qst-cebebdc1f595",
+          "priority": 70,
+          "decisive": true,
+          "impact": "design_replication"
+        },
+        {
+          "id": "qst-7459fe6625b5",
+          "priority": 60,
+          "decisive": true,
+          "impact": "analytical_dependence"
+        }
+      ]
+    },
+    "positive_output": {
+      "path_status": "incomplete",
+      "methods_status": "incomplete",
+      "non_certifying": true,
+      "n_row": {
+        "experimental_unit": "CellCulture",
+        "observational_unit": "Cell",
+        "analytical_unit": "Cell",
+        "n_declared": 120,
+        "n_allocated": 3,
+        "n_analyzed": 120,
+        "n_observational": 120,
+        "n_independent": null,
+        "inferability": "requires_confirmation"
+      },
+      "driver_statuses": {
+        "DRIVER-1": "missing",
+        "DRIVER-2": "partial",
+        "DRIVER-3": "not_assessed",
+        "DRIVER-4": "partial",
+        "DRIVER-5": "partial",
+        "DRIVER-6": "not_assessed"
+      },
+      "statement_layers": [
+        "fact",
+        "inference",
+        "limitation",
+        "limitation",
+        "limitation",
+        "limitation"
+      ],
+      "candidate_analysis_strategies": [
+        "Aggregare le misure entro ciascuna unita sperimentale, se coerente con l'estimando.",
+        "Usare una strategia di analisi che rappresenti esplicitamente la dipendenza gerarchica.",
+        "Risolvere le domande decisive prima di scegliere qualunque analisi inferenziale."
+      ],
+      "decisive_question_ids": [
+        "qst-03a45b468655",
+        "qst-54c86050d5f1",
+        "qst-78f1eeb69def",
+        "qst-8eeb03760b6d",
+        "qst-9980f88520bf",
+        "qst-79beaee8397b",
+        "qst-cebebdc1f595",
+        "qst-7459fe6625b5"
+      ]
+    }
+  }
+}

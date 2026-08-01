@@ -1,0 +1,7 @@
+sample_id,preparation,well,treatment
+S1,P1,W1,drug
+S2,P1,W2,drug
+S3,P1,W3,drug
+S4,P1,W4,vehicle
+S5,P1,W5,vehicle
+S6,P1,W6,vehicle

@@ -1,0 +1,69 @@
+{
+  "registry_id": "ntruth-scientific-references",
+  "version": "0.1.0",
+  "accessed_at": "2026-08-01",
+  "scientific_review_status": "candidate_pending_external_review",
+  "references": [
+    {
+      "reference_id": "R01",
+      "citation": "Lazic SE, Clarke-Williams CJ, Munafo MR. What exactly is N in cell culture and animal experiments? PLOS Biology. 2018;16(4):e2005282.",
+      "responsible_entity": "PLOS Biology and the article authors",
+      "doi": "10.1371/journal.pbio.2005282",
+      "url": "https://doi.org/10.1371/journal.pbio.2005282",
+      "license_or_terms": "CC-BY-4.0 article; verify component notices on the article page",
+      "license_evidence_url": "https://journals.plos.org/plosbiology/s/licenses-and-copyright",
+      "role": "primary empirical and conceptual reference for experimental-unit and pseudoreplication rules",
+      "usage_scope": "citation_and_rule_rationale"
+    },
+    {
+      "reference_id": "R02",
+      "citation": "NC3Rs Experimental Design Assistant. Experimental unit.",
+      "responsible_entity": "National Centre for the Replacement, Refinement and Reduction of Animals in Research (NC3Rs)",
+      "url": "https://eda.nc3rs.org.uk/index.php/experimental-design-unit",
+      "license_or_terms": "NC3Rs EDA terms; link and limited paraphrase only",
+      "license_evidence_url": "https://eda.nc3rs.org.uk/terms-conditions",
+      "role": "definition and examples of factor-relative experimental units and multiple-unit designs",
+      "usage_scope": "citation_and_non_substantial_paraphrase"
+    },
+    {
+      "reference_id": "R03",
+      "citation": "NC3Rs. The DRIVER recommendations: Improving the quality of in vitro research. 23 July 2026.",
+      "responsible_entity": "NC3Rs",
+      "url": "https://nc3rs.org.uk/news/driver-recommendations-improving-quality-vitro-research",
+      "license_or_terms": "NC3Rs website terms; no republication or implied endorsement",
+      "license_evidence_url": "https://nc3rs.org.uk/terms-and-conditions",
+      "role": "announcement and scope of the in-vitro design/reporting framework used as an external reference",
+      "usage_scope": "citation_and_non_substantial_paraphrase"
+    },
+    {
+      "reference_id": "R04",
+      "citation": "NC3Rs. DRIVER recommendations - About.",
+      "responsible_entity": "NC3Rs",
+      "url": "https://nc3rs.org.uk/3rs-resources/driver-recommendations/about",
+      "license_or_terms": "NC3Rs website terms; no republication or implied endorsement",
+      "license_evidence_url": "https://nc3rs.org.uk/terms-and-conditions",
+      "role": "official description and boundaries of DRIVER",
+      "usage_scope": "citation_and_non_substantial_paraphrase"
+    },
+    {
+      "reference_id": "R05",
+      "citation": "NC3Rs. Terms and conditions.",
+      "responsible_entity": "NC3Rs, legally represented by the Medical Research Council / UKRI as described on the page",
+      "url": "https://nc3rs.org.uk/terms-and-conditions",
+      "license_or_terms": "official website terms",
+      "license_evidence_url": "https://nc3rs.org.uk/terms-and-conditions",
+      "role": "intellectual-property, attribution and non-endorsement boundary",
+      "usage_scope": "terms_reference_only"
+    },
+    {
+      "reference_id": "R06",
+      "citation": "NC3Rs Experimental Design Assistant. Experimental design resources.",
+      "responsible_entity": "NC3Rs",
+      "url": "https://eda.nc3rs.org.uk/experimental-design",
+      "license_or_terms": "NC3Rs EDA terms; link and limited paraphrase only",
+      "license_evidence_url": "https://eda.nc3rs.org.uk/terms-conditions",
+      "role": "external graph-based design resource and terminology reference for in-vivo examples",
+      "usage_scope": "citation_and_non_substantial_paraphrase"
+    }
+  ]
+}

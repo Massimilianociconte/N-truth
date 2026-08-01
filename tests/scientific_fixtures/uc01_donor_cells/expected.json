@@ -1,0 +1,25 @@
+{
+  "id": "UC01",
+  "description": "10.000 cellule da 5 donatori: n indipendente candidato = 5 per inferenze tra donatori, cellule osservazionali.",
+  "factor": "treatment",
+  "expect": {
+    "experimental_unit": "HumanDonor",
+    "observational_unit": "Cell",
+    "analytical_unit": "Cell",
+    "n_declared": 10000,
+    "n_observational": 10000,
+    "n_allocated": 5,
+    "n_independent": null,
+    "inferability": "requires_confirmation",
+    "risk": "likely_pseudoreplication",
+    "alerts_include": [
+      "SC-001",
+      "GEN-002",
+      "GEN-010"
+    ],
+    "alerts_exclude": [],
+    "abstained": true,
+    "unresolved_conflicts": 0
+  },
+  "prd_reference": "PRD 6.2 UC01"
+}

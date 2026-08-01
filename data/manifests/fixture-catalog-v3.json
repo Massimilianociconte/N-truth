@@ -1,0 +1,165 @@
+{
+  "manifest_version": "1.0.0",
+  "catalog_id": "ntruth-fixture-catalog-v3-working-tree",
+  "status": "synthetic_software_test_inventory_not_gold",
+  "purpose": "Distinguere le regressioni scientifiche sintetiche dagli scenari generati per il contratto delle regole.",
+  "counts": {
+    "scientific_regression_cases": 12,
+    "rules": 32,
+    "rules_with_explicit_alert_class": 32,
+    "rule_contract_scenarios_per_rule": 4,
+    "rule_contract_scenarios_total": 128,
+    "expert_reviewed_complete_prd_v3_fixtures": 0,
+    "real_or_public_experiment_bundles": 0,
+    "alert_class_design_replication": 10,
+    "alert_class_analytical_dependence": 17,
+    "alert_class_inference_scope": 5
+  },
+  "scientific_regressions": [
+    {
+      "id": "UC01",
+      "directory": "tests/scientific_fixtures/uc01_donor_cells",
+      "sources": ["methods.md"],
+      "expected": "expected.json",
+      "review_status": "synthetic_not_expert_reviewed"
+    },
+    {
+      "id": "UC02",
+      "directory": "tests/scientific_fixtures/uc02_preparations",
+      "sources": ["methods.md"],
+      "expected": "expected.json",
+      "review_status": "synthetic_not_expert_reviewed"
+    },
+    {
+      "id": "UC03",
+      "directory": "tests/scientific_fixtures/uc03_animal_cells",
+      "sources": ["methods.md"],
+      "expected": "expected.json",
+      "review_status": "synthetic_not_expert_reviewed"
+    },
+    {
+      "id": "UC04",
+      "directory": "tests/scientific_fixtures/uc04_cage_diet",
+      "sources": ["methods.md"],
+      "expected": "expected.json",
+      "review_status": "synthetic_not_expert_reviewed"
+    },
+    {
+      "id": "UC05",
+      "directory": "tests/scientific_fixtures/uc05_maternal",
+      "sources": ["methods.md"],
+      "expected": "expected.json",
+      "review_status": "synthetic_not_expert_reviewed"
+    },
+    {
+      "id": "UC06",
+      "directory": "tests/scientific_fixtures/uc06_repeated_measures",
+      "sources": ["methods.md"],
+      "expected": "expected.json",
+      "review_status": "synthetic_not_expert_reviewed"
+    },
+    {
+      "id": "UC07",
+      "directory": "tests/scientific_fixtures/uc07_pooling",
+      "sources": ["methods.md"],
+      "expected": "expected.json",
+      "review_status": "synthetic_not_expert_reviewed"
+    },
+    {
+      "id": "UC08",
+      "directory": "tests/scientific_fixtures/uc08_undefined_experiments",
+      "sources": ["methods.md"],
+      "expected": "expected.json",
+      "review_status": "synthetic_not_expert_reviewed"
+    },
+    {
+      "id": "UC09",
+      "directory": "tests/scientific_fixtures/uc09_exclusions",
+      "sources": ["methods.md"],
+      "expected": "expected.json",
+      "review_status": "synthetic_not_expert_reviewed"
+    },
+    {
+      "id": "UC10",
+      "directory": "tests/scientific_fixtures/uc10_source_conflict",
+      "sources": ["methods.md", "samples.csv"],
+      "expected": "expected.json",
+      "review_status": "synthetic_not_expert_reviewed"
+    },
+    {
+      "id": "UC11",
+      "directory": "tests/scientific_fixtures/uc11_well_treatment",
+      "sources": ["methods.md", "samples.csv"],
+      "expected": "expected.json",
+      "review_status": "synthetic_not_expert_reviewed"
+    },
+    {
+      "id": "UC12",
+      "directory": "tests/scientific_fixtures/uc12_mixed_model",
+      "sources": ["methods.md"],
+      "expected": "expected.json",
+      "review_status": "synthetic_not_expert_reviewed"
+    }
+  ],
+  "rule_contract_matrix": {
+    "ruleset": "rulesets/ntruth-core-0.1.0.json",
+    "harness": "tests/rule_fixtures/context_factory.py",
+    "validation_test": "tests/unit/test_rules_contract.py",
+    "fixture_classes": ["positive", "negative", "ambiguous", "exception"],
+    "alert_classes_declared": [
+      "design_replication",
+      "analytical_dependence",
+      "inference_scope"
+    ],
+    "alert_class_mapping_status": "implemented_and_test_frozen_pending_external_scientific_review",
+    "rules": [
+      "GEN-001",
+      "GEN-002",
+      "GEN-003",
+      "GEN-004",
+      "GEN-005",
+      "GEN-006",
+      "GEN-007",
+      "GEN-008",
+      "GEN-009",
+      "GEN-010",
+      "CC-001",
+      "CC-002",
+      "CC-003",
+      "CC-004",
+      "CC-005",
+      "CC-006",
+      "MIC-001",
+      "MIC-002",
+      "MIC-003",
+      "MIC-004",
+      "MIC-005",
+      "MIC-006",
+      "SC-001",
+      "SC-002",
+      "SC-003",
+      "SC-004",
+      "SC-005",
+      "ANI-001",
+      "ANI-002",
+      "ANI-003",
+      "ANI-004",
+      "ANI-005"
+    ],
+    "limitation": "Gli scenari sono materializzati da un harness generico per verificare gli outcome del motore. Non sono 128 disegni biologici indipendenti, gold o expert-reviewed e non soddisfano da soli PRD v3 14.2/F.1."
+  },
+  "prd_v3_canonical_fixture_requirements": [
+    "complete_graph",
+    "activated_rule",
+    "expected_output",
+    "exception",
+    "counterexample",
+    "scientific_reference",
+    "external_review"
+  ],
+  "data_and_license_statement": {
+    "real_or_third_party_source_documents_included": false,
+    "license_claim_for_future_corpus": null,
+    "note": "Questo catalogo non autorizza analisi, annotazione, training, condivisione o redistribuzione di futuri asset reali."
+  }
+}

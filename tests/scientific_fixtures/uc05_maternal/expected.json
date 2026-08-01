@@ -1,0 +1,25 @@
+{
+  "id": "UC05",
+  "description": "Trattamento alla madre e outcome sui cuccioli: unita = madre/cucciolata, cuccioli annidati.",
+  "factor": "treatment",
+  "expect": {
+    "experimental_unit": "Dam",
+    "observational_unit": "Animal",
+    "analytical_unit": "Animal",
+    "n_declared": 48,
+    "n_observational": 48,
+    "n_allocated": 8,
+    "n_independent": null,
+    "inferability": "requires_confirmation",
+    "risk": "likely_pseudoreplication",
+    "alerts_include": [
+      "ANI-001",
+      "GEN-002",
+      "GEN-010"
+    ],
+    "alerts_exclude": [],
+    "abstained": true,
+    "unresolved_conflicts": 0
+  },
+  "prd_reference": "PRD 6.2 UC05"
+}

@@ -1,0 +1,42 @@
+name: Bug report
+description: Segnala un difetto riproducibile usando soltanto dati sintetici.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: "Non allegare dati di laboratorio, paper non redistribuibili, credenziali o identificatori reali."
+  - type: input
+    id: version
+    attributes:
+      label: Versione
+      description: Output di `uv run ntruth version`.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Riproduzione minima
+      description: Comandi e fixture sintetica necessari.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Comportamento atteso
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Comportamento osservato
+    validations:
+      required: true
+  - type: dropdown
+    id: data
+    attributes:
+      label: Conferma sui dati
+      options:
+        - "La riproduzione contiene soltanto dati sintetici e non sensibili"
+    validations:
+      required: true

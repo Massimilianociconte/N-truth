@@ -1,0 +1,27 @@
+{
+  "id": "UC06",
+  "description": "Stesso animale a quattro tempi: unita = animale, il tempo e una misura ripetuta.",
+  "factor": "treatment",
+  "expect": {
+    "experimental_unit": "Animal",
+    "observational_unit": "Animal",
+    "analytical_unit": "Animal",
+    "n_declared": 48,
+    "n_observational": 12,
+    "n_allocated": 12,
+    "n_independent": null,
+    "inferability": "requires_confirmation",
+    "risk": "insufficient_information",
+    "alerts_include": [
+      "ANI-004",
+      "GEN-003",
+      "GEN-010"
+    ],
+    "alerts_exclude": [
+      "ANI-003"
+    ],
+    "abstained": true,
+    "unresolved_conflicts": 0
+  },
+  "prd_reference": "PRD 6.2 UC06"
+}

@@ -1,0 +1,23 @@
+{
+  "status": "profiling_baseline_not_final",
+  "backbone": "answerdotai/ModernBERT-base",
+  "backbone_revision": null,
+  "task": "span_ner",
+  "max_length": 768,
+  "train_batch_size": 2,
+  "gradient_accumulation_steps": 8,
+  "effective_batch_size": 16,
+  "precision": "bf16_if_supported_else_fp16",
+  "gradient_checkpointing": true,
+  "optimizer": "AdamW",
+  "early_stopping_patience": 3,
+  "seeds": [13, 37, 101],
+  "device": "mps",
+  "fallback_device": "cpu",
+  "training_blocked_until": [
+    "gold_pilot_approved",
+    "license_manifests_complete",
+    "splits_frozen",
+    "backbone_revision_pinned"
+  ]
+}

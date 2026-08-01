@@ -1,0 +1,26 @@
+{
+  "id": "UC08",
+  "description": "\"Three independent experiments\" non definito: astensione e domande su donatore, thaw e preparazione.",
+  "factor": null,
+  "expect": {
+    "experimental_unit": null,
+    "observational_unit": "Cell",
+    "analytical_unit": "Cell",
+    "n_declared": null,
+    "n_observational": 90,
+    "n_independent": null,
+    "inferability": "not_inferable",
+    "risk": "insufficient_information",
+    "alerts_include": [
+      "GEN-003",
+      "GEN-010"
+    ],
+    "alerts_exclude": [
+      "MIC-004",
+      "SC-001"
+    ],
+    "abstained": true,
+    "unresolved_conflicts": 0
+  },
+  "prd_reference": "PRD 6.2 UC08"
+}

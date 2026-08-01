@@ -1,0 +1,1832 @@
+{
+  "ruleset_id": "ntruth-core",
+  "version": "0.1.0",
+  "description": "Ruleset core di N-Truth: regole generali, coltura cellulare, microscopia quantitativa, single-cell e animali (PRD sezione 8). Le regole sono revisionabili da biostatistico e domain expert senza modificare il software.",
+  "rules": [
+    {
+      "rule_id": "GEN-001",
+      "version": "1.0.0",
+      "domain": "general",
+      "title": "Unita candidata = livello piu basso di applicazione indipendente del fattore",
+      "preconditions": [
+        "not assignment_unknown()"
+      ],
+      "inference": "The candidate experimental unit is the lowest level at which the factor is independently applied.",
+      "message_it": "Il fattore '{factor}' risulta assegnato a livello di {experimental_unit}: questa e l'unita candidata per il contrasto {contrast}. Le misure su {observational_unit} sono osservazioni annidate.",
+      "message_en": "Factor '{factor}' appears to be assigned at the {experimental_unit} level: this is the candidate experimental unit for contrast {contrast}. Measurements on {observational_unit} are nested observations.",
+      "severity": "info",
+      "alert_class": "design_replication",
+      "questions": [],
+      "references": [
+        "R01",
+        "R03"
+      ],
+      "scope_dimension": "contrast",
+      "fixtures": [
+        {
+          "id": "GEN-001-positive",
+          "kind": "positive",
+          "description": "Contesto sintetico minimo che soddisfa le precondizioni.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "positive",
+          "expected_outcome": "fired"
+        },
+        {
+          "id": "GEN-001-negative",
+          "kind": "negative",
+          "description": "Contesto fuori dalle precondizioni della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "negative",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "GEN-001-ambiguous",
+          "kind": "ambiguous",
+          "description": "Contesto incompleto che non autorizza l'applicazione della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "ambiguous",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "GEN-001-exception",
+          "kind": "exception",
+          "description": "Nessuna eccezione approvata: contesto non applicabile esplicito.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "exception",
+          "expected_outcome": "not_applicable"
+        }
+      ]
+    },
+    {
+      "rule_id": "GEN-002",
+      "version": "1.0.0",
+      "domain": "general",
+      "title": "Misure multiple sulla stessa unita non incrementano n indipendente",
+      "preconditions": [
+        "analysis_finer_than_assignment()"
+      ],
+      "inference": "Multiple measurements on the same unit do not increase the independent n without a model of the dependence.",
+      "message_it": "L'analisi usa {analytical_unit} mentre il fattore e assegnato a {experimental_unit}: misure multiple sulla stessa unita non aumentano n indipendente senza un modello della dipendenza. n osservazionale = {n_observational}, n indipendente = {n_independent}.",
+      "message_en": "The analysis uses {analytical_unit} while the factor is assigned at {experimental_unit}: repeated measurements on the same unit do not increase the independent n without modelling the dependence. Observational n = {n_observational}, independent n = {n_independent}.",
+      "severity": "high",
+      "alert_class": "analytical_dependence",
+      "exceptions": [
+        "model_accounts_for_assignment()"
+      ],
+      "abstain_if": [
+        "assignment_unknown()"
+      ],
+      "questions": [
+        "Il modello statistico rappresenta esplicitamente la dipendenza tra {analytical_unit} annidati nello stesso {experimental_unit}?"
+      ],
+      "references": [
+        "R01",
+        "R02"
+      ],
+      "requires_human_confirmation": true,
+      "scope_dimension": "contrast",
+      "fixtures": [
+        {
+          "id": "GEN-002-positive",
+          "kind": "positive",
+          "description": "Contesto sintetico minimo che soddisfa le precondizioni.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "positive",
+          "expected_outcome": "fired"
+        },
+        {
+          "id": "GEN-002-negative",
+          "kind": "negative",
+          "description": "Contesto fuori dalle precondizioni della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "negative",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "GEN-002-ambiguous",
+          "kind": "ambiguous",
+          "description": "Contesto con la condizione di astensione dichiarata.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "ambiguous",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "GEN-002-exception",
+          "kind": "exception",
+          "description": "Contesto positivo con l'eccezione dichiarata attiva.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "exception",
+          "expected_outcome": "excepted"
+        }
+      ]
+    },
+    {
+      "rule_id": "GEN-003",
+      "version": "1.0.0",
+      "domain": "general",
+      "title": "\"Independent experiments\" non prova indipendenza",
+      "preconditions": [
+        "ambiguous_replicate_term()"
+      ],
+      "inference": "A claim of independent experiments or replicates is not evidence of independence: an operational definition is required.",
+      "message_it": "Il materiale dichiara un numero riferito a un termine non operativo (per esempio \"esperimenti indipendenti\" o \"repliche\"). Il termine non identifica un livello del disegno e non prova indipendenza.",
+      "message_en": "The material declares a number tied to a non-operational term (for example \"independent experiments\" or \"replicates\"). The term does not identify a design level and is not evidence of independence.",
+      "severity": "medium",
+      "alert_class": "design_replication",
+      "questions": [
+        "Che cosa costituisce un esperimento indipendente in questo studio: donatore, animale, preparazione, giorno di coltura o piastra?"
+      ],
+      "references": [
+        "R01",
+        "R02"
+      ],
+      "scope_dimension": "block",
+      "fixtures": [
+        {
+          "id": "GEN-003-positive",
+          "kind": "positive",
+          "description": "Contesto sintetico minimo che soddisfa le precondizioni.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "positive",
+          "expected_outcome": "fired"
+        },
+        {
+          "id": "GEN-003-negative",
+          "kind": "negative",
+          "description": "Contesto fuori dalle precondizioni della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "negative",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "GEN-003-ambiguous",
+          "kind": "ambiguous",
+          "description": "Contesto incompleto che non autorizza l'applicazione della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "ambiguous",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "GEN-003-exception",
+          "kind": "exception",
+          "description": "Nessuna eccezione approvata: contesto non applicabile esplicito.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "exception",
+          "expected_outcome": "not_applicable"
+        }
+      ]
+    },
+    {
+      "rule_id": "GEN-004",
+      "version": "1.0.0",
+      "domain": "general",
+      "title": "Il numero di righe non diventa n indipendente senza provenance",
+      "preconditions": [
+        "declared_equals_observational()",
+        "sufficiency_below(source_independence, medium)"
+      ],
+      "inference": "The number of records cannot become the independent n without provenance establishing independence.",
+      "message_it": "L'n dichiarato ({n_declared}) coincide con il numero di osservazioni e la provenance non stabilisce l'indipendenza delle sorgenti: il conteggio dei record non e di per se un n indipendente.",
+      "message_en": "The declared n ({n_declared}) equals the number of observations and provenance does not establish source independence: a record count is not by itself an independent n.",
+      "severity": "medium",
+      "alert_class": "analytical_dependence",
+      "questions": [
+        "Da quante sorgenti biologiche indipendenti provengono le {n_observational} osservazioni incluse?"
+      ],
+      "references": [
+        "R01"
+      ],
+      "scope_dimension": "contrast",
+      "fixtures": [
+        {
+          "id": "GEN-004-positive",
+          "kind": "positive",
+          "description": "Contesto sintetico minimo che soddisfa le precondizioni.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "positive",
+          "expected_outcome": "fired"
+        },
+        {
+          "id": "GEN-004-negative",
+          "kind": "negative",
+          "description": "Contesto fuori dalle precondizioni della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "negative",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "GEN-004-ambiguous",
+          "kind": "ambiguous",
+          "description": "Contesto incompleto che non autorizza l'applicazione della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "ambiguous",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "GEN-004-exception",
+          "kind": "exception",
+          "description": "Nessuna eccezione approvata: contesto non applicabile esplicito.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "exception",
+          "expected_outcome": "not_applicable"
+        }
+      ]
+    },
+    {
+      "rule_id": "GEN-005",
+      "version": "1.0.0",
+      "domain": "general",
+      "title": "Confondimento perfetto tra condizione e batch, giorno, piastra o operatore",
+      "preconditions": [
+        "perfect_confounding()"
+      ],
+      "inference": "When condition and batch/day/plate/operator are perfectly confounded the two effects are not separable.",
+      "message_it": "Il fattore risulta perfettamente confuso con un livello tecnico o organizzativo (batch, giorno, piastra o operatore): l'effetto del fattore e quello del cluster non sono separabili senza assunzioni aggiuntive.",
+      "message_en": "The factor is perfectly confounded with a technical or organisational level (batch, day, plate or operator): factor and cluster effects are not separable without additional assumptions.",
+      "severity": "high",
+      "alert_class": "design_replication",
+      "questions": [
+        "E possibile riportare l'assegnazione dei campioni a batch, giorno e operatore per verificare il confondimento?"
+      ],
+      "references": [
+        "R03"
+      ],
+      "requires_human_confirmation": true,
+      "scope_dimension": "block",
+      "fixtures": [
+        {
+          "id": "GEN-005-positive",
+          "kind": "positive",
+          "description": "Contesto sintetico minimo che soddisfa le precondizioni.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "positive",
+          "expected_outcome": "fired"
+        },
+        {
+          "id": "GEN-005-negative",
+          "kind": "negative",
+          "description": "Contesto fuori dalle precondizioni della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "negative",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "GEN-005-ambiguous",
+          "kind": "ambiguous",
+          "description": "Contesto incompleto che non autorizza l'applicazione della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "ambiguous",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "GEN-005-exception",
+          "kind": "exception",
+          "description": "Nessuna eccezione approvata: contesto non applicabile esplicito.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "exception",
+          "expected_outcome": "not_applicable"
+        }
+      ]
+    },
+    {
+      "rule_id": "GEN-006",
+      "version": "1.0.0",
+      "domain": "general",
+      "title": "n e per gruppo, contrasto ed endpoint",
+      "preconditions": [
+        "declared_n_scope_global()",
+        "multiple_scopes()"
+      ],
+      "inference": "n must be reported per group, contrast and endpoint, together with exclusions.",
+      "message_it": "Lo studio riporta un n senza distinguere gruppo, contrasto ed endpoint mentre sono presenti piu contrasti o piu endpoint: n va riportato per ciascuno, con le esclusioni.",
+      "message_en": "The study reports an n without distinguishing group, contrast and endpoint while multiple contrasts or endpoints are present: n must be reported for each, with exclusions.",
+      "severity": "info",
+      "alert_class": "inference_scope",
+      "questions": [
+        "Qual e l'n allocato e analizzato per ciascun gruppo ed endpoint?"
+      ],
+      "references": [
+        "R03",
+        "R04"
+      ],
+      "scope_dimension": "block",
+      "fixtures": [
+        {
+          "id": "GEN-006-positive",
+          "kind": "positive",
+          "description": "Contesto sintetico minimo che soddisfa le precondizioni.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "positive",
+          "expected_outcome": "fired"
+        },
+        {
+          "id": "GEN-006-negative",
+          "kind": "negative",
+          "description": "Contesto fuori dalle precondizioni della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "negative",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "GEN-006-ambiguous",
+          "kind": "ambiguous",
+          "description": "Contesto incompleto che non autorizza l'applicazione della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "ambiguous",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "GEN-006-exception",
+          "kind": "exception",
+          "description": "Nessuna eccezione approvata: contesto non applicabile esplicito.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "exception",
+          "expected_outcome": "not_applicable"
+        }
+      ]
+    },
+    {
+      "rule_id": "GEN-007",
+      "version": "1.0.0",
+      "domain": "general",
+      "title": "Fonti contraddittorie restano alternative",
+      "preconditions": [
+        "contradiction_unresolved()"
+      ],
+      "inference": "Contradictory sources remain alternatives until a human resolves them; no verdict can be issued.",
+      "message_it": "Le fonti disponibili sono in contraddizione su un elemento del disegno. Le alternative restano aperte e nessuna conclusione sull'unita o su n viene formulata finche la contraddizione non e risolta da una persona.",
+      "message_en": "Available sources contradict each other on a design element. Alternatives remain open and no conclusion about the unit or n is drawn until a human resolves the contradiction.",
+      "severity": "insufficient",
+      "alert_class": "design_replication",
+      "questions": [
+        "Quale delle fonti in conflitto descrive il disegno effettivamente eseguito?"
+      ],
+      "references": [
+        "R03"
+      ],
+      "requires_human_confirmation": true,
+      "scope_dimension": "block",
+      "fixtures": [
+        {
+          "id": "GEN-007-positive",
+          "kind": "positive",
+          "description": "Contesto sintetico minimo che soddisfa le precondizioni.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "positive",
+          "expected_outcome": "fired"
+        },
+        {
+          "id": "GEN-007-negative",
+          "kind": "negative",
+          "description": "Contesto fuori dalle precondizioni della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "negative",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "GEN-007-ambiguous",
+          "kind": "ambiguous",
+          "description": "Contesto incompleto che non autorizza l'applicazione della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "ambiguous",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "GEN-007-exception",
+          "kind": "exception",
+          "description": "Nessuna eccezione approvata: contesto non applicabile esplicito.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "exception",
+          "expected_outcome": "not_applicable"
+        }
+      ]
+    },
+    {
+      "rule_id": "GEN-008",
+      "version": "1.0.0",
+      "domain": "general",
+      "title": "Aggregato, unita analitica e unita biologica restano distinti",
+      "preconditions": [
+        "aggregation_present()"
+      ],
+      "inference": "Aggregation changes the analytical record but not the biological unit.",
+      "message_it": "I dati vengono aggregati prima dell'analisi: l'unita analitica diventa {analytical_unit}, ma l'unita biologica resta {biological_unit} e l'unita sperimentale resta {experimental_unit}. L'aggregazione riduce i record, non cambia da sola il livello indipendente.",
+      "message_en": "Data are aggregated before analysis: the analytical unit becomes {analytical_unit}, while the biological unit remains {biological_unit} and the experimental unit remains {experimental_unit}. Aggregation reduces records but does not by itself change the independent level.",
+      "severity": "info",
+      "alert_class": "analytical_dependence",
+      "references": [
+        "R01"
+      ],
+      "scope_dimension": "contrast",
+      "fixtures": [
+        {
+          "id": "GEN-008-positive",
+          "kind": "positive",
+          "description": "Contesto sintetico minimo che soddisfa le precondizioni.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "positive",
+          "expected_outcome": "fired"
+        },
+        {
+          "id": "GEN-008-negative",
+          "kind": "negative",
+          "description": "Contesto fuori dalle precondizioni della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "negative",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "GEN-008-ambiguous",
+          "kind": "ambiguous",
+          "description": "Contesto incompleto che non autorizza l'applicazione della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "ambiguous",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "GEN-008-exception",
+          "kind": "exception",
+          "description": "Nessuna eccezione approvata: contesto non applicabile esplicito.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "exception",
+          "expected_outcome": "not_applicable"
+        }
+      ]
+    },
+    {
+      "rule_id": "GEN-009",
+      "version": "1.0.0",
+      "domain": "general",
+      "title": "Un mixed model citato non prova che i livelli corretti siano modellati",
+      "preconditions": [
+        "model_is_mixed()",
+        "not model_accounts_for_assignment()"
+      ],
+      "inference": "Mentioning a mixed model does not prove that the relevant levels are modelled.",
+      "message_it": "Il testo cita un modello misto o gerarchico ma non dichiara un termine per {experimental_unit} ne per i livelli superiori: la menzione del modello non basta a stabilire che la dipendenza sia rappresentata.",
+      "message_en": "The text mentions a mixed or hierarchical model but declares no term for {experimental_unit} or higher levels: mentioning the model is not sufficient to establish that the dependence is represented.",
+      "severity": "medium",
+      "alert_class": "analytical_dependence",
+      "questions": [
+        "Quali effetti casuali o termini di cluster sono inclusi nel modello e a quale livello?"
+      ],
+      "references": [
+        "R05",
+        "R06"
+      ],
+      "scope_dimension": "contrast",
+      "fixtures": [
+        {
+          "id": "GEN-009-positive",
+          "kind": "positive",
+          "description": "Contesto sintetico minimo che soddisfa le precondizioni.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "positive",
+          "expected_outcome": "fired"
+        },
+        {
+          "id": "GEN-009-negative",
+          "kind": "negative",
+          "description": "Contesto fuori dalle precondizioni della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "negative",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "GEN-009-ambiguous",
+          "kind": "ambiguous",
+          "description": "Contesto incompleto che non autorizza l'applicazione della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "ambiguous",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "GEN-009-exception",
+          "kind": "exception",
+          "description": "Nessuna eccezione approvata: contesto non applicabile esplicito.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "exception",
+          "expected_outcome": "not_applicable"
+        }
+      ]
+    },
+    {
+      "rule_id": "GEN-010",
+      "version": "1.0.0",
+      "domain": "general",
+      "title": "Indipendenza non stabilibile: informazione insufficiente",
+      "preconditions": [
+        "n_independent_unknown()"
+      ],
+      "inference": "If independence cannot be established the system returns insufficient_information.",
+      "message_it": "Non e possibile stabilire il numero di unita indipendenti per questo scope con il materiale disponibile. L'esito e informazione insufficiente, non un giudizio sul disegno.",
+      "message_en": "The number of independent units for this scope cannot be established from the available material. The outcome is insufficient information, not a judgement on the design.",
+      "severity": "insufficient",
+      "alert_class": "design_replication",
+      "questions": [
+        "Quante unita indipendenti sono state allocate e analizzate per il contrasto {contrast}?"
+      ],
+      "references": [
+        "R01",
+        "R03"
+      ],
+      "requires_human_confirmation": true,
+      "scope_dimension": "contrast",
+      "fixtures": [
+        {
+          "id": "GEN-010-positive",
+          "kind": "positive",
+          "description": "Contesto sintetico minimo che soddisfa le precondizioni.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "positive",
+          "expected_outcome": "fired"
+        },
+        {
+          "id": "GEN-010-negative",
+          "kind": "negative",
+          "description": "Contesto fuori dalle precondizioni della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "negative",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "GEN-010-ambiguous",
+          "kind": "ambiguous",
+          "description": "Contesto incompleto che non autorizza l'applicazione della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "ambiguous",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "GEN-010-exception",
+          "kind": "exception",
+          "description": "Nessuna eccezione approvata: contesto non applicabile esplicito.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "exception",
+          "expected_outcome": "not_applicable"
+        }
+      ]
+    },
+    {
+      "rule_id": "CC-001",
+      "version": "1.0.0",
+      "domain": "cell_culture",
+      "title": "Pozzetti dalla stessa preparazione sono sottocampioni per default",
+      "preconditions": [
+        "Well nested_in Culture",
+        "not assigned_at(Well)",
+        "analyzed_as(Well)"
+      ],
+      "inference": "Wells from the same suspension or preparation are subsamples or technical replicates unless treatment is applied per well.",
+      "message_it": "I pozzetti derivano dalla stessa preparazione e il fattore non risulta applicato al pozzetto: per default i pozzetti sono sottocampioni o repliche tecniche, non repliche biologiche.",
+      "message_en": "Wells derive from the same preparation and the factor is not applied per well: by default wells are subsamples or technical replicates, not biological replicates.",
+      "severity": "high",
+      "alert_class": "analytical_dependence",
+      "exceptions": [
+        "model_accounts_for_assignment()"
+      ],
+      "abstain_if": [
+        "count_unknown(Culture)"
+      ],
+      "questions": [
+        "I pozzetti provengono da preparazioni indipendenti o dalla stessa sospensione cellulare?"
+      ],
+      "references": [
+        "R01"
+      ],
+      "scope_dimension": "contrast",
+      "fixtures": [
+        {
+          "id": "CC-001-positive",
+          "kind": "positive",
+          "description": "Contesto sintetico minimo che soddisfa le precondizioni.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "positive",
+          "expected_outcome": "fired"
+        },
+        {
+          "id": "CC-001-negative",
+          "kind": "negative",
+          "description": "Contesto fuori dalle precondizioni della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "negative",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "CC-001-ambiguous",
+          "kind": "ambiguous",
+          "description": "Contesto con la condizione di astensione dichiarata.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "ambiguous",
+          "expected_outcome": "abstained"
+        },
+        {
+          "id": "CC-001-exception",
+          "kind": "exception",
+          "description": "Contesto positivo con l'eccezione dichiarata attiva.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "exception",
+          "expected_outcome": "excepted"
+        }
+      ]
+    },
+    {
+      "rule_id": "CC-002",
+      "version": "1.0.0",
+      "domain": "cell_culture",
+      "title": "Colture dello stesso donatore restano annidate",
+      "preconditions": [
+        "Culture nested_in Donor",
+        "assigned_at(Culture)",
+        "single_instance(Donor)"
+      ],
+      "inference": "Cultures from distinct donors can be biological replicates for between-donor inference; cultures from the same donor remain nested.",
+      "message_it": "Le colture provengono da un solo donatore: possono stimare la variabilita tra preparazioni, ma non sostengono un'inferenza tra individui. n indipendente per inferenze tra donatori sarebbe 1.",
+      "message_en": "Cultures come from a single donor: they can estimate between-preparation variability but do not support between-individual inference. The independent n for between-donor inference would be 1.",
+      "severity": "medium",
+      "alert_class": "inference_scope",
+      "questions": [
+        "La conclusione riguarda questo donatore o una popolazione di donatori?"
+      ],
+      "references": [
+        "R06"
+      ],
+      "scope_dimension": "contrast",
+      "fixtures": [
+        {
+          "id": "CC-002-positive",
+          "kind": "positive",
+          "description": "Contesto sintetico minimo che soddisfa le precondizioni.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "positive",
+          "expected_outcome": "fired"
+        },
+        {
+          "id": "CC-002-negative",
+          "kind": "negative",
+          "description": "Contesto fuori dalle precondizioni della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "negative",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "CC-002-ambiguous",
+          "kind": "ambiguous",
+          "description": "Contesto incompleto che non autorizza l'applicazione della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "ambiguous",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "CC-002-exception",
+          "kind": "exception",
+          "description": "Nessuna eccezione approvata: contesto non applicabile esplicito.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "exception",
+          "expected_outcome": "not_applicable"
+        }
+      ]
+    },
+    {
+      "rule_id": "CC-003",
+      "version": "1.0.0",
+      "domain": "cell_culture",
+      "title": "Thaw e passaggi distinti stimano variabilita di processo",
+      "preconditions": [
+        "assigned_at(Culture)",
+        "level_present(CellLine)",
+        "single_instance(CellLine)"
+      ],
+      "inference": "Distinct thaws of the same cell line estimate process variability, not between-individual variability.",
+      "message_it": "Le colture indipendenti derivano da un'unica linea cellulare: stimano la variabilita di processo (thaw, passaggio, giorno), non la variabilita tra individui.",
+      "message_en": "Independent cultures derive from a single cell line: they estimate process variability (thaw, passage, day), not between-individual variability.",
+      "severity": "medium",
+      "alert_class": "inference_scope",
+      "questions": [
+        "Le colture derivano da thaw o passaggi distinti della stessa linea o da sorgenti biologiche diverse?"
+      ],
+      "references": [
+        "R01"
+      ],
+      "scope_dimension": "contrast",
+      "fixtures": [
+        {
+          "id": "CC-003-positive",
+          "kind": "positive",
+          "description": "Contesto sintetico minimo che soddisfa le precondizioni.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "positive",
+          "expected_outcome": "fired"
+        },
+        {
+          "id": "CC-003-negative",
+          "kind": "negative",
+          "description": "Contesto fuori dalle precondizioni della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "negative",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "CC-003-ambiguous",
+          "kind": "ambiguous",
+          "description": "Contesto incompleto che non autorizza l'applicazione della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "ambiguous",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "CC-003-exception",
+          "kind": "exception",
+          "description": "Nessuna eccezione approvata: contesto non applicabile esplicito.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "exception",
+          "expected_outcome": "not_applicable"
+        }
+      ]
+    },
+    {
+      "rule_id": "CC-004",
+      "version": "1.0.0",
+      "domain": "cell_culture",
+      "title": "Passaggio, giorno e lotto sono potenziali batch",
+      "preconditions": [
+        "level_present(Batch)"
+      ],
+      "inference": "Passage, day and lot must be represented as potential batches.",
+      "message_it": "Nel materiale compare un livello di batch o lotto: va rappresentato come potenziale fonte di dipendenza e verificato rispetto all'assegnazione del fattore.",
+      "message_en": "A batch or lot level appears in the material: it must be represented as a potential source of dependence and checked against factor assignment.",
+      "severity": "info",
+      "alert_class": "analytical_dependence",
+      "references": [
+        "R03"
+      ],
+      "scope_dimension": "block",
+      "fixtures": [
+        {
+          "id": "CC-004-positive",
+          "kind": "positive",
+          "description": "Contesto sintetico minimo che soddisfa le precondizioni.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "positive",
+          "expected_outcome": "fired"
+        },
+        {
+          "id": "CC-004-negative",
+          "kind": "negative",
+          "description": "Contesto fuori dalle precondizioni della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "negative",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "CC-004-ambiguous",
+          "kind": "ambiguous",
+          "description": "Contesto incompleto che non autorizza l'applicazione della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "ambiguous",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "CC-004-exception",
+          "kind": "exception",
+          "description": "Nessuna eccezione approvata: contesto non applicabile esplicito.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "exception",
+          "expected_outcome": "not_applicable"
+        }
+      ]
+    },
+    {
+      "rule_id": "CC-005",
+      "version": "1.0.0",
+      "domain": "cell_culture",
+      "title": "Molti pozzetti su una sola linea non generalizzano a piu linee",
+      "preconditions": [
+        "single_instance(CellLine)",
+        "multiple_instances(Well)"
+      ],
+      "inference": "A single cell line with many wells does not automatically support generalisation to multiple lines.",
+      "message_it": "Il disegno usa molti pozzetti ma una sola linea cellulare: il numero di pozzetti non sostiene una generalizzazione a piu linee o a una popolazione.",
+      "message_en": "The design uses many wells but a single cell line: the number of wells does not support generalisation to multiple lines or to a population.",
+      "severity": "medium",
+      "alert_class": "inference_scope",
+      "questions": [
+        "La conclusione riguarda questa linea cellulare o una classe piu ampia di modelli?"
+      ],
+      "references": [
+        "R01"
+      ],
+      "scope_dimension": "block",
+      "fixtures": [
+        {
+          "id": "CC-005-positive",
+          "kind": "positive",
+          "description": "Contesto sintetico minimo che soddisfa le precondizioni.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "positive",
+          "expected_outcome": "fired"
+        },
+        {
+          "id": "CC-005-negative",
+          "kind": "negative",
+          "description": "Contesto fuori dalle precondizioni della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "negative",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "CC-005-ambiguous",
+          "kind": "ambiguous",
+          "description": "Contesto incompleto che non autorizza l'applicazione della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "ambiguous",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "CC-005-exception",
+          "kind": "exception",
+          "description": "Nessuna eccezione approvata: contesto non applicabile esplicito.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "exception",
+          "expected_outcome": "not_applicable"
+        }
+      ]
+    },
+    {
+      "rule_id": "CC-006",
+      "version": "1.0.0",
+      "domain": "cell_culture",
+      "title": "Trattamento per pozzetto: la preparazione resta blocco",
+      "preconditions": [
+        "assigned_at(Well)",
+        "Well nested_in Culture"
+      ],
+      "inference": "With per-well treatment the well can be the unit of the factor while the preparation remains a cluster or block.",
+      "message_it": "Il fattore risulta applicato al pozzetto: il pozzetto puo essere l'unita sperimentale per questo contrasto, ma la preparazione resta un blocco e va rappresentata nel modello.",
+      "message_en": "The factor is applied per well: the well can be the experimental unit for this contrast, but the preparation remains a block and must be represented in the model.",
+      "severity": "info",
+      "alert_class": "design_replication",
+      "references": [
+        "R01"
+      ],
+      "scope_dimension": "contrast",
+      "fixtures": [
+        {
+          "id": "CC-006-positive",
+          "kind": "positive",
+          "description": "Contesto sintetico minimo che soddisfa le precondizioni.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "positive",
+          "expected_outcome": "fired"
+        },
+        {
+          "id": "CC-006-negative",
+          "kind": "negative",
+          "description": "Contesto fuori dalle precondizioni della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "negative",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "CC-006-ambiguous",
+          "kind": "ambiguous",
+          "description": "Contesto incompleto che non autorizza l'applicazione della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "ambiguous",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "CC-006-exception",
+          "kind": "exception",
+          "description": "Nessuna eccezione approvata: contesto non applicabile esplicito.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "exception",
+          "expected_outcome": "not_applicable"
+        }
+      ]
+    },
+    {
+      "rule_id": "MIC-001",
+      "version": "1.0.0",
+      "domain": "quantitative_microscopy",
+      "title": "Cellule nello stesso campo sono annidate",
+      "preconditions": [
+        "Cell nested_in Field"
+      ],
+      "inference": "Cells in the same field are nested; the field is not automatically independent.",
+      "message_it": "Le cellule misurate sono annidate nel campo di acquisizione: il campo non e automaticamente un'unita indipendente e le cellule dello stesso campo condividono fonti di variabilita.",
+      "message_en": "Measured cells are nested within the acquisition field: the field is not automatically an independent unit and cells in the same field share sources of variability.",
+      "severity": "info",
+      "alert_class": "analytical_dependence",
+      "references": [
+        "R01"
+      ],
+      "scope_dimension": "block",
+      "fixtures": [
+        {
+          "id": "MIC-001-positive",
+          "kind": "positive",
+          "description": "Contesto sintetico minimo che soddisfa le precondizioni.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "positive",
+          "expected_outcome": "fired"
+        },
+        {
+          "id": "MIC-001-negative",
+          "kind": "negative",
+          "description": "Contesto fuori dalle precondizioni della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "negative",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "MIC-001-ambiguous",
+          "kind": "ambiguous",
+          "description": "Contesto incompleto che non autorizza l'applicazione della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "ambiguous",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "MIC-001-exception",
+          "kind": "exception",
+          "description": "Nessuna eccezione approvata: contesto non applicabile esplicito.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "exception",
+          "expected_outcome": "not_applicable"
+        }
+      ]
+    },
+    {
+      "rule_id": "MIC-002",
+      "version": "1.0.0",
+      "domain": "quantitative_microscopy",
+      "title": "Campi e sezioni dello stesso soggetto sono sottocampioni",
+      "preconditions": [
+        "Field nested_in Section",
+        "assigned_at_or_above(Animal)"
+      ],
+      "inference": "Fields from the same section and sections from the same subject are subsamples for subject-level inference.",
+      "message_it": "Campi della stessa sezione e sezioni dello stesso soggetto sono sottocampioni: per un'inferenza a livello di soggetto non aumentano il numero di unita indipendenti.",
+      "message_en": "Fields from the same section and sections from the same subject are subsamples: they do not increase the number of independent units for subject-level inference.",
+      "severity": "medium",
+      "alert_class": "analytical_dependence",
+      "references": [
+        "R01",
+        "R03"
+      ],
+      "scope_dimension": "contrast",
+      "fixtures": [
+        {
+          "id": "MIC-002-positive",
+          "kind": "positive",
+          "description": "Contesto sintetico minimo che soddisfa le precondizioni.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "positive",
+          "expected_outcome": "fired"
+        },
+        {
+          "id": "MIC-002-negative",
+          "kind": "negative",
+          "description": "Contesto fuori dalle precondizioni della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "negative",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "MIC-002-ambiguous",
+          "kind": "ambiguous",
+          "description": "Contesto incompleto che non autorizza l'applicazione della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "ambiguous",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "MIC-002-exception",
+          "kind": "exception",
+          "description": "Nessuna eccezione approvata: contesto non applicabile esplicito.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "exception",
+          "expected_outcome": "not_applicable"
+        }
+      ]
+    },
+    {
+      "rule_id": "MIC-003",
+      "version": "1.0.0",
+      "domain": "quantitative_microscopy",
+      "title": "Il numero di immagini non equivale a n",
+      "preconditions": [
+        "analyzed_as(Field)",
+        "assigned_at_or_above(Culture)"
+      ],
+      "inference": "The number of images is not n when the images come from the same source.",
+      "message_it": "L'analisi conta immagini o campi mentre il fattore e assegnato a {experimental_unit}: il numero di immagini provenienti dalla stessa sorgente non equivale a n indipendente.",
+      "message_en": "The analysis counts images or fields while the factor is assigned at {experimental_unit}: the number of images from the same source is not an independent n.",
+      "severity": "high",
+      "alert_class": "analytical_dependence",
+      "exceptions": [
+        "model_accounts_for_assignment()"
+      ],
+      "abstain_if": [
+        "sufficiency_below(source_independence, medium)"
+      ],
+      "questions": [
+        "Quante sorgenti indipendenti hanno originato le immagini analizzate?"
+      ],
+      "references": [
+        "R01"
+      ],
+      "requires_human_confirmation": true,
+      "scope_dimension": "contrast",
+      "fixtures": [
+        {
+          "id": "MIC-003-positive",
+          "kind": "positive",
+          "description": "Contesto sintetico minimo che soddisfa le precondizioni.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "positive",
+          "expected_outcome": "fired"
+        },
+        {
+          "id": "MIC-003-negative",
+          "kind": "negative",
+          "description": "Contesto fuori dalle precondizioni della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "negative",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "MIC-003-ambiguous",
+          "kind": "ambiguous",
+          "description": "Contesto con la condizione di astensione dichiarata.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "ambiguous",
+          "expected_outcome": "abstained"
+        },
+        {
+          "id": "MIC-003-exception",
+          "kind": "exception",
+          "description": "Contesto positivo con l'eccezione dichiarata attiva.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "exception",
+          "expected_outcome": "excepted"
+        }
+      ]
+    },
+    {
+      "rule_id": "MIC-004",
+      "version": "1.0.0",
+      "domain": "quantitative_microscopy",
+      "title": "Cellule trattate come indipendenti con intervento a livello di coltura",
+      "preconditions": [
+        "Cell nested_in Field",
+        "Field nested_in Well",
+        "Well nested_in Culture",
+        "Analysis analyzed_as Cell",
+        "Treatment assigned_at Culture or higher"
+      ],
+      "inference": "Cell-level observations are not independent for the treatment effect.",
+      "message_it": "Le cellule risultano annidate in campi, pozzetti e colture, mentre il fattore e assegnato a livello di {experimental_unit}: trattare {n_observational} cellule come osservazioni indipendenti sottostima l'errore standard. Le unita indipendenti per questo contrasto sono {n_independent}.",
+      "message_en": "Cells are nested within fields, wells and cultures while the factor is assigned at the {experimental_unit} level: treating {n_observational} cells as independent observations underestimates the standard error. Independent units for this contrast are {n_independent}.",
+      "severity": "critical",
+      "alert_class": "analytical_dependence",
+      "exceptions": [
+        "model_accounts_for_assignment()"
+      ],
+      "abstain_if": [
+        "sufficiency_below(source_independence, medium)"
+      ],
+      "questions": [
+        "Le colture usate derivano da preparazioni o donatori indipendenti?",
+        "Il test descritto modella esplicitamente il livello di coltura?"
+      ],
+      "references": [
+        "R01",
+        "R02"
+      ],
+      "requires_human_confirmation": true,
+      "scope_dimension": "contrast",
+      "fixtures": [
+        {
+          "id": "MIC-004-positive",
+          "kind": "positive",
+          "description": "Contesto sintetico minimo che soddisfa le precondizioni.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "positive",
+          "expected_outcome": "fired"
+        },
+        {
+          "id": "MIC-004-negative",
+          "kind": "negative",
+          "description": "Contesto fuori dalle precondizioni della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "negative",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "MIC-004-ambiguous",
+          "kind": "ambiguous",
+          "description": "Contesto con la condizione di astensione dichiarata.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "ambiguous",
+          "expected_outcome": "abstained"
+        },
+        {
+          "id": "MIC-004-exception",
+          "kind": "exception",
+          "description": "Contesto positivo con l'eccezione dichiarata attiva.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "exception",
+          "expected_outcome": "excepted"
+        }
+      ]
+    },
+    {
+      "rule_id": "MIC-005",
+      "version": "1.0.0",
+      "domain": "quantitative_microscopy",
+      "title": "Aggregare per campo o pozzetto non cambia il livello indipendente",
+      "preconditions": [
+        "aggregation_present()",
+        "analysis_finer_than_assignment()"
+      ],
+      "inference": "Aggregating per field or well reduces records but does not change the independent level.",
+      "message_it": "L'aggregazione per {analytical_unit} riduce il numero di record ma non cambia il livello indipendente, che resta {experimental_unit}.",
+      "message_en": "Aggregating per {analytical_unit} reduces the number of records but does not change the independent level, which remains {experimental_unit}.",
+      "severity": "info",
+      "alert_class": "analytical_dependence",
+      "references": [
+        "R01"
+      ],
+      "scope_dimension": "contrast",
+      "fixtures": [
+        {
+          "id": "MIC-005-positive",
+          "kind": "positive",
+          "description": "Contesto sintetico minimo che soddisfa le precondizioni.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "positive",
+          "expected_outcome": "fired"
+        },
+        {
+          "id": "MIC-005-negative",
+          "kind": "negative",
+          "description": "Contesto fuori dalle precondizioni della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "negative",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "MIC-005-ambiguous",
+          "kind": "ambiguous",
+          "description": "Contesto incompleto che non autorizza l'applicazione della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "ambiguous",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "MIC-005-exception",
+          "kind": "exception",
+          "description": "Nessuna eccezione approvata: contesto non applicabile esplicito.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "exception",
+          "expected_outcome": "not_applicable"
+        }
+      ]
+    },
+    {
+      "rule_id": "MIC-006",
+      "version": "1.0.0",
+      "domain": "quantitative_microscopy",
+      "title": "Selezione ROI e blinding sono alert separati",
+      "preconditions": [
+        "level_present(ROI)",
+        "not blinding_reported()"
+      ],
+      "inference": "ROI selection, blinding and rigour criteria are separate alerts and do not substitute the unit analysis.",
+      "message_it": "Il disegno prevede una selezione di ROI e il materiale non riporta blinding o criteri di selezione: e un rischio di rigore distinto dalla scelta dell'unita, non un suo sostituto.",
+      "message_en": "The design involves ROI selection and the material does not report blinding or selection criteria: this is a rigour risk distinct from unit choice, not a substitute for it.",
+      "severity": "info",
+      "alert_class": "analytical_dependence",
+      "questions": [
+        "Con quale criterio sono stati scelti i campi o le ROI e chi ha effettuato la selezione?"
+      ],
+      "references": [
+        "R03",
+        "R04"
+      ],
+      "scope_dimension": "block",
+      "fixtures": [
+        {
+          "id": "MIC-006-positive",
+          "kind": "positive",
+          "description": "Contesto sintetico minimo che soddisfa le precondizioni.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "positive",
+          "expected_outcome": "fired"
+        },
+        {
+          "id": "MIC-006-negative",
+          "kind": "negative",
+          "description": "Contesto fuori dalle precondizioni della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "negative",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "MIC-006-ambiguous",
+          "kind": "ambiguous",
+          "description": "Contesto incompleto che non autorizza l'applicazione della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "ambiguous",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "MIC-006-exception",
+          "kind": "exception",
+          "description": "Nessuna eccezione approvata: contesto non applicabile esplicito.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "exception",
+          "expected_outcome": "not_applicable"
+        }
+      ]
+    },
+    {
+      "rule_id": "SC-001",
+      "version": "1.0.0",
+      "domain": "single_cell",
+      "title": "Cellule e nuclei dello stesso donatore sono subsamples",
+      "preconditions": [
+        "Cell nested_in Donor",
+        "analyzed_as(Cell)",
+        "assigned_at_or_above(Donor)"
+      ],
+      "inference": "Cells or nuclei from the same donor are subsamples for between-subject inference.",
+      "message_it": "Le cellule appartengono a un numero limitato di soggetti e il fattore e assegnato a livello di {experimental_unit}: per inferenze tra soggetti le cellule sono subsamples, non repliche.",
+      "message_en": "Cells belong to a limited number of subjects and the factor is assigned at the {experimental_unit} level: for between-subject inference cells are subsamples, not replicates.",
+      "severity": "critical",
+      "alert_class": "inference_scope",
+      "exceptions": [
+        "model_accounts_for_assignment()"
+      ],
+      "abstain_if": [
+        "count_unknown(Donor)"
+      ],
+      "questions": [
+        "Quanti donatori o soggetti indipendenti sono stati inclusi per condizione?"
+      ],
+      "references": [
+        "R05",
+        "R06"
+      ],
+      "requires_human_confirmation": true,
+      "scope_dimension": "contrast",
+      "fixtures": [
+        {
+          "id": "SC-001-positive",
+          "kind": "positive",
+          "description": "Contesto sintetico minimo che soddisfa le precondizioni.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "positive",
+          "expected_outcome": "fired"
+        },
+        {
+          "id": "SC-001-negative",
+          "kind": "negative",
+          "description": "Contesto fuori dalle precondizioni della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "negative",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "SC-001-ambiguous",
+          "kind": "ambiguous",
+          "description": "Contesto con la condizione di astensione dichiarata.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "ambiguous",
+          "expected_outcome": "abstained"
+        },
+        {
+          "id": "SC-001-exception",
+          "kind": "exception",
+          "description": "Contesto positivo con l'eccezione dichiarata attiva.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "exception",
+          "expected_outcome": "excepted"
+        }
+      ]
+    },
+    {
+      "rule_id": "SC-002",
+      "version": "1.0.0",
+      "domain": "single_cell",
+      "title": "Pseudobulk per soggetto preserva il livello indipendente",
+      "preconditions": [
+        "pooling_present()",
+        "assigned_at_or_above(Donor)"
+      ],
+      "inference": "Pseudobulk per subject preserves the independent level; random partitions of cells do not create replicates.",
+      "message_it": "L'aggregazione pseudobulk per soggetto preserva il livello indipendente. Partizioni casuali di cellule non creerebbero repliche: il numero di unita resta quello dei soggetti.",
+      "message_en": "Pseudobulk aggregation per subject preserves the independent level. Random partitions of cells would not create replicates: the number of units remains the number of subjects.",
+      "severity": "info",
+      "alert_class": "analytical_dependence",
+      "references": [
+        "R05",
+        "R06"
+      ],
+      "scope_dimension": "contrast",
+      "fixtures": [
+        {
+          "id": "SC-002-positive",
+          "kind": "positive",
+          "description": "Contesto sintetico minimo che soddisfa le precondizioni.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "positive",
+          "expected_outcome": "fired"
+        },
+        {
+          "id": "SC-002-negative",
+          "kind": "negative",
+          "description": "Contesto fuori dalle precondizioni della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "negative",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "SC-002-ambiguous",
+          "kind": "ambiguous",
+          "description": "Contesto incompleto che non autorizza l'applicazione della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "ambiguous",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "SC-002-exception",
+          "kind": "exception",
+          "description": "Nessuna eccezione approvata: contesto non applicabile esplicito.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "exception",
+          "expected_outcome": "not_applicable"
+        }
+      ]
+    },
+    {
+      "rule_id": "SC-003",
+      "version": "1.0.0",
+      "domain": "single_cell",
+      "title": "Libreria, lane e run sono livelli tecnici",
+      "preconditions": [
+        "level_present(Library)"
+      ],
+      "inference": "Library, lane and run are technical levels distinct from the subject.",
+      "message_it": "Libreria, lane e run compaiono nel disegno: sono livelli tecnici distinti dal soggetto e non aumentano il numero di unita biologiche indipendenti.",
+      "message_en": "Library, lane and run appear in the design: they are technical levels distinct from the subject and do not increase the number of independent biological units.",
+      "severity": "info",
+      "alert_class": "analytical_dependence",
+      "references": [
+        "R05"
+      ],
+      "scope_dimension": "block",
+      "fixtures": [
+        {
+          "id": "SC-003-positive",
+          "kind": "positive",
+          "description": "Contesto sintetico minimo che soddisfa le precondizioni.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "positive",
+          "expected_outcome": "fired"
+        },
+        {
+          "id": "SC-003-negative",
+          "kind": "negative",
+          "description": "Contesto fuori dalle precondizioni della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "negative",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "SC-003-ambiguous",
+          "kind": "ambiguous",
+          "description": "Contesto incompleto che non autorizza l'applicazione della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "ambiguous",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "SC-003-exception",
+          "kind": "exception",
+          "description": "Nessuna eccezione approvata: contesto non applicabile esplicito.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "exception",
+          "expected_outcome": "not_applicable"
+        }
+      ]
+    },
+    {
+      "rule_id": "SC-004",
+      "version": "1.0.0",
+      "domain": "single_cell",
+      "title": "Condizione confusa con soggetto o batch",
+      "preconditions": [
+        "perfect_confounding()",
+        "level_present(Library)"
+      ],
+      "inference": "A condition perfectly confounded with subject or batch is not separable without assumptions.",
+      "message_it": "La condizione risulta perfettamente confusa con soggetto o batch di libreria: l'effetto biologico e quello tecnico non sono separabili senza assunzioni esplicite.",
+      "message_en": "The condition is perfectly confounded with subject or library batch: biological and technical effects are not separable without explicit assumptions.",
+      "severity": "high",
+      "alert_class": "design_replication",
+      "references": [
+        "R05",
+        "R06"
+      ],
+      "requires_human_confirmation": true,
+      "scope_dimension": "block",
+      "fixtures": [
+        {
+          "id": "SC-004-positive",
+          "kind": "positive",
+          "description": "Contesto sintetico minimo che soddisfa le precondizioni.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "positive",
+          "expected_outcome": "fired"
+        },
+        {
+          "id": "SC-004-negative",
+          "kind": "negative",
+          "description": "Contesto fuori dalle precondizioni della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "negative",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "SC-004-ambiguous",
+          "kind": "ambiguous",
+          "description": "Contesto incompleto che non autorizza l'applicazione della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "ambiguous",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "SC-004-exception",
+          "kind": "exception",
+          "description": "Nessuna eccezione approvata: contesto non applicabile esplicito.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "exception",
+          "expected_outcome": "not_applicable"
+        }
+      ]
+    },
+    {
+      "rule_id": "SC-005",
+      "version": "1.0.0",
+      "domain": "single_cell",
+      "title": "Spot e regioni spatial restano annidati nel tessuto",
+      "preconditions": [
+        "ROI nested_in Tissue"
+      ],
+      "inference": "Spatial spots and regions remain nested within tissue and subject.",
+      "message_it": "Spot e regioni spatial restano annidati nel tessuto e nel soggetto: il loro numero non e il numero di unita indipendenti.",
+      "message_en": "Spatial spots and regions remain nested within tissue and subject: their number is not the number of independent units.",
+      "severity": "info",
+      "alert_class": "analytical_dependence",
+      "references": [
+        "R06"
+      ],
+      "scope_dimension": "contrast",
+      "fixtures": [
+        {
+          "id": "SC-005-positive",
+          "kind": "positive",
+          "description": "Contesto sintetico minimo che soddisfa le precondizioni.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "positive",
+          "expected_outcome": "fired"
+        },
+        {
+          "id": "SC-005-negative",
+          "kind": "negative",
+          "description": "Contesto fuori dalle precondizioni della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "negative",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "SC-005-ambiguous",
+          "kind": "ambiguous",
+          "description": "Contesto incompleto che non autorizza l'applicazione della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "ambiguous",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "SC-005-exception",
+          "kind": "exception",
+          "description": "Nessuna eccezione approvata: contesto non applicabile esplicito.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "exception",
+          "expected_outcome": "not_applicable"
+        }
+      ]
+    },
+    {
+      "rule_id": "ANI-001",
+      "version": "1.0.0",
+      "domain": "animal",
+      "title": "Intervento materno: madre o cucciolata e l'unita",
+      "preconditions": [
+        "level_present(Dam)",
+        "assigned_at_or_above(Dam)",
+        "analyzed_as(Animal)"
+      ],
+      "inference": "With a maternal intervention the dam or the litter is the experimental unit and pups are nested.",
+      "message_it": "L'intervento risulta applicato alla madre: per questo fattore l'unita sperimentale e la madre o la cucciolata, e i cuccioli sono osservazioni annidate.",
+      "message_en": "The intervention is applied to the dam: for this factor the experimental unit is the dam or the litter, and pups are nested observations.",
+      "severity": "high",
+      "alert_class": "design_replication",
+      "exceptions": [
+        "model_accounts_for_assignment()"
+      ],
+      "questions": [
+        "Quante madri o cucciolate indipendenti sono state assegnate a ciascun gruppo?"
+      ],
+      "references": [
+        "R03",
+        "R04"
+      ],
+      "requires_human_confirmation": true,
+      "scope_dimension": "contrast",
+      "fixtures": [
+        {
+          "id": "ANI-001-positive",
+          "kind": "positive",
+          "description": "Contesto sintetico minimo che soddisfa le precondizioni.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "positive",
+          "expected_outcome": "fired"
+        },
+        {
+          "id": "ANI-001-negative",
+          "kind": "negative",
+          "description": "Contesto fuori dalle precondizioni della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "negative",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "ANI-001-ambiguous",
+          "kind": "ambiguous",
+          "description": "Contesto incompleto che non autorizza l'applicazione della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "ambiguous",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "ANI-001-exception",
+          "kind": "exception",
+          "description": "Contesto positivo con l'eccezione dichiarata attiva.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "exception",
+          "expected_outcome": "excepted"
+        }
+      ]
+    },
+    {
+      "rule_id": "ANI-002",
+      "version": "1.0.0",
+      "domain": "animal",
+      "title": "Intervento per gabbia: la gabbia e l'unita",
+      "preconditions": [
+        "level_present(Cage)",
+        "Animal nested_in Cage",
+        "assigned_at(Animal)",
+        "factor_kind(diet)"
+      ],
+      "inference": "When the intervention is delivered per cage the cage is the experimental unit, not the animal.",
+      "message_it": "Il fattore e di tipo dieta e gli animali condividono la gabbia: se la dieta e somministrata alla gabbia, l'unita sperimentale e la gabbia e non l'animale.",
+      "message_en": "The factor is a diet and animals share the cage: if the diet is delivered per cage, the experimental unit is the cage and not the animal.",
+      "severity": "high",
+      "alert_class": "design_replication",
+      "questions": [
+        "La dieta e stata assegnata alla gabbia o al singolo animale?"
+      ],
+      "references": [
+        "R03",
+        "R04"
+      ],
+      "requires_human_confirmation": true,
+      "scope_dimension": "contrast",
+      "fixtures": [
+        {
+          "id": "ANI-002-positive",
+          "kind": "positive",
+          "description": "Contesto sintetico minimo che soddisfa le precondizioni.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "positive",
+          "expected_outcome": "fired"
+        },
+        {
+          "id": "ANI-002-negative",
+          "kind": "negative",
+          "description": "Contesto fuori dalle precondizioni della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "negative",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "ANI-002-ambiguous",
+          "kind": "ambiguous",
+          "description": "Contesto incompleto che non autorizza l'applicazione della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "ambiguous",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "ANI-002-exception",
+          "kind": "exception",
+          "description": "Nessuna eccezione approvata: contesto non applicabile esplicito.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "exception",
+          "expected_outcome": "not_applicable"
+        }
+      ]
+    },
+    {
+      "rule_id": "ANI-003",
+      "version": "1.0.0",
+      "domain": "animal",
+      "title": "Piu tessuti o cellule dello stesso animale non aumentano il numero di animali",
+      "preconditions": [
+        "Cell nested_in Animal",
+        "analyzed_as(Cell)",
+        "assigned_at_or_above(Animal)"
+      ],
+      "inference": "Multiple tissues, sections or cells from the same animal do not increase the number of animals.",
+      "message_it": "Le misure derivano da piu cellule o sezioni dello stesso animale: il numero di misure non aumenta il numero di animali indipendenti, che resta {n_independent}.",
+      "message_en": "Measurements come from multiple cells or sections of the same animal: the number of measurements does not increase the number of independent animals, which remains {n_independent}.",
+      "severity": "high",
+      "alert_class": "analytical_dependence",
+      "exceptions": [
+        "model_accounts_for_assignment()"
+      ],
+      "abstain_if": [
+        "count_unknown(Animal)"
+      ],
+      "references": [
+        "R01",
+        "R03"
+      ],
+      "requires_human_confirmation": true,
+      "scope_dimension": "contrast",
+      "fixtures": [
+        {
+          "id": "ANI-003-positive",
+          "kind": "positive",
+          "description": "Contesto sintetico minimo che soddisfa le precondizioni.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "positive",
+          "expected_outcome": "fired"
+        },
+        {
+          "id": "ANI-003-negative",
+          "kind": "negative",
+          "description": "Contesto fuori dalle precondizioni della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "negative",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "ANI-003-ambiguous",
+          "kind": "ambiguous",
+          "description": "Contesto con la condizione di astensione dichiarata.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "ambiguous",
+          "expected_outcome": "abstained"
+        },
+        {
+          "id": "ANI-003-exception",
+          "kind": "exception",
+          "description": "Contesto positivo con l'eccezione dichiarata attiva.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "exception",
+          "expected_outcome": "excepted"
+        }
+      ]
+    },
+    {
+      "rule_id": "ANI-004",
+      "version": "1.0.0",
+      "domain": "animal",
+      "title": "Paired e controlaterale richiedono una relazione within-subject",
+      "preconditions": [
+        "repeated_measures_present()",
+        "not model_is_mixed()"
+      ],
+      "inference": "Paired or contralateral designs require an explicit within-subject relation in the analysis.",
+      "message_it": "Il disegno contiene misure ripetute sulla stessa unita ma non e dichiarato un modello che rappresenti la relazione within-subject: il tempo o il lato non aumentano n indipendente.",
+      "message_en": "The design contains repeated measurements on the same unit but no model representing the within-subject relation is declared: time or side do not increase the independent n.",
+      "severity": "medium",
+      "alert_class": "analytical_dependence",
+      "questions": [
+        "Le misure ripetute sono state analizzate con un modello che tiene conto del soggetto?"
+      ],
+      "references": [
+        "R03",
+        "R04"
+      ],
+      "scope_dimension": "contrast",
+      "fixtures": [
+        {
+          "id": "ANI-004-positive",
+          "kind": "positive",
+          "description": "Contesto sintetico minimo che soddisfa le precondizioni.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "positive",
+          "expected_outcome": "fired"
+        },
+        {
+          "id": "ANI-004-negative",
+          "kind": "negative",
+          "description": "Contesto fuori dalle precondizioni della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "negative",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "ANI-004-ambiguous",
+          "kind": "ambiguous",
+          "description": "Contesto incompleto che non autorizza l'applicazione della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "ambiguous",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "ANI-004-exception",
+          "kind": "exception",
+          "description": "Nessuna eccezione approvata: contesto non applicabile esplicito.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "exception",
+          "expected_outcome": "not_applicable"
+        }
+      ]
+    },
+    {
+      "rule_id": "ANI-005",
+      "version": "1.0.0",
+      "domain": "animal",
+      "title": "L'esclusione di un animale aggiorna n gerarchicamente",
+      "preconditions": [
+        "exclusions_reported()",
+        "level_present(Animal)"
+      ],
+      "inference": "Excluding an animal removes its child observations and updates n hierarchically.",
+      "message_it": "Sono riportate esclusioni e il disegno contiene animali: l'esclusione di un animale rimuove anche le osservazioni figlie e aggiorna n a tutti i livelli. Verificare che n riportato sia quello analizzato.",
+      "message_en": "Exclusions are reported and the design includes animals: excluding an animal also removes its child observations and updates n at every level. Check that the reported n is the analysed n.",
+      "severity": "info",
+      "alert_class": "design_replication",
+      "questions": [
+        "Qual e l'n allocato e qual e l'n analizzato dopo le esclusioni, per gruppo ed endpoint?"
+      ],
+      "references": [
+        "R03",
+        "R04"
+      ],
+      "scope_dimension": "block",
+      "fixtures": [
+        {
+          "id": "ANI-005-positive",
+          "kind": "positive",
+          "description": "Contesto sintetico minimo che soddisfa le precondizioni.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "positive",
+          "expected_outcome": "fired"
+        },
+        {
+          "id": "ANI-005-negative",
+          "kind": "negative",
+          "description": "Contesto fuori dalle precondizioni della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "negative",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "ANI-005-ambiguous",
+          "kind": "ambiguous",
+          "description": "Contesto incompleto che non autorizza l'applicazione della regola.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "ambiguous",
+          "expected_outcome": "not_applicable"
+        },
+        {
+          "id": "ANI-005-exception",
+          "kind": "exception",
+          "description": "Nessuna eccezione approvata: contesto non applicabile esplicito.",
+          "path": "tests/rule_fixtures/context_factory.py",
+          "scenario": "exception",
+          "expected_outcome": "not_applicable"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "id": "UC04",
+  "description": "Dieta assegnata per gabbia: l'unita per la dieta e la gabbia, non l'animale.",
+  "factor": "diet",
+  "expect": {
+    "experimental_unit": "Cage",
+    "observational_unit": "Animal",
+    "analytical_unit": "Animal",
+    "n_declared": null,
+    "n_declared_global": 32,
+    "n_allocated": 8,
+    "n_analyzed": 32,
+    "n_observational": 32,
+    "n_independent": null,
+    "inferability": "requires_confirmation",
+    "risk": "likely_pseudoreplication",
+    "alerts_include": [
+      "GEN-002",
+      "GEN-010"
+    ],
+    "alerts_exclude": [
+      "ANI-002"
+    ],
+    "abstained": true,
+    "unresolved_conflicts": 0
+  },
+  "prd_reference": "PRD 6.2 UC04"
+}

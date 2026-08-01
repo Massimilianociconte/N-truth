@@ -1,0 +1,22 @@
+{
+  "benchmark_version": 1,
+  "blocks": 1,
+  "commit": null,
+  "elapsed_seconds": 0.005078,
+  "peak_rss_bytes": 58425344,
+  "platform": "macOS-26.5.2-arm64-arm-64bit",
+  "python": "3.12.13",
+  "scientific_release_evidence": false,
+  "source": "tests/scientific_fixtures/uc02_preparations",
+  "source_kind": "synthetic_fixture",
+  "source_snapshot_sha256": "36b88d1080ce51cf00b549d2af8f572a42c87a60e8756bd3df6c7e03fcc12a38",
+  "target_result": {
+    "memory": true,
+    "time": true
+  },
+  "targets": {
+    "peak_rss_bytes": 21474836480,
+    "seconds_per_typical_block": 60
+  },
+  "working_tree_dirty": true
+}

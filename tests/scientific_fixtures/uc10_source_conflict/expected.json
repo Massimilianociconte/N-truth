@@ -1,0 +1,23 @@
+{
+  "id": "UC10",
+  "description": "Methods dichiara quattro donatori, il sample sheet ne elenca tre: conflitto non risolto, nessun verdetto definitivo.",
+  "factor": "treatment",
+  "expect": {
+    "experimental_unit": "HumanDonor",
+    "observational_unit": "Cell",
+    "analytical_unit": "Cell",
+    "n_declared": 400,
+    "n_observational": 400,
+    "n_independent": null,
+    "inferability": "not_inferable",
+    "risk": "likely_pseudoreplication",
+    "alerts_include": [
+      "GEN-007",
+      "GEN-010"
+    ],
+    "alerts_exclude": [],
+    "abstained": true,
+    "unresolved_conflicts": 1
+  },
+  "prd_reference": "PRD 6.2 UC10"
+}

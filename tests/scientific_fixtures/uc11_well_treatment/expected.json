@@ -1,0 +1,26 @@
+{
+  "id": "UC11",
+  "description": "Farmaco per pozzetto con preparazione comune: il pozzetto puo essere unita del fattore, la preparazione resta blocco.",
+  "factor": "treatment",
+  "expect": {
+    "experimental_unit": "Well",
+    "observational_unit": "Cell",
+    "analytical_unit": "Cell",
+    "n_declared": null,
+    "n_observational": null,
+    "n_allocated": 6,
+    "n_independent": null,
+    "inferability": "conditional",
+    "risk": "likely_pseudoreplication",
+    "alerts_include": [
+      "CC-006",
+      "GEN-010"
+    ],
+    "alerts_exclude": [
+      "CC-001"
+    ],
+    "abstained": true,
+    "unresolved_conflicts": 0
+  },
+  "prd_reference": "PRD 6.2 UC11"
+}
