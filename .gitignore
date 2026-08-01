@@ -6,6 +6,12 @@ venv/
 dist/
 build/
 *.egg-info/
+
+# La directory deve esistere in un clone pulito perché Hatch la include nel wheel;
+# gli asset Vite restano ricostruibili e non versionati.
+!apps/desktop/dist/
+apps/desktop/dist/*
+!apps/desktop/dist/.gitkeep
 .pytest_cache/
 .hypothesis/
 .mypy_cache/

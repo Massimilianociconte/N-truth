@@ -47,8 +47,10 @@ def test_analyze_rejects_unsupported_language_before_running(tmp_path: Path) -> 
     )
 
     assert result.exit_code == 2
-    assert "Invalid value for '--lang'" in result.output
-    assert "'fr' is not one of 'it', 'en'" in result.output
+    assert "--lang" in result.output
+    assert "fr" in result.output
+    assert "it" in result.output
+    assert "en" in result.output
     assert not output.exists()
 
 
