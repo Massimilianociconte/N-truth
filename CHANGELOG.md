@@ -51,6 +51,23 @@ ontologia; queste versioni possono avanzare indipendentemente.
   offline opzionale.
 - Contratto CLI coerente: lingua limitata a `it|en`, errori workspace sintetici e
   acknowledgement obbligatorio per domini non validati.
+- Pipeline deterministica per supervision records: gate di licenza/review, normalizzazione,
+  deduplica esatta/near, conflitti di label, leakage group transitivi, split group-aware,
+  synthetic train-only e manifest content-addressed.
+- Corsia opzionale `ntruth-ml` per Apple Silicon con profilo Qwen3 4B MLX 4-bit fissato,
+  doctor e budget disco, download esplicito, verifica checksum, token audit, QLoRA,
+  checkpoint/ripresa, early stopping a fasi e logging dell'ambiente.
+- Generazione candidate-fact validata da `ParserAIOutput`, un solo retry, rifiuto degli
+  output invalidi, metriche strutturate, temperature scaling validation-only,
+  risk-coverage ed export dell'adapter senza dati o pesi base.
+- Valutazione pubblicabile delle fonti dati, budget complessivo da 35,5 GiB e guida
+  riproducibile della pipeline MLX; dati, modello e artefatti di lavoro restano ignorati.
+- Snapshot e run state MLX schema v2 con verifica content-addressed dei record, deduplica,
+  approvazioni, split e checkpoint; i link near-duplicate anti-leakage ignorano il
+  target e i conflitti di split sono fail-closed.
+- Lineage obbligatoria per prediction, calibrazione ed export: binding tra nome file e
+  split, ricostruzione di score/metriche/confidence, ricalcolo della calibrazione e
+  blocco di adapter o snapshot estranei.
 
 ### Known release blockers
 
@@ -64,6 +81,6 @@ ontologia; queste versioni possono avanzare indipendentemente.
 - Regole e definizioni non ancora approvate da biostatistico e wet-lab reviewer indipendenti.
 - Revisione esterna v0.1 e risultati CI cross-platform su una revisione candidata non sono
   ancora documentati.
-- Baseline few-shot, modelli ML, calibrazione appresa ed external validation non sono stati
-  eseguiti.
+- Baseline few-shot su casi reali, fine-tuning scientifico, calibrazione appresa ed
+  external validation non sono stati eseguiti; lo smoke MLX sintetico non li sostituisce.
 - Nessuna release scientifica o dichiarazione di conformità è autorizzata da questa baseline.

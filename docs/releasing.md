@@ -28,6 +28,7 @@ uv run python scripts/generate_sbom.py --check sbom.cdx.json
 uv build
 uv run python scripts/check_distribution.py
 uv run python scripts/smoke_release.py
+uv run ntruth-ml --help
 ```
 
 `pnpm build` deve precedere `uv build`, perché il wheel include gli asset UI. Ispezionare
@@ -40,6 +41,22 @@ un ambiente già sincronizzato non equivale a una wheelhouse offline.
 `sbom.cdx.json` è dichiaratamente un inventario completo dei due lockfile di sviluppo:
 include dipendenze opzionali/dev e tool UI, quindi non va descritto come SBOM minimale
 del solo runtime installato.
+
+Su macOS arm64 la CI e il gate locale installano inoltre wheel e sdist con `[api,ml]`
+in ambienti puliti, senza scaricare il modello:
+
+```bash
+uv run python scripts/smoke_release.py --include-ml
+```
+
+Questo verifica la risoluzione bloccata di MLX-LM 0.31.3, l'import del runtime, la CLI
+e il profilo incorporato. Lo smoke QLoRA con pesi locali resta un gate hardware
+separato e non deve essere eseguito automaticamente in CI.
+
+La release non scarica modelli. Verificare che `models/local/`, `models/runs/`,
+`models/exports/` e `local-data/` siano ignorati, che nessun `*.safetensors` sia
+tracciato e che wheel/sdist contengano soltanto il profilo JSON e il codice della corsia
+ML opzionale.
 
 ## Pubblicazione
 

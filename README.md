@@ -13,8 +13,9 @@ of `n`, missing information and decisive questions.
 
 > N-Truth is research software in alpha status. It does not certify statistical
 > validity, reproducibility, research integrity, privacy compliance or adherence to
-> DRIVER/NC3Rs. It does not replace a biostatistician or domain expert. No N-Truth AI
-> model, gold corpus or externally validated performance claim exists yet.
+> DRIVER/NC3Rs. It does not replace a biostatistician or domain expert. A pinned local
+> base model and a reproducible MLX pipeline are available, but no scientifically
+> trained N-Truth model, gold corpus or externally validated performance claim exists.
 
 Repository: [github.com/Massimilianociconte/N-truth](https://github.com/Massimilianociconte/N-truth)<br>
 Issues: [bug reports and feature requests](https://github.com/Massimilianociconte/N-truth/issues)<br>
@@ -37,8 +38,11 @@ Security: [private reporting policy](SECURITY.md)
 - exports JSON, YAML, HTML, graph JSON, JSON-LD/RO-Crate and machine-readable schemas;
 - scans locally for privacy indicators and denies sharing/redistribution by default.
 
-It does **not** currently perform OCR, train or run an AI parser, choose a definitive
-statistical test, upload files, or grant rights to use third-party data.
+It does **not** perform OCR, choose a definitive statistical test, upload files or grant
+rights to use third-party data. The optional MLX lane can prepare governed data,
+fine-tune and evaluate a local candidate-fact parser; it is not invoked by the default
+CLI/API/UI and remains blocked for scientific training until the human/data gates are
+satisfied.
 
 ## Scientific model
 
@@ -71,9 +75,9 @@ review.
 | Human workflow | Evidence view, editable graph, corrections, revisions, audit, undo/redo | Formal user study and adjudication workflow on real data |
 | Interfaces | CLI, loopback FastAPI, React UI | Authentication/multi-user mode is intentionally absent |
 | Data governance | Per-asset contracts, privacy scan, lineage and fail-closed distribution gate | Signed authorizations, DPIA where needed and approved corpus manifests |
-| Parser AI | Stable input/output JSON contract and validators | Backend, evaluated baseline, calibration and OOD detection |
-| Training | Policy, placeholder configs and model/data/system cards | Gold data, frozen splits, trainer, model weights and measured metrics |
-| Validation | Synthetic executable tests and challenge fixtures | Double annotation, IAA/human ceiling and independent external validation |
+| Parser AI | Stable JSON contract, local schema-validated generation, retry/reject policy and structured scoring | Integration in the review UI, evaluated few-shot baseline and OOD evaluation |
+| Training | Governed preparation, deduplication, group-aware splits, pinned MLX QLoRA, checkpoint/resume, phased early stopping, calibration and adapter export | Approved gold data, frozen real splits, scientific fine-tuning and measured metrics |
+| Validation | Synthetic executable tests, challenge fixtures and an isolated two-iteration MLX runtime smoke | Double annotation, IAA/human ceiling and independent external validation |
 
 The repository contains 12 synthetic scientific regressions and 128 executable rule
 scenarios (positive, negative, ambiguous and exception for each rule). These verify
@@ -84,7 +88,7 @@ software contracts; they are not an adjudicated corpus.
 ```mermaid
 flowchart LR
     A["Experiment Bundle<br/>documents + tables + code"] --> B["Safe local ingest<br/>Document IR"]
-    B --> C["Deterministic extraction<br/>future AI candidates"]
+    B --> C["Deterministic extraction<br/>optional local AI candidates"]
     C --> D["Typed graph<br/>evidence + alternatives"]
     D --> E["Human review<br/>append-only corrections"]
     E --> F["Validated graph"]
@@ -111,8 +115,19 @@ The CLI, API and UI call the same application layer. See
 - Node.js 20.19 or newer;
 - pnpm 11.9.0, as declared in `apps/desktop/package.json`.
 
+### Optional local ML lane
+
+- macOS on Apple Silicon;
+- 24 GiB unified memory for the committed initial profile;
+- at least 52.2 GiB free for the model-only download gate, and 85.5 GiB free before
+  allocating the full 35.5 GiB workspace while retaining the 50 GiB safety floor;
+- [`mlx-lm`](https://github.com/ml-explore/mlx-lm) 0.31.3, installed by the locked
+  `ml` extra.
+
 No database, cloud account, API key or GPU is required for the deterministic baseline.
-There is no PyPI release yet; install from this checkout or from a verified local wheel.
+The ML extra is intentionally unavailable on non-Apple platforms; the deterministic
+core and CI remain portable. There is no PyPI release yet; install from this checkout
+or from a verified local wheel.
 
 ## Installation
 
@@ -141,6 +156,27 @@ Set up a contributor environment:
 uv sync --extra dev --extra api --locked
 pnpm --dir apps/desktop install --frozen-lockfile
 ```
+
+On an Apple Silicon Mac, add the optional MLX lane:
+
+```bash
+uv sync --extra dev --extra api --extra ml --locked
+uv run ntruth-ml check
+```
+
+`check` exits with code 2 until the pinned base snapshot is present. Downloading is a
+separate, explicit and license-acknowledged operation:
+
+```bash
+uv run ntruth-ml download-model --confirm-license-and-download
+uv run ntruth-ml verify-model
+```
+
+The selected snapshot is
+[`mlx-community/Qwen3-4B-Instruct-2507-4bit`](https://huggingface.co/mlx-community/Qwen3-4B-Instruct-2507-4bit),
+pinned to revision `50d427756c6b1b2fe0c0a10f67fbda1fc8e82c1b`. It and its
+Apache-2.0 base license are verified locally and stored below `models/local/`, which is
+ignored by Git.
 
 `uv.lock` is authoritative. Do not replace a locked command with an unconstrained
 `pip install` when reproducing a result or release gate.
@@ -320,11 +356,10 @@ local-data/
 ├── raw/incoming/
 ├── metadata/assets/
 ├── metadata/sources/
-├── annotations/pending/
-├── train/
-├── validation/
-├── test/
-├── external/
+├── annotations/{pending,double-reviewed,adjudicated}/
+├── prepared/<snapshot>/
+├── evaluation/<run>/
+├── cache/
 └── quarantine/
 ```
 
@@ -335,16 +370,54 @@ supplements, sample sheet, code, repository accessions and mirrors must remain i
 split. Synthetic/template data may enter training only; validation, test and external
 sets are frozen before optimization.
 
-There is intentionally no training command and no `ml` installation extra in this
-release. Training begins only after expert review, 20 stable real designs, 30-60
-canonical fixtures, 30 double-annotated calibration cases, a frozen pilot protocol,
-approved rights and bundle/laboratory-aware splits. See
+The repository now includes an operational standalone preparation and MLX execution lane.
+Its normal path rejects non-eligible annotations, conflicting labels, cross-split
+leakage and unapproved or altered snapshots. Content-addressed schema v2 manifests are
+verified back to prepared records, approvals and exact chat rows; run state binds the
+`best` adapter to that snapshot. Final export requires test/external metrics and
+validation-only calibration from the same verified lineage, with metrics and
+confidence reconstructed from predictions and manifest gold. A deliberately isolated
+synthetic smoke mode exists only to verify the runtime and cannot produce scientific
+metrics or an exportable bundle.
+
+The end-to-end command sequence is:
+
+```bash
+uv run ntruth-ml prepare /absolute/private/approved-records.jsonl \
+  --out local-data/prepared/corpus-v1
+uv run ntruth-ml tokenize local-data/prepared/corpus-v1 \
+  --out local-data/prepared/corpus-v1/token-report.json
+uv run ntruth-ml train local-data/prepared/corpus-v1 \
+  --out models/runs/corpus-v1-seed13 --seed 13
+uv run ntruth-ml predict local-data/prepared/corpus-v1/valid.jsonl \
+  --adapter models/runs/corpus-v1-seed13/best \
+  --out local-data/evaluation/corpus-v1-validation --split validation
+uv run ntruth-ml calibrate \
+  local-data/evaluation/corpus-v1-validation/confidence-observations.jsonl \
+  --out local-data/evaluation/corpus-v1-calibration.json \
+  --fit-split validation
+uv run ntruth-ml predict local-data/prepared/corpus-v1/test.jsonl \
+  --adapter models/runs/corpus-v1-seed13/best \
+  --out local-data/evaluation/corpus-v1-test --split test
+uv run ntruth-ml export-adapter models/runs/corpus-v1-seed13 \
+  --dataset-manifest local-data/prepared/corpus-v1/snapshot-manifest.json \
+  --metrics local-data/evaluation/corpus-v1-test/metrics.json \
+  --calibration local-data/evaluation/corpus-v1-calibration.json \
+  --out models/exports/corpus-v1-seed13
+```
+
+These commands are operational, but real fine-tuning must not begin until expert review,
+20 stable real designs, 30-60 canonical fixtures, 30 double-annotated calibration cases,
+a frozen pilot protocol, approved rights and bundle/laboratory-aware splits. See the
+[MLX training pipeline](docs/mlx-training-pipeline.md), the
+[dataset assessment](docs/dataset-assessment.md),
 [data and model development](docs/data-and-model-development.md), the
 [Data Card](docs/data-card-v0.1.md), [Model Card gates](models/cards/README.md) and the
 [validation protocol draft](docs/validation-protocol-draft.md).
 
-Never commit or publish `local-data/`, `data/raw/`, real annotations, checkpoint files,
-model runs or source documents without explicit authorization.
+Never commit or publish `local-data/`, `data/raw/`, real annotations, source documents,
+raw predictions, model/cache directories, adapters, checkpoints, runs or exports
+without explicit authorization.
 
 ## Development and test commands
 
@@ -362,7 +435,12 @@ uv run python scripts/generate_sbom.py --check sbom.cdx.json
 uv build
 uv run python scripts/check_distribution.py
 uv run python scripts/smoke_release.py
+uv run ntruth-ml --help
 ```
+
+On Apple Silicon, also run
+`uv run python scripts/smoke_release.py --include-ml`; it installs the optional ML
+extra from wheel and sdist without downloading model weights.
 
 The release smoke test installs the wheel and rebuilds/installs the source distribution
 in separate clean environments, then checks the CLI, bundled rules and local API health
@@ -386,6 +464,10 @@ See [Contributing](CONTRIBUTING.md), the [release procedure](docs/releasing.md) 
   `lsof -nP -iTCP:8765 -sTCP:LISTEN`; do not use broad `pkill` commands.
 - **Distribution denied:** this is the safe default; inspect checksums, permission,
   license and privacy records rather than bypassing the gate.
+- **`ntruth-ml check` exits 2:** read its `checks` object; the model is intentionally
+  absent in a clean clone until the explicit download command is run.
+- **MLX is unavailable:** the `ml` extra requires Apple Silicon macOS. Use the
+  deterministic core on Linux/CPU or run the ML lane on supported hardware.
 
 Full guidance: [Troubleshooting](docs/troubleshooting.md) and [Support](SUPPORT.md).
 
@@ -400,9 +482,10 @@ Release-blocking scientific work still requires people and data:
 - evaluated constrained parser baseline, calibration, abstention and OOD detection;
 - external validation on unseen laboratories/techniques and a crossover user study.
 
-Engineering roadmap items include a governed corpus snapshot builder, active learning
-after evaluation-set freeze, optional OCR adapters with provenance, persistent/multi-user
-deployment with authentication, and a trained parser only after the published gates.
+Engineering roadmap items include integration of the optional ML parser in the review
+UI, active learning after evaluation-set freeze, optional OCR adapters with provenance,
+persistent/multi-user deployment with authentication, and a scientifically trained
+parser only after the published gates.
 See [PRD v3 reconciliation](docs/prd-v3-reconciliation.md) and the
 [first human steps checklist](docs/first-human-steps-checklist.md).
 
@@ -418,6 +501,8 @@ See [PRD v3 reconciliation](docs/prd-v3-reconciliation.md) and the
 - [Data governance](docs/data-governance-v3.md)
 - [Governance and distribution workflow](docs/governance-workflow.md)
 - [Data/model development](docs/data-and-model-development.md)
+- [Dataset assessment and acquisition decisions](docs/dataset-assessment.md)
+- [Reproducible MLX training pipeline](docs/mlx-training-pipeline.md)
 - [Data Management Plan draft](docs/data-management-plan-draft.md)
 - [Validation protocol draft](docs/validation-protocol-draft.md)
 - [System Card](docs/system-card-v0.1.md) and [Data Card](docs/data-card-v0.1.md)

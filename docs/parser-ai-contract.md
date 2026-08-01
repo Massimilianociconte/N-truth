@@ -1,9 +1,10 @@
 # Contratto parser AI v2.0.0
 
 Questo documento descrive il confine stabile previsto dal PRD scientifico v3,
-sezione 13. Il package `ntruth.parser_ai` non include un modello, non esegue
-training e non effettua chiamate di rete. Un backend sostituibile può operare
-soltanto attraverso `ParserAIAdapter` e i modelli Pydantic qui descritti.
+sezione 13. Il package `ntruth.parser_ai` non include pesi e non effettua chiamate di
+rete. La corsia opzionale `ntruth.training` usa questi stessi modelli Pydantic per
+preparazione, QLoRA e inferenza MLX locale; la CLI/API/UI deterministica non la attiva
+automaticamente.
 
 ## Input
 
@@ -69,13 +70,17 @@ avvenuta l'allocazione sperimentale.
 
 ## JSON Schema e versionamento
 
-`parser_ai_json_schemas()` restituisce gli schemi JSON di input e output per
-constrained decoding e validazione esterna. Una modifica incompatibile richiede
+`parser_ai_json_schemas()` restituisce gli schemi JSON di input e output per backend
+capaci di constrained decoding e per validazione esterna. MLX-LM non offre qui un
+decoder grammar-constrained: `ntruth-ml predict` richiede JSON puro, applica un limite
+di token, valida lo schema, tenta una sola correzione di formato e rifiuta l'output
+ancora invalido. Una modifica incompatibile richiede
 una nuova versione del contratto e un adapter esplicito; non va reinterpretato
 silenziosamente un payload `1.0.0`. La versione `2.0.0` e intenzionalmente
 incompatibile con il precedente schema incompleto: un backend deve emettere i
 campi canonici v3.
 
 La pipeline applicativa, la persistenza separata di estrazione/correzione/grafo
-confermato e la scelta del backend restano punti di integrazione distinti. La
-presenza di questo package non equivale all'attivazione di un parser AI.
+confermato e la scelta del backend restano punti di integrazione distinti. La presenza
+del package o di un modello base locale non equivale all'attivazione di un parser AI
+nel prodotto né a una validazione scientifica.

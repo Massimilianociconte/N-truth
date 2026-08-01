@@ -36,10 +36,16 @@ La Track A deterministica è implementata nel working tree, ma la DoD v0.1 resta
 per fixture canoniche complete, revisione esterna, Experiment Bundle reali/pubblici e
 prova CI cross-platform su una revisione candidata.
 
-Per la Track B esiste un contratto parser AI con structured output e validazione, ma
-non un backend attivo o un modello. Non sono disponibili gold, metriche ML,
-calibrazione, risk-coverage o external challenge. Le correzioni restano candidate
-annotations finché un processo umano non le promuove.
+Per la Track B esistono il contratto parser AI e una corsia MLX locale opzionale:
+preparazione governata, snapshot anti-leakage, QLoRA, checkpoint/ripresa, early stopping
+a fasi, generazione validata dallo schema, scoring, temperature scaling, risk-coverage
+ed export adapter. Il modello base è fissato per revisione ma non distribuito. Questa
+corsia non è collegata automaticamente al prodotto deterministico.
+
+Non sono disponibili gold, metriche ML su dati reali, calibrazione appresa o external
+challenge. Lo smoke runtime di due iterazioni è soltanto una prova di eseguibilità e non
+una baseline. Le correzioni restano candidate annotations finché un processo umano non
+le promuove.
 
 ## Uso previsto iniziale
 
@@ -68,6 +74,12 @@ Le fixture sintetiche e i test verificano contratti software, invarianti, regres
 sicurezza e comportamento offline. Non costituiscono un gold corpus, agreement umano,
 validazione esterna, prova di accuratezza o verifica delle regole da parte di esperti.
 
+Su un Mac Apple Silicon con 24 GiB è stato inoltre eseguito uno smoke QLoRA di due
+iterazioni sul modello base 4-bit fissato: il runtime ha prodotto checkpoint e best
+adapter con picco MLX di 3,174 GB. L'inferenza successiva ha correttamente rifiutato due
+output non conformi dopo il retry. Questi valori verificano il percorso tecnico, non la
+qualità del modello.
+
 ## Failure mode noti
 
 - Estrazione e coreference deterministiche possono perdere formulazioni non standard.
@@ -84,6 +96,12 @@ validazione esterna, prova di accuratezza o verifica delle regole da parte di es
   fonti e non dimostra readiness di distribuzione.
 - Domini, specie, tecniche e lingue non valutati devono essere mostrati come fuori dal
   perimetro validato.
+- MLX-LM non applica grammar-constrained JSON in questa corsia; output non validi sono
+  rifiutati dopo un solo retry e riducono esplicitamente lo schema-valid rate.
+- L'early stopping è implementato mediante fasi MLX separate che riprendono i pesi
+  adapter ma ricreano l'optimizer. Non è bit-equivalente a un unico run monolitico.
+- Il profilo 4-bit può perdere qualità rispetto al modello non quantizzato; il trade-off
+  deve essere misurato sul futuro validation set.
 
 ## Gate di rilascio
 

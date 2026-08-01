@@ -12,7 +12,8 @@ repository e devono vivere in `local-data/`, ignorata da Git.
 | `packages/ntruth/design/` | design specification, elicitazione e analysis handoff strutturale |
 | `packages/ntruth/corrections/` | patch append-only, undo/redo, audit e ricalcolo |
 | `packages/ntruth/governance/` | licenze, consenso, lineage, privacy e gate fail-closed |
-| `packages/ntruth/parser_ai/` | contratto JSON del futuro parser AI; nessun backend attivo |
+| `packages/ntruth/parser_ai/` | contratto JSON del parser candidato; nessun backend attivato dal prodotto standard |
+| `packages/ntruth/training/` | preparazione governata, split anti-leakage, MLX QLoRA, metriche, calibrazione ed export |
 | `packages/ntruth/reporting/` | JSON, YAML, HTML, JSON-LD/RO-Crate e output positivo |
 | `apps/desktop/` | UI React/Vite servita localmente dall'API |
 | `rulesets/` | ruleset JSON versionati e revisionabili senza retraining |
@@ -20,8 +21,8 @@ repository e devono vivere in `local-data/`, ignorata da Git.
 | `tests/` | unit, integration, security, property, performance e fixture sintetiche |
 | `data/manifests/` | soli inventari pubblicabili; nessun dato reale |
 | `data/splits/` | documentazione e futuri snapshot di split approvati |
-| `models/configs/` | configurazioni dichiarative; non avviano training |
-| `models/cards/` | gate e card dei futuri modelli |
+| `models/configs/` | profili versionati; quello MLX fissa modello, runtime, memoria, training e storage |
+| `models/cards/` | gate e card dei modelli; nessun peso incluso |
 | `scripts/` | benchmark, SBOM e controlli di distribuzione |
 | `docs/` | architettura, governance, guideline, protocollo e ADR |
 | `.github/` | CI e template di collaborazione |
@@ -38,7 +39,9 @@ e dell'API.
 - `workspace/`: progetti locali riapribili;
 - `local-data/`: fonti, metadati privati, annotazioni e split candidati;
 - `data/raw/`, `data/external/`, `data/processed/`: eventuali layout legacy locali;
-- `models/checkpoints/`, `models/runs/`: pesi e log;
+- `models/local/`, `models/cache/`: snapshot base e cache locali;
+- `models/checkpoints/`, `models/runs/`, `models/adapters/`, `models/exports/`: pesi,
+  adapter, log ed export locali;
 - `dist/`, `apps/desktop/dist/`: artefatti ricostruibili.
 
 Prima di un commit verificare sempre `git status --short` e `git check-ignore` sui

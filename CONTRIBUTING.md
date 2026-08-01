@@ -63,6 +63,9 @@ fixture scientifica completa.
 - Synthetic è solo train/stress test; silver non entra nel test gold senza review.
 - Non iniziare training senza i gate elencati in `models/cards/README.md`.
 - Non pubblicare metriche senza snapshot, split, lineage, seed e protocollo.
+- Non usare `--runtime-smoke-only` per produrre metriche o scegliere un modello.
+- Non modificare revision/checksum del profilo MLX senza aggiornare provenance, test,
+  budget e documentazione della licenza.
 
 ## Verifica locale
 
@@ -79,7 +82,20 @@ uv run python scripts/generate_sbom.py --check sbom.cdx.json
 uv build
 uv run python scripts/check_distribution.py
 uv run python scripts/smoke_release.py
+uv run ntruth-ml --help
 ```
+
+Su Apple Silicon, le modifiche alla corsia ML richiedono inoltre:
+
+```bash
+uv sync --extra dev --extra api --extra ml --locked
+uv run ntruth-ml check
+uv run ntruth-ml verify-model  # solo se lo snapshot locale esplicito è presente
+```
+
+Non scaricare un modello in CI o come effetto collaterale dei test. Un runtime smoke
+locale deve usare esclusivamente `make-smoke-data` e `--runtime-smoke-only`, e va
+descritto come verifica tecnica priva di valore scientifico.
 
 Documentare quali comandi sono stati eseguiti e su quale piattaforma. Non descrivere un
 test locale come CI cross-platform o validazione scientifica.

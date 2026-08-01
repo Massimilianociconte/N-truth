@@ -25,9 +25,23 @@ FORBIDDEN_PREFIXES = (
     "data/raw/",
     "models/checkpoints/",
     "models/runs/",
+    "models/local/",
+    "models/cache/",
+    "models/adapters/",
+    "models/exports/",
 )
 PRIVATE_KEY_SUFFIXES = (".key", ".p12", ".pem", ".pfx")
 GENERATED_FILE_SUFFIXES = (".pyc", ".pyo")
+MODEL_FILE_SUFFIXES = (
+    ".bin",
+    ".ckpt",
+    ".gguf",
+    ".npz",
+    ".onnx",
+    ".pt",
+    ".pth",
+    ".safetensors",
+)
 GENERATED_FILE_NAMES = {".DS_Store", ".coverage", "coverage.xml", "junit.xml"}
 
 
@@ -62,6 +76,7 @@ def _reject_private_or_local(names: set[str], *, root: str | None = None) -> Non
             or ((basename == ".env" or basename.startswith(".env.")) and basename != ".env.example")
             or basename.lower().endswith(PRIVATE_KEY_SUFFIXES)
             or basename.lower().endswith(GENERATED_FILE_SUFFIXES)
+            or basename.lower().endswith(MODEL_FILE_SUFFIXES)
             or basename in GENERATED_FILE_NAMES
         ):
             rejected.append(name)
@@ -75,7 +90,10 @@ def check_wheel(path: Path) -> None:
         names = set(archive.namelist())
     _require(
         names,
-        exact=("ntruth/_ui/index.html",),
+        exact=(
+            "ntruth/_ui/index.html",
+            "ntruth/_bundled/models/qwen3-4b-instruct-2507-mlx-qlora.json",
+        ),
         prefixes=(
             "ntruth/_ui/assets/",
             "ntruth/_bundled/rulesets/",

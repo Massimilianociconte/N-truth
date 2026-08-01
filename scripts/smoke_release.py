@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import platform
 import re
 import shutil
 import subprocess
@@ -38,6 +39,25 @@ assert payload["version"] == __version__, payload
 assert payload["schema_version"] == SCHEMA_VERSION, payload
 assert payload["offline_core"] is True, payload
 print(f"health ok · ntruth {__version__} · schema {SCHEMA_VERSION}")
+""".strip()
+
+ML_PROFILE_SMOKE = """
+from ntruth.training.cli import DEFAULT_PROFILE
+from ntruth.training.mlx_runtime import load_profile
+
+assert DEFAULT_PROFILE.is_file(), DEFAULT_PROFILE
+profile = load_profile(DEFAULT_PROFILE)
+assert profile["model"]["revision"] == "50d427756c6b1b2fe0c0a10f67fbda1fc8e82c1b"
+print(f"ML profile ok · {DEFAULT_PROFILE.name}")
+""".strip()
+
+ML_RUNTIME_SMOKE = """
+import importlib.metadata as metadata
+
+assert metadata.version("mlx-lm") == "0.31.3"
+import mlx_lm
+
+print(f"ML runtime ok · mlx-lm {metadata.version('mlx-lm')}")
 """.strip()
 
 
@@ -131,7 +151,13 @@ def assert_cli_contract(version_output: str, rules_output: str) -> None:
         )
 
 
-def export_constraints(uv: str, destination: Path, env: dict[str, str]) -> None:
+def export_constraints(
+    uv: str,
+    destination: Path,
+    env: dict[str, str],
+    *,
+    include_ml: bool,
+) -> None:
     command = [
         uv,
         "export",
@@ -139,11 +165,10 @@ def export_constraints(uv: str, destination: Path, env: dict[str, str]) -> None:
         "--no-dev",
         "--extra",
         "api",
-        "--no-emit-project",
-        "--no-hashes",
-        "--output-file",
-        str(destination),
     ]
+    if include_ml:
+        command.extend(("--extra", "ml"))
+    command.extend(("--no-emit-project", "--no-hashes", "--output-file", str(destination)))
     run_checked(command, cwd=PROJECT_ROOT, env=env, label="Export vincoli da uv.lock")
 
 
@@ -155,6 +180,7 @@ def smoke_distribution(
     work_dir: Path,
     env: dict[str, str],
     offline: bool,
+    include_ml: bool,
 ) -> None:
     """Install and exercise one built distribution without network access."""
 
@@ -169,7 +195,8 @@ def smoke_distribution(
         label=f"Creazione ambiente {distribution.kind}",
     )
     python = environment_python(venv_dir)
-    artifact_with_api_extra = f"{distribution.path.resolve()}[api]"
+    extras = "api,ml" if include_ml else "api"
+    artifact_with_api_extra = f"{distribution.path.resolve()}[{extras}]"
     install_command = [
         uv,
         "pip",
@@ -204,13 +231,37 @@ def smoke_distribution(
         label=f"CLI rules list ({distribution.kind})",
     )
     assert_cli_contract(version_output, rules_output)
+    ntruth_ml = environment_command(venv_dir, "ntruth-ml")
+    run_checked(
+        [str(ntruth_ml), "--help"],
+        cwd=run_dir,
+        env=env,
+        label=f"CLI ML help ({distribution.kind})",
+    )
+    ml_profile_output = run_checked(
+        [str(python), "-c", ML_PROFILE_SMOKE],
+        cwd=run_dir,
+        env=env,
+        label=f"Profilo ML incluso ({distribution.kind})",
+    )
+    ml_runtime_output = "ML runtime non richiesto"
+    if include_ml:
+        ml_runtime_output = run_checked(
+            [str(python), "-c", ML_RUNTIME_SMOKE],
+            cwd=run_dir,
+            env=env,
+            label=f"Runtime ML installato ({distribution.kind})",
+        )
     health_output = run_checked(
         [str(python), "-c", HEALTH_SMOKE],
         cwd=run_dir,
         env=env,
         label=f"Import API e health contract ({distribution.kind})",
     )
-    print(f"{distribution.kind}: {version_output} · {health_output}")
+    print(
+        f"{distribution.kind}: {version_output} · ML CLI ok · {ml_profile_output} · "
+        f"{ml_runtime_output} · {health_output}"
+    )
 
 
 def main() -> int:
@@ -228,7 +279,15 @@ def main() -> int:
         action="store_true",
         help="Vieta la rete; richiede che ogni dipendenza bloccata sia gia nella cache uv.",
     )
+    parser.add_argument(
+        "--include-ml",
+        action="store_true",
+        help="Installa anche l'extra MLX; supportato soltanto su macOS arm64.",
+    )
     args = parser.parse_args()
+
+    if args.include_ml and not (sys.platform == "darwin" and platform.machine() == "arm64"):
+        raise SystemExit("--include-ml richiede macOS arm64")
 
     uv = shutil.which("uv")
     if uv is None:
@@ -239,7 +298,7 @@ def main() -> int:
         with tempfile.TemporaryDirectory(prefix="ntruth-release-smoke-") as temporary:
             work_dir = Path(temporary)
             constraints = work_dir / "constraints.txt"
-            export_constraints(uv, constraints, env)
+            export_constraints(uv, constraints, env, include_ml=args.include_ml)
             for distribution in distributions:
                 smoke_distribution(
                     distribution,
@@ -248,6 +307,7 @@ def main() -> int:
                     work_dir=work_dir,
                     env=env,
                     offline=args.offline,
+                    include_ml=args.include_ml,
                 )
     except (OSError, RuntimeError, ValueError) as exc:
         raise SystemExit(str(exc)) from exc

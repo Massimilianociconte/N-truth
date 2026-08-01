@@ -13,7 +13,7 @@ parsers      JATS/DOCX/PDF/CSV/XLSX/TXT + R/Python read-only -> Document IR
    |
    +--> baseline deterministica ---------------------------+
    |                                                        |
-   +--> futuro parser AI vincolato -> candidate fact -------+
+   +--> parser AI locale opzionale -> candidate fact -------+
                                                             v
                                                       grafi alternativi
                                                             |
@@ -27,9 +27,10 @@ design compiler -> grafo validato -> rules engine -> report positivo/alert/doman
                                       revisioni append-only ed export versionati
 ```
 
-Il parser AI è centrale per la visione v1.0 ma assente dalla baseline operativa. Il
-motore deterministico può essere sviluppato e verificato prima del training senza
-ridurre la visione finale alla sola Track A.
+Il parser AI è centrale per la visione v1.0. La corsia MLX opzionale può già preparare
+dati governati, addestrare un adapter e generare candidate fact validate; non è ancora
+integrata nel flusso standard e non dispone di gold o metriche scientifiche. Il motore
+deterministico resta utilizzabile e verificabile senza dipendenze ML.
 
 ## Moduli
 
@@ -40,6 +41,7 @@ ridurre la visione finale alla sola Track A.
 | `ntruth.parsers` | byte → sezioni/tabelle/code artifact con coordinate; codice `never_execute` |
 | `ntruth.extract` | baseline deterministica di candidate fact da testo e sample sheet |
 | `ntruth.parser_ai` | contratto input/output, JSON Schema, adapter e validazione; nessun modello incluso |
+| `ntruth.training` | preparazione/deduplica/split, snapshot MLX, QLoRA locale, metriche, calibrazione ed export adapter |
 | `ntruth.design` | target/estimando, elicitazione e handoff conservativo |
 | `ntruth.graph` | merge delle fonti, alternative, conflitti e unità per scope |
 | `ntruth.rules` | predicati e motore su grafo validato con trace |
@@ -96,8 +98,9 @@ il processo fisico di allocazione.
 domande. Non contiene un verdetto. La validazione controlla vocabolari, riferimenti,
 coordinate, evidenze e versione del contratto prima dell'ingresso nel grafo.
 
-L'esistenza di questo boundary non implica che un backend sia configurato o che siano
-disponibili metriche ML.
+Il boundary è usato dalla corsia `ntruth-ml`, ma il backend non viene attivato dalla
+CLI/API/UI deterministica. La presenza della pipeline non implica che esista un modello
+N-Truth addestrato o che siano disponibili metriche scientifiche.
 
 ## Persistenza, revisioni e concorrenza
 
@@ -124,12 +127,14 @@ senza Document IR non scansiona le fonti e non costituisce readiness.
 
 ## Limiti della baseline
 
-- Nessun modello AI N-Truth è presente o addestrato.
+- Nessun modello AI N-Truth scientificamente addestrato o pubblicato è disponibile; il
+  modello base opzionale e gli adapter locali restano esclusi da Git.
 - Segmentazione, estrazione e coreference rules-only non sono validate su un corpus
   reale.
 - PDF senza testo estraibile/OCR degradato richiedono fallimento esplicito o una
   pipeline futura.
-- Nessun agreement umano, human ceiling, calibrazione o external challenge è stato
-  misurato.
+- Nessun agreement umano, human ceiling, calibrazione su gold o external challenge è
+  stato misurato; la sola calibrazione implementata è un componente non ancora
+  applicabile senza validation gold.
 - Le fixture sintetiche verificano contratti software, non validità scientifica.
 - L'editor locale non sostituisce il workflow di doppia annotazione e adjudication.

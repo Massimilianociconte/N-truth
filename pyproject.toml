@@ -22,6 +22,12 @@ dependencies = [
 
 [project.optional-dependencies]
 api = ["fastapi>=0.115", "uvicorn>=0.30"]
+# Il backend ML e intenzionalmente opzionale e disponibile solo su Apple Silicon.
+# Il core, la CI Linux e le analisi deterministiche non importano queste dipendenze.
+ml = [
+    "mlx-lm[train]==0.31.3; platform_system == 'Darwin' and platform_machine == 'arm64'",
+    "huggingface-hub>=1.0,<2; platform_system == 'Darwin' and platform_machine == 'arm64'",
+]
 dev = [
     "pytest>=8.3",
     "pytest-cov>=5.0",
@@ -43,6 +49,7 @@ Documentation = "https://github.com/Massimilianociconte/N-truth/tree/main/docs"
 [project.scripts]
 ntruth = "ntruth.cli.main:app"
 ntruth-api = "ntruth.api.main:run"
+ntruth-ml = "ntruth.training.cli:app"
 
 [build-system]
 requires = ["hatchling"]
@@ -55,6 +62,7 @@ packages = ["packages/ntruth"]
 "rulesets" = "ntruth/_bundled/rulesets"
 "ontology" = "ntruth/_bundled/ontology"
 "apps/desktop/dist" = "ntruth/_ui"
+"models/configs/qwen3-4b-instruct-2507-mlx-qlora.json" = "ntruth/_bundled/models/qwen3-4b-instruct-2507-mlx-qlora.json"
 
 [tool.hatch.build.targets.sdist.force-include]
 # Il wheel viene ricostruito dalla sdist: gli asset compilati devono attraversare
@@ -107,6 +115,7 @@ ignore = ["E501"]
 [tool.ruff.lint.per-file-ignores]
 # Typer dichiara le opzioni nei default degli argomenti: e l'idioma della libreria.
 "packages/ntruth/cli/main.py" = ["B008"]
+"packages/ntruth/training/cli.py" = ["B008"]
 # I pattern linguistici usano intervalli Unicode e separatori tipografici reali
 # (EN DASH negli intervalli numerici, NBSP come separatore delle migliaia).
 "packages/ntruth/extract/numbers.py" = ["RUF001"]
@@ -121,3 +130,14 @@ mypy_path = "packages"
 strict = false
 warn_unused_ignores = true
 disallow_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = [
+    "huggingface_hub",
+    "huggingface_hub.*",
+    "mlx_lm",
+    "mlx_lm.*",
+    "transformers",
+    "transformers.*",
+]
+ignore_missing_imports = true

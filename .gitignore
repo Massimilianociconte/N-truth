@@ -43,6 +43,10 @@ data/annotations/*/
 !data/annotations/.gitkeep
 models/checkpoints/
 models/runs/
+models/local/
+models/cache/
+models/adapters/
+models/exports/
 *.ckpt
 *.safetensors
 

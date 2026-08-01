@@ -46,6 +46,13 @@ jobs:
         run: uv run python scripts/check_distribution.py
       - name: Smoke-test wheel and sdist in clean locked environments
         run: uv run python scripts/smoke_release.py
+      - name: Smoke-test optional ML extra without model download
+        run: |
+          if [[ "$(uname -m)" == "arm64" ]]; then
+            uv run python scripts/smoke_release.py --include-ml
+          else
+            echo "MLX extra skipped: runner is not arm64"
+          fi
       - name: Verify SBOM is reproducible from the lockfile
         run: |
           uv run python scripts/generate_sbom.py --check sbom.cdx.json

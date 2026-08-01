@@ -2,13 +2,25 @@
 
 ## Stato corrente
 
-Nessun modello N-Truth è stato addestrato, selezionato o rilasciato. La presenza del
-contratto `ParserAIInput` / `ParserAIOutput`, di configurazioni sotto `models/configs/`
-o di un adapter software non costituisce un modello e non autorizza il training.
+Nessun modello N-Truth è stato scientificamente addestrato, selezionato o rilasciato.
+Il profilo iniziale seleziona come base tecnica
+`mlx-community/Qwen3-4B-Instruct-2507-4bit`, Apache-2.0, a una revisione e checksum
+fissati. Il modello base, il runtime smoke e ogni adapter restano locali e ignorati da
+Git. La presenza del contratto, del profilo o di un adapter tecnico non autorizza il
+training scientifico.
 
-Non esistono ancora risultati NER/relation extraction, metriche su
+`modernbert-span-ner-baseline.json` resta un'ipotesi di ablation/decomposizione futura:
+non ha revisione fissata, non viene eseguito dalla CLI e non è il modello selezionato
+per il percorso iniziale.
+
+Non esistono ancora risultati NER/relation extraction su gold, metriche su
 `allocation_level`, risk-coverage, calibrazione, ablation o validazione esterna da
 riportare in una model card.
+
+La pipeline implementa i meccanismi necessari per produrre questi artefatti in futuro:
+manifest, seed, ambiente/lock checksum, checkpoint/ripresa, validation loss, metriche
+strutturate, temperature scaling e adapter export. Lo smoke di due iterazioni non è un
+risultato di modello e non soddisfa alcun gate qui sotto.
 
 ## Gate prima del training
 

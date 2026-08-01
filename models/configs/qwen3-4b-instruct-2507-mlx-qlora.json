@@ -1,0 +1,108 @@
+{
+  "schema_version": "1.0.0",
+  "status": "implementation_ready_training_blocked_until_gold",
+  "runtime": {
+    "name": "mlx-lm",
+    "version": "0.31.3",
+    "platform": "macOS Apple Silicon",
+    "network_during_training": false
+  },
+  "model": {
+    "repository": "mlx-community/Qwen3-4B-Instruct-2507-4bit",
+    "revision": "50d427756c6b1b2fe0c0a10f67fbda1fc8e82c1b",
+    "local_path": "models/local/Qwen3-4B-Instruct-2507-4bit",
+    "expected_download_bytes": 2278972236,
+    "expected_weight_file": "model.safetensors",
+    "expected_weight_bytes": 2263022417,
+    "expected_weight_sha256": "2a73c6c248601ab904e035548abd8e6abb65ea27dcb5f342fb0a8910eb44173f",
+    "quantization_bits": 4,
+    "quantization_group_size": 64,
+    "base_repository": "Qwen/Qwen3-4B-Instruct-2507",
+    "base_revision_observed": "cdbee75f17c01a7cc42f958dc650907174af0554",
+    "base_parameter_count": 4022468096,
+    "license": "Apache-2.0",
+    "license_url": "https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507/blob/cdbee75f17c01a7cc42f958dc650907174af0554/LICENSE"
+  },
+  "hardware": {
+    "minimum_unified_memory_gib": 24,
+    "required_free_disk_gib": 50,
+    "maximum_ntruth_workspace_gib": 40,
+    "device": "metal"
+  },
+  "data": {
+    "format": "chat_jsonl",
+    "contract_version": "2.0.0",
+    "max_sequence_length": 1024,
+    "generation_max_tokens": 1024,
+    "split_group_fields": [
+      "publication_family",
+      "leakage_group",
+      "laboratory_group",
+      "source_bundle"
+    ],
+    "synthetic_train_only": true
+  },
+  "training": {
+    "fine_tune_type": "lora",
+    "quantized_base_means_qlora": true,
+    "num_layers": 8,
+    "batch_size": 1,
+    "gradient_accumulation_steps": 8,
+    "effective_batch_size": 8,
+    "learning_rate": 0.00001,
+    "optimizer": "adamw",
+    "mask_prompt": true,
+    "gradient_checkpointing": true,
+    "iterations_per_phase": 100,
+    "maximum_phases": 20,
+    "validation_batches": -1,
+    "test_batches": -1,
+    "early_stopping_patience": 3,
+    "early_stopping_min_delta": 0.001,
+    "maximum_observed_peak_memory_gib": 18,
+    "keep_checkpoints": 3,
+    "seeds": [13, 37, 101],
+    "lora_parameters": {
+      "keys": ["self_attn.q_proj", "self_attn.v_proj"],
+      "rank": 8,
+      "scale": 16.0,
+      "dropout": 0.05
+    }
+  },
+  "calibration": {
+    "method": "temperature_scaling",
+    "fit_split": "validation",
+    "report": ["brier", "ece", "risk_coverage"],
+    "test_is_frozen": true
+  },
+  "storage_budget": {
+    "basis": "conservative simultaneous peak with 96 GiB free observed on 2026-08-01",
+    "items_gib": {
+      "selected_raw_downloads": 2.0,
+      "extracted_normalized_documents": 3.0,
+      "prepared_jsonl_and_token_reports": 4.0,
+      "quantized_base_model": 2.2,
+      "model_download_cache": 2.2,
+      "python_ml_environment_and_cache": 3.0,
+      "adapters_and_retained_checkpoints": 4.0,
+      "optional_local_export_or_fused_copy": 8.1,
+      "metrics_logs_and_experiment_outputs": 2.0,
+      "temporary_headroom": 5.0
+    },
+    "planned_total_gib": 35.5,
+    "excluded_from_plan": [
+      "45.6 GB CAMISIM linked reads",
+      "9.9 GB Chelicerata linked files",
+      "PLOS bulk archive",
+      "raw microscopy images",
+      "OpenAlex snapshot"
+    ]
+  },
+  "training_blocked_until": [
+    "gold_pilot_approved",
+    "license_manifests_complete",
+    "privacy_review_complete",
+    "splits_frozen",
+    "dataset_snapshot_hashed"
+  ]
+}

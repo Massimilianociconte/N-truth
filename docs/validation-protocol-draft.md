@@ -11,7 +11,7 @@ Valutare separatamente:
 1. coerenza e copertura dello schema;
 2. correttezza del motore sulle fixture approvate;
 3. agreement umano e determinabilità;
-4. parsing/estrazione del futuro parser AI;
+4. parsing/estrazione del parser AI candidato;
 5. grafo, allocation/application, estimando e domande;
 6. tre classi di alert;
 7. selettività, calibrazione e astensione;

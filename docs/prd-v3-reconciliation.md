@@ -145,7 +145,7 @@ a review esterna o release.
 | Tre classi di alert | implementazione presente | 10 design, 17 analytical, 5 scope; tutte le regole dichiarano `alert_class` e la mappatura è congelata nei test | mapping candidato da revisionare scientificamente |
 | Evidence types/provenance | presente | schema, estrattori e parser contract | benchmark evidence classification assente |
 | R/Python never-execute | presente | parser code artifact | casi reali/licenze e security review |
-| Contratto parser AI | presente | `packages/ntruth/parser_ai/`; schemi input/output esportati e inclusi nella RO-Crate | nessun backend, few-shot o modello valutato |
+| Contratto parser AI | presente | `packages/ntruth/parser_ai/`; schemi input/output esportati, inclusi nella RO-Crate e usati dalla corsia MLX | integrazione nel flusso UI, few-shot su casi reali e modello valutato assenti |
 | Editor/correzioni | presente | app locale, patch append-only, undo/redo | studio utente e workflow gold non validati |
 | Percorso positivo | presente | Methods, n table, livelli epistemici, checklist | review linguistica/scientifica e golden test estesi |
 | JSON/YAML/JSON-LD | presente | reporting/export; RO-Crate non estende Apache-2.0 a dataset/input | interoperabilità REMBI/ISA non dichiarabile come completa |
@@ -153,7 +153,7 @@ a review esterna o release.
 | Rule fixtures | parziale | 128 scenari harness + 12 regressioni | non equivalgono a 30–60 casi completi expert-reviewed |
 | Experiment Bundle reali/pubblici | assente | nessun manifest reale | almeno 10 per deliverable iniziale; 20 disegni stabili prima del training |
 | Gold/IAA/human ceiling | assente | solo template | 30 calibration + pilot 150–250 doppio/adjudicato |
-| AI/ML | assente | solo contratto/config placeholder | dati, baseline, training, calibrazione e model card |
+| AI/ML | pipeline pronta, training scientifico assente | preparazione governata, profilo MLX fissato, QLoRA/checkpoint/resume, scoring, calibrazione ed export; smoke runtime sintetico | gold, baseline su casi reali, fine-tuning scientifico, risk-coverage misurata e model card finale |
 | External validation | assente | protocollo in bozza | challenge chiuso, laboratori unseen e metriche congelate |
 
 ## 4. Interpretazione corretta delle fixture correnti
@@ -180,7 +180,7 @@ Il training resta bloccato finché non sono vere tutte le condizioni:
 - [ ] guideline capace di separare fatti, assertion e inferenze;
 - [ ] protocollo del pilot congelato;
 - [ ] licenze e autorizzazioni registrate;
-- [ ] train/validation/external separabili senza leakage.
+- [ ] train/validation/test/external separabili senza leakage.
 
 Questi gate non eliminano la Track B: impediscono soltanto di addestrare su un target
 instabile o non autorizzato.

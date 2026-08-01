@@ -1,6 +1,6 @@
 # N-Truth Data Card v0.1
 
-**Stato:** nessun corpus N-Truth acquisito, congelato o rilasciato.
+**Stato:** nessun corpus N-Truth approvato, congelato o rilasciato.
 
 ## Contenuto corrente del repository
 
@@ -18,6 +18,17 @@ complete e revisionate del PRD v3 §14.2.
 
 L'inventario machine-readable è in
 `data/manifests/fixture-catalog-v3.json`.
+
+La preparazione supervisionata è implementata ma non include dati: richiede ID di
+governance/licenza e stato annotativo adeguato, normalizza, rileva duplicati/conflitti,
+costruisce leakage group transitivi, assegna split deterministici e produce manifest
+content-addressed. Lo snapshot schema v2 conserva i record preparati e ricostruisce gli
+split chat durante la verifica; booleani di approvazione, checksum o conteggi alterati
+non bastano a superare il gate. L'autenticità e la sufficienza legale/scientifica delle
+approvazioni restano responsabilità umane. Gli otto
+piccoli asset esplorativi presenti soltanto nel workspace locale restano
+`training_eligible=false`, non fanno parte del repository e non modificano lo stato di
+questa card.
 
 ## Architettura dati pianificata
 
@@ -68,8 +79,14 @@ preprint/versione pubblicata, laboratorio/corresponding author quando possibile,
 dataset e supplementi collegati e template sintetico. Gli asset synthetic sono ammessi
 soltanto nel train. Test ed external restano congelati e non vengono usati per iterare.
 
+Il codice rifiuta conflitti di label, vieta synthetic fuori dal train e impedisce che
+pubblicazione, progetto, bundle, source o asset collegati attraversino split. DOI,
+preprint/versioni, laboratorio e mirror richiedono comunque metadati curatoriali
+corretti: un algoritmo non può ricostruire relazioni che il manifest omette.
+
 ## Limitazioni
 
 Non sono disponibili statistiche di copertura, lingue, laboratori, bilanciamento,
 agreement, human ceiling, determinabilità o errori perché nessun corpus reale è stato
-raccolto. Questi campi saranno compilati da misure effettive, non stimati.
+approvato. Gli esiti del dataset smoke non sono statistiche di corpus. Questi campi
+saranno compilati da misure effettive, non stimati.

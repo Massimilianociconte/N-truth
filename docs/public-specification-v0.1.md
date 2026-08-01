@@ -125,15 +125,17 @@ relations, allocation/application levels, targets, alternatives, determinability
 questions through a stable JSON contract. Parser outputs are candidates. Final alerts
 and deterministic consequences MUST remain outside the model contract.
 
-No training MAY begin until the data, schema-stability and scientific-review gates in
-section 10 are satisfied.
+No scientific training or model selection MAY begin until the data, schema-stability
+and scientific-review gates in section 10 are satisfied. A bounded, synthetic-only
+runtime smoke MAY exercise loading, backpropagation and checkpoint code when its
+manifest forbids scientific metrics and no result is treated as a baseline.
 
 ## 4. Architecture and trust boundaries
 
 ```text
 Experiment Bundle
   -> safe local ingest and Document IR
-  -> deterministic extraction / future constrained AI candidates
+  -> deterministic extraction / optional local AI candidates
   -> typed candidate graph plus alternatives
   -> human confirmation, rejection or correction
   -> validated graph

@@ -51,7 +51,9 @@ di audit non identificativi quando richiesto.
 Snapshot content-addressed; correzioni tramite nuova versione. Split per articolo, progetto,
 preprint/versione, laboratorio quando possibile, dataset/supplementi e template sintetici.
 Synthetic solo nel train; test ed external set congelati prima della model selection. Ogni run
-registra versioni di schema, contratto parser, guideline, ontologia, lockfile e snapshot.
+registra automaticamente lockfile, codice, runtime, modello, profilo, seed e snapshot. Le
+versioni di schema, contratto parser, guideline e ontologia devono essere fissate nel manifest
+del dataset e conservate insieme al run.
 
 ## Gate aperti
 

@@ -90,6 +90,8 @@ def _write_sdist(path: Path, extra_name: str | None = None) -> None:
         "local-data/raw/private.xml",
         "data/raw/corpus.jsonl",
         "models/checkpoints/model.safetensors",
+        "models/local/model.gguf",
+        "other/adapter.safetensors",
         ".env.local",
         "certificate.pem",
     ],
