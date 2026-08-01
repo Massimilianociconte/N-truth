@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Smoke-test wheel and sdist from isolated, offline virtual environments.
+"""Smoke-test wheel and sdist from isolated virtual environments.
 
 The regular test suite imports the checkout.  This release gate instead installs
 each built distribution into a fresh environment, constrained by ``uv.lock``,
-then exercises the installed CLI and the local API health contract.  All install
-steps are forced offline: CI must have populated uv's cache during ``uv sync``
-and ``uv build`` before invoking this script.
+then exercises the installed CLI and the local API health contract.  Network access
+is allowed by default because an installed environment is not a complete wheelhouse;
+``--offline`` is available when every locked dependency is already cached.
 """
 
 from __future__ import annotations
@@ -61,13 +61,16 @@ def discover_distributions(dist_dir: Path) -> tuple[Distribution, Distribution]:
     return Distribution("wheel", wheels[0]), Distribution("sdist", sdists[0])
 
 
-def clean_environment() -> dict[str, str]:
+def clean_environment(*, offline: bool) -> dict[str, str]:
     """Create a subprocess environment that cannot import from the checkout."""
 
     env = os.environ.copy()
     for name in ("PYTHONHOME", "PYTHONPATH", "VIRTUAL_ENV", "UV_PROJECT_ENVIRONMENT"):
         env.pop(name, None)
-    env["UV_OFFLINE"] = "1"
+    if offline:
+        env["UV_OFFLINE"] = "1"
+    else:
+        env.pop("UV_OFFLINE", None)
     env["UV_PYTHON_DOWNLOADS"] = "never"
     return env
 
@@ -151,6 +154,7 @@ def smoke_distribution(
     constraints: Path,
     work_dir: Path,
     env: dict[str, str],
+    offline: bool,
 ) -> None:
     """Install and exercise one built distribution without network access."""
 
@@ -166,19 +170,21 @@ def smoke_distribution(
     )
     python = environment_python(venv_dir)
     artifact_with_api_extra = f"{distribution.path.resolve()}[api]"
+    install_command = [
+        uv,
+        "pip",
+        "install",
+        "--python",
+        str(python),
+        "--strict",
+        "--constraint",
+        str(constraints),
+    ]
+    if offline:
+        install_command.append("--offline")
+    install_command.append(artifact_with_api_extra)
     run_checked(
-        [
-            uv,
-            "pip",
-            "install",
-            "--python",
-            str(python),
-            "--offline",
-            "--strict",
-            "--constraint",
-            str(constraints),
-            artifact_with_api_extra,
-        ],
+        install_command,
         cwd=run_dir,
         env=env,
         label=f"Installazione offline {distribution.kind}",
@@ -217,6 +223,11 @@ def main() -> int:
         default=PROJECT_ROOT / "dist",
         help="Directory contenente un wheel e una sdist N-Truth (default: ./dist).",
     )
+    parser.add_argument(
+        "--offline",
+        action="store_true",
+        help="Vieta la rete; richiede che ogni dipendenza bloccata sia gia nella cache uv.",
+    )
     args = parser.parse_args()
 
     uv = shutil.which("uv")
@@ -224,7 +235,7 @@ def main() -> int:
         raise SystemExit("uv non trovato nel PATH")
     try:
         distributions = discover_distributions(args.dist_dir.resolve())
-        env = clean_environment()
+        env = clean_environment(offline=args.offline)
         with tempfile.TemporaryDirectory(prefix="ntruth-release-smoke-") as temporary:
             work_dir = Path(temporary)
             constraints = work_dir / "constraints.txt"
@@ -236,10 +247,12 @@ def main() -> int:
                     constraints=constraints,
                     work_dir=work_dir,
                     env=env,
+                    offline=args.offline,
                 )
     except (OSError, RuntimeError, ValueError) as exc:
         raise SystemExit(str(exc)) from exc
-    print("Release smoke test completato: wheel e sdist verificati offline.")
+    mode = "offline" if args.offline else "con dipendenze vincolate da uv.lock"
+    print(f"Release smoke test completato: wheel e sdist verificati {mode}.")
     return 0
 
 

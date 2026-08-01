@@ -33,7 +33,9 @@ uv run python scripts/smoke_release.py
 `pnpm build` deve precedere `uv build`, perché il wheel include gli asset UI. Ispezionare
 la wheel prima del tag. `check_distribution.py` rifiuta cache, dati locali, `.env` e
 materiale di chiave; `smoke_release.py` installa separatamente wheel e sdist in ambienti
-temporanei puliti e verifica CLI, ruleset e `/v1/health` senza usare la rete.
+temporanei puliti, vincola le dipendenze a `uv.lock` e verifica CLI, ruleset e
+`/v1/health`. Usa `--offline` soltanto quando una wheel cache completa è disponibile;
+un ambiente già sincronizzato non equivale a una wheelhouse offline.
 
 `sbom.cdx.json` è dichiaratamente un inventario completo dei due lockfile di sviluppo:
 include dipendenze opzionali/dev e tool UI, quindi non va descritto come SBOM minimale

@@ -47,7 +47,8 @@ ontologia; queste versioni possono avanzare indipendentemente.
 - Specifica pubblica autosufficiente, registry machine-readable dei riferimenti R01-R06,
   README operativo, policy di sicurezza/supporto e documentazione open source.
 - Gate negativi della distribuzione contro cache, dati locali, `.env` e chiavi private;
-  smoke test pulito e offline di wheel e sdist.
+  smoke test isolato di wheel e sdist con dipendenze vincolate dal lockfile e modalità
+  offline opzionale.
 - Contratto CLI coerente: lingua limitata a `it|en`, errori workspace sintetici e
   acknowledgement obbligatorio per domini non validati.
 

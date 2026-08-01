@@ -57,3 +57,13 @@ def test_cli_contract_rejects_incomplete_bundled_ruleset() -> None:
 
     with pytest.raises(RuntimeError, match="Ruleset installato incompleto"):
         smoke_release.assert_cli_contract(version, rules)
+
+
+def test_clean_environment_makes_offline_mode_explicit(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("UV_OFFLINE", "inherited")
+
+    online = smoke_release.clean_environment(offline=False)
+    offline = smoke_release.clean_environment(offline=True)
+
+    assert "UV_OFFLINE" not in online
+    assert offline["UV_OFFLINE"] == "1"
