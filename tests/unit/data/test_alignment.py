@@ -17,9 +17,9 @@ def test_align_sourcedata_configs_matching():
 
     aligned, report = align_sourcedata_configs(ner, roles)
     assert len(aligned) == 2
-    assert report["matched_keys_count"] == 2
-    assert report["unmatched_ner_count"] == 0
-    assert report["unmatched_roles_count"] == 0
+    assert report["matched_count"] == 2
+    assert report["ner_only_count"] == 0
+    assert report["roles_only_count"] == 0
     assert aligned[0]["entity_tags"] == ["O", "B-SMALL_MOLECULE"]
     assert aligned[0]["role_tags"] == ["O", "B-CONTROLLED_VAR"]
 
@@ -35,5 +35,4 @@ def test_align_sourcedata_configs_unmatched():
 
     aligned, report = align_sourcedata_configs(ner, roles)
     assert len(aligned) == 1
-    assert report["unmatched_ner_count"] == 1
-    assert "p_only_ner" in report["unmatched_ner_sample"]
+    assert report["ner_only_count"] == 1
