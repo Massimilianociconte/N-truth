@@ -1,0 +1,9 @@
+{
+  "schema_version": "1.0.0",
+  "registry_id": "default",
+  "event_count": 4,
+  "tip_transition_hash": "6ca4e29ccf4261c3f8304ed05ddbc0267ffca219dc0169a92620b8bb62b82989",
+  "tip_sequence": 4,
+  "generated_for": "public_git_checkout",
+  "note": "Public verifiable qualification chain. SQLite ledger is optional local cache, not required."
+}

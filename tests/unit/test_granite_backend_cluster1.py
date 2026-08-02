@@ -152,13 +152,14 @@ def test_granite_load_unload_reload_with_mock(tmp_path: Path) -> None:
             backend.unload()
 
 
-def test_package_init_does_not_export_registry_or_constrained() -> None:
+def test_package_init_does_not_export_constrained_or_ledger() -> None:
     import ntruth.model_backends as mb
 
-    assert not hasattr(mb, "load_registry")
+    # Cluster 2 may export registry loaders; constrained decoding / stage schemas must not.
     assert not hasattr(mb, "QualificationLedger")
     assert not hasattr(mb, "probe_outlines_mlx")
     assert not hasattr(mb, "STAGE_SCHEMA_REGISTRY")
+    assert not hasattr(mb, "OutlinesMlxAdapter")
 
 
 def test_granite_module_import_graph_is_cluster1_closed() -> None:

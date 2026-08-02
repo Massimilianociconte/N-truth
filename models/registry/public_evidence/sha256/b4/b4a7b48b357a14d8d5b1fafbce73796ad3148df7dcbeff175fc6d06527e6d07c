@@ -1,0 +1,1 @@
+{"kind":"architecture_migration","model_id":"ibm-granite/granite-4.1-3b","statement":"Code/config migrated to Granite backend interfaces; not a runtime host qualification."}

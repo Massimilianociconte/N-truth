@@ -55,3 +55,7 @@ models/exports/
 *.key
 *.p12
 *.pfx
+
+# Local optional qualification ledger (public proof is JSONL)
+models/registry/qualification_ledger.sqlite3
+models/registry/qualification_ledger.sqlite3-*
