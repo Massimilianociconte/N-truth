@@ -1,7 +1,13 @@
-"""Optional local SQLite ledger + export helpers (cluster 2).
+"""Optional **operational** SQLite ledger (cluster 2).
 
-Published Git proof is ``qualification_chain.jsonl``. SQLite is optional on a
-developer host for append workflows and is gitignored when present.
+Authority split (models/registry/AUTHORITY.md):
+
+* SQLite = local append-only operational ledger (gitignored, not published SoT)
+* JSONL public chain = published repository-verifiable snapshot
+* default.json = derived mirror of current status
+
+Exporting a new public snapshot is a reviewed publish step, not an automatic
+side effect of append.
 """
 
 from __future__ import annotations

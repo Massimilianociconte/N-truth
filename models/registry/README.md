@@ -1,24 +1,50 @@
 # Model registry (cluster 2)
 
-## Public source of truth
+This directory holds the **default registry record** and the **published
+qualification snapshot**. It does **not** mean Granite is the factory default
+backend.
 
-| Artifact | Role |
-|----------|------|
-| `default.json` | Registry schema + qualification summary |
-| `qualification_chain.jsonl` | Append-only transition chain with hashes |
-| `qualification_chain.manifest.json` | Tip hash + event count |
-| `public_evidence/` | Content-addressed evidence blobs |
+## Authority hierarchy
 
-**Do not** treat a local `qualification_ledger.sqlite3` as the published proof.
-SQLite may exist on a developer machine for append operations; the Git checkout
-must remain verifiable via the JSONL chain alone.
+See [AUTHORITY.md](AUTHORITY.md). Summary:
 
-## Factory default
+| Artifact | Role | Git |
+|----------|------|-----|
+| `qualification_chain.jsonl` + `public_evidence/` + tip manifest | **Published source of truth** for runtime qualification claims | tracked |
+| `default.json` | **Derived mirror** of current statuses + model records | tracked |
+| `qualification_ledger.sqlite3` | **Optional local** append-only operational ledger | **not** tracked |
 
-`factory_default_provider` is **`legacy_qwen`**. Granite is the provisional
-architectural primary and may be `PARTIALLY_VERIFIED` for an exact artifact without
-being the operational default.
+## Fields in `default.json`
+
+```yaml
+factory_default_provider: legacy_qwen
+provisional_primary_model_id: ibm-granite/granite-4.1-3b
+qualification.runtime_qualification_status: PARTIALLY_VERIFIED  # exact fingerprint only
+qualification.scientific_validation_status: NOT_STARTED
+```
+
+## Operations
+
+### Verify published qualification (no weights, no re-qualification)
+
+```bash
+uv run python scripts/models/qualify_granite_runtime.py
+# operation: VERIFY_PUBLISHED_QUALIFICATION
+```
+
+### Optional local weight integrity check (still not re-qualification)
+
+```bash
+uv run python scripts/models/qualify_granite_runtime.py --check-weights
+```
+
+### Run local qualification (weights + real backend)
+
+Not part of the default CI path. A future command may produce new evidence and
+propose a transition; publishing requires exporting a new JSONL snapshot and
+updating the derived `default.json` in a reviewed commit.
 
 ## Scientific status
 
-Always independent from runtime. Published value: `NOT_STARTED`.
+Runtime qualification is **not** scientific validation. Claim gates keep
+`scientifically_releasable` false until external validation + runtime VERIFIED.

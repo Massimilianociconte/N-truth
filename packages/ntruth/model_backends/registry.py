@@ -1,11 +1,16 @@
 """Model registry and runtime qualification state machine (cluster 2).
 
-Public source of truth for published qualification claims:
-  ``models/registry/qualification_chain.jsonl`` (+ tip manifest)
+Authority hierarchy (see models/registry/AUTHORITY.md):
 
-Local SQLite ledger (optional) is for host-side append; it is **not** required
-for loading a published registry. Factory backend default remains ``legacy_qwen``
-(see factory.py); this module does not promote Granite to operational default.
+* **published_qualification_snapshot** (JSONL + public_evidence + tip manifest):
+  repository-verifiable source of truth for clones / Git claims.
+* **operational_qualification_ledger** (optional local SQLite): append-only host
+  ledger while drafting new transitions; gitignored; not published authority.
+* **registry_mirror** (``default.json``): derived current state view
+  ("default registry record", not "default model").
+
+Factory backend default remains ``legacy_qwen`` (see factory.py). This module
+does not promote Granite to operational default.
 """
 
 from __future__ import annotations
@@ -382,7 +387,13 @@ def load_registry(
     *,
     verify_public_chain_integrity: bool = True,
 ) -> dict[str, Any]:
-    """Load published registry JSON and validate qualification coherence."""
+    """Load **derived** registry mirror and validate against published chain.
+
+    ``default.json`` is not an independent authority: when
+    ``verify_public_chain_integrity`` is true, the published JSONL snapshot must
+    validate and the mirror's PARTIALLY_VERIFIED claim must be backed by a chain
+    event.
+    """
 
     target = path or registry_path()
     try:
@@ -401,31 +412,45 @@ def load_registry(
     if factory_default not in {"legacy_qwen", "granite", "generic"}:
         raise ModelRegistryError(f"invalid factory_default_provider: {factory_default}")
 
+    # Annotate authority roles for callers / audits.
+    payload.setdefault(
+        "authority",
+        {
+            "published_qualification_snapshot": "qualification_chain.jsonl",
+            "registry_mirror": "default.json",
+            "operational_ledger": "qualification_ledger.sqlite3 (local, optional)",
+            "note": "default.json is the default registry record, not the default model",
+        },
+    )
+
     _validate_qualification_block(payload.get("qualification"))
 
     if verify_public_chain_integrity:
-        chain_report = verify_public_chain(repo_root=target.resolve().parents[2])
+        repo_root = target.resolve().parents[2]
+        chain_report = verify_public_chain(repo_root=repo_root)
         block = payload["qualification"]
-        # Chain tip for runtime dimension must be compatible with published status.
+        chain = load_public_chain(public_chain_path(repo_root))
         if block.get("runtime_qualification_status") == (
             RuntimeQualificationStatus.PARTIALLY_VERIFIED.value
         ):
-            # Ensure a PARTIALLY_VERIFIED event exists in the public chain.
-            chain = load_public_chain(public_chain_path(target.resolve().parents[2]))
             runtime_events = [
                 e
                 for e in chain
                 if e.get("dimension") == "runtime_qualification_status"
-                and e.get("to_status") == RuntimeQualificationStatus.PARTIALLY_VERIFIED.value
+                and e.get("to_status")
+                == RuntimeQualificationStatus.PARTIALLY_VERIFIED.value
             ]
             if not runtime_events:
                 raise ModelRegistryError(
                     "PARTIALLY_VERIFIED claimed without public chain event"
                 )
+            # Derived mirror tip hash should match published tip.
+            tip = chain[-1]["transition_hash"]
+            if chain_report.get("tip_transition_hash") != tip:
+                raise ModelRegistryError("chain report tip mismatch")
         payload = {**payload, "_public_chain_report": chain_report}
 
     return payload
-
 
 def qualification_status(registry: dict[str, Any] | None = None) -> dict[str, Any]:
     data = registry if registry is not None else load_registry()
