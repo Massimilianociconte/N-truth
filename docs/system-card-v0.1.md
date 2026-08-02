@@ -1,23 +1,30 @@
 # N-Truth System Card v0.1
 
-**Stato:** alpha deterministica in sviluppo; non è una release scientificamente
-validata.
+**Stato:** alpha in sviluppo; **non** è una release scientificamente validata  
+(`scientific_validation_status=NOT_STARTED`).  
+Gate runtime (artefatto MLX community 4-bit registrato): `PARTIALLY_VERIFIED`.  
+Training sostanziale: `HOLD_PENDING_REAL_ANCHOR`.  
+Dettaglio verificato: [status-snapshot.md](status-snapshot.md).
 
 ## Sistema
 
-N-Truth è un compilatore locale del disegno sperimentale. La baseline importa
-documenti, sample sheet e codice statistico read-only, costruisce candidate fact e un
-grafo tipizzato, compila un target inferenziale e applica regole versionate. Il report
-separa percorso positivo, alert, domande, ipotesi e limiti.
+N-Truth è un compilatore **software** locale del disegno sperimentale (neuro-simbolico
+progettato). La baseline importa documenti, sample sheet e codice statistico
+read-only, costruisce **candidate facts** e un grafo tipizzato, compila un target
+inferenziale e applica regole versionate. Il report separa percorso positivo, alert,
+domande, ipotesi e limiti. Le derivazioni scientifiche appartengono al **rules engine
+deterministico**, non all’output libero del modello.
 
-Il contratto v3 mantiene distinti:
+Il contratto v6 mantiene distinti:
 
 - replicazione del disegno (`DESIGN_REPLICATION`);
 - dipendenza analitica (`ANALYTICAL_DEPENDENCE`);
 - portata dell'inferenza (`INFERENCE_SCOPE`);
 - allocazione indipendente e applicazione fisica del fattore;
+- `independently_assigned` tri-state e relativo meccanismo operativo;
 - unità sperimentale, osservazionale e analitica;
-- `n` dichiarato, osservazionale, allocato, analizzato e indipendente;
+- lifecycle/count pianificato, allocato, trattato, osservato, escluso, analizzato,
+  dichiarato, osservazionale, analitico, biologico, indipendente ed effettivo diagnostico;
 - fatti strutturali, dichiarazioni dell'autore, metadata, codice statistico,
   conferme utente, inferenze del modello, fatti derivati e conflitti.
 
@@ -27,32 +34,36 @@ dependence e 5 inference scope. I test vietano il default implicito e congelano 
 mappatura. La correttezza scientifica di ogni assegnazione resta da revisionare
 esternamente.
 
-Se i fatti decisivi mancano, il sistema si astiene o presenta scenari condizionali. Il
+Se i fatti decisivi mancano, il sistema deriva uno dei sette stati normativi, si
+astiene o presenta scenari condizionali. Un singolo `n_independent` è ammesso soltanto
+in `DETERMINATE`. Il
 compilatore non sceglie una formula statistica, un test o una power analysis.
 
-## Track A e Track B
+## Train D e Train A
 
-La Track A deterministica è implementata nel working tree, ma la DoD v0.1 resta aperta
+Il Train D deterministico è implementato nel working tree, ma la DoD v0.1-D resta aperta
 per fixture canoniche complete, revisione esterna, Experiment Bundle reali/pubblici e
 prova CI cross-platform su una revisione candidata.
 
-Per la Track B esistono il contratto parser AI e una corsia MLX locale opzionale:
-preparazione governata, snapshot anti-leakage, QLoRA, checkpoint/ripresa, early stopping
-a fasi, generazione validata dallo schema, scoring, temperature scaling, risk-coverage
-ed export adapter. Il modello base è fissato per revisione ma non distribuito. Questa
-corsia non è collegata automaticamente al prodotto deterministico.
+Per il Train A esistono dieci stage contract, la separazione Parser/Derivation Gold e
+una corsia MLX locale opzionale (IBM Granite 4.1 3B Instruct **provvisorio**; bootstrap
+MLX community 4-bit). Tooling: preparazione governata, snapshot anti-leakage, QLoRA,
+constrained decoding (forma, non verità scientifica), scoring su development, export
+adapter. Il modello non è scientificamente selezionato. Questa corsia non è collegata
+automaticamente al prodotto deterministico.
 
-Non sono disponibili gold, metriche ML su dati reali, calibrazione appresa o external
-challenge. Lo smoke runtime di due iterazioni è soltanto una prova di eseguibilità e non
-una baseline. Le correzioni restano candidate annotations finché un processo umano non
-le promuove.
+Non sono disponibili gold reali, metriche ML su dati reali indipendenti, o external
+challenge. B4 (39 casi DEVELOPMENT) ha mostrato semantica ancora insufficiente
+(F1 medio ~0.17 su condition C). P0-alpha è sintetico `SYN_G1_UNANCHORED`. Un eventuale
+smoke LoRA è solo `ENGINEERING_SMOKE_ONLY`. Le correzioni restano candidate annotations
+finché un processo umano non le promuove.
 
 ## Uso previsto iniziale
 
-Supporto prospettico alla formalizzazione del disegno e supporto retrospettivo alla
-revisione nel dominio iniziale di colture cellulari, esperimenti in vitro e microscopia
-quantitativa. Ogni output va confrontato con la fonte; i fatti decisivi richiedono
-conferma umana.
+Il profilo ufficiale D0 è prospettico e limitato a colture cellulari/well plate, un
+fattore, due livelli e un endpoint, tramite wizard, TXT/Markdown e CSV semplice. I
+parser complessi sono esplicitamente `extended_experimental`. Ogni output va
+confrontato con la fonte; i fatti decisivi richiedono conferma umana.
 
 La checklist DRIVER-aligned è informativa e indipendente. Non è una valutazione di
 conformità e non implica approvazione NC3Rs.
@@ -64,6 +75,7 @@ conformità e non implica approvazione NC3Rs.
 - Trasformare una dipendenza analitica o un limite di generalizzazione in una
   pseudoreplicazione del disegno senza evidenza.
 - Trattare autovalutazioni come “independent experiments” come prova strutturale.
+- Deducere indipendenza da `allocation_level`, well o identificatori distinti.
 - Eseguire script R/Python importati o inviare dati a servizi cloud non dichiarati.
 - Addestrare, condividere o redistribuire asset senza uso autorizzato e manifest.
 - Usare la baseline per decisioni cliniche o su dati identificativi.
@@ -86,6 +98,8 @@ qualità del modello.
 - PDF senza testo estraibile e OCR degradato richiedono un fallimento esplicito o una
   pipeline separata non ancora validata.
 - Fonti contraddittorie restano irrisolte finché non interviene una persona.
+- Il sample sheet dimostra provenance, contenimento e associazioni; non dimostra
+  allocation, application o indipendenza.
 - Il codice statistico descrive ciò che è stato modellato, non dimostra come il fattore
   è stato allocato.
 - Il privacy scanner è euristico e non sostituisce revisione privacy/DPIA.
@@ -105,9 +119,11 @@ qualità del modello.
 
 ## Gate di rilascio
 
-Prima di chiamare completa la v0.1 servono almeno 30 fixture canoniche complete,
+Prima di chiamare completa la v0.1-D servono 30-60 fixture canoniche complete, almeno
+20 casi di Derivation Gold,
 revisione della classificazione/ruleset da wet-lab e biostatistica documentata e CI
 cross-platform riuscita. Prima di
-una release AI servono protocollo congelato, corpus autorizzato, agreement/human
+una release AI servono calibration 30-50, feasibility 100-150, protocollo congelato,
+corpus autorizzato, agreement/human
 ceiling, baseline, calibrazione e model card. Prima della v1.0 servono parser AI nel
 flusso, external challenge, dominio dichiarato, rollback e riproducibilità verificata.
