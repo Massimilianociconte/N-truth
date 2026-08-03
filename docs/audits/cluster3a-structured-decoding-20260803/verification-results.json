@@ -114,5 +114,14 @@
     "4ceb5aeb9a37ae97761dd3a17fc7d801a9e7780e",
     "e92e5cc51b76f8c6ae480459a561dfb737fb35a6"
   ],
-  "sign_off": "APPROVED"
+  "sign_off": "APPROVED",
+  "branch": "feat/structured-decoding-cluster3a",
+  "final_branch_tip_note": "Use git rev-parse HEAD on feat/structured-decoding-cluster3a; must be descendant of feature_commit",
+  "final_branch_tip_at_last_pack_update_parent": "3cbb45745927c7525077fccce7892f3ff6be8684",
+  "commits_fac3249_to_parent": [
+    "3cbb457 docs(audit): record final Cluster 3A tip in review pack",
+    "e92e5cc docs(audit): normalize Cluster 3A report trailing whitespace",
+    "4ceb5ae docs(audit): persist Cluster 3A structured decoding review pack",
+    "64a160b feat(model): add fail-closed structured decoding for Granite MLX"
+  ]
 }
