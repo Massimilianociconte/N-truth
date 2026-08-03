@@ -1,0 +1,67 @@
+registry_version: "0.1"
+updated_at: "2026-08-03"
+scope: public_safe_candidate_inventory
+policy: >
+  Candidate external sources are not ingested by listing them here.
+  All model-use permissions fail closed until licence, access and partition
+  decisions are written and machine-readable.
+
+sources:
+  - source_id: lazic_in_vivo_pseudoreplication_data
+    status: OFFERED_IN_PRINCIPLE_DETAILS_PENDING
+    domain: in_vivo
+    proposed_role: EXTERNAL_CHALLENGE_CANDIDATE
+    authority_level: NTRUTH_GOLD_CANDIDATE
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: unknown
+    licence_status: unknown
+    access_status: NOT_RECEIVED
+    candidate_uses:
+      - experimental_structure_validation
+      - experimental_unit_validation
+      - pseudoreplication_assessment
+      - insufficient_information_evaluation
+    safeguards:
+      - no_training_without_written_partition
+      - external_challenge_isolation
+      - no_generator_access
+      - no_access_until_explicit_policy
+    next_action:
+      - obtain_annotation_schema
+      - obtain_case_counts
+      - clarify_reference_dataset
+      - clarify_licence_and_citation_terms
+
+  - source_id: nc3rs_arrive_compliance_checker_dataset
+    status: ANNOUNCED_NOT_RELEASED
+    organization: NC3Rs
+    expected_availability: AFTER_CHECKER_LAUNCH_2026_EXACT_DATE_UNKNOWN
+    proposed_role: AUXILIARY_CANDIDATE
+    authority_level: AUXILIARY_CANDIDATE
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    licence_status: unknown
+    access_status: NOT_RELEASED
+    candidate_uses:
+      - experimental_unit_mention_detection
+      - evidence_span_extraction
+      - reporting_completeness_classification
+      - manuscript_section_routing
+    forbidden_default_uses:
+      - experimental_unit_gold
+      - independent_n_gold
+      - allocation_gold
+      - biological_independence_gold
+      - pseudoreplication_verdict_gold
+    public_note: >
+      Planned training dataset for an NLP checker assessing explicit reporting
+      of the experimental unit under ARRIVE Essential 10 item 1b. It is not
+      assumed to encode the underlying experimental structure. NC3Rs is not
+      claimed as a partner or endorser of N-Truth.
+    next_action:
+      - await_release
+      - inspect_annotation_schema
+      - inspect_licence
+      - evaluate_task_compatibility
