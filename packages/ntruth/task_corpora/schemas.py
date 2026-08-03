@@ -4,13 +4,16 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 from ntruth.task_corpora.authority import (
     AuthorityLevel,
     LicenseStatus,
     SupervisionSource,
 )
+
+# Tri-state permission: True | False | "unknown". Unknown must fail closed for the use.
+PermissionFlag = bool | Literal["unknown"]
 
 
 class SourceIdentity(BaseModel):
@@ -31,6 +34,13 @@ class TransformLineage(BaseModel):
 
 
 class LicenseUseDecision(BaseModel):
+    """Machine-readable licence + granular use decision.
+
+    Coarse flags (training_allowed, redistribution_allowed, derived_labels_allowed)
+    remain for compatibility. Granular use_decision fields must not be inferred:
+    ``unknown`` fails closed for that capability.
+    """
+
     license_status: LicenseStatus
     training_allowed: bool
     redistribution_allowed: bool
@@ -38,6 +48,14 @@ class LicenseUseDecision(BaseModel):
     decision_basis: str
     reviewed_at: str
     spdx: str | None = None
+    # Granular use decision (normative for B0 / metrics / redistribution).
+    adapter_build_allowed: bool = True
+    local_format_validation_allowed: bool = True
+    development_allowed: PermissionFlag = False
+    evaluation_allowed: PermissionFlag = "unknown"
+    benchmark_metrics_publication_allowed: PermissionFlag = "unknown"
+    derived_records_redistribution_allowed: bool = False
+    model_weights_redistribution_allowed: bool = False
 
 
 class EntityRolesPayload(BaseModel):
@@ -104,6 +122,17 @@ class TaskRecord(BaseModel):
             raise ValueError("UNKNOWN licence cannot be training_eligible")
         if not self.licence.training_allowed and self.training_eligible:
             raise ValueError("training_eligible requires licence.training_allowed")
+        if self.evaluation_eligible and self.licence.evaluation_allowed is not True:
+            raise ValueError(
+                "evaluation_eligible requires licence.evaluation_allowed=true "
+                "(unknown/false fail closed)"
+            )
+        if self.training_eligible and self.licence.development_allowed is not True:
+            # Weight updates and iterative development both require explicit development.
+            raise ValueError(
+                "training_eligible requires licence.development_allowed=true "
+                "(unknown/false fail closed)"
+            )
         if self.authority_level == AuthorityLevel.AUXILIARY:
             for ban in (
                 "experimental_unit_gold",
@@ -139,5 +168,9 @@ class BuildManifest(BaseModel):
     record_counts: dict[str, int]
     exclusion_counts: dict[str, int]
     records_sha256: str
+    groups_crossing_splits: int = Field(
+        ...,
+        description="Count of leakage_group values that appear in more than one split",
+    )
     manifest_version: str = "0.1.0"
     synthetic_fraction: float = 0.0

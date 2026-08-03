@@ -1,8 +1,10 @@
-# Workstream C — ModernBERT task corpora v1 (design)
+# Workstream C — ModernBERT task corpora v1
 
-**Status:** DESIGN_ONLY — no training authorized  
-**Branch:** `feat/modernbert-task-corpora-v1`  
-**Prerequisite:** Workstream B merged to `main` (PR #2, merge `ff8cd89`)  
+**Status:** C0–C1 IMPLEMENTED AND LOCALLY VERIFIED — no training authorized
+**Workstream C:** `IN_PROGRESS`
+**READY_FOR_B0:** `CANDIDATE` (licence evaluation/development still unknown/false)
+**Branch:** `feat/modernbert-task-corpora-v1` (PR #3)
+**Prerequisite:** Workstream B merged to `main` (PR #2, merge `ff8cd89`)
 **Data root:** `/Volumes/FLASH128/N-Truth-Datasets` (NO_CORPUS in git)
 
 ## Goal
@@ -25,9 +27,13 @@ NTRUTH_END_TO_END_TRAINING: HOLD
 GRANITE_GRAPH_TRAINING: HOLD
 TRAINING_PROGRAM: HOLD_PENDING_REAL_ANCHOR
 GRANITE_DEFAULT_PROMOTION: HOLD
+SOURCE_DATA_TRAINING_USE: BLOCKED
+SOURCE_DATA_EVALUATION_USE: PENDING_LICENCE_DECISION
+SYNTHETIC_AUGMENTATION: HOLD
 ```
 
-After corpora + B0 non-neural baselines + smoke tests pass, a separate approval may set:
+After corpora + licence use-policy closure + B0 non-neural baselines + smoke tests pass,
+a separate approval may set:
 
 ```
 MODERNBERT_AUXILIARY_BASELINES: GO
@@ -122,6 +128,53 @@ transform_lineage:
 checksum: sha256
 ```
 
+### JSONL framing contract (normative)
+
+```text
+JSONL framing contract:
+- records are separated exclusively by ASCII LF, byte 0x0A;
+- CRLF may be normalised at ingestion boundaries if explicitly documented;
+- Unicode line and paragraph separators, including U+2028 and U+2029, are
+  preserved as record content;
+- generic splitlines()-style parsing is prohibited for canonical JSONL;
+- content digests are computed by one shared implementation
+  (records_content_sha256 in packages/ntruth/task_corpora/io_util.py).
+```
+
+Code readers must use LF-only physical line iteration
+(`iter_jsonl_physical_lines` / `str.split("\n")`), never `str.splitlines()`.
+
+### Granular use decision (normative)
+
+Every snapshot licence file must declare, without inference:
+
+```yaml
+use_decision:
+  adapter_build_allowed: true | false
+  local_format_validation_allowed: true | false
+  development_allowed: true | false | unknown
+  training_allowed: true | false
+  evaluation_allowed: true | false | unknown
+  benchmark_metrics_publication_allowed: true | false | unknown
+  derived_records_redistribution_allowed: true | false
+  model_weights_redistribution_allowed: true | false
+```
+
+`unknown` and incompatible values **fail closed** for the relevant capability.
+B0 iterative development on a corpus requires `development_allowed=true`,
+not merely `training_allowed=false` with silent validation-set peeking.
+
+### Leakage audit field
+
+Build manifests must report:
+
+```text
+groups_crossing_splits: <int>
+```
+
+Acceptance for a clean upstream-split corpus requires `groups_crossing_splits = 0`
+(unless a later written policy documents and quarantines exceptions).
+
 ### Task families → sources
 
 | Task family | Primary sources | Notes |
@@ -160,48 +213,52 @@ checksum: sha256
 
 ## 4. Implementation stages
 
-### Stage C0 — scaffolding
+### Stage C0 — scaffolding — **VERIFIED (local + CI)**
 
-- Package skeleton, schemas, authority enums, CLI `status` / `dry-run`
+- Package skeleton, schemas, authority enums, CLI `status` / `build` / `validate` / `stats`
 - Unit tests for schema invariants and fail-closed validators
+- LF-only JSONL contract + shared `records_content_sha256`
 
-### Stage C1 — SourceData entity_roles adapter
+### Stage C1 — SourceData entity_roles adapter — **VERIFIED (local + CI)**
 
-- Consume processed or raw SourceData with existing alignment guarantees
-- Emit token-classification task records
-- Preserve upstream splits; group by document/panel family
-- Stats + card
+- Consume processed SourceData multitask snapshot
+- Emit token-classification task records (`AUXILIARY`)
+- Preserve upstream splits; leakage_group = document_id
+- Stats + manifest + leakage audit; synthetic_fraction = 0.0
 
-### Stage C2 — MeasEval quantities adapter
+### Stage C2 — PreClinIE routing + method_indicators (next branch)
+
+- Branch design: `feat/preclinie-routing-method-indicators-v1`
+- Labels remain AUTHOR_ASSERTION / REPORTED_METHOD_INDICATOR
+- **Not** CONFIRMED_ALLOCATION / CONFIRMED_RANDOMIZATION / experimental-unit gold
+
+### Stage C3 — CRAFT auxiliary coreference + explicit relations
+
+- Linguistic mechanism only
+
+### Stage C4 — MeasEval quantities (after overlap policy freeze)
 
 - Span/relation payload → quantity task records
 - **Enforce** BLOCKED_BY_UPSTREAM_GROUP_OVERLAP: training_eligible=false for any group in train∩test overlap unless human policy later
 - Preserve trial isolation
 - Five missing-TSV stems remain non-eligible / requires_review
 
-### Stage C3 — PreClinIE method_indicators + routing
+### (Historical note)
 
-- Publication-level grouping (reuse seed 20260803 logic)
-- Method indicator multi-label / token tags from existing annotations
-- Routing labels from segment type (abstract/methods/…) with explicit authority AUXILIARY
+PreClinIE was previously sketched after MeasEval; approved order is
+C2 PreClinIE → C3 CRAFT → C4 MeasEval → licence closure → B0 → ModernBERT GO.
 
-### Stage C4 — CRAFT coreference / relations
+### Stage C5 — manifests, cards, B0 hooks (partially done for C0–C1)
 
-- Official 67/30 + N-Truth 60/7 derivation already documented
-- Coreference chains as AUXILIARY only
-
-### Stage C5 — manifests, cards, B0 hooks
-
-- Per-task split manifests, class histograms, exclusion reports
-- Data cards with licence_status and forbidden_uses
-- Smoke commands; storage estimates under FLASH128 FAT32 limit
+- Per-task split manifests, class histograms, exclusion reports, leakage audit
+- Data cards with licence_status and granular use_decision
+- Smoke commands; storage estimates under FLASH128
 - **No ModernBERT training** in this stage
 
 ### Stage C6 — Workstream C readiness report
 
-- Acceptance matrix
+- Acceptance matrix (C0–C1 draft: `docs/task_corpora/workstream-c-c0-c1-readiness.md`)
 - What is GO vs HOLD for `MODERNBERT_AUXILIARY_BASELINES`
-
 ---
 
 ## 5. Tests and acceptance criteria
@@ -240,16 +297,29 @@ checksum: sha256
 
 ---
 
-## 6. Unresolved decisions (user approval required)
+## 6. Decisions and open items
 
-1. **MeasEval overlap policy** (still PENDING_HUMAN_DECISION):  
+### Resolved for C0–C1
+
+1. **Synthetic contribution for C0–C1: 0%.**
+   Future synthetic use must be **task-specific**, benchmarked against a frozen real
+   development set and approved through a separate mixture-search decision.
+   **No global synthetic percentage is authorised** (including any former “≤10% train” draft).
+2. **JSONL LF-only framing** — see contract above; U+2028/U+2029 are content.
+3. **Initial routing inventory** — METHODS, STATISTICAL_METHODS, FIGURE_CAPTION, RESULTS, OTHER, UNKNOWN
+   (FIGURE_CAPTION only when a source actually supports it).
+4. **Lazic** — EXTERNAL_CHALLENGE_CANDIDATE; training_eligible=false by default.
+5. **SourceData training** — blocked (`training_allowed=false`, `development_allowed=false`).
+
+### Still requiring user / legal approval
+
+1. **MeasEval overlap policy** (still PENDING_HUMAN_DECISION):
    REMOVE_OVERLAPPING_GROUPS_FROM_TRAIN | CREATE_NTRUTH_GROUP_SAFE_SPLIT | FORMAT_SMOKE_ONLY | EXCLUDE_FROM_MODEL_TRAINING
-2. **License scope closure** for SourceData / PreClinIE training permission before any encoder fine-tune.
-3. **Routing label inventory** — final closed set of section labels.
-4. **Synthetic budget** — max synthetic fraction per task (proposal: ≤10% train, 0% test).
-5. **Real-anchor volume** — confirm 30–50 cases and double-review capacity.
-6. **Lazic data** — confirm EXTERNAL_CHALLENGE default; no train without written policy.
-7. **ModernBERT checkpoint choice** — deferred until corpora READY_FOR_B0 (not this PR).
+2. **License scope closure** for SourceData / PreClinIE: at least
+   `development_allowed`, `evaluation_allowed`, `benchmark_metrics_publication_allowed`,
+   and redistribution flags — currently SourceData evaluation is `unknown` (fail closed).
+3. **Real-anchor volume** — confirm 30–50 cases and double-review capacity (wet-lab + biostat).
+4. **ModernBERT checkpoint choice** — deferred until corpora + B0 + resource benchmarks.
 
 ---
 

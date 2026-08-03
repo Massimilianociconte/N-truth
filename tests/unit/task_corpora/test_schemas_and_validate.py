@@ -125,6 +125,42 @@ def test_training_eligible_requires_licence_flag():
         _record(training_eligible=True)  # licence.training_allowed False
 
 
+def test_evaluation_eligible_fails_closed_when_unknown():
+    with pytest.raises(ValidationError):
+        _record(
+            split="validation",
+            evaluation_eligible=True,  # licence.evaluation_allowed defaults unknown
+        )
+
+
+def test_evaluation_eligible_requires_explicit_true():
+    rec = _record(
+        split="validation",
+        evaluation_eligible=True,
+        licence=_licence(evaluation_allowed=True),
+    )
+    assert rec.evaluation_eligible is True
+
+
+def test_training_eligible_requires_development_allowed():
+    with pytest.raises(ValidationError):
+        _record(
+            training_eligible=True,
+            licence=_licence(
+                training_allowed=True,
+                development_allowed=False,
+                evaluation_allowed=False,
+            ),
+        )
+
+
+def test_groups_crossing_splits_counter():
+    from ntruth.task_corpora.validate import count_groups_crossing_splits
+
+    assert count_groups_crossing_splits({"a": {"train"}, "b": {"test"}}) == 0
+    assert count_groups_crossing_splits({"a": {"train", "test"}}) == 1
+
+
 def test_synthetic_forbidden_c0_c1():
     with pytest.raises(ValidationError):
         _record(supervision_source=SupervisionSource.SYNTHETIC)
@@ -133,3 +169,22 @@ def test_synthetic_forbidden_c0_c1():
 def test_ntruth_gold_forbidden_for_public_adapter():
     with pytest.raises(ValidationError):
         _record(authority_level=AuthorityLevel.NTRUTH_GOLD)
+
+
+def test_permission_helpers_fail_closed():
+    from ntruth.task_corpora.license_loader import (
+        evaluation_permitted,
+        permission_granted,
+        training_permitted,
+    )
+
+    assert permission_granted(True) is True
+    assert permission_granted(False) is False
+    assert permission_granted("unknown") is False
+    lic = _licence(
+        training_allowed=True,
+        development_allowed="unknown",
+        evaluation_allowed="unknown",
+    )
+    assert training_permitted(lic) is False
+    assert evaluation_permitted(lic) is False

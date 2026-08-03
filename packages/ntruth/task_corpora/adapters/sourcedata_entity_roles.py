@@ -28,7 +28,12 @@ from ntruth.task_corpora.io_util import (
     write_json,
     write_jsonl_records,
 )
-from ntruth.task_corpora.license_loader import load_license_decision, training_permitted
+from ntruth.task_corpora.license_loader import (
+    adapter_build_permitted,
+    evaluation_permitted,
+    load_license_decision,
+    training_permitted,
+)
 from ntruth.task_corpora.schemas import (
     BuildManifest,
     EntityRolesPayload,
@@ -38,7 +43,11 @@ from ntruth.task_corpora.schemas import (
     TaskRecord,
     TransformLineage,
 )
-from ntruth.task_corpora.validate import assert_bio_tags_known, assert_token_label_lengths
+from ntruth.task_corpora.validate import (
+    assert_bio_tags_known,
+    assert_token_label_lengths,
+    count_groups_crossing_splits,
+)
 
 ADAPTER_NAME = "sourcedata_entity_roles"
 MAPPING_VERSION = "0.1.0"
@@ -148,7 +157,8 @@ def convert_source_record(
         )
 
     train_ok = training_permitted(license_decision) and split == "train"
-    eval_ok = split in {"validation", "test"}
+    # evaluation_allowed=unknown fails closed — no evaluation_eligible until explicit grant.
+    eval_ok = split in {"validation", "test"} and evaluation_permitted(license_decision)
 
     offsets_raw = payload.get("token_offsets")
     offsets: list[tuple[int, int]] | None = (
@@ -204,8 +214,11 @@ def build_sourcedata_entity_roles(root: Path, *, resume: bool = True) -> BuildMa
     """Build entity_roles corpus from verified SourceData multitask snapshot."""
     del resume  # reserved; writers are always overwrite-atomic / idempotent
     license_decision = load_license_decision("sourcedata")
-    if not license_decision.derived_labels_allowed:
-        raise RuntimeError("SourceData licence forbids derived labels")
+    if not adapter_build_permitted(license_decision):
+        raise RuntimeError(
+            "SourceData licence forbids adapter build "
+            "(adapter_build_allowed/derived_labels_allowed fail closed)"
+        )
 
     label_map = load_label_map()
     src_root = _source_multitask_dir(root)
@@ -221,6 +234,9 @@ def build_sourcedata_entity_roles(root: Path, *, resume: bool = True) -> BuildMa
     exclusions: list[dict[str, Any]] = []
     entity_hist: Counter[str] = Counter()
     role_hist: Counter[str] = Counter()
+    group_to_splits: dict[str, set[str]] = {}
+    document_id_present = 0
+    document_id_missing = 0
 
     for split in ("train", "validation", "test"):
         split_name = cast(SplitName, split)
@@ -269,6 +285,11 @@ def build_sourcedata_entity_roles(root: Path, *, resume: bool = True) -> BuildMa
                 line_json = task_rec.model_dump_json()
                 split_records.append(line_json)
                 all_lines.append(line_json)
+                group_to_splits.setdefault(task_rec.leakage_group, set()).add(task_rec.split)
+                if task_rec.source.document_id.strip():
+                    document_id_present += 1
+                else:
+                    document_id_missing += 1
                 for lab in task_rec.payload.entity_labels:
                     if lab != "O":
                         entity_hist[lab] += 1
@@ -280,6 +301,7 @@ def build_sourcedata_entity_roles(root: Path, *, resume: bool = True) -> BuildMa
         record_counts[split] = len(split_records)
 
     records_sha = records_content_sha256(all_lines)
+    groups_crossing = count_groups_crossing_splits(group_to_splits)
 
     write_jsonl_records(
         out_dir / "exclusions.jsonl",
@@ -295,7 +317,10 @@ def build_sourcedata_entity_roles(root: Path, *, resume: bool = True) -> BuildMa
             "entity_label_histogram": dict(sorted(entity_hist.items())),
             "role_label_histogram": dict(sorted(role_hist.items())),
             "synthetic_fraction": 0.0,
+            "groups_crossing_splits": groups_crossing,
             "training_allowed_by_licence": license_decision.training_allowed,
+            "development_allowed_by_licence": license_decision.development_allowed,
+            "evaluation_allowed_by_licence": license_decision.evaluation_allowed,
             "authority_level": AuthorityLevel.AUXILIARY.value,
         },
     )
@@ -318,6 +343,7 @@ def build_sourcedata_entity_roles(root: Path, *, resume: bool = True) -> BuildMa
         record_counts=record_counts,
         exclusion_counts=dict(exclusion_counter),
         records_sha256=records_sha,
+        groups_crossing_splits=groups_crossing,
         synthetic_fraction=0.0,
     )
     write_json(out_dir / "manifest.json", manifest.model_dump(mode="json"))
@@ -326,6 +352,29 @@ def build_sourcedata_entity_roles(root: Path, *, resume: bool = True) -> BuildMa
         {
             "mapping_version": MAPPING_VERSION,
             "path": "packages/ntruth/task_corpora/label_maps/sourcedata_entity_roles.json",
+        },
+    )
+    total_emitted = sum(record_counts.values())
+    # Multitask snapshot currently has empty document_id; fallback is record_id →
+    # groups_crossing_splits is 0 by construction until document-level IDs land.
+    granularity = (
+        "DOCUMENT_ID"
+        if document_id_present == total_emitted and total_emitted > 0
+        else ("MIXED" if document_id_present > 0 else "RECORD_LEVEL_FALLBACK")
+    )
+    write_json(
+        out_dir / "leakage_audit.json",
+        {
+            "groups_crossing_splits": groups_crossing,
+            "unique_leakage_groups": len(group_to_splits),
+            "document_id_present": document_id_present,
+            "document_id_missing": document_id_missing,
+            "leakage_group_granularity": granularity,
+            "policy": (
+                "leakage_group = document_id if present else segment_id/record_id; "
+                "upstream_official splits preserved; "
+                "RECORD_LEVEL_FALLBACK is not sufficient for paper-level leakage claims"
+            ),
         },
     )
     return manifest

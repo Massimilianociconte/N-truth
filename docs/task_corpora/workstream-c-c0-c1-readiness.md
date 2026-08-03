@@ -1,131 +1,145 @@
-# Workstream C readiness report — C0–C1 (draft)
+# Workstream C readiness report — C0–C1
 
-**Status (maximum after this stage):**
+**Draft PR:** [#3](https://github.com/Massimilianociconte/N-truth/pull/3)
+**Branch:** `feat/modernbert-task-corpora-v1`
+
+## Status (maximum claimed)
 
 ```text
 C0_TASK_CORPORA_SCAFFOLDING: VERIFIED
 C1_SOURCEDATA_ENTITY_ROLES: VERIFIED
+SOURCE_DATA_FORMAT_INTEGRITY: VERIFIED
+SOURCE_DATA_TRAINING_USE: BLOCKED
+SOURCE_DATA_EVALUATION_USE: PENDING_LICENCE_DECISION
+
 WORKSTREAM_C: IN_PROGRESS
 READY_FOR_B0: CANDIDATE
+READY_FOR_MODERNBERT: NO
+
+SCIENTIFIC_VALIDATION: NOT_STARTED
+REAL_ANCHOR_CALIBRATION: HOLD_PENDING_REVIEWERS
+SYNTHETIC_AUGMENTATION: HOLD
+MEASEVAL_MODEL_USE: HOLD_PENDING_OVERLAP_POLICY
+GRANITE_GRAPH_TRAINING: HOLD
+NTRUTH_END_TO_END_TRAINING: HOLD
+LAZIC_DATA: EXTERNAL_CHALLENGE_CANDIDATE
 ```
 
 **Not claimed:** Workstream C complete, ModernBERT training, scientific validation,
-synthetic augmentation, N-Truth end-to-end training, Granite promotion.
+promotional metrics, B0 development on SourceData without licence grants.
 
-## Baseline
+## Git / CI
 
 | Item | Value |
 |------|--------|
-| Workstream B | `MERGED_AND_VERIFIED` (PR #2 → `ff8cd89`) |
-| Branch | `feat/modernbert-task-corpora-v1` |
-| Design docs | `docs/plans/modernbert-task-corpora-v1.md`, `docs/scientific/real-anchor-protocol-v0.1.md` |
-| External root | `/Volumes/FLASH128/N-Truth-Datasets` |
-| Output path | `task_corpora/entity_roles/sourcedata/v2.0.3/` |
+| Workstream B | PR #2 → `ff8cd89` |
+| PR #3 base | `main` @ `ff8cd89` |
+| Pre-closure head (C0–C1 impl) | `dabda342f3cd7182e50c0667eb5537a7e95be914` |
+| CI on `dabda34` | **green** — deterministic-core, linux-portability, GitGuardian, CodeRabbit |
+| Merge policy | **merge commit** (not squash); merge only after explicit user authorisation |
 
-## Decisions applied (approved)
+Final head SHA after this documentation/use-policy closure commit is recorded in the
+PR once pushed (see PR commits tab).
 
-1. MeasEval: hold pending overlap report; not implemented in C0–C1.
-2. Licensing: machine-readable decision required; SourceData `RESTRICTED`, `training_allowed=false`.
-3. Routing inventory labels reserved in config (adapter later).
-4. Synthetic: **0%** for C0–C1 (`synthetic_fraction=0.0`).
-5. Real anchor calibration: HOLD pending reviewers.
-6. Lazic: EXTERNAL_CHALLENGE_CANDIDATE, not accessed.
-7. ModernBERT checkpoint: deferred.
+## External corpus
 
-## Delivered
+| Item | Value |
+|------|--------|
+| Root | `/Volumes/FLASH128/N-Truth-Datasets` |
+| Output | `task_corpora/entity_roles/sourcedata/v2.0.3/` |
+| train / validation / test | **60266 / 8201 / 6696** |
+| exclusions | **0** |
+| synthetic_fraction | **0.0** |
+| records_sha256 (post use-decision fields) | `0fe9c1190b10b49b8b2cd60fe32e7718f5041fda58858d79225e9c1831642fe2` |
+| groups_crossing_splits | **0** |
+| storage | ~298 MiB (not in git) |
+| second-run idempotence | **OK** (identical hash) |
 
-### C0 — task corpora scaffolding
+Hash changed from the first C1 build (`14638a55…`) because licence records now embed
+granular use-decision fields and `evaluation_eligible` fails closed under
+`evaluation_allowed=unknown`. Counts unchanged.
 
-Package `packages/ntruth/task_corpora/`:
+## Licence / use decision (SourceData)
 
-- Canonical `TaskRecord` / `EntityRolesPayload` schemas (Pydantic)
-- Enums: supervision, authority, licence status, exclusion reasons
-- Fail-closed validators (token/label lengths, BIO known types, record invariants)
-- Leakage group + split eligibility invariants
-- License decision loader (fail-closed for training when restricted/unknown)
-- Manifest, stats, exclusion reports
-- Idempotent JSONL writers; LF-only JSONL readers (U+2028-safe)
-- CLI: `build` / `validate` / `stats` / `status`
-
-```bash
-uv run python -m ntruth.task_corpora build --task entity_roles --source sourcedata --root "$NTRUTH_DATA_ROOT"
-uv run python -m ntruth.task_corpora validate --task entity_roles --root "$NTRUTH_DATA_ROOT"
-uv run python -m ntruth.task_corpora stats --task entity_roles --root "$NTRUTH_DATA_ROOT"
+```yaml
+license_status: RESTRICTED
+adapter_build_allowed: true
+local_format_validation_allowed: true
+development_allowed: false
+training_allowed: false
+evaluation_allowed: unknown          # fail closed
+benchmark_metrics_publication_allowed: unknown
+derived_records_redistribution_allowed: false
+model_weights_redistribution_allowed: false
+authority_level: AUXILIARY
 ```
 
-### C1 — SourceData → entity_roles
+Implications:
 
-- Adapter: `adapters/sourcedata_entity_roles.py`
-- Label map (code + doc): `label_maps/sourcedata_entity_roles.json`, `docs/task_corpora/sourcedata-entity-roles-label-map.md`
-- License decision: `license_decisions/sourcedata.json`
-- Authority: `AUXILIARY`; forbidden experimental-unit / n / verdict / allocation / independence gold
-- `training_eligible=false` while licence `training_allowed=false`
-- Upstream official splits preserved; leakage_group = document_id (fallback segment/record)
+- Adapter build + local format validation: allowed.
+- Weight training: **blocked**.
+- B0 iterative development on this corpus: **blocked** until `development_allowed=true`.
+- Held-out metrics / publication of benchmark numbers: **blocked** until evaluation
+  and publication flags are explicitly true.
+- `READY_FOR_B0` remains **CANDIDATE**, not GO.
 
-## Build evidence (FLASH128)
+## U+2028 / JSONL regression evidence
 
-| Metric | Value |
-|--------|--------|
-| train | 60 266 |
-| validation | 8 201 |
-| test | 6 696 |
-| exclusions | 0 |
-| synthetic_fraction | 0.0 |
-| training_allowed_by_licence | false |
-| records_sha256 | `14638a55e96d7dd458d312774b7b1e93072383eedf5e70147d2991eb4a7b342c` |
-| storage (corpus tree) | ~298 MiB |
-| train.jsonl | ~239 MiB |
-| validation.jsonl | ~33 MiB |
-| test.jsonl | ~26 MiB |
+- Bug: `str.splitlines()` treated U+2028 inside tokens as record boundaries
+  (train 60266 → 60318 phantom lines; hash drift).
+- Fix: LF-only `iter_jsonl_physical_lines` + shared `records_content_sha256`.
+- Contract: `docs/task_corpora/jsonl-framing-contract.md` and plan §JSONL framing.
+- Tests: `test_jsonl_physical_lines_preserve_unicode_line_separator`,
+  `test_cli_validate_with_unicode_line_separator_in_tokens`.
 
-Idempotence: second clean build and validate reproduce the same `records_sha256`.
-Clean-run log (external only):  
-`/Volumes/FLASH128/N-Truth-Datasets/task_corpora/entity_roles/sourcedata/v2.0.3/clean_run_log.txt`
+## Leakage audit
 
-### JSONL / U+2028 note
+| Field | Value |
+|-------|--------|
+| groups_crossing_splits | **0** |
+| unique_leakage_groups | 75163 (= total records) |
+| leakage_group_granularity | **RECORD_LEVEL_FALLBACK** |
+| document_id_present | **0** |
+| document_id_missing | **75163** |
 
-Scientific text includes U+2028 LINE SEPARATOR inside tokens. Readers must use
-LF-only splitting (`str.split("\n")`), never `str.splitlines()`. Validate was
-fixed accordingly; unit tests cover the trap.
+Upstream multitask snapshot has empty `document_id` / `segment_id` /
+`split.group_id`. Leakage groups fall back to per-record IDs, so
+`groups_crossing_splits=0` is true but **does not** yet prove paper-level isolation.
+A Workstream B/C follow-up must restore document/figure family IDs before claiming
+strong leakage control for encoder training.
 
 ## Acceptance checklist
 
 | Criterion | Result |
 |-----------|--------|
 | Focused unit + integration tests | PASS |
-| Full unit suite | PASS |
-| ruff | PASS |
-| mypy (`packages/ntruth/task_corpora`) | PASS |
-| `git diff --check` | clean |
-| No corpus in repository | PASS (no `task_corpora/` data at repo root; no `*.jsonl` under package) |
-| No structural errors emitted | PASS (0 exclusions) |
-| Reproducible splits (upstream) | PASS |
-| Provenance + leakage_group on every record | PASS |
+| Full unit suite | PASS (run at commit) |
+| ruff / mypy / `git diff --check` | PASS |
+| NO_CORPUS in repository | PASS |
+| Structural exclusions | 0 |
 | Second-run hash identity | PASS |
+| groups_crossing_splits == 0 | PASS (record-level caveat) |
 | SourceData AUXILIARY, not NTRUTH_GOLD | PASS |
 | No model download/train | PASS |
+| Synthetic global % budget | **removed** (0% for C0–C1; no ≤10%) |
 
-## Holds (unchanged)
+## Documentation closures in this pass
 
-```text
-TRAINING_PROGRAM: HOLD_PENDING_REAL_ANCHOR
-SCIENTIFIC_VALIDATION: NOT_STARTED
-MODERNBERT_TRAINING: HOLD
-SYNTHETIC_AUGMENTATION: HOLD
-NTRUTH_END_TO_END_TRAINING: HOLD
-GRANITE_GRAPH_TRAINING: HOLD
-GRANITE_DEFAULT_PROMOTION: HOLD
-MEASEVAL_TRAINING_USE: HOLD_PENDING_OVERLAP_REPORT
-REAL_ANCHOR_CALIBRATION: HOLD_PENDING_REVIEWERS
-```
+1. Plan status → C0–C1 implemented and verified; no training.
+2. Synthetic ≤10% proposal → removed; task-specific mixture-search only.
+3. Normative JSONL LF-only contract.
+4. Granular use_decision fields with fail-closed unknown.
+5. Leakage audit field `groups_crossing_splits`.
+6. C2 PreClinIE design note only (`docs/task_corpora/c2-preclinie-design.md`).
 
-## Next (out of scope for this PR)
+## Next (out of this PR)
 
-1. Remaining adapters (MeasEval, PreClinIE, quantities, relations, …) under same scaffolding.
-2. License scope closure → flip SourceData `training_allowed` only with written basis.
-3. B0 encoder baseline after more corpora + resource benchmarks + checkpoint protocol.
-4. Real-anchor calibration when wet-lab + biostat reviewers are available.
+1. Merge PR #3 only after user authorisation (prefer **merge commit**).
+2. Branch `feat/preclinie-routing-method-indicators-v1` (C2 design ready).
+3. Restore document-level leakage IDs for SourceData multitask.
+4. Licence scope closure for evaluation/development before B0.
+5. C3 CRAFT → licence closure → B0 → C4 MeasEval → ModernBERT GO → real anchor.
 
-## Storage estimate (summary)
+## Storage
 
 See `docs/task_corpora/storage-estimate-c0-c1.md`.

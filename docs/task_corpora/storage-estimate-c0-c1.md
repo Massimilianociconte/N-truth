@@ -1,6 +1,6 @@
 # Storage estimate — Workstream C0–C1
 
-**Root:** `/Volumes/FLASH128/N-Truth-Datasets`  
+**Root:** `/Volumes/FLASH128/N-Truth-Datasets`
 **Measured:** 2026-08-03 (after SourceData entity_roles build)
 
 ## Current footprint

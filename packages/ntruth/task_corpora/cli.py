@@ -19,6 +19,11 @@ from ntruth.task_corpora.io_util import (
     iter_jsonl_physical_lines,
     records_content_sha256,
 )
+from ntruth.task_corpora.license_loader import (
+    format_validation_permitted,
+    load_license_decision,
+)
+from ntruth.task_corpora.validate import count_groups_crossing_splits
 
 
 def cmd_build(root: Path, task: str, source: str, resume: bool) -> int:
@@ -37,6 +42,10 @@ def cmd_validate(root: Path, task: str) -> int:
     if task != TASK_ENTITY_ROLES:
         print(f"validate: unsupported task {task}", file=sys.stderr)
         return 2
+    decision = load_license_decision("sourcedata")
+    if not format_validation_permitted(decision):
+        print("local_format_validation_allowed is false — validate blocked", file=sys.stderr)
+        return 1
     out = task_output_dir(root, task) / "sourcedata" / "v2.0.3"
     manifest_path = out / "manifest.json"
     if not manifest_path.exists():
@@ -44,6 +53,7 @@ def cmd_validate(root: Path, task: str) -> int:
         return 1
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     errors = 0
+    group_to_splits: dict[str, set[str]] = {}
     for split in ("train", "validation", "test"):
         path = out / f"{split}.jsonl"
         if not path.exists():
@@ -70,6 +80,19 @@ def cmd_validate(root: Path, task: str) -> int:
             ):
                 print(f"{path}:{i} training_eligible despite licence", file=sys.stderr)
                 errors += 1
+            if (
+                rec.get("evaluation_eligible")
+                and rec.get("licence", {}).get("evaluation_allowed") is not True
+            ):
+                print(
+                    f"{path}:{i} evaluation_eligible despite evaluation_allowed fail-closed",
+                    file=sys.stderr,
+                )
+                errors += 1
+            lg = rec.get("leakage_group")
+            sp = rec.get("split")
+            if lg and sp:
+                group_to_splits.setdefault(str(lg), set()).add(str(sp))
     lines: list[str] = []
     for split in ("train", "validation", "test"):
         path = out / f"{split}.jsonl"
@@ -92,12 +115,25 @@ def cmd_validate(root: Path, task: str) -> int:
         if exp_n is not None and exp_n != n:
             print(f"record_counts mismatch {split}: expected={exp_n} got={n}", file=sys.stderr)
             errors += 1
+    groups_crossing = count_groups_crossing_splits(group_to_splits)
+    expected_cross = manifest.get("groups_crossing_splits")
+    if expected_cross is not None and expected_cross != groups_crossing:
+        print(
+            f"groups_crossing_splits mismatch expected={expected_cross} got={groups_crossing}",
+            file=sys.stderr,
+        )
+        errors += 1
     if errors:
         print(f"validate FAILED errors={errors}")
         return 1
     print(
         json.dumps(
-            {"status": "OK", "records_sha256": recomputed, "manifest": str(manifest_path)},
+            {
+                "status": "OK",
+                "records_sha256": recomputed,
+                "groups_crossing_splits": groups_crossing,
+                "manifest": str(manifest_path),
+            },
             indent=2,
         )
     )

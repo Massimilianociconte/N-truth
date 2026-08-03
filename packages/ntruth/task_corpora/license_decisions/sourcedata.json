@@ -3,7 +3,14 @@
   "training_allowed": false,
   "redistribution_allowed": false,
   "derived_labels_allowed": true,
-  "decision_basis": "SourceData v2.0.3 HF card claims CC-BY-4.0; no LICENSE file on stick. Local conversion and statistics allowed; model training blocked until LICENSE_SCOPE_CLOSURE with explicit training_allowed=true.",
-  "reviewed_at": "2026-08-03T15:24:23Z",
-  "spdx": "CC-BY-4.0"
+  "decision_basis": "SourceData v2.0.3 HF card claims CC-BY-4.0; no LICENSE file on stick. Adapter build and local format validation allowed. Development, training, evaluation metrics, and any redistribution of derived records or model weights remain blocked or unknown until LICENSE_SCOPE_CLOSURE with explicit machine-readable grants.",
+  "reviewed_at": "2026-08-03T16:00:00Z",
+  "spdx": "CC-BY-4.0",
+  "adapter_build_allowed": true,
+  "local_format_validation_allowed": true,
+  "development_allowed": false,
+  "evaluation_allowed": "unknown",
+  "benchmark_metrics_publication_allowed": "unknown",
+  "derived_records_redistribution_allowed": false,
+  "model_weights_redistribution_allowed": false
 }

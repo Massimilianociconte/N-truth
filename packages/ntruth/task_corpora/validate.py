@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
+
 from ntruth.task_corpora.authority import ExclusionReason
 from ntruth.task_corpora.schemas import TaskRecord
 
@@ -40,6 +42,17 @@ def assert_bio_tags_known(labels: list[str], allowed_types: set[str]) -> list[st
         if prefix not in {"B", "I"} or typ not in allowed_types:
             unknown.append(tag)
     return unknown
+
+
+def count_groups_crossing_splits(
+    group_to_splits: Mapping[str, Iterable[str]],
+) -> int:
+    """Return how many leakage_group keys appear in more than one split name."""
+    n = 0
+    for splits in group_to_splits.values():
+        if len(set(splits)) > 1:
+            n += 1
+    return n
 
 
 def validate_task_record(record: TaskRecord) -> None:
