@@ -56,6 +56,14 @@ default to:
 - fail-closed licence and evaluation flags
 - no training or development without a written partition and use decision
 
-Lazic-related material remains `EXTERNAL_CHALLENGE_CANDIDATE` by default.
-NC3Rs ARRIVE checker data remains `AUXILIARY_CANDIDATE` until released and
-reviewed; it must not be treated as experimental-unit or pseudoreplication gold.
+Lazic-related material remains `ROLE_DECISION_PENDING` / `OFFERED_IN_PRINCIPLE_DETAILS_PENDING`
+under PRD v7 §14.4 until a written profile-relative role is agreed **before** full
+label access. It is not default EXTERNAL_CHALLENGE and is not in vitro gold.
+
+NC3Rs ARRIVE checker data remains `AUXILIARY_CANDIDATE` / `ANNOUNCED_NOT_RELEASED`
+until released and reviewed; default use is reporting/evidence extraction only.
+It must not be treated as experimental-unit or pseudoreplication gold.
+No NC3Rs partnership, approval or endorsement is claimed.
+
+Historical audit labels use `LEGACY_WS_B` / `LEGACY_WS_C` and must not be silently
+reinterpreted as PRD v7 Workstreams A–D (`V7_WS_*`).
