@@ -147,17 +147,18 @@ Lock revision `b457c14041b61c56f671c6f966b4324f682855b7` — all 6 file SHA-256 
 
 | Metric | Value |
 |--------|-------|
-| HEAD | `20a2206813ea7835df169a8561e5ee2493cb32d7` |
+| HEAD | `f1a994b8a5074811c78b9c21bbd4640b10e80465` |
+| code_fix | `b247e6b` (label/token length fail-closed) |
 | collected | **39** |
 | passed | **39** |
 | failed | **0** |
 | skipped | **0** |
-| duration | **1.88s** |
+| duration | **0.77s** |
 | suites | `tests/unit/data/`, `tests/integration/data/` |
 | git diff --check | clean |
 | corpus blobs in commit | none (NO_CORPUS) |
 
-Evidence: implementer `clean_worktree_tests.log` (collected 39 items; 39 passed in 1.88s).
+Evidence: implementer `clean_worktree_tests.log` / `clean_test_counts.json`.
 
 
 ## Discipline
