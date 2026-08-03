@@ -1,0 +1,333 @@
+{
+  "$defs": {
+    "AuthorityLevel": {
+      "enum": [
+        "AUXILIARY",
+        "CANDIDATE",
+        "NTRUTH_GOLD",
+        "EXTERNAL_CHALLENGE_CANDIDATE"
+      ],
+      "title": "AuthorityLevel",
+      "type": "string"
+    },
+    "EntityRolesPayload": {
+      "properties": {
+        "entity_labels": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Entity Labels",
+          "type": "array"
+        },
+        "kind": {
+          "const": "entity_roles",
+          "default": "entity_roles",
+          "title": "Kind",
+          "type": "string"
+        },
+        "normalized_text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Normalized Text"
+        },
+        "role_labels": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Role Labels",
+          "type": "array"
+        },
+        "token_offsets": {
+          "anyOf": [
+            {
+              "items": {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ],
+                "type": "array"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Token Offsets"
+        },
+        "tokens": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tokens",
+          "type": "array"
+        }
+      },
+      "required": [
+        "tokens",
+        "entity_labels",
+        "role_labels"
+      ],
+      "title": "EntityRolesPayload",
+      "type": "object"
+    },
+    "LicenseStatus": {
+      "enum": [
+        "VERIFIED",
+        "RESTRICTED",
+        "UNKNOWN"
+      ],
+      "title": "LicenseStatus",
+      "type": "string"
+    },
+    "LicenseUseDecision": {
+      "properties": {
+        "decision_basis": {
+          "title": "Decision Basis",
+          "type": "string"
+        },
+        "derived_labels_allowed": {
+          "title": "Derived Labels Allowed",
+          "type": "boolean"
+        },
+        "license_status": {
+          "$ref": "#/$defs/LicenseStatus"
+        },
+        "redistribution_allowed": {
+          "title": "Redistribution Allowed",
+          "type": "boolean"
+        },
+        "reviewed_at": {
+          "title": "Reviewed At",
+          "type": "string"
+        },
+        "spdx": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Spdx"
+        },
+        "training_allowed": {
+          "title": "Training Allowed",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "license_status",
+        "training_allowed",
+        "redistribution_allowed",
+        "derived_labels_allowed",
+        "decision_basis",
+        "reviewed_at"
+      ],
+      "title": "LicenseUseDecision",
+      "type": "object"
+    },
+    "SourceIdentity": {
+      "properties": {
+        "commit": {
+          "title": "Commit",
+          "type": "string"
+        },
+        "dataset": {
+          "title": "Dataset",
+          "type": "string"
+        },
+        "document_id": {
+          "title": "Document Id",
+          "type": "string"
+        },
+        "segment_id": {
+          "title": "Segment Id",
+          "type": "string"
+        },
+        "source_record_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Record Id"
+        },
+        "version": {
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dataset",
+        "version",
+        "commit",
+        "document_id",
+        "segment_id"
+      ],
+      "title": "SourceIdentity",
+      "type": "object"
+    },
+    "SupervisionSource": {
+      "enum": [
+        "HUMAN_PUBLIC",
+        "STRUCTURED_METADATA",
+        "WEAK_RULE",
+        "SYNTHETIC"
+      ],
+      "title": "SupervisionSource",
+      "type": "string"
+    },
+    "TransformLineage": {
+      "properties": {
+        "adapter": {
+          "title": "Adapter",
+          "type": "string"
+        },
+        "mapping_version": {
+          "title": "Mapping Version",
+          "type": "string"
+        },
+        "parent_checksum": {
+          "title": "Parent Checksum",
+          "type": "string"
+        },
+        "parent_path": {
+          "title": "Parent Path",
+          "type": "string"
+        },
+        "transform_version": {
+          "title": "Transform Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "adapter",
+        "transform_version",
+        "parent_path",
+        "parent_checksum",
+        "mapping_version"
+      ],
+      "title": "TransformLineage",
+      "type": "object"
+    }
+  },
+  "description": "Canonical task record written as one JSONL line.",
+  "properties": {
+    "allowed_uses": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Allowed Uses",
+      "type": "array"
+    },
+    "authority_level": {
+      "$ref": "#/$defs/AuthorityLevel"
+    },
+    "checksum": {
+      "title": "Checksum",
+      "type": "string"
+    },
+    "evaluation_eligible": {
+      "title": "Evaluation Eligible",
+      "type": "boolean"
+    },
+    "forbidden_uses": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Forbidden Uses",
+      "type": "array"
+    },
+    "leakage_group": {
+      "title": "Leakage Group",
+      "type": "string"
+    },
+    "licence": {
+      "$ref": "#/$defs/LicenseUseDecision"
+    },
+    "payload": {
+      "$ref": "#/$defs/EntityRolesPayload"
+    },
+    "record_id": {
+      "title": "Record Id",
+      "type": "string"
+    },
+    "requires_review": {
+      "title": "Requires Review",
+      "type": "boolean"
+    },
+    "source": {
+      "$ref": "#/$defs/SourceIdentity"
+    },
+    "split": {
+      "enum": [
+        "train",
+        "validation",
+        "test",
+        "trial"
+      ],
+      "title": "Split",
+      "type": "string"
+    },
+    "split_authority": {
+      "title": "Split Authority",
+      "type": "string"
+    },
+    "supervision_source": {
+      "$ref": "#/$defs/SupervisionSource"
+    },
+    "task_type": {
+      "title": "Task Type",
+      "type": "string"
+    },
+    "training_eligible": {
+      "title": "Training Eligible",
+      "type": "boolean"
+    },
+    "transform_lineage": {
+      "$ref": "#/$defs/TransformLineage"
+    }
+  },
+  "required": [
+    "record_id",
+    "task_type",
+    "source",
+    "split",
+    "split_authority",
+    "leakage_group",
+    "supervision_source",
+    "authority_level",
+    "allowed_uses",
+    "forbidden_uses",
+    "licence",
+    "training_eligible",
+    "evaluation_eligible",
+    "requires_review",
+    "transform_lineage",
+    "checksum",
+    "payload"
+  ],
+  "title": "TaskRecord",
+  "type": "object"
+}

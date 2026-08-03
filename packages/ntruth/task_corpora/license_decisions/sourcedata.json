@@ -1,0 +1,9 @@
+{
+  "license_status": "RESTRICTED",
+  "training_allowed": false,
+  "redistribution_allowed": false,
+  "derived_labels_allowed": true,
+  "decision_basis": "SourceData v2.0.3 HF card claims CC-BY-4.0; no LICENSE file on stick. Local conversion and statistics allowed; model training blocked until LICENSE_SCOPE_CLOSURE with explicit training_allowed=true.",
+  "reviewed_at": "2026-08-03T15:24:23Z",
+  "spdx": "CC-BY-4.0"
+}
