@@ -104,10 +104,16 @@ import senza Outlines eager; validation post-gen; registry byte-identical.
 ## Commit
 
 - Feature: `64a160b feat(model): add fail-closed structured decoding for Granite MLX`
-- Follow-up documentale: `4ceb5ae` (+ eventuale nit whitespace successivo)
+- Documentary follow-ups (audit pack + whitespace): see `git log fac3249..HEAD`
+- Branch tip at sign-off: `0f7e83f` (`0f7e83fcf72a1b43199353f0bda56fd8174479c5`)
+
+```
+0f7e83f docs(audit): record final Cluster 3A tip in review pack
+e92e5cc docs(audit): normalize Cluster 3A report trailing whitespace
+4ceb5ae docs(audit): persist Cluster 3A structured decoding review pack
+64a160b feat(model): add fail-closed structured decoding for Granite MLX
+```
 
 ## Sign-off
-
-**Commit finale (tip branch):** `4ceb5ae` (documentale) sopra feature `64a160b`
 
 **CLUSTER_3A_REVIEW: APPROVED**

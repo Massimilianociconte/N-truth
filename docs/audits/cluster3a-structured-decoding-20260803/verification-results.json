@@ -107,5 +107,12 @@
       "unloaded": true
     }
   },
-  "sign_off_recommendation": "APPROVED"
+  "sign_off_recommendation": "APPROVED",
+  "final_branch_tip": "0f7e83fcf72a1b43199353f0bda56fd8174479c5",
+  "feature_commit": "64a160bb18600606774a3b6a5dcb7cb9f513e889",
+  "documentary_commits": [
+    "4ceb5aeb9a37ae97761dd3a17fc7d801a9e7780e",
+    "e92e5cc51b76f8c6ae480459a561dfb737fb35a6"
+  ],
+  "sign_off": "APPROVED"
 }
