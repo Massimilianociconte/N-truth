@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import csv
-import json
 import os
 import urllib.request
 from pathlib import Path
@@ -74,6 +73,41 @@ def _parse_tsv_annotations(tsv_path: Path) -> tuple[list[SpanRecord], list[Relat
     return spans, relations
 
 
+def discover_measeval_partition(split_root: Path) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Discover documents in a MeasEval partition and flag missing TSVs per document."""
+    text_dir, tsv_dir = _find_text_tsv_dirs(split_root)
+    texts = {p.stem: p for p in text_dir.glob("*.txt") if not is_ignorable_metadata(p)}
+    tsvs = {p.stem: p for p in tsv_dir.glob("*.tsv") if not is_ignorable_metadata(p)}
+
+    documents: dict[str, Any] = {}
+    missing: list[str] = []
+    for stem in sorted(texts):
+        has_tsv = stem in tsvs and stem not in TEXT_ONLY_TRAIN_STEMS
+        # TEXT_ONLY stems are known missing; also any txt without tsv
+        is_missing = (stem not in tsvs) or (stem in TEXT_ONLY_TRAIN_STEMS)
+        if is_missing:
+            missing.append(stem)
+            documents[stem] = type(
+                "Doc",
+                (),
+                {
+                    "native_annotation_tier": NativeAnnotationTier.MISSING_ANNOTATION,
+                    "requires_review": True,
+                },
+            )()
+        else:
+            documents[stem] = type(
+                "Doc",
+                (),
+                {
+                    "native_annotation_tier": NativeAnnotationTier.HUMAN_CURATED_GOLD,
+                    "requires_review": False,
+                },
+            )()
+    report = {"missing_tsv_document_ids": missing}
+    return documents, report
+
+
 def install_measeval(root: Path, refresh: bool = False) -> dict[str, Any]:
     source_ref = MEASEVAL_VERSION
     archive_url = f"https://codeload.github.com/harperco/MeasEval/zip/{source_ref}"
@@ -96,22 +130,29 @@ def install_measeval(root: Path, refresh: bool = False) -> dict[str, Any]:
 
     data_root = raw_root / "data"
 
+    # Collect records in memory then write atomically (idempotent overwrite).
+    records_by_split: dict[str, list[str]] = {
+        "train": [],
+        "validation": [],
+        "test": [],
+        "trial": [],
+    }
+
     # 1. Process Train -> Train (90%) and Validation (10%)
     train_text_dir, train_tsv_dir = _find_text_tsv_dirs(data_root / "train")
     train_texts = {p.stem: p for p in train_text_dir.glob("*.txt") if not is_ignorable_metadata(p)}
     train_tsvs = {p.stem: p for p in train_tsv_dir.glob("*.tsv") if not is_ignorable_metadata(p)}
 
-    # Check for unexpected missing text files
     missing_texts = set(train_tsvs.keys()) - set(train_texts.keys())
     if missing_texts:
         raise MeasEvalError(f"MeasEval TSV files without TXT found: {sorted(missing_texts)}")
 
-    articles = sorted(set(measeval_article_id(stem) for stem in train_texts.keys()))
+    articles = sorted({measeval_article_id(stem) for stem in train_texts.keys()})
     article_split_map = stable_split(articles, seed="20260803", ratios=(90, 10, 0))
+    validate_anti_leakage(article_split_map)
 
-    split_counts: dict[str, int] = {"train": 0, "validation": 0, "test": 0, "trial": 0}
-
-    for stem, text_path in train_texts.items():
+    for stem in sorted(train_texts.keys()):
+        text_path = train_texts[stem]
         article_id = measeval_article_id(stem)
         split = article_split_map[article_id]
         tsv_path = train_tsvs.get(stem)
@@ -158,22 +199,15 @@ def install_measeval(root: Path, refresh: bool = False) -> dict[str, Any]:
             task_type="span_relation",
             payload=SpanRelationPayload(text=text_content, spans=spans, relations=relations),
         )
-
-        out_dir = processed_root / split
-        out_dir.mkdir(parents=True, exist_ok=True)
-        with (out_dir / "records.jsonl").open("a", encoding="utf-8") as handle:
-            handle.write(envelope.model_dump_json() + "\n")
-        split_counts[split] += 1
+        records_by_split[split].append(envelope.model_dump_json())
 
     # 2. Process Official Test Set (eval)
     eval_text_dir, eval_tsv_dir = _find_text_tsv_dirs(data_root / "eval")
     eval_texts = {p.stem: p for p in eval_text_dir.glob("*.txt") if not is_ignorable_metadata(p)}
     eval_tsvs = {p.stem: p for p in eval_tsv_dir.glob("*.tsv") if not is_ignorable_metadata(p)}
 
-    out_test = processed_root / "test"
-    out_test.mkdir(parents=True, exist_ok=True)
-
-    for stem, text_path in eval_texts.items():
+    for stem in sorted(eval_texts.keys()):
+        text_path = eval_texts[stem]
         article_id = measeval_article_id(stem)
         tsv_path = eval_tsvs.get(stem)
         text_content = text_path.read_text(encoding="utf-8")
@@ -202,20 +236,15 @@ def install_measeval(root: Path, refresh: bool = False) -> dict[str, Any]:
             task_type="span_relation",
             payload=SpanRelationPayload(text=text_content, spans=spans, relations=relations),
         )
-
-        with (out_test / "records.jsonl").open("a", encoding="utf-8") as handle:
-            handle.write(envelope.model_dump_json() + "\n")
-        split_counts["test"] += 1
+        records_by_split["test"].append(envelope.model_dump_json())
 
     # 3. Process Trial Partition (Isolated format smoke test)
     trial_text_dir, trial_tsv_dir = _find_text_tsv_dirs(data_root / "trial")
     trial_texts = {p.stem: p for p in trial_text_dir.glob("*.txt") if not is_ignorable_metadata(p)}
     trial_tsvs = {p.stem: p for p in trial_tsv_dir.glob("*.tsv") if not is_ignorable_metadata(p)}
 
-    out_trial = processed_root / "trial"
-    out_trial.mkdir(parents=True, exist_ok=True)
-
-    for stem, text_path in trial_texts.items():
+    for stem in sorted(trial_texts.keys()):
+        text_path = trial_texts[stem]
         article_id = measeval_article_id(stem)
         tsv_path = trial_tsvs.get(stem)
         text_content = text_path.read_text(encoding="utf-8")
@@ -245,10 +274,14 @@ def install_measeval(root: Path, refresh: bool = False) -> dict[str, Any]:
             task_type="span_relation",
             payload=SpanRelationPayload(text=text_content, spans=spans, relations=relations),
         )
+        records_by_split["trial"].append(envelope.model_dump_json())
 
-        with (out_trial / "records.jsonl").open("a", encoding="utf-8") as handle:
-            handle.write(envelope.model_dump_json() + "\n")
-        split_counts["trial"] += 1
+    split_counts: dict[str, int] = {}
+    for split, lines in records_by_split.items():
+        out_dir = processed_root / split
+        out_dir.mkdir(parents=True, exist_ok=True)
+        atomic_write_text(out_dir / "records.jsonl", "".join(line + "\n" for line in lines))
+        split_counts[split] = len(lines)
 
     return {
         "dataset": "MeasEval",
