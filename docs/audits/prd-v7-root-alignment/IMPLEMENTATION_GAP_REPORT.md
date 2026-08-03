@@ -59,3 +59,21 @@ Derived from [REQUIREMENT_TRACEABILITY_MATRIX.md](REQUIREMENT_TRACEABILITY_MATRI
 - Reality Gate stays BLOCKED on data readiness by design.
 - Documentation truth sync is only as good as the clean checkout at merge time; the
   historical dirty worktree remains out of scope and uncommitted.
+
+
+## 7. Post-implementation update (2026-08-03, branch `feat/prd-v7-root-alignment`)
+
+Implemented on the clean worktree (additive; no historical audit rewrite):
+
+| Gap | Status after PR |
+|-----|-----------------|
+| Reality Gate | **IMPLEMENTED** (fail-closed; data still BLOCKED) |
+| DeterminabilityState v7 | **IMPLEMENTED** (8 states + derive; v3 enum preserved) |
+| Authority/conflict | **IMPLEMENTED** (append-only ledger) |
+| Quick Design Session | **IMPLEMENTED** vertical slice + CLI |
+| MVT-A harness | **IMPLEMENTED** contracts only (no train/download) |
+| Cross-domain role policy | **IMPLEMENTED** (fail-closed; no Lazic hard-code) |
+| Complexity/burden | **IMPLEMENTED** structures (no hard-coded thresholds) |
+| Docs truth sync | **PARTIAL→UPDATED** clean-checkout status + README gates |
+
+Still open: scientific errata BLK-SCIENTIFIC-001…004; BLK-DATA-001 licences; real anchor.

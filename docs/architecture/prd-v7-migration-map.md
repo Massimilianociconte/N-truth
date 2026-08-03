@@ -29,13 +29,14 @@ packages/ntruth/
     templates.py          # Methods draft, ID convention, sample sheet
     export.py             # biostatistician export + plan freeze
   mvt_a/
-    contracts.py          # stage schema, hard verifier hook, human revision patch
-    burden.py             # time/burden + false-certainty + decisive correction recording
+    stage_schema.py       # candidate-only stage schema + forbidden finals
+    verifier.py           # hard verifier hook
+    revision.py           # human revision patch, burden, false-certainty
     benchmark.py          # benchmark manifest contract
-  governance/
-    cross_domain.py       # profile-relative data role policy (§14.4, §16.7)
-  burden/
-    tiers.py              # SIMPLE/MODERATE/COMPLEX/OUT_OF_PROFILE + metrics (§17.2-17.4)
+  cross_domain/
+    roles.py              # profile-relative data role policy (§14.4, §16.7)
+  complexity/
+    tiers.py              # SIMPLE/MODERATE/COMPLEX/OUT_OF_PROFILE + burden metrics
 ```
 
 ## 2. Migration policy
@@ -92,3 +93,12 @@ After code/tests exist, Phase 13 updates README/status docs to:
 - report Reality Gate state by dimension;
 - remove claims backed only by uncommitted local artifacts;
 - record reference PDF checksums without committing the PDFs.
+
+
+## Reference PDF checksums (not committed unless policy allows)
+
+- PRD v7.0 SHA-256: `00b544f04796f73f75e859c4cbff0ba4193a314661d50d5258d4bc9b0a13369f`
+- Qwen assessment v1.0 SHA-256: `6dab65698d5e098b41e766f956118890958c4bfd3676442b62ee974a82820efc`
+
+PDFs live under the main project `prd/` tree and are not required inside this clean
+worktree to run contracts or tests.

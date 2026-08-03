@@ -1,50 +1,69 @@
-# N-Truth — verified project status snapshot
+# N-Truth — verified project status snapshot (clean checkout)
 
-**Document role:** human-readable mirror of machine-readable gates.  
-**Does not override** `models/registry/default.json` or `models/registry/training_program.json`.  
-**Verified against those files on:** 2026-08-02 (documentation refresh).  
-**Scientific validation has not started.** Software is experimental and not intended for scientific decision-making without human review.
+**Document role:** human-readable status of the **clean checkout** (`origin/main` lineage
+and approved integration branches).
+**Does not claim** scientific validation, gold corpora, NC3Rs/DRIVER endorsement, or
+model promotion.
+**Current specification:** PRD v7.0 (scientific). v6.1 remains historical.
+**Verified (root-alignment branch work):** 2026-08-03.
+**Scientific validation:** **`NOT_STARTED`**.
 
 ## Capability ladder (do not collapse)
 
 | Level | Meaning for N-Truth today |
 |-------|---------------------------|
 | Designed | PRD / ADRs / protocols describe the target |
-| Implemented | Code paths exist in the repository |
-| Tested | Automated software tests exist and (when run) exercise contracts |
+| Implemented | Code paths exist in the clean checkout |
+| Tested | Automated software tests exercise contracts |
 | Runtime-verified | Artifact-bound host qualification for a **registered fingerprint** |
-| Evaluated on development | Frozen B4_CONSTRAINED_DEV (39 cases) — not final test, not train |
+| Evaluated on development | Development-only eval artefacts — not final test, not train |
 | Validated on real gold | Independent real annotated gold — **not available** |
 | Scientifically validated | External challenge / approved protocols — **`NOT_STARTED`** |
 | Production-ready | **Not claimed** |
 
-## Machine-readable gates (verified)
+## Reality Gate (PRD v7 §0.7) — three independent dimensions
 
-| Gate | Value | Source of truth |
-|------|-------|-----------------|
-| `migration_status` | `ARCHITECTURE_MIGRATED` | `models/registry/default.json` → `qualification` |
-| `runtime_qualification_status` | `PARTIALLY_VERIFIED` | same (artifact-bound MLX community 4-bit only) |
-| `scientific_validation_status` | `NOT_STARTED` | same |
-| `training_program_status` | `P0_LORA_APPROVED` | `models/registry/training_program.json` |
-| `training_execution_gate` | `HOLD_PENDING_REAL_ANCHOR` | same |
-| `engineering_smoke_training_allowed` | `true` | same |
-| `substantive_p0_training_allowed` | `false` | same |
-| `current_synthetic_snapshot_status` | `SYN_G1_UNANCHORED` | same + `data/training/p0-alpha/manifest.json` |
-| `annotation_protocol_status` | `REALITY_CHECK_PROTOCOL_DRAFT` | training program |
-| `real_anchor_status` | `NOT_STARTED` | training program |
-| First public trial status | `HUMAN_SECOND_REVIEW_PACKET_READY` | `first_public_source_protocol_trial` |
+Clean-checkout expected top-level state (fail-closed; UNKNOWN blocks):
 
-### Qualified runtime artifact (when PARTIALLY_VERIFIED)
+| Dimension | Status | Notes |
+|-----------|--------|-------|
+| `engineering_readiness` | `PARTIAL_OR_VERIFIED_BY_COMPONENT` | Contracts and unit tests present; real-case schema stability unmeasured |
+| `data_readiness` | **`BLOCKED`** | No real anchor, licence scope incomplete (BLK-DATA-001), no protected split frozen |
+| `scientific_validation` | **`NOT_STARTED`** | No independent external challenge closed |
+| Substantive training | **`HOLD_PENDING_REAL_ANCHOR`** | ModernBERT / Granite promotion remain **HOLD** |
+| AI claims | **not allowed** | Public corpora, SYN-G1 and engineering smoke do not satisfy real-anchor predicates |
 
-- MLX repository: `mlx-community/granite-4.1-3b-4bit` (**community conversion, not official IBM**)
-- Canonical model: `ibm-granite/granite-4.1-3b`
-- Weights SHA-256 (registered): `cff9d052cc3c68ea66b3d364788eb96fca2be82868d9ad92bd968e73b125194d`
-- MLX model revision: `b1b476b5a17c46b7d6cd663b4a8ed44b66720aef`
-- Backend: `mlx-lm` (lock/registry: 0.31.3)
+Machine-readable implementation: `packages/ntruth/reality_gate/`.
+Appendix AA is **non-normative**; do not treat it as implementation truth without
+repository verification.
 
-`PARTIALLY_VERIFIED` is **not** `VERIFIED`, **not** scientific validation, and does **not** transfer to adapters, GGUF, BF16 Transformers, other revisions, tokenizers, or chat templates.
+## Clean-checkout drift warnings
 
-## Neuro-symbolic architecture (normative description)
+The following artefacts are **absent** from a clean checkout of `origin/main` and must
+**not** be cited as repository contents:
+
+- `models/registry/default.json`
+- `models/registry/training_program.json`
+- `models/ntruth-granite-3b/`
+- FLASH128-only datasets and private trees
+
+Historical documentation that references those paths describes **local or uncommitted**
+worktrees, not clean-checkout truth. Granite/MLX runtime claims that exist only on
+unmerged local branches are **not** promoted by this document.
+
+## Determinability contracts
+
+| Contract | Clean-checkout status |
+|----------|------------------------|
+| Legacy `Determinability` in `schemas/core.py` | **4 states** (v3 compatibility) |
+| PRD v7 `DeterminabilityStateV7` | **8 states** in `schemas/determinability_v7.py` (additive) |
+| Permitted/forbidden outputs (App. M) | Implemented as tables + tests |
+| Derive-then-review | `graph/determinability_v7.derive_determinability_v7` (conservative) |
+
+README and older docs that said “seven states” while only the v3 enum existed were
+**documentation drift**; v7 adds the full normative enum without rewriting v3 reports.
+
+## Neuro-symbolic architecture (normative)
 
 ```text
 experimental documents
@@ -56,43 +75,41 @@ experimental documents
   → conditional derivations + rule/premise trace
 ```
 
-The model **must not** be described as authorized to emit final:
+The model **must not** emit final: independent `n`, scientific/pseudoreplication
+verdicts, free-form `RuleResult`, or final `DeterminabilityState`.
 
-- independent `n`;
-- scientific verdicts;
-- pseudoreplication verdicts as product truth;
-- definitive statistical test choice;
-- `RuleResult` as free-form model text;
-- definitive inferential conclusions.
+## PRD v7 root contracts present in this checkout
 
-## Train A evaluation notes (development only)
-
-- B4: **39** cases, `split_role=DEVELOPMENT`, `benchmark_role=B4_CONSTRAINED_DEV`, **not** training-eligible, **not** final test, **not** external challenge.
-- Condition C (zero-shot + constrained decoding): schema/JSON validity high; semantic primary F1 all-case mean ≈ **0.17** (scorer 1.0.0; bootstrap CIs in `benchmarks/fewshot_p0/constrained/`).
-- Decision recorded: `GO_LORA_P0` as **protocol design**, while `training_execution_gate` remains **HOLD**.
-- P0-alpha: synthetic graph-first **2000** train / **300** validation, `SYN_G1_UNANCHORED`.
-- Engineering smoke LoRA: label **`ENGINEERING_SMOKE_ONLY`** — not distributable, not promotable, not a scientific pre/post result.
-
-## Annotation / real data
-
-| Item | Status |
-|------|--------|
-| Protocol | `REALITY_CHECK_PROTOCOL_DRAFT` (guideline v0.1) |
-| Dry-runs `reb-20260802-001/002` | `PROTOCOL_DRY_RUN` (not real gold) |
-| First public trial `reb-20260802-003` | `REAL_SOURCE_PROTOCOL_TRIAL`; CC BY source registered |
-| Primary freeze | yes |
-| AI path-restricted second | yes (diagnostic only; **not** human IAA) |
-| Human second review | **packet ready**, not started / not frozen |
-| gold / training_eligible / evaluation_eligible / real_anchor_eligible | **false** |
-
-Do not document: dry-run as real data; AI agreement as human IAA; packet-ready as review complete; single real trial as real anchor or gold.
+| Area | Module(s) | Status |
+|------|-----------|--------|
+| Bootstrap Core | `schemas/bootstrap_core.py` | Implemented (additive) |
+| Causal Design Context + 4 independences | `schemas/causal_context.py` | Implemented (descriptive; no causal engine) |
+| Authority / conflict | `schemas/authority.py` | Implemented (append-only) |
+| Counts + aliases | `schemas/counts.py` | Implemented |
+| Relations registry 0.2.0 | `schemas/relations.py` | Implemented (`acquired_from` etc.) |
+| ConditionRecord / Value of Abstention | `abstention/` | Implemented |
+| Reality Gate | `reality_gate/` | Implemented (fail-closed) |
+| Quick Design (`simple_cell_culture`) | `quick_design/` + CLI | Vertical slice (no large UI) |
+| MVT-A contracts only | `mvt_a/` | Contracts/harness only — **no train/download** |
+| Cross-domain roles | `cross_domain/` | Implemented (fail-closed) |
+| Complexity / burden | `complexity/` | Structures only; no hard-coded IAA/hours |
 
 ## What this snapshot does **not** claim
 
-- Production readiness  
-- Scientific validation  
-- That constrained decoding guarantees semantic correctness  
-- That synthetic P0-alpha is human gold  
-- That substantive LoRA has run or improved the model scientifically  
+- Production readiness or scientific validation
+- Gold N-Truth corpus or externally validated performance
+- That Granite or ModernBERT is trained, promoted or scientifically ready
+- That synthetic data satisfies real-anchor or scientific-validation predicates
+- NC3Rs / DRIVER endorsement or formal partnership
+- Resolution of open scientific errata (BLK-SCIENTIFIC-001…004)
 
-For operational HOLD rationale see [DECISION-hold-pending-real-anchor.md](training/DECISION-hold-pending-real-anchor.md).
+## Authority order
+
+1. PRD v7.0 normative requirements (after internal-consistency / errata review)
+2. Verified assessment (explanatory only)
+3. Approved scientific rules / ADRs
+4. Clean-checkout code and tests
+5. Historical documentation
+6. Local or uncommitted claims
+
+Audit artefacts: [docs/audits/prd-v7-root-alignment/](audits/prd-v7-root-alignment/).

@@ -1,5 +1,12 @@
 # N-Truth Public Specification v0.1
 
+
+> **Specification authority note (2026-08-03):** The current binding product & scientific
+> requirements document is **PRD v7.0**. This public specification v0.1 remains a public
+> summary and may lag the private PRD. Where this document says “seven” determinability
+> states, the clean-checkout implementation exposes the legacy four-state v3 enum plus the
+> additive PRD v7 eight-state `DeterminabilityStateV7`. No scientific validation is claimed.
+
 **Status:** normative software baseline, candidate scientific specification<br>
 **Version:** 0.1.0<br>
 **Date:** 1 August 2026<br>
