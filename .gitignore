@@ -42,6 +42,10 @@ data/external/
 data/processed/
 data/annotations/*/
 !data/annotations/.gitkeep
+# Private collaboration / contact registries (never commit PII or correspondence)
+N-Truth-Private/
+**/collaboration-registry.private.yaml
+**/collaboration-registry.private.yml
 models/checkpoints/
 models/runs/
 models/local/

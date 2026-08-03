@@ -7,7 +7,12 @@ from pathlib import Path
 
 DEFAULT_DATA_ROOT = Path(os.environ.get("NTRUTH_DATA_ROOT", "/Volumes/FLASH128/N-Truth-Datasets"))
 DEFAULT_SEED = "20260803"
-TRANSFORM_VERSION = "0.1.0"
+# Canonical task-record schema / transform versions (bump together when record body changes).
+SCHEMA_VERSION = "0.2.0"
+TRANSFORM_VERSION = "0.2.0"
+# Historical content hashes retained for lineage (not rewritten).
+RECORDS_SHA256_C1_INITIAL = "14638a55e96d7dd458d312774b7b1e93072383eedf5e70147d2991eb4a7b342c"
+RECORDS_SHA256_C1_USE_DECISION = "0fe9c1190b10b49b8b2cd60fe32e7718f5041fda58858d79225e9c1831642fe2"
 
 TASK_ENTITY_ROLES = "entity_roles"
 TASK_ROUTING = "routing"
@@ -28,13 +33,24 @@ ROUTING_LABELS = (
     "UNKNOWN",
 )
 
+# Public/silver corpora (PRD v7 §14.1) never satisfy these N-Truth gold roles.
 FORBIDDEN_GOLD_USES = (
     "experimental_unit_gold",
     "independent_n_gold",
     "pseudoreplication_verdict_gold",
     "allocation_gold",
     "biological_independence_gold",
+    "interference_gold",
+    "estimand_gold",
 )
+
+# Provisional Reality Gate reference (PRD v7 §0.7). Full root schema is owned by
+# the root-alignment workflow; dataset manifests only record status.
+PROVISIONAL_REALITY_GATE_REF = "prd_v7_section_0.7_provisional_dataset_manifest"
+REALITY_GATE_STATUS_BLOCKED = "BLOCKED"
+ENGINEERING_READINESS_C0_C1 = "VERIFIED_FOR_C0_C1"
+DATA_READINESS_BLOCKED = "BLOCKED"
+SCIENTIFIC_VALIDATION_NOT_STARTED = "NOT_STARTED"
 
 DEFAULT_ALLOWED_USES = (
     "encoder_pretraining",
