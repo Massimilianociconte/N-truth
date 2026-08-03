@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
@@ -10,8 +11,9 @@ import shutil
 import tarfile
 import tempfile
 import zipfile
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 MAX_ARCHIVE_FILE_COUNT = 100_000
 MAX_ARCHIVE_UNCOMPRESSED_BYTES = 20 * 1024 * 1024 * 1024  # 20 GB
@@ -49,10 +51,8 @@ def atomic_write_text(path: Path, text: str) -> None:
             os.fsync(handle.fileno())
         os.replace(tmp_name, path)
     except Exception:
-        try:
+        with contextlib.suppress(FileNotFoundError):
             os.unlink(tmp_name)
-        except FileNotFoundError:
-            pass
         raise
 
 
@@ -88,7 +88,9 @@ def safe_extract_zip(archive: Path, destination: Path) -> None:
     with zipfile.ZipFile(archive) as zf:
         infolist = zf.infolist()
         if len(infolist) > MAX_ARCHIVE_FILE_COUNT:
-            raise FSError(f"ZIP file count exceeds safety limit ({len(infolist)} > {MAX_ARCHIVE_FILE_COUNT})")
+            raise FSError(
+                f"ZIP file count exceeds safety limit ({len(infolist)} > {MAX_ARCHIVE_FILE_COUNT})"
+            )
         for info in infolist:
             name = info.filename.replace("\\", "/")
             if is_ignorable_metadata(name):
@@ -125,7 +127,9 @@ def safe_extract_tar(archive: Path, destination: Path) -> None:
     with tarfile.open(archive, "r:*") as tf:
         members = tf.getmembers()
         if len(members) > MAX_ARCHIVE_FILE_COUNT:
-            raise FSError(f"TAR file count exceeds safety limit ({len(members)} > {MAX_ARCHIVE_FILE_COUNT})")
+            raise FSError(
+                f"TAR file count exceeds safety limit ({len(members)} > {MAX_ARCHIVE_FILE_COUNT})"
+            )
 
         for member in members:
             if is_ignorable_metadata(member.name):
@@ -227,7 +231,11 @@ def calculate_merkle_root(directories: list[Path]) -> str:
                 rel_path = Path(root, file_name)
                 if is_ignorable_metadata(rel_path):
                     continue
-                if "logs" in rel_path.parts or "run-history" in rel_path.parts or "quarantine" in rel_path.parts:
+                if (
+                    "logs" in rel_path.parts
+                    or "run-history" in rel_path.parts
+                    or "quarantine" in rel_path.parts
+                ):
                     continue
                 file_hash = sha256_file(rel_path)
                 item_rel = rel_path.relative_to(directory)

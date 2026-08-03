@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+
 from ntruth.data.config import get_manifests_dir
 from ntruth.data.datasets.craft import extract_craft_article_id, load_craft_official_split
 from ntruth.data.splits import load_craft_2019_shared_task_split

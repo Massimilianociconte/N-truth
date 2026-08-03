@@ -2,18 +2,19 @@
 
 from __future__ import annotations
 
-from enum import Enum
-from typing import Annotated, Any, Literal, Union
+from enum import StrEnum
+from typing import Annotated, Literal
+
 from pydantic import BaseModel, Field, model_validator
 
 
-class OffsetAuthority(str, Enum):
+class OffsetAuthority(StrEnum):
     UPSTREAM = "upstream"
     DERIVED_NORMALIZED_TEXT = "derived_normalized_text"
     UNAVAILABLE = "unavailable"
 
 
-class NativeAnnotationTier(str, Enum):
+class NativeAnnotationTier(StrEnum):
     HUMAN_CURATED_GOLD = "HUMAN_CURATED_GOLD"
     HUMAN_CURATED_PARTIAL = "HUMAN_CURATED_PARTIAL"
     DERIVED_FROM_UPSTREAM = "DERIVED_FROM_UPSTREAM"
@@ -21,7 +22,7 @@ class NativeAnnotationTier(str, Enum):
     UNVERIFIED = "UNVERIFIED"
 
 
-class NTruthUsageTier(str, Enum):
+class NTruthUsageTier(StrEnum):
     SILVER_AUXILIARY = "SILVER_AUXILIARY"
 
 
@@ -65,15 +66,28 @@ class TokenClassificationPayload(BaseModel):
     def check_token_lengths(self) -> TokenClassificationPayload:
         n = len(self.tokens)
         if self.entity_tags is not None and len(self.entity_tags) != n:
-            raise ValueError(f"entity_tags length ({len(self.entity_tags)}) does not match tokens length ({n})")
+            raise ValueError(
+                f"entity_tags length ({len(self.entity_tags)}) does not match tokens length ({n})"
+            )
         if self.role_tags is not None and len(self.role_tags) != n:
-            raise ValueError(f"role_tags length ({len(self.role_tags)}) does not match tokens length ({n})")
+            raise ValueError(
+                f"role_tags length ({len(self.role_tags)}) does not match tokens length ({n})"
+            )
         if self.tag_mask is not None and len(self.tag_mask) != n:
-            raise ValueError(f"tag_mask length ({len(self.tag_mask)}) does not match tokens length ({n})")
+            raise ValueError(
+                f"tag_mask length ({len(self.tag_mask)}) does not match tokens length ({n})"
+            )
         if self.token_offsets is not None and len(self.token_offsets) != n:
-            raise ValueError(f"token_offsets length ({len(self.token_offsets)}) does not match tokens length ({n})")
-        if self.offset_authority == OffsetAuthority.DERIVED_NORMALIZED_TEXT and not self.normalized_text:
-            raise ValueError("offset_authority DERIVED_NORMALIZED_TEXT requires non-null normalized_text")
+            raise ValueError(
+                f"token_offsets length ({len(self.token_offsets)}) does not match tokens length ({n})"
+            )
+        if (
+            self.offset_authority == OffsetAuthority.DERIVED_NORMALIZED_TEXT
+            and not self.normalized_text
+        ):
+            raise ValueError(
+                "offset_authority DERIVED_NORMALIZED_TEXT requires non-null normalized_text"
+            )
         if self.offset_authority == OffsetAuthority.UPSTREAM and self.token_offsets is None:
             raise ValueError("offset_authority UPSTREAM requires non-null token_offsets")
         return self
@@ -127,12 +141,10 @@ class CoreferencePayload(BaseModel):
 
 
 Payload = Annotated[
-    Union[
-        TokenClassificationPayload,
-        SpanRelationPayload,
-        DocumentClassificationPayload,
-        CoreferencePayload,
-    ],
+    TokenClassificationPayload
+    | SpanRelationPayload
+    | DocumentClassificationPayload
+    | CoreferencePayload,
     Field(discriminator="kind"),
 ]
 
@@ -148,7 +160,9 @@ class CommonEnvelope(BaseModel):
     allowed_tasks: list[str]
     forbidden_targets: list[str]
     annotation_status: str = "annotated"
-    task_type: Literal["token_classification", "span_relation", "document_classification", "coreference"]
+    task_type: Literal[
+        "token_classification", "span_relation", "document_classification", "coreference"
+    ]
     payload: Payload
 
     @model_validator(mode="after")
@@ -164,6 +178,6 @@ class CommonEnvelope(BaseModel):
             self.annotation_status == "missing_annotation_file" or self.eligibility.requires_review
         ) and self.native_annotation_tier == NativeAnnotationTier.HUMAN_CURATED_GOLD:
             raise ValueError(
-                f"Missing annotation or review-required record cannot have native_annotation_tier=HUMAN_CURATED_GOLD"
+                "Missing annotation or review-required record cannot have native_annotation_tier=HUMAN_CURATED_GOLD"
             )
         return self

@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import tarfile
 from pathlib import Path
+
 import pytest
 
 from ntruth.data.fs import FSError, safe_extract_tar

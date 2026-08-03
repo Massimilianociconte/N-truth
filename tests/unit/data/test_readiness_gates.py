@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from ntruth.data.alignment import align_sourcedata_configs
 from ntruth.data.datasets.craft import load_craft_official_split
-from pathlib import Path
 
 
 def test_alignment_report_marks_counts_as_derived_multitask_not_upstream_split():

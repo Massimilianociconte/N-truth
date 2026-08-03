@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import pytest
-
-from ntruth.data.datasets.sourcedata import SourceDataError, load_sourcedata_lockfile
+from ntruth.data.datasets.sourcedata import load_sourcedata_lockfile
 
 
 def test_load_sourcedata_lockfile():

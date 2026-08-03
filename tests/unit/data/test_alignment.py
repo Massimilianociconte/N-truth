@@ -7,12 +7,32 @@ from ntruth.data.alignment import align_sourcedata_configs
 
 def test_align_sourcedata_configs_matching():
     ner = [
-        {"panel_id": "p1", "words": ["Cells", "glucose"], "labels": ["O", "B-SMALL_MOLECULE"], "split": "train"},
-        {"panel_id": "p2", "words": ["Mice", "saline"], "labels": ["B-SPECIES", "B-CONTROL"], "split": "train"},
+        {
+            "panel_id": "p1",
+            "words": ["Cells", "glucose"],
+            "labels": ["O", "B-SMALL_MOLECULE"],
+            "split": "train",
+        },
+        {
+            "panel_id": "p2",
+            "words": ["Mice", "saline"],
+            "labels": ["B-SPECIES", "B-CONTROL"],
+            "split": "train",
+        },
     ]
     roles = [
-        {"panel_id": "p1", "words": ["Cells", "glucose"], "labels": ["O", "B-CONTROLLED_VAR"], "split": "train"},
-        {"panel_id": "p2", "words": ["Mice", "saline"], "labels": ["O", "B-CONTROLLED_VAR"], "split": "train"},
+        {
+            "panel_id": "p1",
+            "words": ["Cells", "glucose"],
+            "labels": ["O", "B-CONTROLLED_VAR"],
+            "split": "train",
+        },
+        {
+            "panel_id": "p2",
+            "words": ["Mice", "saline"],
+            "labels": ["O", "B-CONTROLLED_VAR"],
+            "split": "train",
+        },
     ]
 
     aligned, report = align_sourcedata_configs(ner, roles)

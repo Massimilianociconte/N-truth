@@ -13,7 +13,6 @@ from ntruth.data.config import (
     DEFAULT_DATASET_ROOT,
     SOURCE_DATA_VERSION,
     configure_external_cache_environment,
-    get_manifests_dir,
 )
 from ntruth.data.datasets.craft import install_craft
 from ntruth.data.datasets.measeval import install_measeval
@@ -22,8 +21,6 @@ from ntruth.data.datasets.sourcedata import install_sourcedata
 from ntruth.data.fs import (
     EMPTY_FILE_SHA256,
     atomic_write_json,
-    atomic_write_text,
-    calculate_merkle_root,
     is_ignorable_metadata,
     sha256_file,
 )
@@ -31,16 +28,15 @@ from ntruth.data.manifests import (
     generate_datasets_manifest,
     generate_files_manifest,
     generate_merkle_manifest,
-    generate_split_prevalence_report,
     generate_splits_manifest,
 )
 
 
 def cmd_status(root: Path) -> None:
-    print(f"=== N-Truth Dataset Acquisition Status ===")
+    print("=== N-Truth Dataset Acquisition Status ===")
     print(f"Root path: {root}")
     if not root.exists():
-        print(f"Status: ERROR — Root directory does not exist or volume unmounted")
+        print("Status: ERROR — Root directory does not exist or volume unmounted")
         return
 
     stat = os.statvfs(root)
@@ -70,10 +66,13 @@ def cmd_clean_temp(root: Path) -> None:
         elif path.is_dir() and ".extract." in path.name:
             # Safe temporary extract folder cleanup
             import shutil
+
             shutil.rmtree(path, ignore_errors=True)
             removed_count += 1
 
-    print(f"Cleanup complete. Removed {removed_count} temporary items ({bytes_freed / (1024**2):.2f} MB freed).")
+    print(
+        f"Cleanup complete. Removed {removed_count} temporary items ({bytes_freed / (1024**2):.2f} MB freed)."
+    )
 
 
 def cmd_verify(root: Path) -> str:
@@ -92,8 +91,10 @@ def cmd_verify(root: Path) -> str:
     return merkle_root
 
 
-def cmd_repair_existing(root: Path, write_plan: Path | None = None, apply_plan: Path | None = None) -> None:
-    print(f"=== Legacy Installer Repair Analysis ===")
+def cmd_repair_existing(
+    root: Path, write_plan: Path | None = None, apply_plan: Path | None = None
+) -> None:
+    print("=== Legacy Installer Repair Analysis ===")
     plan_entries: list[dict[str, Any]] = []
     quarantine_dir = root / "quarantine"
 
@@ -102,7 +103,9 @@ def cmd_repair_existing(root: Path, write_plan: Path | None = None, apply_plan: 
             plan_entries.append({"path": str(path), "classification": "IGNORABLE_METADATA"})
             continue
         if path.is_dir() and ".extract." in path.name:
-            plan_entries.append({"path": str(path), "classification": "INCOMPLETE", "action": "quarantine"})
+            plan_entries.append(
+                {"path": str(path), "classification": "INCOMPLETE", "action": "quarantine"}
+            )
 
     for path in (root / "downloads").rglob("*"):
         if is_ignorable_metadata(path):
@@ -111,9 +114,13 @@ def cmd_repair_existing(root: Path, write_plan: Path | None = None, apply_plan: 
         if path.is_file():
             sha = sha256_file(path)
             if sha == EMPTY_FILE_SHA256:
-                plan_entries.append({"path": str(path), "classification": "CORRUPT", "action": "quarantine"})
+                plan_entries.append(
+                    {"path": str(path), "classification": "CORRUPT", "action": "quarantine"}
+                )
             else:
-                plan_entries.append({"path": str(path), "classification": "VERIFIED_REUSABLE", "sha256": sha})
+                plan_entries.append(
+                    {"path": str(path), "classification": "VERIFIED_REUSABLE", "sha256": sha}
+                )
 
     report = {
         "analyzed_at": "2026-08-03T00:00:00Z",
@@ -135,6 +142,7 @@ def cmd_repair_existing(root: Path, write_plan: Path | None = None, apply_plan: 
                 target = Path(entry["path"])
                 if target.exists():
                     import shutil
+
                     shutil.move(str(target), str(quarantine_dir / target.name))
                     moved += 1
         print(f"Applied repair plan: moved {moved} items to {quarantine_dir}")
@@ -200,11 +208,11 @@ def cmd_lock_verify(candidate_path: Path) -> None:
 
 
 def cmd_all(root: Path, resume: bool = False) -> None:
-    print(f"=== Running Full N-Truth Dataset Acquisition Pipeline ===")
+    print("=== Running Full N-Truth Dataset Acquisition Pipeline ===")
     configure_external_cache_environment(root)
 
     # Pre-execution Merkle root check
-    merkle_before = cmd_verify(root)
+    cmd_verify(root)
 
     reports = []
     reports.append(install_sourcedata(root, refresh=not resume))
@@ -231,8 +239,12 @@ def cmd_all(root: Path, resume: bool = False) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="N-Truth Dataset Acquisition & Preparation CLI")
-    parser.add_argument("--root", type=Path, default=DEFAULT_DATASET_ROOT, help="Dataset root directory")
-    parser.add_argument("--resume", action="store_true", help="Resume existing downloads and extractions")
+    parser.add_argument(
+        "--root", type=Path, default=DEFAULT_DATASET_ROOT, help="Dataset root directory"
+    )
+    parser.add_argument(
+        "--resume", action="store_true", help="Resume existing downloads and extractions"
+    )
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 

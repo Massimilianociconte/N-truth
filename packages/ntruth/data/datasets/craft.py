@@ -9,8 +9,18 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-from ntruth.data.config import CRAFT_VERSION, DATASET_TASK_POLICIES, FORBIDDEN_NTRUTH_TARGETS, get_manifests_dir
-from ntruth.data.fs import atomic_extract_archive, atomic_write_text, is_ignorable_metadata, sha256_file
+from ntruth.data.config import (
+    CRAFT_VERSION,
+    DATASET_TASK_POLICIES,
+    FORBIDDEN_NTRUTH_TARGETS,
+    get_manifests_dir,
+)
+from ntruth.data.fs import (
+    atomic_extract_archive,
+    atomic_write_text,
+    is_ignorable_metadata,
+    sha256_file,
+)
 from ntruth.data.schemas import (
     CommonEnvelope,
     CoreferencePayload,
@@ -21,7 +31,11 @@ from ntruth.data.schemas import (
     SourceReference,
     SplitAssignment,
 )
-from ntruth.data.splits import load_craft_2019_shared_task_split, stable_split, validate_anti_leakage
+from ntruth.data.splits import (
+    load_craft_2019_shared_task_split,
+    stable_split,
+    validate_anti_leakage,
+)
 
 
 class CRAFTError(RuntimeError):
@@ -103,7 +117,9 @@ def load_craft_official_split(raw_root: Path) -> tuple[str, dict[str, str], dict
         path = ids_dir / f"craft-ids-{name}.txt"
         if not path.exists():
             raise CRAFTError(f"Official CRAFT id file missing: {path}")
-        return [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+        return [
+            line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
+        ]
 
     train_pmids = _read_pmids("train")
     dev_pmids = _read_pmids("dev")
@@ -165,10 +181,9 @@ def _discover_files_by_pmcid(raw_root: Path, mappings: dict[str, Any]) -> dict[s
             name = path.name
             stem = path.stem
             pmcid = pmcid_by_filename.get(name) or pmcid_by_filename.get(stem)
-        if pmcid is None:
+        if pmcid is None and path.suffix == ".txt" and path.stem.isdigit():
             # articles/txt/{pmid}.txt layout
-            if path.suffix == ".txt" and path.stem.isdigit():
-                pmcid = pmcid_by_pmid.get(path.stem)
+            pmcid = pmcid_by_pmid.get(path.stem)
         if pmcid is None:
             # nxml often ends with -{pmcid_numeric}.nxml without PMC prefix
             match = re.search(r"-(\d+)\.(?:nxml|txt|xml)$", path.name)
@@ -200,7 +215,9 @@ def install_craft(root: Path, refresh: bool = False) -> dict[str, Any]:
     archive.parent.mkdir(parents=True, exist_ok=True)
     if not archive.exists() or refresh:
         try:
-            req = urllib.request.Request(archive_url, headers={"User-Agent": "NTruthDataInstaller/1.0"})
+            req = urllib.request.Request(
+                archive_url, headers={"User-Agent": "NTruthDataInstaller/1.0"}
+            )
             partial = archive.with_name(archive.name + ".part")
             with urllib.request.urlopen(req, timeout=120) as resp:
                 partial.write_bytes(resp.read())
@@ -300,7 +317,9 @@ def install_craft(root: Path, refresh: bool = False) -> dict[str, Any]:
                 continue
 
             pmc_files = files_by_pmcid.get(pmcid, [])
-            text_files = [p for p in pmc_files if p.suffix == ".txt" and not p.name.endswith(".copyright")]
+            text_files = [
+                p for p in pmc_files if p.suffix == ".txt" and not p.name.endswith(".copyright")
+            ]
             # Prefer articles/txt/{pmid}.txt
             pmid = mappings["pmid_by_pmcid"].get(pmcid)
             preferred = None

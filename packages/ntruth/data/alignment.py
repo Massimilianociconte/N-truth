@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import hashlib
-import json
-from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 
 class AlignmentError(RuntimeError):
@@ -67,7 +65,10 @@ def align_sourcedata_configs(
         max(0, total_ner - min_len) + token_mismatches + split_mismatches + label_length_mismatches
     )
     unmatched_roles = (
-        max(0, total_roles - min_len) + token_mismatches + split_mismatches + label_length_mismatches
+        max(0, total_roles - min_len)
+        + token_mismatches
+        + split_mismatches
+        + label_length_mismatches
     )
 
     # SourceData v2.0.3 token_classification JSONL exports used here have no panel_id.

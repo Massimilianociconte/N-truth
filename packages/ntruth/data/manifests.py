@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
+from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any
 
-from ntruth.data.fs import atomic_write_json, atomic_write_text, calculate_merkle_root, sha256_file
+from ntruth.data.fs import atomic_write_json, atomic_write_text, calculate_merkle_root
 
 
 def generate_datasets_manifest(reports: Sequence[Mapping[str, Any]], destination: Path) -> None:
@@ -23,7 +24,9 @@ def generate_files_manifest(file_entries: Sequence[Mapping[str, Any]], destinati
     atomic_write_text(destination / "files.jsonl", "".join(lines))
 
 
-def generate_splits_manifest(split_mappings: Mapping[str, Mapping[str, str]], destination: Path) -> None:
+def generate_splits_manifest(
+    split_mappings: Mapping[str, Mapping[str, str]], destination: Path
+) -> None:
     data = {
         "seed": "20260803",
         "mappings": split_mappings,
@@ -36,7 +39,9 @@ def generate_split_prevalence_report(
     destination: Path,
 ) -> None:
     """Generates label total_count, train_count, val_count, test_count, and prevalence."""
-    counts: dict[str, dict[str, int]] = defaultdict(lambda: {"train": 0, "validation": 0, "test": 0, "total": 0})
+    counts: dict[str, dict[str, int]] = defaultdict(
+        lambda: {"train": 0, "validation": 0, "test": 0, "total": 0}
+    )
 
     for split_name, records in records_by_split.items():
         if split_name not in {"train", "validation", "test"}:
@@ -44,11 +49,11 @@ def generate_split_prevalence_report(
         for rec in records:
             payload = rec.get("payload", {})
             labels: set[str] = set()
-            if "entity_tags" in payload and payload["entity_tags"]:
+            if payload.get("entity_tags"):
                 labels.update(t for t in payload["entity_tags"] if t != "O")
-            if "role_tags" in payload and payload["role_tags"]:
+            if payload.get("role_tags"):
                 labels.update(t for t in payload["role_tags"] if t != "O")
-            if "labels" in payload and payload["labels"]:
+            if payload.get("labels"):
                 labels.update(payload["labels"])
 
             for lbl in labels:

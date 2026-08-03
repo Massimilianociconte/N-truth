@@ -35,7 +35,9 @@ def test_group_stratified_multilabel_split():
         "g9": ["TAG_A", "TAG_B"],
         "g10": ["TAG_A"],
     }
-    split_map = group_stratified_multilabel_split(group_labels, seed="20260803", ratios=(80, 10, 10))
+    split_map = group_stratified_multilabel_split(
+        group_labels, seed="20260803", ratios=(80, 10, 10)
+    )
     assert len(split_map) == 10
     validate_anti_leakage(split_map)
 
@@ -44,9 +46,7 @@ def test_validate_anti_leakage_failure():
     valid_map = {"g1": "train", "g2": "validation", "g3": "test"}
     validate_anti_leakage(valid_map)
 
-    # Simulate overlap where same group ID is mapped to train and validation
-    leaky_map = {"g1": "train", "g2": "validation"}
-    # Manually test with overlap
+    # Manually test with overlapping train/validation group sets
     train_set = {"g1", "g2"}
     val_set = {"g2", "g3"}
     with pytest.raises(SplitError, match="Leakage detected"):

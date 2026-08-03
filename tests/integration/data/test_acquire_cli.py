@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
-from ntruth.data.acquire import cmd_clean_temp, cmd_lock_resolve, cmd_lock_verify, cmd_repair_existing, cmd_status, cmd_verify
+
+from ntruth.data.acquire import (
+    cmd_clean_temp,
+    cmd_lock_resolve,
+    cmd_repair_existing,
+    cmd_status,
+    cmd_verify,
+)
 
 
 def test_cli_status(tmp_path: Path):

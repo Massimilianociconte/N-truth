@@ -9,12 +9,9 @@ from ntruth.data.schemas import (
     CommonEnvelope,
     Eligibility,
     NativeAnnotationTier,
-    NTruthUsageTier,
     OffsetAuthority,
     Provenance,
     SourceReference,
-    SpanRecord,
-    SpanRelationPayload,
     SplitAssignment,
     TokenClassificationPayload,
 )
@@ -44,9 +41,13 @@ def test_common_envelope_test_split_cannot_be_training_eligible():
     with pytest.raises(ValidationError, match="cannot be training_eligible=True"):
         CommonEnvelope(
             record_id="rec:1",
-            source=SourceReference(dataset="ds", version="1", commit="c", document_id="d", segment_id="s"),
+            source=SourceReference(
+                dataset="ds", version="1", commit="c", document_id="d", segment_id="s"
+            ),
             split=SplitAssignment(name="test", authority="official", group_id="g1"),
-            eligibility=Eligibility(training_eligible=True, evaluation_eligible=True, requires_review=False),
+            eligibility=Eligibility(
+                training_eligible=True, evaluation_eligible=True, requires_review=False
+            ),
             provenance=Provenance(source_url="url", sha256="hash", transform_version="1.0"),
             native_annotation_tier=NativeAnnotationTier.HUMAN_CURATED_GOLD,
             allowed_tasks=["task"],
@@ -60,9 +61,13 @@ def test_common_envelope_missing_annotation_tier_gold_restriction():
     with pytest.raises(ValidationError, match="Missing annotation"):
         CommonEnvelope(
             record_id="rec:2",
-            source=SourceReference(dataset="ds", version="1", commit="c", document_id="d", segment_id="s"),
+            source=SourceReference(
+                dataset="ds", version="1", commit="c", document_id="d", segment_id="s"
+            ),
             split=SplitAssignment(name="train", authority="official", group_id="g1"),
-            eligibility=Eligibility(training_eligible=False, evaluation_eligible=False, requires_review=True),
+            eligibility=Eligibility(
+                training_eligible=False, evaluation_eligible=False, requires_review=True
+            ),
             provenance=Provenance(source_url="url", sha256="hash", transform_version="1.0"),
             native_annotation_tier=NativeAnnotationTier.HUMAN_CURATED_GOLD,
             allowed_tasks=["task"],

@@ -5,8 +5,8 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any, Mapping, Sequence
 
 DEFAULT_SEED = "20260803"
 
@@ -16,7 +16,7 @@ class SplitError(RuntimeError):
 
 
 def _stable_hash(seed: str, group_id: str) -> str:
-    return hashlib.sha256(f"{seed}\0{group_id}".encode("utf-8")).hexdigest()
+    return hashlib.sha256(f"{seed}\0{group_id}".encode()).hexdigest()
 
 
 def stable_split(

@@ -9,7 +9,12 @@ from pathlib import Path
 from typing import Any
 
 from ntruth.data.config import DATASET_TASK_POLICIES, FORBIDDEN_NTRUTH_TARGETS, MEASEVAL_VERSION
-from ntruth.data.fs import atomic_extract_archive, atomic_write_text, is_ignorable_metadata, sha256_file
+from ntruth.data.fs import (
+    atomic_extract_archive,
+    atomic_write_text,
+    is_ignorable_metadata,
+    sha256_file,
+)
 from ntruth.data.schemas import (
     CommonEnvelope,
     Eligibility,
@@ -67,7 +72,11 @@ def _parse_tsv_annotations(tsv_path: Path) -> tuple[list[SpanRecord], list[Relat
                     end = int(row[4])
                     annot_id = row[5]
                     text = row[6]
-                    spans.append(SpanRecord(span_id=annot_id, label=annot_type, start=start, end=end, text=text))
+                    spans.append(
+                        SpanRecord(
+                            span_id=annot_id, label=annot_type, start=start, end=end, text=text
+                        )
+                    )
                 except ValueError:
                     continue
     return spans, relations
@@ -82,7 +91,6 @@ def discover_measeval_partition(split_root: Path) -> tuple[dict[str, Any], dict[
     documents: dict[str, Any] = {}
     missing: list[str] = []
     for stem in sorted(texts):
-        has_tsv = stem in tsvs and stem not in TEXT_ONLY_TRAIN_STEMS
         # TEXT_ONLY stems are known missing; also any txt without tsv
         is_missing = (stem not in tsvs) or (stem in TEXT_ONLY_TRAIN_STEMS)
         if is_missing:
@@ -147,7 +155,7 @@ def install_measeval(root: Path, refresh: bool = False) -> dict[str, Any]:
     if missing_texts:
         raise MeasEvalError(f"MeasEval TSV files without TXT found: {sorted(missing_texts)}")
 
-    articles = sorted({measeval_article_id(stem) for stem in train_texts.keys()})
+    articles = sorted({measeval_article_id(stem) for stem in train_texts})
     article_split_map = stable_split(articles, seed="20260803", ratios=(90, 10, 0))
     validate_anti_leakage(article_split_map)
 
@@ -163,7 +171,9 @@ def install_measeval(root: Path, refresh: bool = False) -> dict[str, Any]:
         if is_missing_tsv:
             native_tier = NativeAnnotationTier.MISSING_ANNOTATION
             annot_status = "missing_annotation_file"
-            eligibility = Eligibility(training_eligible=False, evaluation_eligible=False, requires_review=True)
+            eligibility = Eligibility(
+                training_eligible=False, evaluation_eligible=False, requires_review=True
+            )
             spans, relations = [], []
         else:
             native_tier = NativeAnnotationTier.HUMAN_CURATED_GOLD
@@ -184,7 +194,9 @@ def install_measeval(root: Path, refresh: bool = False) -> dict[str, Any]:
                 document_id=article_id,
                 segment_id=stem,
             ),
-            split=SplitAssignment(name=split, authority="official_train_article_split", group_id=article_id),
+            split=SplitAssignment(
+                name=split, authority="official_train_article_split", group_id=article_id
+            ),
             eligibility=eligibility,
             provenance=Provenance(
                 source_url="https://github.com/harperco/MeasEval",
@@ -223,7 +235,9 @@ def install_measeval(root: Path, refresh: bool = False) -> dict[str, Any]:
                 segment_id=stem,
             ),
             split=SplitAssignment(name="test", authority="upstream_official", group_id=article_id),
-            eligibility=Eligibility(training_eligible=False, evaluation_eligible=True, requires_review=False),
+            eligibility=Eligibility(
+                training_eligible=False, evaluation_eligible=True, requires_review=False
+            ),
             provenance=Provenance(
                 source_url="https://github.com/harperco/MeasEval",
                 sha256=archive_sha,
@@ -260,7 +274,9 @@ def install_measeval(root: Path, refresh: bool = False) -> dict[str, Any]:
                 segment_id=stem,
             ),
             split=SplitAssignment(name="trial", authority="upstream_trial", group_id=article_id),
-            eligibility=Eligibility(training_eligible=False, evaluation_eligible=False, requires_review=False),
+            eligibility=Eligibility(
+                training_eligible=False, evaluation_eligible=False, requires_review=False
+            ),
             provenance=Provenance(
                 source_url="https://github.com/harperco/MeasEval",
                 sha256=archive_sha,

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import zipfile
 from pathlib import Path
+
 import pytest
 
 from ntruth.data.fs import (
@@ -11,7 +12,6 @@ from ntruth.data.fs import (
     calculate_merkle_root,
     is_ignorable_metadata,
     safe_extract_zip,
-    sha256_file,
     strip_single_root,
 )
 

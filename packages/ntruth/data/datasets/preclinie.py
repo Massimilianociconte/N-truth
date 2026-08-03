@@ -5,12 +5,18 @@ from __future__ import annotations
 import ast
 import csv
 import json
+import os
 import urllib.request
 from pathlib import Path
 from typing import Any
 
 from ntruth.data.config import DATASET_TASK_POLICIES, FORBIDDEN_NTRUTH_TARGETS, PRECLINIE_VERSION
-from ntruth.data.fs import atomic_extract_archive, atomic_write_text, is_ignorable_metadata, sha256_file
+from ntruth.data.fs import (
+    atomic_extract_archive,
+    atomic_write_text,
+    is_ignorable_metadata,
+    sha256_file,
+)
 from ntruth.data.schemas import (
     CommonEnvelope,
     Eligibility,
@@ -31,7 +37,9 @@ class PreClinIEError(RuntimeError):
 
 def install_preclinie(root: Path, refresh: bool = False) -> dict[str, Any]:
     source_ref = PRECLINIE_VERSION
-    archive_url = f"https://codeload.github.com/Ineichen-Group/Preclinical_IE_Dataset/zip/{source_ref}"
+    archive_url = (
+        f"https://codeload.github.com/Ineichen-Group/Preclinical_IE_Dataset/zip/{source_ref}"
+    )
     archive = root / "downloads" / f"preclinie-{source_ref}.zip"
     raw_root = root / "raw" / "preclinie" / source_ref
     processed_root = root / "processed" / "preclinie" / source_ref
@@ -47,10 +55,16 @@ def install_preclinie(root: Path, refresh: bool = False) -> dict[str, Any]:
     archive_sha = sha256_file(archive)
     marker = raw_root / ".ntruth_complete.json"
     if not marker.exists() or refresh:
-        atomic_extract_archive(archive, raw_root, {"dataset": "preclinie", "source_ref": source_ref})
+        atomic_extract_archive(
+            archive, raw_root, {"dataset": "preclinie", "source_ref": source_ref}
+        )
 
     # Discover annotation CSVs
-    token_csvs = [p for p in raw_root.rglob("all_annotations_minimal_fixed_multi_tokens_tags.csv") if not is_ignorable_metadata(p)]
+    token_csvs = [
+        p
+        for p in raw_root.rglob("all_annotations_minimal_fixed_multi_tokens_tags.csv")
+        if not is_ignorable_metadata(p)
+    ]
     if not token_csvs:
         raise PreClinIEError("PreClinIE token CSV not found")
     token_csv = token_csvs[0]
@@ -78,12 +92,20 @@ def install_preclinie(root: Path, refresh: bool = False) -> dict[str, Any]:
         raw_tokens = row.get("tokens", "[]")
         raw_ner_tags = row.get("ner_tags", "[]")
         try:
-            tokens = ast.literal_eval(raw_tokens) if isinstance(raw_tokens, str) and raw_tokens.startswith("[") else raw_tokens
+            tokens = (
+                ast.literal_eval(raw_tokens)
+                if isinstance(raw_tokens, str) and raw_tokens.startswith("[")
+                else raw_tokens
+            )
         except Exception:
             tokens = [t.strip("'\" ") for t in raw_tokens.strip("[]").split(",")]
 
         try:
-            ner_tags = ast.literal_eval(raw_ner_tags) if isinstance(raw_ner_tags, str) and raw_ner_tags.startswith("[") else raw_ner_tags
+            ner_tags = (
+                ast.literal_eval(raw_ner_tags)
+                if isinstance(raw_ner_tags, str) and raw_ner_tags.startswith("[")
+                else raw_ner_tags
+            )
         except Exception:
             ner_tags = [t.strip("'\" ") for t in raw_ner_tags.strip("[]").split(",")]
 
@@ -96,7 +118,7 @@ def install_preclinie(root: Path, refresh: bool = False) -> dict[str, Any]:
         if len(ner_tags) < len(tokens):
             ner_tags = ner_tags + ["O"] * (len(tokens) - len(ner_tags))
         elif len(ner_tags) > len(tokens):
-            ner_tags = ner_tags[:len(tokens)]
+            ner_tags = ner_tags[: len(tokens)]
 
         normalized_text = " ".join(tokens)
         offsets = []
@@ -114,7 +136,9 @@ def install_preclinie(root: Path, refresh: bool = False) -> dict[str, Any]:
                 document_id=doc_id,
                 segment_id=doc_id,
             ),
-            split=SplitAssignment(name=split, authority="custom_group_stratified", group_id=group_id),
+            split=SplitAssignment(
+                name=split, authority="custom_group_stratified", group_id=group_id
+            ),
             eligibility=Eligibility(
                 training_eligible=(split == "train"),
                 evaluation_eligible=(split in {"validation", "test"}),
@@ -145,7 +169,10 @@ def install_preclinie(root: Path, refresh: bool = False) -> dict[str, Any]:
     for split in ("train", "validation", "test"):
         out_dir = processed_root / split
         out_dir.mkdir(parents=True, exist_ok=True)
-        lines = [json.dumps(r, ensure_ascii=False, sort_keys=True) + "\n" for r in records_by_split[split]]
+        lines = [
+            json.dumps(r, ensure_ascii=False, sort_keys=True) + "\n"
+            for r in records_by_split[split]
+        ]
         atomic_write_text(out_dir / "records.jsonl", "".join(lines))
         split_counts[split] = len(records_by_split[split])
 

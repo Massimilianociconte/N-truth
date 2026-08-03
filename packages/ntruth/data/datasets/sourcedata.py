@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 import json
+import os
 import urllib.request
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 from ntruth.data.alignment import align_sourcedata_configs
-from ntruth.data.config import DATASET_TASK_POLICIES, FORBIDDEN_NTRUTH_TARGETS, SOURCE_DATA_VERSION, get_manifests_dir
+from ntruth.data.config import (
+    DATASET_TASK_POLICIES,
+    FORBIDDEN_NTRUTH_TARGETS,
+    SOURCE_DATA_VERSION,
+    get_manifests_dir,
+)
 from ntruth.data.fs import atomic_write_json, atomic_write_text, sha256_file
 from ntruth.data.schemas import (
     CommonEnvelope,
@@ -47,7 +53,9 @@ def load_sourcedata_lockfile() -> dict[str, Any]:
         if not path_str or not sha or sha in {"...", "TBD", "TODO"}:
             raise SourceDataError(f"Invalid placeholder hash for {path_str} in lockfile")
         if len(sha) != 64:
-            raise SourceDataError(f"SHA-256 hash must be 64 characters for {path_str}, found: {sha}")
+            raise SourceDataError(
+                f"SHA-256 hash must be 64 characters for {path_str}, found: {sha}"
+            )
 
     return sourcedata_lock
 
@@ -89,7 +97,9 @@ def download_sourcedata_file(
         raise SourceDataError(f"Downloaded file from {url} is empty")
     if actual_sha != expected_sha256 and expected_sha256 != "SKIP_CHECK":
         partial.unlink()
-        raise SourceDataError(f"SHA-256 mismatch for {url}: expected {expected_sha256}, got {actual_sha}")
+        raise SourceDataError(
+            f"SHA-256 mismatch for {url}: expected {expected_sha256}, got {actual_sha}"
+        )
 
     os.replace(partial, destination)
     return actual_sha
@@ -118,8 +128,17 @@ def install_sourcedata(root: Path, refresh: bool = False) -> dict[str, Any]:
         split = parts[-1].replace(".jsonl", "")
 
         local_raw = raw_root / task / f"{split}.jsonl"
-        actual_sha = download_sourcedata_file(repo_id, revision, rel_path, local_raw, expected_sha, refresh=refresh)
-        files_manifest.append({"path": str(local_raw.relative_to(root)), "sha256": actual_sha, "split": split, "task": task})
+        actual_sha = download_sourcedata_file(
+            repo_id, revision, rel_path, local_raw, expected_sha, refresh=refresh
+        )
+        files_manifest.append(
+            {
+                "path": str(local_raw.relative_to(root)),
+                "sha256": actual_sha,
+                "split": split,
+                "task": task,
+            }
+        )
 
         # Load raw JSONL records
         with local_raw.open("r", encoding="utf-8") as handle:
@@ -163,7 +182,11 @@ def install_sourcedata(root: Path, refresh: bool = False) -> dict[str, Any]:
                     document_id=str(rec.get("document_id", "")),
                     segment_id=str(rec.get("panel_id", "")),
                 ),
-                split=SplitAssignment(name=split, authority="upstream_official", group_id=str(rec.get("document_id", ""))),
+                split=SplitAssignment(
+                    name=split,
+                    authority="upstream_official",
+                    group_id=str(rec.get("document_id", "")),
+                ),
                 eligibility=Eligibility(
                     training_eligible=(split == "train"),
                     evaluation_eligible=(split in {"validation", "test"}),

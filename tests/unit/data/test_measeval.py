@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+
 from ntruth.data.datasets.measeval import TEXT_ONLY_TRAIN_STEMS, _find_text_tsv_dirs
 
 
@@ -19,12 +20,12 @@ def test_measeval_find_txt_or_text_dirs(tmp_path: Path):
     (split1 / "text").mkdir(parents=True)
     (split1 / "tsv").mkdir(parents=True)
 
-    text_d, tsv_d = _find_text_tsv_dirs(split1)
+    text_d, _tsv_d = _find_text_tsv_dirs(split1)
     assert text_d.name == "text"
 
     split2 = tmp_path / "trial"
     (split2 / "txt").mkdir(parents=True)
     (split2 / "tsv").mkdir(parents=True)
 
-    text_d2, tsv_d2 = _find_text_tsv_dirs(split2)
+    text_d2, _tsv_d2 = _find_text_tsv_dirs(split2)
     assert text_d2.name == "txt"
