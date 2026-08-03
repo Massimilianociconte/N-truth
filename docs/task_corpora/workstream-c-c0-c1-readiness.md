@@ -36,10 +36,8 @@ promotional metrics, B0 development on SourceData without licence grants.
 | PR #3 base | `main` @ `ff8cd89` |
 | Pre-closure head (C0–C1 impl) | `dabda342f3cd7182e50c0667eb5537a7e95be914` |
 | CI on `dabda34` | **green** — deterministic-core, linux-portability, GitGuardian, CodeRabbit |
+| Final head (contract closure) | `60a96f1eb7229ca47e1afcba947c956f8b64035c` |
 | Merge policy | **merge commit** (not squash); merge only after explicit user authorisation |
-
-Final head SHA after this documentation/use-policy closure commit is recorded in the
-PR once pushed (see PR commits tab).
 
 ## External corpus
 
