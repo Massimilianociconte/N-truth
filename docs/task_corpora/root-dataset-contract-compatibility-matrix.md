@@ -25,7 +25,7 @@
 | Scientific validation | `ScientificValidation` + evidence | `NOT_STARTED` string | Exact for current state | Never set VALIDATED from silver | SHARED_ENUM_IMPORT | **no** |
 | Reality Gate purpose | `GatePurpose` | Previously absent | Missing | Default `MVT_A_EXPLORATORY` in projection | SHARED_ENUM_IMPORT | **no** |
 | GateValue | TRUE/FALSE/UNKNOWN/NOT_APPLICABLE | Mostly booleans + provisional strings | Partial | Use `GateValue` in projection fields | SHARED_ENUM_IMPORT | **no** |
-| Reality Gate ref | root package | `provisional_dataset_manifest` | Deprecated | `ROOT_REALITY_GATE_REF` on new manifests | MANIFEST_ONLY | **no** (manifest only) |
+| Reality Gate ref | root package | `provisional_dataset_manifest` | Deprecated | `reality_gate@commit:f2faace47178` on new manifests | MANIFEST_ONLY | **no** (manifest only) |
 | Auxiliary/silver authority | N/A (profile roles) | `AuthorityLevel.AUXILIARY` | Compatible | Keep task-corpora enum; bans enforced | DOC_ONLY | **no** |
 | Cross-domain roles | `DataRole`, `CrossDomainRoleDecision` | YAML `ROLE_DECISION_PENDING` | Parallel docs | Registry keeps pending; tests call root decision for policy | VALIDATOR_ONLY + DOC_ONLY | **no** |
 | Training eligibility | Reality Gate + licences | `training_eligible` + `LicenseUseDecision` | Compatible fail-closed | Keep record validators | VALIDATOR_ONLY | **no** |
@@ -40,20 +40,33 @@
 | ROLE_DECISION_PENDING | cross_domain UNDECIDED | Lazic YAML | Compatible | Never training/dev/eval | VALIDATOR_ONLY | **no** |
 | MVT-A contracts | `packages/ntruth/mvt_a` | not used in task build | Separate | No coupling to parser/model | DOC_ONLY | **no** |
 
-## Hash impact decision
+## Hash impact decision (record vs manifest)
 
 ```text
-serialized_record_change: false
-schema_change: false   # TaskRecord body unchanged (schema 0.2.0)
-manifest_only_change: true
-rebuild_required: false
-expected_hash_change: false
+record_schema_change: false
+record_content_change: false
+manifest_schema_change: true
+manifest_content_change: true
+rebuild_jsonl_required: false
+manifest_refresh_required: true
+expected_records_sha256_change: false
 ```
 
-Rationale: readiness projection and `reality_gate_ref` land in `BuildManifest`
-and `leakage_audit.json` only. TaskRecord JSONL checksum inputs are unchanged.
-A FLASH128 rebuild is **not** required for this pass; the verified SourceData
-checkpoint hash remains authoritative.
+| Layer | Version / hash | This PR |
+|-------|----------------|---------|
+| TaskRecord JSONL body | schema/transform **0.2.0** | **unchanged** |
+| BuildManifest metadata | **0.2.2** (+ projection fields) | schema + content |
+| SourceData `records_sha256` | `562b6ac9…` | **unchanged** |
+| FLASH128 `manifest.json` | external checkpoint | **not modified in this PR** |
+
+Rationale: readiness projection and `reality_gate@commit:f2faace47178` land in
+BuildManifest / leakage_audit metadata only. TaskRecord JSONL checksum inputs are
+unchanged, so **JSONL rebuild is not required**. After merge, a separate
+**manifest-only refresh** on the external checkpoint must rewrite metadata,
+re-verify JSONL byte-identity and `records_sha256`, and must **not** rewrite JSONL
+files.
+
+Full contract pin SHA: `f2faace471788bdc4255e42fa88d5868f906e732`.
 
 If a future change modifies fields inside each JSONL line, reclassify as
 `RECORD_CONTENT_CHANGE` and require a separate rebuild authorisation.

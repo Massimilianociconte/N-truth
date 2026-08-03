@@ -14,7 +14,9 @@ Serialized SourceData JSONL task records are not modified by this module.
 
 from __future__ import annotations
 
-from typing import Final, Literal
+from typing import Final, Literal, Self
+
+from pydantic import model_validator
 
 from ntruth.reality_gate.gate import (
     EXPECTED_CURRENT_STATE,
@@ -47,27 +49,29 @@ CANONICAL_FORBIDDEN_GOLD_USES: Final[tuple[str, ...]] = (
 ROOT_CONTRACT_MERGE_SHA: Final[str] = "f2faace471788bdc4255e42fa88d5868f906e732"
 ROOT_MAIN_BASELINE_SHA: Final[str] = "a2afde309e6f529dcf5437c1b297bfbf130a0d05"
 
+# Immutable contract pin (not the tip of branch main).
+ROOT_REALITY_GATE_CONTRACT_REF: Final[str] = f"reality_gate@commit:{ROOT_CONTRACT_MERGE_SHA[:12]}"
+
 
 class DatasetReadinessProjection(FrozenModel):
     """Facts-only projection for dataset manifests and governance reports.
 
-    Never sets scientific_validation to VALIDATED from public/silver corpora.
-    Never sets data_readiness READY without an explicit real-anchor program.
+    Intrinsically fail-closed: forbidden scientific-readiness claims cannot be
+    constructed or serialized via as_manifest_fields().
     """
 
     projection_version: str = "1.0.0"
-    root_gate_contract_ref: str = f"reality_gate@main:{ROOT_CONTRACT_MERGE_SHA[:12]}"
+    root_gate_contract_ref: str = ROOT_REALITY_GATE_CONTRACT_REF
     purpose: GatePurpose = GatePurpose.MVT_A_EXPLORATORY
 
     engineering_component_status: DatasetEngineeringStatus = "VERIFIED_FOR_C0_C1"
-    # Mapped root enum for reporting; component detail stays above.
     engineering_readiness: EngineeringReadiness = (
         EngineeringReadiness.PARTIAL_OR_VERIFIED_BY_COMPONENT
     )
 
     licence_scope_status: GateValue = GateValue.UNKNOWN
-    provenance_status: GateValue = GateValue.UNKNOWN  # paper-level provenance
-    split_protection_status: GateValue = GateValue.FALSE  # no approved N-Truth split
+    provenance_status: GateValue = GateValue.UNKNOWN
+    split_protection_status: GateValue = GateValue.FALSE
     auxiliary_authority: bool = True
     model_use_status: str = "BLOCKED"
 
@@ -86,8 +90,18 @@ class DatasetReadinessProjection(FrozenModel):
 
     blockers: tuple[str, ...] = ()
 
+    @model_validator(mode="after")
+    def _fail_closed_scientific_claims(self) -> Self:
+        assert_projection_cannot_claim_scientific_readiness(self)
+        return self
+
     def as_manifest_fields(self) -> dict[str, object]:
-        """Stable subset written into BuildManifest (manifest-only)."""
+        """Stable subset written into BuildManifest (manifest-only).
+
+        Re-runs fail-closed invariants so model_copy(update=...) cannot smuggle
+        READY/VALIDATED into serialized manifests without validation.
+        """
+        assert_projection_cannot_claim_scientific_readiness(self)
         return {
             "engineering_readiness": self.engineering_component_status,
             "data_readiness": self.data_readiness.value,
@@ -143,7 +157,6 @@ def project_sourcedata_c0_c1(
     if not ntruth_partition_approved:
         blockers.append("ntruth_partition_approved: false")
 
-    # Fail-closed invariants for public/silver.
     return DatasetReadinessProjection(
         purpose=GatePurpose.MVT_A_EXPLORATORY,
         engineering_component_status=engineering_component_status,
@@ -170,7 +183,7 @@ def project_sourcedata_c0_c1(
 def assert_projection_cannot_claim_scientific_readiness(
     projection: DatasetReadinessProjection,
 ) -> None:
-    """Hard invariant used by tests and validators."""
+    """Hard invariant: construction and manifest serialization both call this."""
     if projection.data_readiness is DataReadiness.READY:
         raise ValueError("dataset projection must not set data_readiness READY without real anchor")
     if projection.scientific_validation is ScientificValidation.VALIDATED:
@@ -183,6 +196,13 @@ def assert_projection_cannot_claim_scientific_readiness(
         raise ValueError("dataset projection cannot allow training or AI claims")
     if projection.real_anchor_available is GateValue.TRUE and projection.auxiliary_authority:
         raise ValueError("auxiliary silver cannot claim real_anchor_available=TRUE")
+    if (
+        projection.leakage_group_granularity == "RECORD_LEVEL_FALLBACK"
+        and projection.paper_level_leakage_claim_allowed
+    ):
+        raise ValueError(
+            "RECORD_LEVEL_FALLBACK cannot allow paper_level_leakage_claim_allowed=true"
+        )
 
 
 def forbidden_gold_uses_are_canonical_superset(dataset_bans: tuple[str, ...] | list[str]) -> bool:

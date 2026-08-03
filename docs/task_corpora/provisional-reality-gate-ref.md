@@ -42,7 +42,9 @@ Dataset projection fields for C0–C1 SourceData:
 `reality_gate_ref` on new manifests:
 
 ```text
-reality_gate@main:f2faace47178
+reality_gate@commit:f2faace47178
+# full SHA: f2faace471788bdc4255e42fa88d5868f906e732
+# pin is commit, not branch tip of main
 ```
 
 Deprecated alias (historical manifests only):

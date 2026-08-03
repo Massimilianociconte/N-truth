@@ -1,4 +1,4 @@
-"""Root ↔ dataset contract compatibility (PRD v7; no FLASH128 rebuild)."""
+"""Root <-> dataset contract compatibility (PRD v7; no FLASH128 rebuild)."""
 
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ from ntruth.task_corpora.authority import AuthorityLevel, LicenseStatus
 from ntruth.task_corpora.config import FORBIDDEN_GOLD_USES, ROOT_REALITY_GATE_REF
 from ntruth.task_corpora.readiness import (
     CANONICAL_FORBIDDEN_GOLD_USES,
+    DatasetReadinessProjection,
     assert_projection_cannot_claim_scientific_readiness,
     forbidden_gold_uses_are_canonical_superset,
     project_sourcedata_c0_c1,
@@ -102,11 +103,65 @@ def test_engineering_status_cannot_set_data_ready() -> None:
     assert proj.data_readiness is not DataReadiness.READY
 
 
-def test_silver_cannot_set_scientific_validation_via_projection() -> None:
+def test_invalid_construction_rejects_data_ready() -> None:
+    with pytest.raises(ValidationError):
+        DatasetReadinessProjection(data_readiness=DataReadiness.READY)
+
+
+def test_invalid_construction_rejects_scientific_validated() -> None:
+    with pytest.raises(ValidationError):
+        DatasetReadinessProjection(scientific_validation=ScientificValidation.VALIDATED)
+
+
+def test_invalid_construction_rejects_training_or_claims() -> None:
+    with pytest.raises(ValidationError):
+        DatasetReadinessProjection(ai_claims_allowed=True)
+    with pytest.raises(ValidationError):
+        DatasetReadinessProjection(substantive_training_allowed=True)
+
+
+def test_invalid_construction_rejects_public_corpora_gate_claim() -> None:
+    with pytest.raises(ValidationError):
+        DatasetReadinessProjection(reality_gate_satisfied_by_public_corpora=True)
+    with pytest.raises(ValidationError):
+        DatasetReadinessProjection(reality_gate_satisfied_by_silver_adapter=True)
+
+
+def test_auxiliary_cannot_claim_real_anchor_true() -> None:
+    with pytest.raises(ValidationError):
+        DatasetReadinessProjection(
+            auxiliary_authority=True,
+            real_anchor_available=GateValue.TRUE,
+        )
+
+
+def test_record_level_fallback_cannot_allow_paper_claim_on_construct() -> None:
+    with pytest.raises(ValidationError):
+        DatasetReadinessProjection(
+            leakage_group_granularity="RECORD_LEVEL_FALLBACK",
+            paper_level_leakage_claim_allowed=True,
+        )
+
+
+def test_model_copy_ready_cannot_serialize_manifest_fields() -> None:
+    """model_copy may bypass validators; as_manifest_fields must still fail closed."""
     proj = project_sourcedata_c0_c1()
-    with pytest.raises(ValueError, match="scientific_validation"):
-        bad = proj.model_copy(update={"scientific_validation": ScientificValidation.VALIDATED})
-        assert_projection_cannot_claim_scientific_readiness(bad)
+    try:
+        bad = proj.model_copy(update={"data_readiness": DataReadiness.READY})
+    except ValidationError:
+        # Validators already blocked the copy - still a pass for fail-closed design.
+        return
+    with pytest.raises(ValueError, match="data_readiness READY"):
+        bad.as_manifest_fields()
+
+
+def test_canonical_projection_serializes_successfully() -> None:
+    proj = project_sourcedata_c0_c1()
+    fields = proj.as_manifest_fields()
+    assert fields["data_readiness"] == "BLOCKED"
+    assert fields["scientific_validation"] == "NOT_STARTED"
+    assert fields["reality_gate_status"] == "BLOCKED"
+    assert str(fields["reality_gate_ref"]).startswith("reality_gate@commit:f2faace")
 
 
 def test_role_decision_pending_not_model_use_eligible() -> None:
@@ -195,8 +250,9 @@ def test_task_corpora_ast_does_not_import_parser_ai_or_model_backends() -> None:
     assert hits == []
 
 
-def test_root_reality_gate_ref_points_at_merge() -> None:
-    assert ROOT_REALITY_GATE_REF.startswith("reality_gate@main:f2faace")
+def test_root_reality_gate_ref_is_immutable_commit_pin() -> None:
+    assert ROOT_REALITY_GATE_REF.startswith("reality_gate@commit:f2faace")
+    assert "@main:" not in ROOT_REALITY_GATE_REF
 
 
 def test_auxiliary_must_list_forbidden_gold_uses() -> None:

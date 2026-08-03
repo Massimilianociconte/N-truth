@@ -7,7 +7,7 @@ from pathlib import Path
 
 from ntruth.task_corpora.readiness import (
     CANONICAL_FORBIDDEN_GOLD_USES,
-    ROOT_CONTRACT_MERGE_SHA,
+    ROOT_REALITY_GATE_CONTRACT_REF,
 )
 
 DEFAULT_DATA_ROOT = Path(os.environ.get("NTRUTH_DATA_ROOT", "/Volumes/FLASH128/N-Truth-Datasets"))
@@ -56,7 +56,8 @@ if not set(CANONICAL_FORBIDDEN_GOLD_USES).issubset(set(FORBIDDEN_GOLD_USES)):
 # Dataset manifests project status only (task_corpora.readiness.DatasetReadinessProjection).
 # PROVISIONAL_* string retained as a deprecated alias for older manifests.
 PROVISIONAL_REALITY_GATE_REF = "prd_v7_section_0.7_provisional_dataset_manifest"
-ROOT_REALITY_GATE_REF = f"reality_gate@main:{ROOT_CONTRACT_MERGE_SHA[:12]}"
+# Immutable pin to the PR #6 merge commit that introduced root Reality Gate contracts.
+ROOT_REALITY_GATE_REF = ROOT_REALITY_GATE_CONTRACT_REF
 REALITY_GATE_STATUS_BLOCKED = "BLOCKED"
 ENGINEERING_READINESS_C0_C1 = "VERIFIED_FOR_C0_C1"
 DATA_READINESS_BLOCKED = "BLOCKED"
