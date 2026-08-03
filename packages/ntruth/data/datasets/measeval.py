@@ -6,7 +6,7 @@ import csv
 import os
 import urllib.request
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, cast
 
 from ntruth.data.config import DATASET_TASK_POLICIES, FORBIDDEN_NTRUTH_TARGETS, MEASEVAL_VERSION
 from ntruth.data.fs import (
@@ -174,7 +174,8 @@ def install_measeval(root: Path, refresh: bool = False) -> dict[str, Any]:
             eligibility = Eligibility(
                 training_eligible=False, evaluation_eligible=False, requires_review=True
             )
-            spans, relations = [], []
+            spans: list[SpanRecord] = []
+            relations: list[RelationRecord] = []
         else:
             native_tier = NativeAnnotationTier.HUMAN_CURATED_GOLD
             annot_status = "annotated"
@@ -183,6 +184,7 @@ def install_measeval(root: Path, refresh: bool = False) -> dict[str, Any]:
                 evaluation_eligible=(split == "validation"),
                 requires_review=False,
             )
+            assert tsv_path is not None
             spans, relations = _parse_tsv_annotations(tsv_path)
 
         envelope = CommonEnvelope(
@@ -195,7 +197,9 @@ def install_measeval(root: Path, refresh: bool = False) -> dict[str, Any]:
                 segment_id=stem,
             ),
             split=SplitAssignment(
-                name=split, authority="official_train_article_split", group_id=article_id
+                name=cast(Literal["train", "validation", "test", "trial"], split),
+                authority="official_train_article_split",
+                group_id=article_id,
             ),
             eligibility=eligibility,
             provenance=Provenance(

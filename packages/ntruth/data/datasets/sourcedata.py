@@ -6,7 +6,7 @@ import json
 import os
 import urllib.request
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, cast
 
 from ntruth.data.alignment import align_sourcedata_configs
 from ntruth.data.config import (
@@ -183,7 +183,7 @@ def install_sourcedata(root: Path, refresh: bool = False) -> dict[str, Any]:
                     segment_id=str(rec.get("panel_id", "")),
                 ),
                 split=SplitAssignment(
-                    name=split,
+                    name=cast(Literal["train", "validation", "test", "trial"], split),
                     authority="upstream_official",
                     group_id=str(rec.get("document_id", "")),
                 ),

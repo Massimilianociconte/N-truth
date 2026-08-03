@@ -8,7 +8,7 @@ import json
 import os
 import urllib.request
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, cast
 
 from ntruth.data.config import DATASET_TASK_POLICIES, FORBIDDEN_NTRUTH_TARGETS, PRECLINIE_VERSION
 from ntruth.data.fs import (
@@ -137,7 +137,9 @@ def install_preclinie(root: Path, refresh: bool = False) -> dict[str, Any]:
                 segment_id=doc_id,
             ),
             split=SplitAssignment(
-                name=split, authority="custom_group_stratified", group_id=group_id
+                name=cast(Literal["train", "validation", "test", "trial"], split),
+                authority="custom_group_stratified",
+                group_id=group_id,
             ),
             eligibility=Eligibility(
                 training_eligible=(split == "train"),
