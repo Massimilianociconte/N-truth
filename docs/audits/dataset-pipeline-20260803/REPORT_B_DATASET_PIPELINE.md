@@ -66,7 +66,7 @@ None of the four datasets is real anchor / Parser Gold / Derivation Gold / Exter
 |------|-------|
 | previous (post-MeasEval-fix idempotent) | `0ab7db467c91310394854f7cc93c1d57d014674f22a2b18e2776e74b83180db4` |
 | intermediate (post readiness gates f3a04dd era) | `e1fac7112991f9369d783f2b18e677b68a994693dbd907c71af42caf1db4de7d` |
-| **current** | `6f5bcc4551365df0c6153e1545e8f9aa85f3eb7f13b3adcabdfec4afd85305d0` |
+| **current** | `5aec5f862168a0f38b29fcd71f29eb4d6d9dd072dda1a3c4c3786f4e7d8c7e40` |
 
 **Why it changed**
 
@@ -143,9 +143,22 @@ Lock revision `b457c14041b61c56f671c6f966b4324f682855b7` — all 6 file SHA-256 
 3. MeasEval: license scope + choose overlap policy (options listed; not applied).
 4. CRAFT article redistribution/training terms beyond annotations if full-text models expand scope.
 
-## Tests (to be filled by clean checkout log)
+## Tests (clean detached checkout)
 
-See closing verification: unit+integration data tests exact counts.
+| Metric | Value |
+|--------|-------|
+| HEAD | `20a2206813ea7835df169a8561e5ee2493cb32d7` |
+| collected | **39** |
+| passed | **39** |
+| failed | **0** |
+| skipped | **0** |
+| duration | **1.88s** |
+| suites | `tests/unit/data/`, `tests/integration/data/` |
+| git diff --check | clean |
+| corpus blobs in commit | none (NO_CORPUS) |
+
+Evidence: implementer `clean_worktree_tests.log` (collected 39 items; 39 passed in 1.88s).
+
 
 ## Discipline
 
