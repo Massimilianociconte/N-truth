@@ -76,6 +76,7 @@ exclude = [
     "**/__pycache__",
     "**/*.pyc",
     "**/*.pyo",
+    "**/node_modules",
     "/.hypothesis",
     "/.pytest_cache",
     "/.mypy_cache",
@@ -88,6 +89,7 @@ exclude = [
     "/data/processed",
     "/models/checkpoints",
     "/models/runs",
+    "/apps/desktop/node_modules",
 ]
 
 [tool.uv]

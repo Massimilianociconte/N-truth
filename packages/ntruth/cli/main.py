@@ -35,7 +35,7 @@ from ntruth.schemas.report import DomainTransparency
 
 app = typer.Typer(
     add_completion=False,
-    help="N-Truth - ricostruzione verificabile di unita sperimentali e n indipendente.",
+    help="N-Truth — ricostruzione verificabile di unita sperimentali e n indipendente.",
     no_args_is_help=True,
 )
 rules_app = typer.Typer(add_completion=False, help="Ispezione dei ruleset versionati.")
@@ -301,7 +301,7 @@ def rules_list(
     ruleset = load_ruleset(ruleset_id, ruleset_version)
     rules = ruleset.by_domain(domain) if domain else list(ruleset.rules)
     typer.secho(
-        f"{ruleset.ruleset_id}@{ruleset.version} - {len(rules)} regole "
+        f"{ruleset.ruleset_id}@{ruleset.version} — {len(rules)} regole "
         f"(checksum {ruleset.checksum()[:16]})",
         bold=True,
     )
@@ -321,7 +321,7 @@ def rules_show(
     if rule is None:
         typer.secho(f"Regola '{rule_id}' non trovata in {ruleset.ruleset_id}", fg=typer.colors.RED)
         raise typer.Exit(code=2)
-    typer.secho(f"{rule.rule_id}@{rule.version} - {rule.title}", bold=True)
+    typer.secho(f"{rule.rule_id}@{rule.version} — {rule.title}", bold=True)
     typer.echo(f"  dominio     : {rule.domain}")
     typer.echo(f"  severita    : {rule.severity.value}")
     typer.echo("  precondizioni:")
@@ -373,8 +373,26 @@ def quick_design_run(
     ),
     endpoint: str = typer.Option("viability", "--endpoint"),
     allocation: str = typer.Option("unknown", "--allocation", help="well|culture|plate|unknown"),
+    application: str = typer.Option(
+        "unknown", "--application", help="application level or unknown"
+    ),
     timing: str = typer.Option("unknown", "--timing", help="before|after|same_event|unknown"),
-    n_per_level: int | None = typer.Option(None, "--n-per-level"),
+    assignment_method: str = typer.Option(
+        "unknown",
+        "--assignment-method",
+        help="random|blocked_random|manual|matched|convenience|unknown",
+    ),
+    independently_assigned: str = typer.Option(
+        "UNKNOWN", "--independently-assigned", help="TRUE|FALSE|UNKNOWN"
+    ),
+    biological_source_independence: str = typer.Option(
+        "UNKNOWN", "--bio-source-independence", help="TRUE|FALSE|UNKNOWN"
+    ),
+    interference: str = typer.Option(
+        "UNKNOWN", "--interference", help="UNKNOWN|POSSIBLE|DOCUMENTED|NO_KNOWN_PATH"
+    ),
+    planned_unit_type: str = typer.Option("unknown", "--planned-unit-type"),
+    n_per_level: int | None = typer.Option(None, "--n-per-level", help="Planned units per level."),
     freeze: bool = typer.Option(False, "--freeze", help="Congela il piano e stampa export JSON."),
     output: Path | None = typer.Option(None, "--output", help="Scrivi export JSON su file."),
 ) -> None:
@@ -401,8 +419,14 @@ def quick_design_run(
         levels=(level_parts[0], level_parts[1]),
         endpoint_id=endpoint,
         allocation_level=allocation,
+        application_level=application,
         assignment_timing=timing,
-        n_per_level=n_per_level,
+        assignment_method=assignment_method,
+        independently_assigned=independently_assigned,
+        biological_source_independence=biological_source_independence,
+        interference_status=interference,
+        planned_unit_type=planned_unit_type,
+        planned_units_per_level=n_per_level,
     )
     result = run_quick_design_session(answers)
     if freeze:
@@ -411,7 +435,7 @@ def quick_design_run(
     else:
         payload = export_for_biostatistician(result)
 
-    typer.secho("Quick Design Session - simple_cell_culture", bold=True)
+    typer.secho("Quick Design Session — simple_cell_culture", bold=True)
     typer.echo(f"  determinability : {result.determinability.value}")
     typer.echo(f"  primary question: {result.primary_question or '(none)'}")
     typer.echo(f"  plan frozen     : {result.plan_frozen}")
@@ -434,10 +458,12 @@ def quick_design_reality_gate() -> None:
     """Stampa lo stato atteso del Reality Gate (fail-closed, non validato)."""
     from ntruth.reality_gate import (
         GatePredicateName,
+        GatePurpose,
         GateValue,
         PredicateEvidence,
         RealityGatePredicate,
         ScientificValidation,
+        ScientificValidationEvidence,
         evaluate_reality_gate,
         human_blocker_report,
     )
@@ -451,7 +477,7 @@ def quick_design_reality_gate() -> None:
             evidence=PredicateEvidence(basis="no real-case pilot closed in clean checkout"),
         ),
         RealityGatePredicate(
-            name=GatePredicateName.BLOCKING_SCHEMA_GAPS,
+            name=GatePredicateName.NO_BLOCKING_SCHEMA_GAPS,
             value=GateValue.UNKNOWN,
             evidence=PredicateEvidence(basis="schema contracts exist; real-case gaps unmeasured"),
         ),
@@ -491,7 +517,12 @@ def quick_design_reality_gate() -> None:
         ),
     )
     result = evaluate_reality_gate(
-        preds, scientific_validation_status=ScientificValidation.NOT_STARTED
+        preds,
+        purpose=GatePurpose.MVT_A_EXPLORATORY,
+        scientific_validation=ScientificValidationEvidence(
+            status=ScientificValidation.NOT_STARTED,
+            evidence_basis="scientific validation not started",
+        ),
     )
     typer.echo(human_blocker_report(result))
     typer.echo("")

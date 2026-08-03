@@ -1,4 +1,4 @@
-"""DeterminabilityState v7: otto stati normativi e output ammessi (PRD v7 §10.2, App. M).
+"""DeterminabilityState v7: sette stati normativi e output ammessi (PRD v7 §10.2, App. M).
 
 Il modello v3 a quattro stati resta importabile (``Determinability`` in
 ``schemas/core.py``); questo modulo e il contratto v7 e include la tabella

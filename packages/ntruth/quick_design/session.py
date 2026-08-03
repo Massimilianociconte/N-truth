@@ -1,7 +1,8 @@
 """Quick Design Session service for simple_cell_culture (PRD v7 §6.1).
 
-Vertical slice: domain service + deterministic fixtures + report/export.
-No large UI. Targets <10 min / <=3 questions are PROVISIONAL product hypotheses.
+Independence dimensions stay distinct: biological-source independence is never
+used as a proxy for assignment independence. Sample-sheet IDs are non-semantic
+placeholders unless the user supplies structure.
 """
 
 from __future__ import annotations
@@ -39,15 +40,13 @@ from ntruth.schemas.determinability_v7 import DeterminabilityStateV7
 from ntruth.schemas.inferential_query import InferentialQuery, make_query_id
 
 ProfileId = Literal["simple_cell_culture"]
+VALID_ALLOCATION_LEVELS = frozenset({"well", "culture", "plate", "animal", "unknown"})
+VALID_TRI = frozenset({"TRUE", "FALSE", "UNKNOWN"})
+RANDOM_METHODS = frozenset({"random", "blocked_random"})
 
 
 @dataclass(frozen=True)
 class QuickDesignAnswers:
-    """User-supplied answers for the minimal vertical slice.
-
-    Unknowns stay UNKNOWN; the session never invents independence or interference.
-    """
-
     source_description: str
     preparation_description: str = "unknown"
     unit_hierarchy: tuple[str, ...] = ("source", "culture", "well")
@@ -57,19 +56,25 @@ class QuickDesignAnswers:
     contrast_id: str = "control_vs_treated"
     allocation_level: str = "unknown"
     application_level: str | None = "unknown"
-    assignment_timing: str = "unknown"  # before|after|same_event|unknown
+    assignment_timing: str = "unknown"
     assignment_method: str = "unknown"
-    biological_source_independence: str = "UNKNOWN"  # TRUE|FALSE|UNKNOWN
-    interference_status: str = "UNKNOWN"  # maps to InterferenceStatus or UNKNOWN
-    n_per_level: int | None = None
+    randomization_unit: str | None = None
+    independently_assigned: str = "UNKNOWN"
+    biological_source_independence: str = "UNKNOWN"
+    interference_status: str = "UNKNOWN"
+    exposure_unit: str | None = None
+    shared_environment: tuple[str, ...] = ()
+    planned_unit_type: str = "unknown"
+    planned_units_per_level: int | None = None
+    source_ids: tuple[str, ...] = ()
+    preparation_ids: tuple[str, ...] = ()
     primary_question: str = ""
     block_label: str = "qd_session"
+    assignment_confirmation_event_id: str | None = None
 
 
 @dataclass(frozen=True)
 class QuickDesignResult:
-    """Outcome of one Quick Design session (not a scientific validation)."""
-
     bootstrap: BootstrapCoreRecord
     determinability: DeterminabilityStateV7
     sample_sheet_csv: str
@@ -78,13 +83,14 @@ class QuickDesignResult:
     primary_question: str
     plan_frozen: bool = False
     export_payload: dict[str, object] | None = None
+    user_confirmation_scopes: tuple[str, ...] = ()
 
 
 def _tri(value: str) -> TriState:
-    try:
-        return TriState(value.upper())
-    except ValueError:
+    key = value.strip().upper()
+    if key not in VALID_TRI:
         return TriState.UNKNOWN
+    return TriState(key)
 
 
 def _interference(value: str) -> InterferenceStatus:
@@ -115,27 +121,23 @@ def _assignment_method(value: str) -> AssignmentMethod:
 
 
 def _assignment_level(value: str) -> AssignmentLevel:
+    key = value.lower().strip()
+    if key not in VALID_ALLOCATION_LEVELS:
+        return AssignmentLevel.UNKNOWN
     try:
-        return AssignmentLevel(value.lower())
+        return AssignmentLevel(key)
     except ValueError:
         return AssignmentLevel.UNKNOWN
 
 
 def run_quick_design_session(answers: QuickDesignAnswers) -> QuickDesignResult:
-    """Build Bootstrap Core + artefacts for simple_cell_culture.
-
-    Fail-closed: missing decisive assignment/interference facts produce
-    INSUFFICIENT_INFORMATION and a primary decisive question.
-    """
-    if answers.unit_hierarchy != ("source", "culture", "well") and len(answers.unit_hierarchy) < 2:
+    if answers.planned_units_per_level is not None and answers.planned_units_per_level <= 0:
+        raise ValueError("planned_units_per_level must be positive when provided")
+    if len(answers.unit_hierarchy) < 2:
         raise ValueError("unit_hierarchy requires at least two levels for simple_cell_culture")
 
     block_id = make_block_id("simple_cell_culture", answers.block_label)
-    source_id = "U_source"
-    prep_id = "U_prep"
-    culture_id = "U_culture"
-    well_id = "U_well"
-
+    source_id, prep_id, culture_id, well_id = "U_source", "U_prep", "U_culture", "U_well"
     units = (
         CoreUnit(id=source_id, type="source", label=answers.source_description),
         CoreUnit(id=prep_id, type="preparation", label=answers.preparation_description),
@@ -148,21 +150,51 @@ def run_quick_design_session(answers: QuickDesignAnswers) -> QuickDesignResult:
         CoreRelation(source=well_id, type="nested_in", target=culture_id),
     )
 
+    allocation_level = answers.allocation_level.lower().strip()
+    if allocation_level not in VALID_ALLOCATION_LEVELS:
+        allocation_level = "unknown"
+    allocation_known = allocation_level != "unknown"
+
+    assign_method = _assignment_method(answers.assignment_method)
+    randomization_unit: str | None = None
+    if assign_method.value in RANDOM_METHODS:
+        if answers.randomization_unit:
+            randomization_unit = answers.randomization_unit
+        elif allocation_known:
+            randomization_unit = allocation_level
+
     bio_ind = _tri(answers.biological_source_independence)
+    assign_ind = _tri(answers.independently_assigned)
     interf = _interference(answers.interference_status)
-    # no_known_path without evidence is rejected by the schema; keep UNKNOWN if silent
-    interference_assessment = InterferenceAssessment(status=interf)
+
     if interf is InterferenceStatus.NO_KNOWN_PATH:
-        # require explicit evidence path - vertical slice defaults fail-closed to UNKNOWN
-        interference_assessment = InterferenceAssessment(status=InterferenceStatus.UNKNOWN)
+        if not answers.assignment_confirmation_event_id and not answers.shared_environment:
+            interf = InterferenceStatus.UNKNOWN
+            interference_assessment = InterferenceAssessment(status=InterferenceStatus.UNKNOWN)
+        else:
+            evidence = (
+                (answers.assignment_confirmation_event_id,)
+                if answers.assignment_confirmation_event_id
+                else ("user_declared_no_known_path",)
+            )
+            interference_assessment = InterferenceAssessment(
+                status=InterferenceStatus.NO_KNOWN_PATH,
+                exposure_unit=answers.exposure_unit,
+                shared_environment=answers.shared_environment,
+                evidence_ids=evidence,
+            )
+    else:
+        interference_assessment = InterferenceAssessment(
+            status=interf,
+            exposure_unit=answers.exposure_unit,
+            shared_environment=answers.shared_environment,
+        )
 
     assignment = AssignmentMechanism(
-        level=_assignment_level(answers.allocation_level),
-        method=_assignment_method(answers.assignment_method),
+        level=_assignment_level(allocation_level),
+        method=assign_method,
         timing_relative_to_split=_split_timing(answers.assignment_timing),
-        randomization_unit=answers.allocation_level
-        if answers.allocation_level != "unknown"
-        else None,
+        randomization_unit=randomization_unit,
     )
     causal = CausalDesignContext(
         factor_id=answers.factor_id,
@@ -170,37 +202,32 @@ def run_quick_design_session(answers: QuickDesignAnswers) -> QuickDesignResult:
         interference_assessment=interference_assessment,
     )
 
+    assign_evidence: tuple[str, ...] = ()
+    if assign_ind is TriState.TRUE:
+        if answers.assignment_confirmation_event_id:
+            assign_evidence = (answers.assignment_confirmation_event_id,)
+        else:
+            assign_ind = TriState.UNKNOWN
+
     independence = IndependenceProfile(
-        independently_assigned=_tri(
-            "TRUE"
-            if answers.assignment_method not in ("unknown", "")
-            and answers.allocation_level != "unknown"
-            else "UNKNOWN"
-        ),
+        independently_assigned=assign_ind,
         biological_source_independence=bio_ind,
         interference_status=interference_assessment.status,
         analytical_grouping=(),
-        evidence_ids=(),
+        evidence_ids=assign_evidence,
     )
-    # if independently_assigned TRUE needs evidence - force UNKNOWN without evidence
-    if independence.independently_assigned is TriState.TRUE:
-        independence = IndependenceProfile(
-            independently_assigned=TriState.UNKNOWN,
-            biological_source_independence=bio_ind,
-            interference_status=interference_assessment.status,
-            analytical_grouping=(),
-            evidence_ids=(),
-        )
 
+    planned_unit_type = answers.planned_unit_type.strip() or "unknown"
     counts: tuple[CountRecord, ...] = ()
-    if answers.n_per_level is not None:
+    if answers.planned_units_per_level is not None:
+        unit_type = planned_unit_type if planned_unit_type != "unknown" else None
         cid = make_count_id(CountKind.DECLARED_N, f"{answers.factor_id}|{answers.endpoint_id}")
         counts = (
             CountRecord(
                 id=cid,
                 kind=CountKind.DECLARED_N,
-                value=answers.n_per_level,
-                unit_type="well",
+                value=answers.planned_units_per_level,
+                unit_type=unit_type,
                 factor_id=answers.factor_id,
                 contrast_id=answers.contrast_id,
                 endpoint_id=answers.endpoint_id,
@@ -220,39 +247,43 @@ def run_quick_design_session(answers: QuickDesignAnswers) -> QuickDesignResult:
         inference_level="unknown",
     )
 
-    missing: MissingDecisiveFact | None = None
-    primary_q = answers.primary_question.strip()
-    allocation_known = answers.allocation_level != "unknown"
-    independence_known = bio_ind is not TriState.UNKNOWN
+    assignment_independence_known = assign_ind is not TriState.UNKNOWN
+    bio_known = bio_ind is not TriState.UNKNOWN
     interference_unknown = interference_assessment.status is InterferenceStatus.UNKNOWN
 
-    if not allocation_known or interference_unknown or not independence_known:
-        if not allocation_known:
-            pred = "allocation_level"
-            primary_q = primary_q or (
-                f"At which unit level was {answers.factor_id} allocated "
-                f"(well, culture, plate, or other)?"
-            )
-        elif not independence_known:
-            pred = "biological_source_independence"
-            primary_q = primary_q or (
-                "Are the biological sources independent across experimental groups?"
-            )
-        else:
-            pred = "interference_assessment"
-            primary_q = primary_q or (
-                "Is there shared exposure or interference between experimental units?"
-            )
+    missing: MissingDecisiveFact | None = None
+    primary_q = answers.primary_question.strip()
+    if not allocation_known:
         missing = MissingDecisiveFact(
-            predicate=pred, rationale="required-or-UNKNOWN bootstrap field"
+            predicate="allocation_level", rationale="required-or-UNKNOWN bootstrap field"
+        )
+        primary_q = primary_q or (
+            f"At which unit level was {answers.factor_id} allocated "
+            f"(well, culture, plate, or other)?"
+        )
+    elif not assignment_independence_known:
+        missing = MissingDecisiveFact(
+            predicate="independently_assigned",
+            rationale="assignment independence distinct from biological-source independence",
+        )
+        primary_q = primary_q or (
+            f"Were {answers.factor_id} levels assigned independently across experimental units?"
+        )
+    elif interference_unknown:
+        missing = MissingDecisiveFact(
+            predicate="interference_assessment",
+            rationale="silence is UNKNOWN, never absence of interference",
+        )
+        primary_q = primary_q or (
+            "Is there shared exposure or interference between experimental units?"
         )
 
     facts = V7GraphFacts(
         allocation_known=allocation_known,
-        operational_independence_known=independence_known,
+        operational_independence_known=assignment_independence_known,
         contrast_defined=True,
         endpoint_defined=bool(answers.endpoint_id.strip()),
-        counts_sufficient=answers.n_per_level is not None,
+        counts_sufficient=answers.planned_units_per_level is not None,
         interference_unknown=interference_unknown,
         graph_invariants_ok=True,
         in_scope=True,
@@ -264,6 +295,16 @@ def run_quick_design_session(answers: QuickDesignAnswers) -> QuickDesignResult:
     )
     state = derive_determinability_v7(facts)
 
+    user_scopes: list[str] = []
+    if allocation_known:
+        user_scopes.append("allocation_level")
+    if assignment_independence_known:
+        user_scopes.append("independently_assigned")
+    if bio_known:
+        user_scopes.append("biological_source_independence")
+    if not interference_unknown:
+        user_scopes.append("interference_assessment")
+
     bootstrap = BootstrapCoreRecord(
         experiment_block_id=block_id,
         domain="simple_cell_culture",
@@ -274,9 +315,9 @@ def run_quick_design_session(answers: QuickDesignAnswers) -> QuickDesignResult:
         factor_levels=levels,
         endpoint_id=answers.endpoint_id,
         primary_contrast_id=answers.contrast_id,
-        allocation_level=answers.allocation_level,
-        application_level=answers.application_level,
-        independently_assigned="UNKNOWN",
+        allocation_level=allocation_level,
+        application_level=answers.application_level if answers.application_level else "unknown",
+        independently_assigned=assign_ind.value,
         source_preparation_id=prep_id,
         independence=independence,
         causal_context=causal,
@@ -284,26 +325,37 @@ def run_quick_design_session(answers: QuickDesignAnswers) -> QuickDesignResult:
         missing_decisive_fact=missing,
         primary_question=primary_q,
         inferential_query=query,
-        determinability_derived=state.value,
+        determinability_derived=state,
         determinability_reviewed=False,
     )
 
-    # deterministic sample sheet: 2 levels x n (default 1 row each if n missing)
-    n_rows = answers.n_per_level if answers.n_per_level is not None else 1
+    n_rows = answers.planned_units_per_level if answers.planned_units_per_level is not None else 1
     rows: list[dict[str, str]] = []
-    for level_idx, level in enumerate(levels, start=1):
-        for i in range(1, n_rows + 1):
+    row_idx = 0
+    for level in levels:
+        for _ in range(n_rows):
+            row_idx += 1
+            source_ref = (
+                answers.source_ids[(row_idx - 1) % len(answers.source_ids)]
+                if answers.source_ids
+                else ""
+            )
+            prep_ref = (
+                answers.preparation_ids[(row_idx - 1) % len(answers.preparation_ids)]
+                if answers.preparation_ids
+                else ""
+            )
             rows.append(
                 {
-                    "sample_id": f"S{level_idx:02d}_{i:03d}",
-                    "source_id": f"SRC{i:03d}",
-                    "preparation_id": f"P{i:03d}",
-                    "culture_id": f"C{i:03d}",
-                    "plate_id": "PL01",
-                    "well_id": f"PL01_W{level_idx}{i:02d}",
+                    "sample_id": f"ROW{row_idx:04d}",
+                    "source_id": source_ref,
+                    "preparation_id": prep_ref,
+                    "culture_id": "",
+                    "plate_id": "",
+                    "well_id": "",
                     "factor_level": level,
-                    "batch_id": "B01",
-                    "timepoint": "t0",
+                    "batch_id": "",
+                    "timepoint": "",
                     "endpoint_id": answers.endpoint_id,
                     "lifecycle_status": "planned",
                     "exclusion_reason": "",
@@ -317,10 +369,9 @@ def run_quick_design_session(answers: QuickDesignAnswers) -> QuickDesignResult:
         factor_id=answers.factor_id,
         levels=levels,
         endpoint_id=answers.endpoint_id,
-        allocation_level=answers.allocation_level,
+        allocation_level=allocation_level,
         assignment_timing=answers.assignment_timing,
     )
-
     return QuickDesignResult(
         bootstrap=bootstrap,
         determinability=state,
@@ -330,4 +381,5 @@ def run_quick_design_session(answers: QuickDesignAnswers) -> QuickDesignResult:
         primary_question=primary_q,
         plan_frozen=False,
         export_payload=None,
+        user_confirmation_scopes=tuple(user_scopes),
     )

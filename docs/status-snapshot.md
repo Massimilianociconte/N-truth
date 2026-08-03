@@ -56,7 +56,7 @@ unmerged local branches are **not** promoted by this document.
 | Contract | Clean-checkout status |
 |----------|------------------------|
 | Legacy `Determinability` in `schemas/core.py` | **4 states** (v3 compatibility) |
-| PRD v7 `DeterminabilityStateV7` | **8 states** in `schemas/determinability_v7.py` (additive) |
+| PRD v7 `DeterminabilityStateV7` | **7 states** in `schemas/determinability_v7.py` (additive) |
 | Permitted/forbidden outputs (App. M) | Implemented as tables + tests |
 | Derive-then-review | `graph/determinability_v7.derive_determinability_v7` (conservative) |
 

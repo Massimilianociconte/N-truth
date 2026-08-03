@@ -56,7 +56,7 @@ Security: [private reporting policy](SECURITY.md)
 - distinguishes planned, allocated, treated, observed, excluded, analysed, declared,
   observational, analytical, biological-source, independent and diagnostic effective
   counts, including quantifier and scope;
-- implements PRD v7 `DeterminabilityStateV7` (eight normative states) additively
+- implements PRD v7 `DeterminabilityStateV7` (seven normative states) additively
   beside the legacy four-state v3 enum, with permitted/forbidden outputs per state;
 - generates and validates a canonical SampleSheetSpec without inferring independence
   from IDs or factor columns;
@@ -91,7 +91,7 @@ Author phrases such as “independent experiments”, distinct IDs or well-level
 not establish independence by themselves. When independence is unknown,
 `n_independent` remains `null` or appears only inside explicit conditional branches.
 
-PRD v7 defines eight normative states: `DETERMINATE`,
+PRD v7 defines seven normative states: `DETERMINATE`,
 `CONDITIONALLY_DETERMINATE`, `MULTIPLE_PLAUSIBLE_GRAPHS`, `INSUFFICIENT_INFORMATION`,
 `CONFLICTING_INFORMATION`, `INVALID_GRAPH` and `OUT_OF_SCOPE` (plus the full App. M
 output policy). Only `DETERMINATE` permits one unconditional experimental unit and

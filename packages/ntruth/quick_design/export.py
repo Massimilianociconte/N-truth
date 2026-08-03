@@ -29,7 +29,12 @@ def export_for_biostatistician(result: QuickDesignResult) -> dict[str, Any]:
         "application_level": bootstrap.application_level,
         "independently_assigned": bootstrap.independently_assigned,
         "source_preparation_id": bootstrap.source_preparation_id,
-        "determinability_derived": bootstrap.determinability_derived,
+        "determinability_derived": (
+            bootstrap.determinability_derived.value
+            if bootstrap.determinability_derived is not None
+            and hasattr(bootstrap.determinability_derived, "value")
+            else bootstrap.determinability_derived
+        ),
         "determinability_reviewed": bootstrap.determinability_reviewed,
         "primary_question": result.primary_question,
         "missing_decisive_fact": (
@@ -55,7 +60,7 @@ def export_for_biostatistician(result: QuickDesignResult) -> dict[str, Any]:
         "plan_frozen": result.plan_frozen,
         "disclaimer": (
             "Quick Design export is a planning aid. It does not certify "
-            "experimental validity, independent_n, or scientific readiness."
+            "experimental validity, final independent n, or scientific readiness."
         ),
     }
     payload["export_checksum"] = content_checksum(payload)

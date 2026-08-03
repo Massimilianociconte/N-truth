@@ -15,8 +15,8 @@ packages/ntruth/
     causal_context.py     # Causal Design Context (§2.4, App. Y)
     authority.py          # AuthorityType, ConfirmationEvent, ConflictRecord (§0.4, §8.6)
     counts.py             # v7 canonical count kinds + alias migration (§7.9, §15.10)
-    determinability_v7.py # 8-state DeterminabilityState + permitted outputs (§10.2, App. M)
-    relations.py          # canonical relation registry v0.2.0 + aliases (§8.5)
+    determinability_v7.py # 7-state DeterminabilityState + permitted outputs (§10.2, App. M)
+    relations.py          # canonical relation registry v0.2.1 + aliases (§8.5)
   reality_gate/
     predicates.py         # tri-state/quad-state predicates (§0.7)
     gate.py               # dimension evaluation + fail-closed composition
@@ -66,7 +66,7 @@ packages/ntruth/
 
 Permitted-output table (App. M) is enforced by `determinability_v7.allowed_outputs`.
 
-## 4. Relation registry migration (v0.1.0 → v0.2.0)
+## 4. Relation registry migration (v0.1.0 → v0.2.1)
 
 Added: `acquired_from`, `observed_in`, `aggregated_to`, `exposed_with`,
 `may_interfere_with`, `supports`/`contradicts` evidence relations (already present as
