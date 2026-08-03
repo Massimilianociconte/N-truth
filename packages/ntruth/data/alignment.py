@@ -31,6 +31,7 @@ def align_sourcedata_configs(
     aligned_multitask_records: list[dict[str, Any]] = []
     token_mismatches = 0
     split_mismatches = 0
+    label_length_mismatches = 0
 
     min_len = min(total_ner, total_roles)
     for idx in range(min_len):
@@ -39,9 +40,16 @@ def align_sourcedata_configs(
 
         ner_words = ner_rec.get("words", ner_rec.get("tokens", []))
         roles_words = roles_rec.get("words", roles_rec.get("tokens", []))
+        ner_labels = ner_rec.get("labels", ner_rec.get("entity_tags", []))
+        roles_labels = roles_rec.get("labels", roles_rec.get("role_tags", []))
 
         if ner_words != roles_words:
             token_mismatches += 1
+            continue
+
+        # Fail-closed: every side must have label length == token length.
+        if len(ner_labels) != len(ner_words) or len(roles_labels) != len(roles_words):
+            label_length_mismatches += 1
             continue
 
         ner_split = ner_rec.get("split")
@@ -51,12 +59,16 @@ def align_sourcedata_configs(
             continue
 
         merged_record = dict(ner_rec)
-        merged_record["entity_tags"] = ner_rec.get("labels", ner_rec.get("entity_tags", []))
-        merged_record["role_tags"] = roles_rec.get("labels", roles_rec.get("role_tags", []))
+        merged_record["entity_tags"] = ner_labels
+        merged_record["role_tags"] = roles_labels
         aligned_multitask_records.append(merged_record)
 
-    unmatched_ner = max(0, total_ner - min_len) + token_mismatches + split_mismatches
-    unmatched_roles = max(0, total_roles - min_len) + token_mismatches + split_mismatches
+    unmatched_ner = (
+        max(0, total_ner - min_len) + token_mismatches + split_mismatches + label_length_mismatches
+    )
+    unmatched_roles = (
+        max(0, total_roles - min_len) + token_mismatches + split_mismatches + label_length_mismatches
+    )
 
     # SourceData v2.0.3 token_classification JSONL exports used here have no panel_id.
     # Join is revision-bound: same physical line index in paired ner/{split}.jsonl and
@@ -70,9 +82,11 @@ def align_sourcedata_configs(
         "duplicate_count": 0,
         "token_mismatches": token_mismatches,
         "split_mismatches": split_mismatches,
+        "label_length_mismatches": label_length_mismatches,
         "excluded_count_by_reason": {
             "token_mismatches": token_mismatches,
             "split_mismatches": split_mismatches,
+            "label_length_mismatches": label_length_mismatches,
             "length_mismatch": abs(total_ner - total_roles),
         },
         "join_key": {
@@ -86,8 +100,8 @@ def align_sourcedata_configs(
             "panel_id_field_present": False,
         },
         "join_key_note": (
-            "Fail-closed on token sequence mismatch or length mismatch. Not stable if a future "
-            "SourceData revision reorders lines within a split file."
+            "Fail-closed on token sequence mismatch or label/token length mismatch. Not stable if a "
+            "future SourceData revision reorders lines within a split file."
         ),
         "label_length_checked": True,
         "upstream_raw_split_names_preserved": True,
