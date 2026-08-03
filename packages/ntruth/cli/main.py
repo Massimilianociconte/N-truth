@@ -35,11 +35,16 @@ from ntruth.schemas.report import DomainTransparency
 
 app = typer.Typer(
     add_completion=False,
-    help="N-Truth — ricostruzione verificabile di unita sperimentali e n indipendente.",
+    help="N-Truth - ricostruzione verificabile di unita sperimentali e n indipendente.",
     no_args_is_help=True,
 )
 rules_app = typer.Typer(add_completion=False, help="Ispezione dei ruleset versionati.")
+quick_design_app = typer.Typer(
+    add_completion=False,
+    help="Quick Design Session (PRD v7): simple_cell_culture vertical slice.",
+)
 app.add_typer(rules_app, name="rules")
+app.add_typer(quick_design_app, name="quick-design")
 
 _SEVERITY_MARK = {
     Severity.CRITICAL: "CRITICO",
@@ -296,7 +301,7 @@ def rules_list(
     ruleset = load_ruleset(ruleset_id, ruleset_version)
     rules = ruleset.by_domain(domain) if domain else list(ruleset.rules)
     typer.secho(
-        f"{ruleset.ruleset_id}@{ruleset.version} — {len(rules)} regole "
+        f"{ruleset.ruleset_id}@{ruleset.version} - {len(rules)} regole "
         f"(checksum {ruleset.checksum()[:16]})",
         bold=True,
     )
@@ -316,7 +321,7 @@ def rules_show(
     if rule is None:
         typer.secho(f"Regola '{rule_id}' non trovata in {ruleset.ruleset_id}", fg=typer.colors.RED)
         raise typer.Exit(code=2)
-    typer.secho(f"{rule.rule_id}@{rule.version} — {rule.title}", bold=True)
+    typer.secho(f"{rule.rule_id}@{rule.version} - {rule.title}", bold=True)
     typer.echo(f"  dominio     : {rule.domain}")
     typer.echo(f"  severita    : {rule.severity.value}")
     typer.echo("  precondizioni:")
@@ -357,6 +362,142 @@ def rules_paths() -> None:
     """Mostra dove vengono cercati i ruleset."""
     for path in available_rulesets():
         typer.echo(f"  {path}")
+
+
+@quick_design_app.command("run")
+def quick_design_run(
+    source: str = typer.Option(..., "--source", help="Descrizione della sorgente biologica."),
+    factor: str = typer.Option("treatment", "--factor"),
+    levels: str = typer.Option(
+        "control,treated", "--levels", help="Due livelli separati da virgola."
+    ),
+    endpoint: str = typer.Option("viability", "--endpoint"),
+    allocation: str = typer.Option("unknown", "--allocation", help="well|culture|plate|unknown"),
+    timing: str = typer.Option("unknown", "--timing", help="before|after|same_event|unknown"),
+    n_per_level: int | None = typer.Option(None, "--n-per-level"),
+    freeze: bool = typer.Option(False, "--freeze", help="Congela il piano e stampa export JSON."),
+    output: Path | None = typer.Option(None, "--output", help="Scrivi export JSON su file."),
+) -> None:
+    """Sessione Quick Design minimale (simple_cell_culture). Non e validazione scientifica."""
+    import json
+
+    from ntruth.quick_design import (
+        QuickDesignAnswers,
+        export_for_biostatistician,
+        freeze_plan,
+        run_quick_design_session,
+    )
+
+    level_parts = tuple(part.strip() for part in levels.split(",") if part.strip())
+    if len(level_parts) != 2:
+        typer.secho(
+            "Servono esattamente due livelli (PROVISIONAL simple_cell_culture).",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(code=2)
+    answers = QuickDesignAnswers(
+        source_description=source,
+        factor_id=factor,
+        levels=(level_parts[0], level_parts[1]),
+        endpoint_id=endpoint,
+        allocation_level=allocation,
+        assignment_timing=timing,
+        n_per_level=n_per_level,
+    )
+    result = run_quick_design_session(answers)
+    if freeze:
+        result = freeze_plan(result)
+        payload = result.export_payload or export_for_biostatistician(result)
+    else:
+        payload = export_for_biostatistician(result)
+
+    typer.secho("Quick Design Session - simple_cell_culture", bold=True)
+    typer.echo(f"  determinability : {result.determinability.value}")
+    typer.echo(f"  primary question: {result.primary_question or '(none)'}")
+    typer.echo(f"  plan frozen     : {result.plan_frozen}")
+    typer.echo("")
+    typer.echo("Methods draft:")
+    typer.echo(result.methods_draft)
+    typer.echo("")
+    typer.echo("ID convention:")
+    typer.echo(result.id_convention)
+    rendered = json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
+    if output is not None:
+        output.write_text(rendered, encoding="utf-8")
+        typer.echo(f"Export scritto: {output}")
+    else:
+        typer.echo(rendered)
+
+
+@quick_design_app.command("reality-gate")
+def quick_design_reality_gate() -> None:
+    """Stampa lo stato atteso del Reality Gate (fail-closed, non validato)."""
+    from ntruth.reality_gate import (
+        GatePredicateName,
+        GateValue,
+        PredicateEvidence,
+        RealityGatePredicate,
+        ScientificValidation,
+        evaluate_reality_gate,
+        human_blocker_report,
+    )
+    from ntruth.reality_gate.gate import EXPECTED_CURRENT_STATE
+    from ntruth.reality_gate.predicates import predicate_for_mvt_a
+
+    preds = (
+        RealityGatePredicate(
+            name=GatePredicateName.SCHEMA_STABLE_ON_REAL_CASES,
+            value=GateValue.UNKNOWN,
+            evidence=PredicateEvidence(basis="no real-case pilot closed in clean checkout"),
+        ),
+        RealityGatePredicate(
+            name=GatePredicateName.BLOCKING_SCHEMA_GAPS,
+            value=GateValue.UNKNOWN,
+            evidence=PredicateEvidence(basis="schema contracts exist; real-case gaps unmeasured"),
+        ),
+        RealityGatePredicate(
+            name=GatePredicateName.REAL_ANCHOR_AVAILABLE,
+            value=GateValue.FALSE,
+            evidence=PredicateEvidence(basis="no real anchor corpus in clean checkout"),
+        ),
+        RealityGatePredicate(
+            name=GatePredicateName.LICENCE_SCOPE_VERIFIED,
+            value=GateValue.UNKNOWN,
+            evidence=PredicateEvidence(basis="BLK-DATA-001 open"),
+        ),
+        RealityGatePredicate(
+            name=GatePredicateName.PROTECTED_SPLIT_FROZEN,
+            value=GateValue.FALSE,
+            evidence=PredicateEvidence(basis="no protected real split frozen"),
+        ),
+        RealityGatePredicate(
+            name=GatePredicateName.HUMAN_SECOND_REVIEW_COMPLETED,
+            value=GateValue.FALSE,
+            evidence=PredicateEvidence(basis="not started"),
+        ),
+        RealityGatePredicate(
+            name=GatePredicateName.DECISIVE_FIELDS_REVIEWED,
+            value=GateValue.FALSE,
+            evidence=PredicateEvidence(basis="not started"),
+        ),
+        RealityGatePredicate(
+            name=GatePredicateName.REAL_BASELINE_EXECUTED,
+            value=GateValue.FALSE,
+            evidence=PredicateEvidence(basis="not started"),
+        ),
+        predicate_for_mvt_a(
+            GatePredicateName.SYNTHETIC_FACTORY_HUMAN_CALIBRATED,
+            PredicateEvidence(basis="N/A for MVT-A before synthetic promotion (E-14)"),
+        ),
+    )
+    result = evaluate_reality_gate(
+        preds, scientific_validation_status=ScientificValidation.NOT_STARTED
+    )
+    typer.echo(human_blocker_report(result))
+    typer.echo("")
+    typer.echo("EXPECTED_CURRENT_STATE:")
+    for key, value in EXPECTED_CURRENT_STATE.items():
+        typer.echo(f"  {key}: {value}")
 
 
 @app.command()
