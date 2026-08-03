@@ -155,7 +155,11 @@ def install_preclinie(root: Path, refresh: bool = False) -> dict[str, Any]:
         "source_ref": source_ref,
         "raw_path": str(raw_root),
         "processed_path": str(processed_root),
-        "split_authority": "custom_group_stratified",
+        # Manifest-level authority (not an upstream official train/val/test partition).
+        "split_authority": "NTRUTH_GROUP_STRATIFIED_DERIVATION",
+        "grouping_key": "publication_id",
+        "split_seed": "20260803",
+        "split_algorithm": "stable_split group-stratified 80/10/10 over publication groups",
         "split_counts": split_counts,
         "native_annotation_tier": NativeAnnotationTier.HUMAN_CURATED_GOLD,
         "ntruth_usage_tier": NTruthUsageTier.SILVER_AUXILIARY,

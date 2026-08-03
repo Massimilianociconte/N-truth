@@ -1,34 +1,20 @@
 # Volume constraints — FLASH128 N-Truth-Datasets
 
-generated_at: 2026-08-03T13:44:26Z
+generated_at: 2026-08-03T14:22:06Z
 
 ## Status
 
 - **volume_status:** `VERIFIED_WITH_FAT32_LIMITATION`
 - **filesystem_tested:** `FAT32`
 - **exfat_tested_in_this_run:** `false`
-- **max_single_file_bytes:** `4294967295` (4 GiB − 1)
+- **max_single_file_bytes:** `4294967295`
+- **largest_current_file_bytes:** `1784087121`
+- **largest_current_file_path:** `downloads/preclinie-f38df55a28505a77d30eefb5b867bbfdcc9baf25.zip`
+- **current_dataset_storage:** `SUPPORTED`
+- **future_large_model_or_checkpoint_storage:** `NOT_GUARANTEED`
 
-## Observations
+## Recommendation (future only — not applied)
 
-- Mount point: `/Volumes/FLASH128` (external USB)
-- Volume UUID: `29DEE471-44F6-3B26-9A09-BBCC4A4D7D7C`
-- Dataset root: `/Volumes/FLASH128/N-Truth-Datasets` (sole N-Truth data root on volume)
-- Max observed canonical file: **1784087121** bytes
-  (`downloads/preclinie-….zip` ≈ 1.78 GiB)
-- Files near/over 4 GiB limit: **none**
+`FUTURE_STORAGE_MIGRATION_RECOMMENDED_BEFORE_LARGE_CHECKPOINTS`
 
-## Future migration recommendation (do not apply in this run)
-
-Do **not** reformat or rename FLASH128 in place. If a future corpus requires a single file ≥ 4 GiB:
-
-1. Provision a new volume as **exFAT** or **APFS**.
-2. Dual-write with checksum verification (archive SHA-256 + Merkle).
-3. Switch `NTRUTH_DATA_ROOT` only after dual verification.
-4. Retain the FAT32 stick as offline backup until migration is proven.
-
-## FAT32 implications for the pipeline
-
-- Atomic `os.replace` on the same volume remains valid.
-- AppleDouble `._*` / `.DS_Store` are filtered from Merkle via `is_ignorable_metadata`.
-- No single canonical file currently approaches the 4 GiB barrier.
+Do not reformat, rename, or migrate FLASH128 in this workstream. Before multi-GiB model checkpoints, provision a separate exFAT/APFS volume with dual-write checksum verification.

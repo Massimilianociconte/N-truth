@@ -59,9 +59,8 @@ def align_sourcedata_configs(
     unmatched_roles = max(0, total_roles - min_len) + token_mismatches + split_mismatches
 
     # SourceData v2.0.3 token_classification JSONL exports used here have no panel_id.
-    # Join policy for this pipeline revision: positional line index + identical word sequence
-    # (equivalently verifying sha256(words) equality). Spec ideal (panel_id, sha256(words))
-    # is not applicable until panel_id is present in the locked export.
+    # Join is revision-bound: same physical line index in paired ner/{split}.jsonl and
+    # roles_multi/{split}.jsonl at the locked HF revision, plus identical words (words_sha256).
     report = {
         "raw_ner_count": total_ner,
         "raw_roles_count": total_roles,
@@ -76,10 +75,19 @@ def align_sourcedata_configs(
             "split_mismatches": split_mismatches,
             "length_mismatch": abs(total_ner - total_roles),
         },
-        "join_key": "positional_line_index_plus_identical_words",
+        "join_key": {
+            "source_configuration": "token_classification/v_2.0.3",
+            "upstream_split": "inherited_from_paired_file_path",
+            "source_file_or_config": "ner/{split}.jsonl paired with roles_multi/{split}.jsonl",
+            "source_record_index": "0-based_physical_line_index_within_split_file",
+            "words_sha256": "sha256(NUL-joined words); required equal at matching indices",
+            "revision_bound": True,
+            "stable_across_revisions": False,
+            "panel_id_field_present": False,
+        },
         "join_key_note": (
-            "panel_id absent in locked SourceData v2.0.3 JSONL; alignment uses line index with "
-            "word-sequence equality (sha256(words) would match when words lists match)."
+            "Fail-closed on token sequence mismatch or length mismatch. Not stable if a future "
+            "SourceData revision reorders lines within a split file."
         ),
         "label_length_checked": True,
         "upstream_raw_split_names_preserved": True,

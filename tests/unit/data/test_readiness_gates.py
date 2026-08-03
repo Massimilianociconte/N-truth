@@ -14,8 +14,14 @@ def test_alignment_report_marks_counts_as_derived_multitask_not_upstream_split()
     assert len(aligned) == 1
     assert report["matched_count"] == 1
     assert report["counts_are_derived_multitask"] is True
-    assert "upstream_split" not in report or report.get("counts_are_derived_multitask") is True
-    assert report["join_key"] == "positional_line_index_plus_identical_words"
+    join_key = report["join_key"]
+    assert isinstance(join_key, dict)
+    assert join_key["source_configuration"] == "token_classification/v_2.0.3"
+    assert join_key["source_record_index"] == "0-based_physical_line_index_within_split_file"
+    assert "words_sha256" in join_key
+    assert join_key["revision_bound"] is True
+    assert join_key["stable_across_revisions"] is False
+    assert join_key["panel_id_field_present"] is False
     assert report["label_length_checked"] is True
 
 

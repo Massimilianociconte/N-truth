@@ -1,0 +1,77 @@
+{
+  "generated_at": "2026-08-03T14:22:06Z",
+  "algorithm": "sha256 over sorted 'relative_path:file_sha256' lines of included trees; root = sha256(newline-joined list)",
+  "path_encoding": "POSIX relative path from each included directory root; basename for file roots",
+  "file_ordering": "sorted paths in walk + sorted final hash lines",
+  "included_roots": [
+    "raw",
+    "processed",
+    "training_ready",
+    "manifests/splits.json",
+    "manifests/datasets.json"
+  ],
+  "excluded_roots": [
+    "cache",
+    "downloads",
+    "logs",
+    "tools",
+    "quarantine",
+    "manifests/reports",
+    "manifests/licenses",
+    "manifests/checksums"
+  ],
+  "excluded_patterns": [
+    "._*",
+    " .DS_Store",
+    "__MACOSX",
+    "logs",
+    "run-history",
+    "quarantine"
+  ],
+  "appledouble_handling": "is_ignorable_metadata skips ._* and .DS_Store",
+  "cache_exclusion": true,
+  "logs_exclusion": true,
+  "downloads_exclusion": true,
+  "manifest_inclusion": [
+    "manifests/splits.json",
+    "manifests/datasets.json"
+  ],
+  "metadata_normalization": "AppleDouble ignored; JSON written via atomic_write with sort_keys where used",
+  "symlink_policy": "not specially followed beyond Path.rglob/os.walk defaults on FAT32 (no symlinks expected)",
+  "merkle_lineage": {
+    "previous_root": "0ab7db467c91310394854f7cc93c1d57d014674f22a2b18e2776e74b83180db4",
+    "intermediate_root": "e1fac7112991f9369d783f2b18e677b68a994693dbd907c71af42caf1db4de7d",
+    "current_root": "6f5bcc4551365df0c6153e1545e8f9aa85f3eb7f13b3adcabdfec4afd85305d0",
+    "canonical_data_content_changed": {
+      "0ab7_to_e1fac": false,
+      "e1fac_to_current": false,
+      "note": "raw/ markers and processed corpus bytes were not the drivers of the documented transitions; corpus rewrites earlier in the campaign (MeasEval append fix) predate 0ab7."
+    },
+    "canonical_manifest_content_changed": {
+      "0ab7_to_e1fac": true,
+      "e1fac_to_current": true
+    },
+    "changed_paths": {
+      "0ab7_to_e1fac": [
+        "manifests/datasets.json (added CRAFT upstream_split/ntruth_split; MeasEval training_ready_status/status gates)"
+      ],
+      "e1fac_to_current": [
+        "manifests/datasets.json (PreClinIE split_authority\u2192NTRUTH_GROUP_STRATIFIED_DERIVATION + grouping_key/seed fields)",
+        "training_ready/sourcedata_multitask/*/alignment_report.json (formal join_key object)"
+      ]
+    },
+    "reason_codes": [
+      "READINESS_AND_SPLIT_AUTHORITY_METADATA_IN_DATASETS_JSON",
+      "ALIGNMENT_JOIN_KEY_FORMALIZATION_IN_TRAINING_READY_REPORTS",
+      "NOT_RAW_CORPUS_REWRITE",
+      "NOT_DOWNLOAD_REFRESH"
+    ],
+    "lineage_status": "RECONSTRUCTED_FROM_SESSION_EVIDENCE",
+    "evidence_sources": [
+      "manifests/reports/idempotency_before_final.json (merkle 0ab7\u2026)",
+      "manifests/reports/idempotency_final.json / CLI logs (e1fac\u2026 and 6f5bcc\u2026)",
+      "datasets.json field presence for CRAFT/MeasEval/PreClinIE gates",
+      "training_ready alignment_report.json join_key shape"
+    ]
+  }
+}
