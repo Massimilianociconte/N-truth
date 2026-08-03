@@ -19,22 +19,25 @@ Given a supported input and a validated or human-confirmed graph, the software
 structure, conditional `n` branches, missing-information signals and decisive
 questions **for human review**. Scientific correctness is **not** validated.
 
-The v6 programme has two coordinated release trains: **Train D** (deterministic
-planner/compiler and rules path available now as software) and **Train A**
-(AI-assisted candidate parser, calibration and future external validation).
-Train D does not replace Train A. The AI model is **not** authorized to emit final
+The current specification is **PRD v7.0** (v6.1 is historical). Release work is
+organised as **Workstream A** (scientific foundation), **Workstream B** (Minimum
+Viable Train A contracts), **Workstream C** (real-anchor / silver / synthetic under
+gate), and **Workstream D** (governance/adoption). Historical reports may still use
+pre-v7 workstream labels. The AI model is **not** authorized to emit final
 independent `n`, scientific verdicts, pseudoreplication product verdicts, definitive
-statistical tests, or free-form `RuleResult`s.
+statistical tests, free-form `RuleResult`s, or final `DeterminabilityState`.
 
 > N-Truth is research software in **alpha** status. It does **not** certify statistical
 > validity, reproducibility, research integrity, privacy compliance or adherence to
 > DRIVER/NC3Rs. It does not replace a biostatistician or domain expert. It is
 > **experimental and not intended for scientific decision-making** without human
-> review. Scientific validation status is **`NOT_STARTED`**. A provisional local
-> Granite runtime is **`PARTIALLY_VERIFIED` only** for one registered MLX community
-> 4-bit fingerprint. Substantive LoRA training is **`HOLD_PENDING_REAL_ANCHOR`**.
-> No gold corpus, no scientifically trained N-Truth model, and no externally
-> validated performance claim exist.
+> review. **Reality Gate (clean checkout):** engineering readiness is
+> **component-reported**; **data readiness is `BLOCKED`**; scientific validation is
+> **`NOT_STARTED`**. Substantive training is **`HOLD_PENDING_REAL_ANCHOR`**.
+> ModernBERT training and Granite promotion remain **HOLD**. No gold corpus, no
+> scientifically trained N-Truth model, and no externally validated performance claim
+> exist. Claims about local Granite fingerprints or `models/registry/*` apply only when
+> those artefacts are present; they are **not** part of a bare clean checkout.
 
 Repository: [github.com/Massimilianociconte/N-truth](https://github.com/Massimilianociconte/N-truth)<br>
 Issues: [bug reports and feature requests](https://github.com/Massimilianociconte/N-truth/issues)<br>
@@ -53,8 +56,8 @@ Security: [private reporting policy](SECURITY.md)
 - distinguishes planned, allocated, treated, observed, excluded, analysed, declared,
   observational, analytical, biological-source, independent and diagnostic effective
   counts, including quantifier and scope;
-- derives one of seven normative determinability states and enforces the permitted
-  output for each state;
+- implements PRD v7 `DeterminabilityStateV7` (seven normative states) additively
+  beside the legacy four-state v3 enum, with permitted/forbidden outputs per state;
 - generates and validates a canonical SampleSheetSpec without inferring independence
   from IDs or factor columns;
 - abstains or emits explicit scenarios when a decisive fact is unknown;
@@ -88,10 +91,13 @@ Author phrases such as “independent experiments”, distinct IDs or well-level
 not establish independence by themselves. When independence is unknown,
 `n_independent` remains `null` or appears only inside explicit conditional branches.
 
-The seven states are `DETERMINATE`, `CONDITIONALLY_DETERMINATE`,
-`MULTIPLE_PLAUSIBLE_GRAPHS`, `INSUFFICIENT_INFORMATION`,
-`CONFLICTING_INFORMATION`, `INVALID_GRAPH` and `OUT_OF_SCOPE`. Only the first permits
-one unconditional experimental unit and independent `n`.
+PRD v7 defines seven normative states: `DETERMINATE`,
+`CONDITIONALLY_DETERMINATE`, `MULTIPLE_PLAUSIBLE_GRAPHS`, `INSUFFICIENT_INFORMATION`,
+`CONFLICTING_INFORMATION`, `INVALID_GRAPH` and `OUT_OF_SCOPE` (plus the full App. M
+output policy). Only `DETERMINATE` permits one unconditional experimental unit and
+independent `n`. The legacy v3 enum in `schemas/core.py` still exposes four states for
+backward-compatible reports; migration maps `INDETERMINATE` →
+`INSUFFICIENT_INFORMATION`.
 
 The public normative contract is [N-Truth Public Specification v0.1](docs/public-specification-v0.1.md).
 The scientific sources cited by the 32 rules are resolvable in the
@@ -101,26 +107,28 @@ review.
 
 ## Current status
 
-Machine-readable gates are verified in
-[`models/registry/default.json`](models/registry/default.json) and
-[`models/registry/training_program.json`](models/registry/training_program.json).
-Human summary: [`docs/status-snapshot.md`](docs/status-snapshot.md).
+Human summary for the **clean checkout**: [`docs/status-snapshot.md`](docs/status-snapshot.md).
+PRD v7 alignment audits: [`docs/audits/prd-v7-root-alignment/`](docs/audits/prd-v7-root-alignment/).
+Machine-readable Reality Gate: `ntruth quick-design reality-gate` (fail-closed; not a
+scientific claim).
 
-| Gate | Value (verified) |
+| Gate | Clean-checkout value |
 |---|---|
-| `migration_status` | `ARCHITECTURE_MIGRATED` |
-| `runtime_qualification_status` | `PARTIALLY_VERIFIED` (registered MLX community 4-bit fingerprint only) |
-| `scientific_validation_status` | `NOT_STARTED` |
-| `training_execution_gate` | `HOLD_PENDING_REAL_ANCHOR` |
-| `substantive_p0_training_allowed` | `false` |
-| Synthetic snapshot | `SYN_G1_UNANCHORED` (P0-alpha ~2000/300 graph-first synthetic) |
-| Annotation protocol | `REALITY_CHECK_PROTOCOL_DRAFT` |
-| Real-data anchor | `NOT_STARTED` |
-| First public trial | `HUMAN_SECOND_REVIEW_PACKET_READY` (not gold; human second not started) |
+| PRD specification | **v7.0 current** (v6.1 historical) |
+| `engineering_readiness` | `PARTIAL_OR_VERIFIED_BY_COMPONENT` |
+| `data_readiness` | **`BLOCKED`** |
+| `scientific_validation_status` | **`NOT_STARTED`** |
+| `training_execution_gate` | **`HOLD_PENDING_REAL_ANCHOR`** |
+| ModernBERT / Granite promotion | **HOLD** |
+| Real-data anchor | **not present in clean checkout** |
+| Gold N-Truth corpus | **none** |
+
+> Paths such as `models/registry/*` are **not** guaranteed in a clean checkout. Do not
+> treat Appendix AA, dirty worktrees, or FLASH128-only trees as repository contents.
 
 | Area | Implemented / engineering-tested | Still required for science |
 |---|---|---|
-| Deterministic core | Core Profile contracts, seven-state policy, hard verifier, 32 rules, lifecycle counts, conditional output, rule/premise traces | External wet-lab/biostat review; Derivation Gold on real cases |
+| Deterministic core | Core Profile contracts, v7 determinability policy (additive to v3), hard verifier, 32 rules, lifecycle counts, conditional output, rule/premise traces | External wet-lab/biostat review; Derivation Gold on real cases |
 | Prospective D0 | Cell-culture/well-plate 1-factor × 2-level × 1-endpoint wizard, SampleSheetSpec, API compilation | Durable multi-session persistence, accessibility review, real designs |
 | Human workflow | Evidence view, constrained editors, validated patches, append-only audit, undo/redo | Formal adjudication on real data; visual span locator |
 | Interfaces | CLI, loopback FastAPI, React UI (experimental graph canvas gated) | Auth / multi-user intentionally absent |
@@ -360,7 +368,7 @@ curl --fail http://127.0.0.1:8765/v1/health
 ```
 
 The initial UI opens on the constrained prospective D0 flow. Evidence, proof trace,
-all seven determinability states and lifecycle counts remain visible; the free graph
+v7 determinability states and lifecycle counts remain visible; the free graph
 canvas is an explicitly experimental opt-in.
 
 The API is unauthenticated, single-user and intentionally hard-coded to
@@ -632,10 +640,12 @@ Release-blocking scientific work still requires people and data:
 Engineering roadmap items include integration of the optional ML parser in the review
 UI, active learning after evaluation-set freeze, optional OCR adapters with provenance,
 persistent/multi-user deployment with authentication, and a scientifically trained
-parser only after the published gates. PRD v6.1 resolves the former Appendix-D
-150-250 inconsistency in favor of the body/roadmap feasibility range of 100-150 and
-marks performance thresholds provisional until pilot evidence is available.
-See [PRD v6 reconciliation](docs/prd-v6-reconciliation.md), the
+parser only after the published gates. Under PRD v7, feasibility-volume and
+threshold figures that disagree inside the PRD remain open scientific-review items
+(see errata BLK-SCIENTIFIC-001…003); they are not silently resolved in code.
+Historical note: PRD v6.1 discussed Appendix-D volume ranges and provisional
+thresholds. See [PRD v7 root alignment audits](docs/audits/prd-v7-root-alignment/),
+[PRD v6 reconciliation](docs/prd-v6-reconciliation.md) (historical), the
 [v6.1 audit response matrix](docs/prd-v6.1-gemini-response-matrix.md) and the
 [first human steps checklist](docs/first-human-steps-checklist.md).
 
@@ -648,7 +658,9 @@ Start with the **[documentation map](docs/README.md)** and
 - [Annotation reality-check P0 (draft)](docs/annotation-reality-check-p0-v0.1.md)
 - [HOLD: substantive LoRA pending real anchor](docs/training/DECISION-hold-pending-real-anchor.md)
 - [Granite migration report](docs/granite-migration-report.md)
-- [PRD v6 reconciliation](docs/prd-v6-reconciliation.md)
+- [PRD v7 root alignment audits](docs/audits/prd-v7-root-alignment/)
+- [PRD v7 migration map](docs/architecture/prd-v7-migration-map.md)
+- [PRD v6 reconciliation](docs/prd-v6-reconciliation.md) (historical)
 - [PRD v6.1 changelog](docs/prd-v6.1-changelog.md) and
   [audit response matrix](docs/prd-v6.1-gemini-response-matrix.md)
 - [Core Profile D0](docs/core-profile-d0.md) and [SampleSheetSpec v6](docs/sample-sheet-v6.md)
