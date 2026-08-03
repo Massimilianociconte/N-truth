@@ -73,8 +73,8 @@ class BootstrapCoreRecord(FrozenModel):
     factor_levels: tuple[str, ...] = Field(min_length=2)
     endpoint_id: str
     primary_contrast_id: str
-    allocation_level: str = "unknown"      # required-or-UNKNOWN
-    application_level: str | None = None   # optional-or-UNKNOWN
+    allocation_level: str = "unknown"  # required-or-UNKNOWN
+    application_level: str | None = None  # optional-or-UNKNOWN
     independently_assigned: TriStateRequired = "UNKNOWN"
     source_preparation_id: str = "unknown"  # required-or-UNKNOWN
     independence: IndependenceProfile = Field(default_factory=IndependenceProfile)
@@ -83,8 +83,8 @@ class BootstrapCoreRecord(FrozenModel):
     missing_decisive_fact: MissingDecisiveFact | None = None
     primary_question: str = ""
     inferential_query: InferentialQuery | None = None
-    determinability_derived: str | None = None   # derivata dal ruleset, mai libera
-    determinability_reviewed: bool = False       # revisione umana registrata
+    determinability_derived: str | None = None  # derivata dal ruleset, mai libera
+    determinability_reviewed: bool = False  # revisione umana registrata
 
     @model_validator(mode="after")
     def _core_invariants(self) -> Self:

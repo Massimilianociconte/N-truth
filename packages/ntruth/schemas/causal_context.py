@@ -73,9 +73,7 @@ class InterferenceAssessment(FrozenModel):
     @model_validator(mode="after")
     def _no_known_path_requires_evidence(self) -> Self:
         if self.status is InterferenceStatus.NO_KNOWN_PATH and not self.evidence_ids:
-            raise ValueError(
-                "no_known_path richiede evidenza positiva: il silenzio vale UNKNOWN"
-            )
+            raise ValueError("no_known_path richiede evidenza positiva: il silenzio vale UNKNOWN")
         return self
 
 
@@ -113,9 +111,7 @@ class CausalDesignContext(FrozenModel):
 
     factor_id: str
     assignment_mechanism: AssignmentMechanism = Field(default_factory=AssignmentMechanism)
-    interference_assessment: InterferenceAssessment = Field(
-        default_factory=InterferenceAssessment
-    )
+    interference_assessment: InterferenceAssessment = Field(default_factory=InterferenceAssessment)
     comparability_basis: ComparabilityBasis = Field(default_factory=ComparabilityBasis)
 
     @model_validator(mode="after")

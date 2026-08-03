@@ -19,10 +19,10 @@ RELATION_REGISTRY_VERSION: Final[str] = "0.2.0"
 class V7Relation(StrEnum):
     """Relazioni aggiuntive o ri-registrate in v7 rispetto al registry 0.1.0."""
 
-    ACQUIRED_FROM = "acquired_from"          # immagine/file <- field/well/instrument (E-09)
-    OBSERVED_IN = "observed_in"              # osservazione <- contesto
-    AGGREGATED_TO = "aggregated_to"          # osservazioni -> aggregato analitico
-    EXPOSED_WITH = "exposed_with"            # esposizione condivisa
+    ACQUIRED_FROM = "acquired_from"  # immagine/file <- field/well/instrument (E-09)
+    OBSERVED_IN = "observed_in"  # osservazione <- contesto
+    AGGREGATED_TO = "aggregated_to"  # osservazioni -> aggregato analitico
+    EXPOSED_WITH = "exposed_with"  # esposizione condivisa
     MAY_INTERFERE_WITH = "may_interfere_with"  # interferenza possibile
     SUPPORTING_EVIDENCE = "supporting_evidence"  # evidenza a supporto
     CONFLICTING_EVIDENCE = "conflicting_evidence"  # evidenza in conflitto
@@ -82,7 +82,9 @@ def canonical_relation(raw: str) -> RelationType | V7Relation:
     try:
         return V7Relation(raw)
     except ValueError:
-        raise ValueError(f"relazione non registrata nel registry {RELATION_REGISTRY_VERSION}: {raw!r}") from None
+        raise ValueError(
+            f"relazione non registrata nel registry {RELATION_REGISTRY_VERSION}: {raw!r}"
+        ) from None
 
 
 def registry_checksum() -> str:

@@ -15,7 +15,7 @@ Regole vincolanti:
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Literal, Self
+from typing import Self
 
 from pydantic import Field, model_validator
 
@@ -122,9 +122,10 @@ class CountRecord(FrozenModel):
             raise ValueError(
                 f"{self.kind.value} puo essere emesso solo dal rules engine, non dal parser"
             )
-        if self.kind is CountKind.EFFECTIVE_N:
-            if self.condition is None or "diagnostic" not in self.condition.lower():
-                raise ValueError("effective_n deve dichiarare la sezione diagnostica")
+        if self.kind is CountKind.EFFECTIVE_N and (
+            self.condition is None or "diagnostic" not in self.condition.lower()
+        ):
+            raise ValueError("effective_n deve dichiarare la sezione diagnostica")
         return self
 
     def scope_key(self) -> str:

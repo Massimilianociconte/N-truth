@@ -175,7 +175,9 @@ class AuthorityLedger(FrozenModel):
             conflicts=tuple(resolved if c.id == conflict_id else c for c in ledger.conflicts),
         )
 
-    def unresolved_conflicts(self, fields: frozenset[str] | None = None) -> tuple[ConflictRecord, ...]:
+    def unresolved_conflicts(
+        self, fields: frozenset[str] | None = None
+    ) -> tuple[ConflictRecord, ...]:
         return tuple(
             c
             for c in self.conflicts
@@ -187,7 +189,9 @@ class AuthorityLedger(FrozenModel):
         return any(c.field in decisive_fields for c in self.unresolved_conflicts())
 
 
-def make_confirmation_id(scope: str, authority: AuthorityType, actor_role: str, statement: str) -> str:
+def make_confirmation_id(
+    scope: str, authority: AuthorityType, actor_role: str, statement: str
+) -> str:
     return stable_id("conf", scope, str(authority), actor_role, statement.strip().lower())
 
 
@@ -202,9 +206,7 @@ def authority_rank(authority: AuthorityType) -> int | None:
     return None
 
 
-def higher_authority_wins(
-    first: AuthorityType, second: AuthorityType
-) -> AuthorityType | None:
+def higher_authority_wins(first: AuthorityType, second: AuthorityType) -> AuthorityType | None:
     """Fonte prevalente secondo §0.3; None se nessuna delle due e una fonte di verita."""
     rank_first = authority_rank(first)
     rank_second = authority_rank(second)

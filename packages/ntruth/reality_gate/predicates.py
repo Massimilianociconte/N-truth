@@ -35,8 +35,8 @@ class GatePredicateName(StrEnum):
 class PredicateEvidence(FrozenModel):
     """Provenienza del valore di un predicato: niente stati senza prova."""
 
-    basis: str                      # perche il valore e questo (riferimento auditabile)
-    artefact_ref: str | None = None # file/registro/hash nel clean checkout, se esiste
+    basis: str  # perche il valore e questo (riferimento auditabile)
+    artefact_ref: str | None = None  # file/registro/hash nel clean checkout, se esiste
     note: str = ""
 
 

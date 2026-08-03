@@ -25,16 +25,16 @@ class AbstentionReport(FrozenModel):
     """Contratto completo di astensione (PRD v7 §23.2)."""
 
     state: DeterminabilityStateV7
-    observed_facts: tuple[str, ...]            # 1. cio che e osservato
-    author_assertions: tuple[str, ...]         # 2. cio che e assertion
-    candidate_model_facts: tuple[str, ...]     # 3. candidati AI (mai verdetti)
-    missing_decisive_fact: str                 # 4. cio che manca
+    observed_facts: tuple[str, ...]  # 1. cio che e osservato
+    author_assertions: tuple[str, ...]  # 2. cio che e assertion
+    candidate_model_facts: tuple[str, ...]  # 3. candidati AI (mai verdetti)
+    missing_decisive_fact: str  # 4. cio che manca
     plausible_scenarios: tuple[PlausibleScenario, ...]  # 5+6. alternative e impatto
-    primary_question: str                      # 7. domanda operativa
-    reporting_improvement: str                 # 8. Methods/sample-sheet improvement
-    inference_limit: str                       # 9. limite di inferenza
-    useful_artefacts: tuple[str, ...]          # 10. artefatti ancora utilizzabili
-    recommended_next_action: str               # 11. prossima azione
+    primary_question: str  # 7. domanda operativa
+    reporting_improvement: str  # 8. Methods/sample-sheet improvement
+    inference_limit: str  # 9. limite di inferenza
+    useful_artefacts: tuple[str, ...]  # 10. artefatti ancora utilizzabili
+    recommended_next_action: str  # 11. prossima azione
 
     @model_validator(mode="after")
     def _contract_complete(self) -> Self:
@@ -44,7 +44,9 @@ class AbstentionReport(FrozenModel):
             raise ValueError("astensione senza fatto decisivo mancante")
         if not self.plausible_scenarios:
             raise ValueError("astensione senza scenari plausibili")
-        if any(not s.description.strip() or not s.consequence.strip() for s in self.plausible_scenarios):
+        if any(
+            not s.description.strip() or not s.consequence.strip() for s in self.plausible_scenarios
+        ):
             raise ValueError("scenario senza descrizione o conseguenza")
         if not self.primary_question.strip():
             raise ValueError("astensione senza domanda primaria")

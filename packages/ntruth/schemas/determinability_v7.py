@@ -71,9 +71,7 @@ ALLOWED_OUTPUTS: dict[DeterminabilityStateV7, tuple[str, ...]] = {
         "structural_errors",
         "required_patch",
     ),
-    DeterminabilityStateV7.OUT_OF_SCOPE: (
-        "structural_summary",
-    ),
+    DeterminabilityStateV7.OUT_OF_SCOPE: ("structural_summary",),
 }
 
 #: Output vietati per stato (App. M): la violazione e un release blocker.
@@ -88,9 +86,7 @@ FORBIDDEN_OUTPUTS: dict[DeterminabilityStateV7, tuple[str, ...]] = {
 }
 
 #: Un singolo n incondizionato e ammesso solo in DETERMINATE.
-SINGLE_N_STATES: frozenset[DeterminabilityStateV7] = frozenset(
-    {DeterminabilityStateV7.DETERMINATE}
-)
+SINGLE_N_STATES: frozenset[DeterminabilityStateV7] = frozenset({DeterminabilityStateV7.DETERMINATE})
 
 
 def allows_single_n(state: DeterminabilityStateV7) -> bool:

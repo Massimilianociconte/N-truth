@@ -10,11 +10,8 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import Field
-
 from ntruth.reality_gate.predicates import (
     GatePredicateName,
-    GateValue,
     RealityGatePredicate,
 )
 from ntruth.schemas.core import FrozenModel
@@ -64,9 +61,7 @@ def _dimension(
     not_ready_status: str,
 ) -> RealityDimension:
     blockers = tuple(
-        f"{p.name.value}: {p.value.value} ({p.evidence.basis})"
-        for p in predicates
-        if p.blocks()
+        f"{p.name.value}: {p.value.value} ({p.evidence.basis})" for p in predicates if p.blocks()
     )
     status = ready_status if not blockers else not_ready_status
     return RealityDimension(name=name, status=status, predicates=predicates, blockers=blockers)
