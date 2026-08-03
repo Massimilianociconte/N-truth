@@ -3,15 +3,15 @@
 **Status:** normative software baseline, candidate scientific specification<br>
 **Version:** 0.1.0<br>
 **Date:** 1 August 2026<br>
-**Scope:** deterministic Track A and contracts required before Track B training
+**Scope:** Train D deterministic v0.1-D and contracts required before Train A
 
 This document is the self-contained, redistributable specification for the public
 repository. `MUST`, `MUST NOT`, `SHOULD` and `MAY` are normative. Scientific rules,
 thresholds and taxonomies remain candidates until the external reviews listed in
 section 10 are complete.
 
-The private authoring PRD used during initial reconciliation is not distributed in
-this repository. Implementations and contributions MUST rely on this public
+The private PRD v6 used during reconciliation is retained locally and is not
+distributed by default. Implementations and contributions MUST rely on this public
 specification, the versioned schemas and executable tests, not on access to that file.
 
 ## 1. Purpose and boundaries
@@ -48,14 +48,21 @@ Every alert MUST belong to exactly one class:
 A hierarchical model MAY address analytical dependence. It MUST NOT be represented as
 creating biological replication that the design does not contain.
 
-### 2.2 Factor-relative experimental units
+### 2.2 Factor-relative experimental units and operational independence
 
-The experimental unit is relative to a factor and contrast. A paper or experiment
-bundle MUST NOT receive one global experimental-unit label when allocation differs by
-factor. The system MUST preserve:
+The experimental unit is relative to a factor and contrast. `allocation_level` is
+necessary but MUST NOT be treated as sufficient evidence of independence. A paper or
+experiment bundle MUST NOT receive one global experimental-unit label when allocation
+differs by factor. The system MUST preserve:
 
 - `allocation_level`: the level at which factor levels can be assigned independently;
 - `application_level`: the level at which a procedure is physically performed;
+- `independently_assigned`: required tri-state `TRUE`, `FALSE` or `UNKNOWN`;
+- `independence_mechanism`: required when the tri-state is `TRUE`;
+- `independence_evidence_ids`: evidence dedicated to the operational-independence
+  premise; allocation evidence MUST NOT be reused implicitly as proof;
+- randomization unit, shared environment, confounding, source preparation,
+  allocation event and timing when available;
 - observational/measurement levels below the allocation level;
 - nesting, crossing, pairing, blocking, pooling, repeated measures and batch structure.
 
@@ -77,18 +84,27 @@ An `InferenceTarget` formalizes the scientific question, claim and population. A
 N-Truth MAY list candidate analytical strategies. It MUST NOT automatically choose a
 statistical test, formula or power analysis as ground truth.
 
-### 2.4 Counts and determinability
+### 2.4 Counts, lifecycle and determinability
 
-`n_declared`, `n_allocated`, `n_analyzed`, `n_observational` and `n_independent` are
-different quantities. They MUST remain scoped by group, factor/contrast and endpoint.
+`planned_n`, `allocated_n`, `treated_n`, `observed_n`, `excluded_n`, `analysed_n`,
+`declared_n`, `observational_n`, `analytical_n`, `independent_n` and
+`biological_source_count` are different quantities. They MUST remain scoped by unit,
+group/level, factor/contrast, endpoint, timepoint, lifecycle and condition.
+`effective_n` is an optional diagnostic and MUST remain outside the primary count table.
 The system MUST NOT fill a missing independent count with a declared or observational
 count.
 
-`n_independent` MAY be scalar only when the decisive independence facts have high,
-structural provenance. If competing interpretations alter the result, the output MUST
-contain explicit conditional scenarios and the smallest decisive question. If the
-required facts are absent, the result MUST be indeterminate; abstention is a valid
-scientific outcome.
+Every count MUST retain one quantifier: `EXACT`, `LOWER_BOUND`, `UPPER_BOUND`,
+`APPROXIMATE`, `RANGE`, `UNKNOWN` or `NOT_REPORTED`. Silence MUST NOT become zero and
+bounds MUST NOT become exact values. Exclusions MUST retain unit, phase, prespecification,
+endpoint, group, decision role, evidence and count impact.
+
+`independent_n` MAY be scalar only in `DETERMINATE`. The seven exhaustive states are:
+`DETERMINATE`, `CONDITIONALLY_DETERMINATE`, `MULTIPLE_PLAUSIBLE_GRAPHS`,
+`INSUFFICIENT_INFORMATION`, `CONFLICTING_INFORMATION`, `INVALID_GRAPH` and
+`OUT_OF_SCOPE`. A conditional state MAY expose numeric values only within explicit
+branches. All other non-determinate states MUST suppress a unique experimental unit
+and `independent_n`. `AUTHOR_ASSERTION` alone MUST NOT close determinability.
 
 ### 2.5 Evidence and provenance
 
@@ -111,42 +127,49 @@ consequences.
 
 ## 3. Product strategy
 
-### Track A - deterministic foundation
+### Train D - deterministic foundation
 
-Track A MUST provide local ingest, typed graph construction, human correction,
+Train D MUST provide local ingest, typed graph construction, human correction,
 deterministic rules, traceable output and data-governance gates. It MUST remain useful
 without a model and MUST be the reference implementation used to verify future parser
 outputs.
 
-### Track B - AI parser and corpus
+### Train A - AI parser and corpus
 
-Track B will segment experimental blocks and propose evidence spans, entities,
-relations, allocation/application levels, targets, alternatives, determinability and
-questions through a stable JSON contract. Parser outputs are candidates. Final alerts
-and deterministic consequences MUST remain outside the model contract.
+Train A will segment experimental blocks and propose evidence spans, entities,
+relations, allocation/application and operational-independence candidates, procedural
+events, alternatives and missing facts through stable stage contracts. Parser outputs
+are candidates. Final determinability, alerts and deterministic consequences MUST
+remain outside the model contract.
 
-No scientific training or model selection MAY begin until the data, schema-stability
-and scientific-review gates in section 10 are satisfied. A bounded, synthetic-only
+No scientific training or model selection MAY begin until Core Profile, Derivation
+Gold, baseline, data, schema-stability and scientific-review gates in section 10 are
+satisfied. A bounded, synthetic-only
 runtime smoke MAY exercise loading, backpropagation and checkpoint code when its
 manifest forbids scientific metrics and no result is treated as a baseline.
 
 ## 4. Architecture and trust boundaries
 
 ```text
-Experiment Bundle
-  -> safe local ingest and Document IR
-  -> deterministic extraction / optional local AI candidates
-  -> typed candidate graph plus alternatives
-  -> human confirmation, rejection or correction
-  -> validated graph
-  -> deterministic compiler and rules engine
-  -> versioned report, questions, traces and exports
+Experiment Bundle or prospective wizard
+  -> DocumentRouteResult
+  -> EvidenceExtractionResult / EntityCountResult / ProceduralEventResult
+  -> CandidateGraphSet
+  -> hard verifier (always) / semantic verifier (only when triggered)
+  -> HumanRevisionPatch
+  -> validated or explicitly conditional graph
+  -> RuleResult / QuestionRecord
+  -> ReportBundle and versioned exports
 ```
 
 The rules engine reads a validated graph, not raw prose. Imported R, Python and R
 Markdown files MUST be treated as text and MUST NEVER be executed. The baseline API
 is single-user, unauthenticated and loopback-only; it MUST NOT be bound to `0.0.0.0`,
 placed behind a reverse proxy or exposed to a LAN/Internet.
+
+Every stage envelope MUST expose schema version, provenance, typed errors/warnings and
+`complete`, `partial` or `failed`. A parser stage MUST NOT emit a rules-engine verdict.
+Parser Gold and Derivation Gold MUST remain distinct.
 
 Corrections and exports MUST be append-only revisions. A new correction MUST NOT
 rewrite the source or an earlier export. Every output MUST identify applicable schema,
@@ -156,15 +179,15 @@ ruleset, ontology, parser contract and software versions.
 
 The IDs below are stable public identifiers.
 
-### 5.1 Ingest
+### 5.1 D0 inputs and progressive ingest
 
 | ID | Requirement |
 |---|---|
-| FR-001 | Import TXT, Markdown and pasted text. |
-| FR-002 | Import JATS/XML while preserving sections and references. |
-| FR-003 | Import DOCX and PDF with extractable text. |
-| FR-004 | Import CSV/XLSX with types, formulas and sheet names. |
-| FR-005 | Import R, Python and R Markdown as read-only text. |
+| FR-001 | In v0.1-D, create an Experiment Block through the prospective wizard. |
+| FR-002 | In v0.1-D, import TXT/Markdown and simple CSV only. |
+| FR-003 | Generate and validate the versioned `SampleSheetSpec`. |
+| FR-004 | Gate JATS/XML, DOCX, PDF, XLSX and TSV behind an explicit experimental profile until their release stage. |
+| FR-005 | Gate R, Python and R Markdown behind the experimental profile and treat them as read-only text. |
 | FR-006 | Associate multiple files with one Experiment Bundle. |
 
 ### 5.2 Parser contract
@@ -179,10 +202,10 @@ The IDs below are stable public identifiers.
 | FR-015 | Extract endpoints, factors, groups and contrasts. |
 | FR-016 | Propose an inference target or explicitly declare it absent. |
 | FR-017 | Return alternative graphs when evidence supports more than one interpretation. |
-| FR-018 | Classify determinability. |
+| FR-018 | After hard verification (and human confirmation when required), **derive** determinability via the rules/output-policy stack—not as a free-form model classification. Determinability is outside the candidate-only parser contract (see §3). |
 | FR-019 | Generate the smallest decisive questions. |
 
-Track A MAY implement conservative deterministic subsets of FR-010 through FR-019.
+Train D MAY implement conservative deterministic subsets of FR-010 through FR-019.
 This does not satisfy the evaluated AI-parser requirement.
 
 ### 5.3 Graph and rules
@@ -253,14 +276,15 @@ A complete report SHOULD present, in order:
 1. design summary;
 2. graph and evidence;
 3. factors, allocation and application levels;
-4. endpoints, contrasts, inference targets and estimands;
-5. declared, allocated, analyzed, observational and independent counts;
-6. green path: what is supported and why;
-7. alerts grouped by the three classes;
-8. decisive open questions and conditional scenarios;
-9. candidate analytical considerations;
-10. generalization limits;
-11. provenance and component versions.
+4. the derived determinability state, alternatives and prohibited outputs;
+5. endpoints, contrasts, inference targets and estimands;
+6. lifecycle and semantic counts with scope and quantifier;
+7. green path: what is supported and why;
+8. alerts grouped by the three classes;
+9. decisive open questions and conditional scenarios;
+10. candidate analytical considerations;
+11. generalization limits;
+12. proof trace and component versions.
 
 Severity MUST depend on the type and impact of the problem, evidence certainty,
 contrast, correctability, available dependence evidence and confounding. It MUST NOT
@@ -278,10 +302,12 @@ revoked or mismatched records MUST fail closed. Redaction produces a separate de
 asset; it MUST NOT mutate the source. Distribution readiness evaluates the current
 scope and MUST NOT itself upload, copy or share data.
 
-Splits are assigned by whole experiment bundle, not by sentence. An indivisible group
-includes article, preprint/versions/corrections, supplements, sample sheets, code,
-repository accessions and mirrors. Synthetic transformations of one graph remain in a
-single train-only group.
+Training, evaluation and release eligibility are separate booleans. `TEST` and
+`EXTERNAL_CHALLENGE` MUST NEVER be training eligible. Splits are assigned by whole
+experiment bundle, not by sentence. An indivisible group includes article,
+preprint/versions/corrections, supplements, sample sheets, code, repository accessions
+and mirrors. Synthetic transformations of one graph remain in a single train-only
+group.
 
 ## 9. Evaluation
 
@@ -307,11 +333,14 @@ and documentation gates pass. It MUST still carry the scientific disclaimer.
 
 Training remains blocked until all of the following are documented:
 
-- at least 20 real designs represented without substantive schema changes;
+- 10-20 real designs represented in the D0 micro-domain without substantive schema changes;
 - principal rules reviewed by a biostatistician and wet-lab expert;
 - 30-60 complete canonical fixtures with graph, expected output, exception,
   counterexample, reference and review;
-- 30 double-annotated calibration cases with pre-adjudication agreement;
+- at least 20 confirmed real/canonical cases in Derivation Gold;
+- 30-50 calibration cases with independent annotation on decisive fields and
+  pre-adjudication agreement;
+- a 100-150-case feasibility protocol with all decisive fields double annotated;
 - frozen pilot protocol and redirect criteria;
 - asset-level licenses/authorizations and privacy review;
 - bundle/laboratory-aware train, validation, test and external splits;
@@ -319,6 +348,10 @@ Training remains blocked until all of the following are documented:
 
 Claims of scientific validation remain blocked until the independent pilot, human
 ceiling, external challenge and user study are complete.
+
+The PRD v6 body, roadmap and Definition of Done specify 100-150 feasibility cases;
+Appendix D still says 150-250. The public baseline uses 100-150 and records the latter
+as an open editorial erratum rather than silently combining the two targets.
 
 ## 11. Versioning and change control
 
