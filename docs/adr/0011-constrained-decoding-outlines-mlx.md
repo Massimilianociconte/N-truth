@@ -1,7 +1,7 @@
 # ADR-0011 — Structured decoding stage-level (Outlines + MLX-LM)
 
-**Stato:** accettato (Cluster 3A tecnico)  
-**Data:** 2026-08-03  
+**Stato:** accettato (Cluster 3A tecnico)
+**Data:** 2026-08-03
 **Contesto:** backend Granite sperimentale + registry runtime PARTIALLY_VERIFIED
 
 ## Contesto

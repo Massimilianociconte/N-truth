@@ -1,0 +1,111 @@
+{
+  "detached_worktree": "/var/folders/rb/gltk48212j39qn2wskhlj3s80000gn/T/grok-goal-a0ac9e86195f/implementer/verify-clean-64a160b",
+  "detached_head": "64a160bb18600606774a3b6a5dcb7cb9f513e889",
+  "git_diff_check": {
+    "command": "git diff --check fac3249..64a160b",
+    "notes": "reported ADR trailing whitespace and EOF blank line nits; no code defects"
+  },
+  "suites": {
+    "cluster3a": {
+      "collect_n": 32,
+      "passed_dots": 32,
+      "failed_dots": 0,
+      "error_dots": 0,
+      "exit": 0,
+      "duration_s": 1.429,
+      "command": "uv run pytest tests/unit/test_constrained_decoding.py -q --tb=no",
+      "tail": [
+        "................................                                         [100%]"
+      ]
+    },
+    "cluster1": {
+      "collect_n": 12,
+      "passed_dots": 12,
+      "failed_dots": 0,
+      "error_dots": 0,
+      "exit": 0,
+      "duration_s": 0.531,
+      "command": "uv run pytest tests/unit/test_granite_backend_cluster1.py -q --tb=no",
+      "tail": [
+        "............                                                             [100%]"
+      ]
+    },
+    "cluster2": {
+      "collect_n": 21,
+      "passed_dots": 21,
+      "failed_dots": 0,
+      "error_dots": 0,
+      "exit": 0,
+      "duration_s": 0.616,
+      "command": "uv run pytest tests/unit/test_registry_cluster2.py tests/unit/test_registry_authority_and_verify.py -q --tb=no",
+      "tail": [
+        ".....................                                                    [100%]"
+      ]
+    },
+    "unit_all": {
+      "collect_n": 521,
+      "passed_dots": 521,
+      "failed_dots": 0,
+      "error_dots": 0,
+      "exit": 0,
+      "duration_s": 2.362,
+      "command": "uv run pytest tests/unit -q --tb=no",
+      "tail": [
+        "........................................................................ [ 82%]",
+        "........................................................................ [ 96%]",
+        ".................                                                        [100%]"
+      ]
+    }
+  },
+  "invariants": {
+    "registry_byte_identical": true,
+    "factory_default": "legacy_qwen",
+    "scientifically_releasable": false,
+    "runtime_qualification_status": "PARTIALLY_VERIFIED",
+    "scientific_validation_status": "NOT_STARTED",
+    "free_generate_constrained_status": "FREE_DECODE",
+    "structured_without_outlines": "CONSTRAINED_UNAVAILABLE fail-closed",
+    "import_without_eager_outlines": true,
+    "post_generation_validation": true
+  },
+  "smoke": {
+    "smoke": "ENGINEERING_INTEGRATION_SMOKE",
+    "weights": "/Users/massimilianociconte/Documents/N-truth/models/local/granite-4.1-3b-4bit",
+    "weights_exist": true,
+    "schema": "evidence_extraction",
+    "schema_version": "0.1.0",
+    "claims": "syntax_only_no_semantic_qualification",
+    "outlines_probe": {
+      "status": "CONSTRAINED_SUPPORTED",
+      "detail": "outlines.from_mlxlm + Generator disponibili",
+      "outlines_version": "1.3.2",
+      "mlx_lm_version": "0.31.3"
+    },
+    "load_ms": 1040.4314999977942,
+    "supports_constrained": true,
+    "load_metrics": {
+      "unloaded": false,
+      "load_ms": 1040.3772089994163
+    },
+    "generation": {
+      "status": "OK",
+      "constrained_status": "GENERATION_OK",
+      "gen_ms": 2912.027209000371,
+      "input_tokens": 114,
+      "output_tokens": 168,
+      "truncated": false,
+      "schema_valid": true,
+      "fallback_used": false,
+      "schema_name": "EvidenceExtractionResult",
+      "schema_version": "0.1.0",
+      "text_preview": "{\"evidence_spans\": [{\"confidence\": 0.5, \"end\": 25, \"evidence_id\": \"0\", \"file_id\": \"plate_well_data\", \"start\": 0, \"text\": \"We used n=6 wells per condition from one plate.\"}], \"provenance\": {\"authority\": \"model\", \"producer\": \"granite-structured\", \"producer_version\": \"0.1.0\", \"stage\": \"experimental\", \"stage_run_id\": \"\"}, \"result_id\": \"EvidenceExtractionResult.0.1.0\", \"schema_status\": \"EXPERIMENTAL\", \"schema_version\": \"0.1.0\", \"stage\": \"evidence_extraction\", \"status\": \"complete\"}",
+      "finish_reason": "stop"
+    },
+    "status": "PASS_ENGINEERING_SYNTAX_ONLY",
+    "unload_ms": 17.21325000107754,
+    "post_unload_metrics": {
+      "unloaded": true
+    }
+  },
+  "sign_off_recommendation": "APPROVED"
+}

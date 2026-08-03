@@ -1,0 +1,44 @@
+{
+  "partials": [
+    {
+      "path": "packages/ntruth/model_backends/constrained.py",
+      "main_partial_exists": true,
+      "main_partial_sha256": "09cf77bade11d433d9925511ffd0c207128bfb8e75c1c293c1f73a3636cd4e34",
+      "main_partial_bytes": 4631,
+      "committed_sha256": "afe596bb7c0df0a923de775547ebae3e438c71e9954896481f7ba2d8a5d03901",
+      "committed_bytes": 18172,
+      "disposition": "DISCARDED_REWRITTEN",
+      "notes": "Partial untracked on main dirty tree used only as design reference; Cluster 3A rewrite on fac3249 base to match 0.1.0 EXPERIMENTAL contract."
+    },
+    {
+      "path": "packages/ntruth/model_backends/stage_schemas.py",
+      "main_partial_exists": true,
+      "main_partial_sha256": "65d3a2180b6ac53889457f4245e4c5851cd8a529a9b3656411ab584da3a66da6",
+      "main_partial_bytes": 6341,
+      "committed_sha256": "eeac252ff59073a2aa310208184742b8e17c40a70f363f570a27906e54df82f7",
+      "committed_bytes": 9391,
+      "disposition": "DISCARDED_REWRITTEN",
+      "notes": "Partial untracked on main dirty tree used only as design reference; Cluster 3A rewrite on fac3249 base to match 0.1.0 EXPERIMENTAL contract."
+    },
+    {
+      "path": "tests/unit/test_constrained_decoding.py",
+      "main_partial_exists": true,
+      "main_partial_sha256": "3c897eca8c04854f4dea5c3a052eb1710efc48fa8e976e2407432fe61cddd156",
+      "main_partial_bytes": 2641,
+      "committed_sha256": "cfffea0e7e6d7acc541fd205c3e1935f034cbf44a57331532c631fad0220e6d9",
+      "committed_bytes": 28227,
+      "disposition": "DISCARDED_REWRITTEN",
+      "notes": "Partial untracked on main dirty tree used only as design reference; Cluster 3A rewrite on fac3249 base to match 0.1.0 EXPERIMENTAL contract."
+    },
+    {
+      "path": "docs/adr/0011-constrained-decoding-outlines-mlx.md",
+      "main_partial_exists": true,
+      "main_partial_sha256": "5fedc59bbeb262150eb0a708a5ab6ca7cb830eaaeed5dc1a789daa1513d86c75",
+      "main_partial_bytes": 2514,
+      "committed_sha256": "714ab139eeeb98726ac2e38dff03aba70f483fb2b3223a09c7f18f9498f03968",
+      "committed_bytes": 3343,
+      "disposition": "DISCARDED_REWRITTEN",
+      "notes": "Partial untracked on main dirty tree used only as design reference; Cluster 3A rewrite on fac3249 base to match 0.1.0 EXPERIMENTAL contract."
+    }
+  ]
+}

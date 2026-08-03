@@ -187,4 +187,3 @@ def test_granite_module_import_graph_stays_decoupled_from_registry_and_training(
     assert "training" not in source
     # Cluster 3A may lazy-import constrained inside methods; no eager stage_schemas.
     assert "stage_schemas" not in source
-

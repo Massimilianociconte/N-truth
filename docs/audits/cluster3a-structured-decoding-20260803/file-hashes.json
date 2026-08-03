@@ -1,0 +1,98 @@
+{
+  "candidate_commit": "64a160b",
+  "sources": {
+    "packages/ntruth/model_backends/errors.py": {
+      "sha256": "88935fbcbef92c873364adb6a8d2188a2f4b12147f1d2806cbdd35eee71e881b",
+      "bytes": 2400
+    },
+    "packages/ntruth/model_backends/constrained.py": {
+      "sha256": "afe596bb7c0df0a923de775547ebae3e438c71e9954896481f7ba2d8a5d03901",
+      "bytes": 18172
+    },
+    "packages/ntruth/model_backends/stage_schemas.py": {
+      "sha256": "eeac252ff59073a2aa310208184742b8e17c40a70f363f570a27906e54df82f7",
+      "bytes": 9391
+    },
+    "packages/ntruth/model_backends/granite.py": {
+      "sha256": "ed212d8cc0b4f6c98c697bd186d7feba7140b199e211d995bbe3c19f7c13beaf",
+      "bytes": 18232
+    },
+    "packages/ntruth/model_backends/__init__.py": {
+      "sha256": "2aaab255cf2e16b2db7d1a2784af98045c73aff8eedb4e320b0502d8b6a7f382",
+      "bytes": 2176
+    },
+    "tests/unit/test_constrained_decoding.py": {
+      "sha256": "cfffea0e7e6d7acc541fd205c3e1935f034cbf44a57331532c631fad0220e6d9",
+      "bytes": 28227
+    },
+    "tests/unit/test_granite_backend_cluster1.py": {
+      "sha256": "a81e3a678018894275d6d014273b9ae44684cecaea3816e146ba1fb0282de553",
+      "bytes": 6809
+    },
+    "docs/adr/0011-constrained-decoding-outlines-mlx.md": {
+      "sha256": "714ab139eeeb98726ac2e38dff03aba70f483fb2b3223a09c7f18f9498f03968",
+      "bytes": 3343
+    },
+    "pyproject.toml": {
+      "sha256": "6ade69955bc8c124d4bb52a70612577d035c7e716dcb7601ed97116b66dc1277",
+      "bytes": 4446
+    },
+    "uv.lock": {
+      "sha256": "7326268308c0362ba33005317a21b68f87a62c2b7edfd8dca1dc1aaba72e8358",
+      "bytes": 268295
+    }
+  },
+  "registry": {
+    "models/registry/AUTHORITY.md": "950de7e6bbf9ac108c4fed64d9aab3fa04a9112ca40309627cc9e164ab633b1c",
+    "models/registry/README.md": "0a56089d22256cfcba4593871b0cb2c4655d5e69d574226af879152800bd5eb4",
+    "models/registry/default.json": "c1e02b8ba2df988175726033148754f8890dbb063a85abd36643d2c1cd38d93f",
+    "models/registry/public_evidence/sha256/36/3623f887d3d1b05fc56e0c1cded6f6ee0592b0f8a8a1b930a2cefd8549f18053": "3623f887d3d1b05fc56e0c1cded6f6ee0592b0f8a8a1b930a2cefd8549f18053",
+    "models/registry/public_evidence/sha256/62/625f4fab74ce5f4af0cb4ae88b5bb3208d9cd60651e6e3f2e41ae1bfcde1d015": "625f4fab74ce5f4af0cb4ae88b5bb3208d9cd60651e6e3f2e41ae1bfcde1d015",
+    "models/registry/public_evidence/sha256/b4/b4a7b48b357a14d8d5b1fafbce73796ad3148df7dcbeff175fc6d06527e6d07c": "b4a7b48b357a14d8d5b1fafbce73796ad3148df7dcbeff175fc6d06527e6d07c",
+    "models/registry/public_evidence/sha256/c9/c98e4d6ec65a866392445b9333088b308638163e6c3d5919888f8bb22ea31499": "c98e4d6ec65a866392445b9333088b308638163e6c3d5919888f8bb22ea31499",
+    "models/registry/qualification_chain.jsonl": "4c1f7e40b204c8fdc1becf3964d02980b9fbe77a0bb81b29ed72ad88f222954f",
+    "models/registry/qualification_chain.manifest.json": "b708f695711d05d2b117ed3c15c5002df34c3dc60d27da3cf38a3bcd02edaef9"
+  },
+  "partials_vs_committed": [
+    {
+      "path": "packages/ntruth/model_backends/constrained.py",
+      "main_partial_exists": true,
+      "main_partial_sha256": "09cf77bade11d433d9925511ffd0c207128bfb8e75c1c293c1f73a3636cd4e34",
+      "main_partial_bytes": 4631,
+      "committed_sha256": "afe596bb7c0df0a923de775547ebae3e438c71e9954896481f7ba2d8a5d03901",
+      "committed_bytes": 18172,
+      "disposition": "DISCARDED_REWRITTEN",
+      "notes": "Partial untracked on main dirty tree used only as design reference; Cluster 3A rewrite on fac3249 base to match 0.1.0 EXPERIMENTAL contract."
+    },
+    {
+      "path": "packages/ntruth/model_backends/stage_schemas.py",
+      "main_partial_exists": true,
+      "main_partial_sha256": "65d3a2180b6ac53889457f4245e4c5851cd8a529a9b3656411ab584da3a66da6",
+      "main_partial_bytes": 6341,
+      "committed_sha256": "eeac252ff59073a2aa310208184742b8e17c40a70f363f570a27906e54df82f7",
+      "committed_bytes": 9391,
+      "disposition": "DISCARDED_REWRITTEN",
+      "notes": "Partial untracked on main dirty tree used only as design reference; Cluster 3A rewrite on fac3249 base to match 0.1.0 EXPERIMENTAL contract."
+    },
+    {
+      "path": "tests/unit/test_constrained_decoding.py",
+      "main_partial_exists": true,
+      "main_partial_sha256": "3c897eca8c04854f4dea5c3a052eb1710efc48fa8e976e2407432fe61cddd156",
+      "main_partial_bytes": 2641,
+      "committed_sha256": "cfffea0e7e6d7acc541fd205c3e1935f034cbf44a57331532c631fad0220e6d9",
+      "committed_bytes": 28227,
+      "disposition": "DISCARDED_REWRITTEN",
+      "notes": "Partial untracked on main dirty tree used only as design reference; Cluster 3A rewrite on fac3249 base to match 0.1.0 EXPERIMENTAL contract."
+    },
+    {
+      "path": "docs/adr/0011-constrained-decoding-outlines-mlx.md",
+      "main_partial_exists": true,
+      "main_partial_sha256": "5fedc59bbeb262150eb0a708a5ab6ca7cb830eaaeed5dc1a789daa1513d86c75",
+      "main_partial_bytes": 2514,
+      "committed_sha256": "714ab139eeeb98726ac2e38dff03aba70f483fb2b3223a09c7f18f9498f03968",
+      "committed_bytes": 3343,
+      "disposition": "DISCARDED_REWRITTEN",
+      "notes": "Partial untracked on main dirty tree used only as design reference; Cluster 3A rewrite on fac3249 base to match 0.1.0 EXPERIMENTAL contract."
+    }
+  ]
+}
