@@ -1,0 +1,59 @@
+{
+  "mapping_version": "0.1.0",
+  "source_dataset": "SourceData",
+  "source_configuration": "token_classification/v_2.0.3 multitask NER+ROLES_MULTI",
+  "scheme": "BIO",
+  "entity_types": [
+    "GENEPROD",
+    "ORGANISM",
+    "TISSUE",
+    "CELL_LINE",
+    "CELL_TYPE",
+    "DISEASE",
+    "SMALL_MOLECULE",
+    "SUBCELLULAR",
+    "EXP_ASSAY"
+  ],
+  "role_types": [
+    "CONTROLLED_VAR",
+    "MEASURED_VAR"
+  ],
+  "source_to_canonical": {
+    "B-GENEPROD": "B-GENEPROD",
+    "B-ORGANISM": "B-ORGANISM",
+    "B-TISSUE": "B-TISSUE",
+    "B-CELL_LINE": "B-CELL_LINE",
+    "B-CELL_TYPE": "B-CELL_TYPE",
+    "B-DISEASE": "B-DISEASE",
+    "B-SMALL_MOLECULE": "B-SMALL_MOLECULE",
+    "B-SUBCELLULAR": "B-SUBCELLULAR",
+    "B-EXP_ASSAY": "B-EXP_ASSAY",
+    "I-GENEPROD": "I-GENEPROD",
+    "I-ORGANISM": "I-ORGANISM",
+    "I-TISSUE": "I-TISSUE",
+    "I-CELL_LINE": "I-CELL_LINE",
+    "I-CELL_TYPE": "I-CELL_TYPE",
+    "I-DISEASE": "I-DISEASE",
+    "I-SMALL_MOLECULE": "I-SMALL_MOLECULE",
+    "I-SUBCELLULAR": "I-SUBCELLULAR",
+    "I-EXP_ASSAY": "I-EXP_ASSAY",
+    "B-CONTROLLED_VAR": "B-CONTROLLED_VAR",
+    "B-MEASURED_VAR": "B-MEASURED_VAR",
+    "I-CONTROLLED_VAR": "I-CONTROLLED_VAR",
+    "I-MEASURED_VAR": "I-MEASURED_VAR",
+    "O": "O"
+  },
+  "notes": [
+    "Identity mapping of SourceData BIO tags into entity_roles payload channels.",
+    "entity_labels carry NER types; role_labels carry ROLES_MULTI types.",
+    "Unknown tags are excluded (fail-closed), never silently remapped.",
+    "Labels are AUXILIARY; not experimental_unit / independent_n / verdict gold."
+  ],
+  "forbidden_promotions": [
+    "experimental_unit_gold",
+    "independent_n_gold",
+    "pseudoreplication_verdict_gold",
+    "allocation_gold",
+    "biological_independence_gold"
+  ]
+}
