@@ -5,6 +5,11 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from ntruth.task_corpora.readiness import (
+    CANONICAL_FORBIDDEN_GOLD_USES,
+    ROOT_REALITY_GATE_CONTRACT_REF,
+)
+
 DEFAULT_DATA_ROOT = Path(os.environ.get("NTRUTH_DATA_ROOT", "/Volumes/FLASH128/N-Truth-Datasets"))
 DEFAULT_SEED = "20260803"
 # Canonical task-record schema / transform versions (bump together when record body changes).
@@ -44,9 +49,15 @@ FORBIDDEN_GOLD_USES = (
     "estimand_gold",
 )
 
-# Provisional Reality Gate reference (PRD v7 §0.7). Full root schema is owned by
-# the root-alignment workflow; dataset manifests only record status.
+if not set(CANONICAL_FORBIDDEN_GOLD_USES).issubset(set(FORBIDDEN_GOLD_USES)):
+    raise RuntimeError("FORBIDDEN_GOLD_USES must cover canonical root gold bans")
+
+# Reality Gate: root owns the full schema (packages/ntruth/reality_gate).
+# Dataset manifests project status only (task_corpora.readiness.DatasetReadinessProjection).
+# PROVISIONAL_* string retained as a deprecated alias for older manifests.
 PROVISIONAL_REALITY_GATE_REF = "prd_v7_section_0.7_provisional_dataset_manifest"
+# Immutable pin to the PR #6 merge commit that introduced root Reality Gate contracts.
+ROOT_REALITY_GATE_REF = ROOT_REALITY_GATE_CONTRACT_REF
 REALITY_GATE_STATUS_BLOCKED = "BLOCKED"
 ENGINEERING_READINESS_C0_C1 = "VERIFIED_FOR_C0_C1"
 DATA_READINESS_BLOCKED = "BLOCKED"

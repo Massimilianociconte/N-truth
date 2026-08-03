@@ -1,42 +1,60 @@
-# Provisional Reality Gate reference (dataset manifests)
+# Dataset Reality Gate projection (root-aligned)
 
 **PRD:** v7.0 §0.7
-**Owner of full schema:** root-alignment workflow (not this package)
-**Dataset role:** record status only; never claim gate satisfaction from engineering alone
+**Root owner:** `packages/ntruth/reality_gate/` (merged PR #6 @ `f2faace…`)
+**Dataset role:** project facts only; never claim full gate satisfaction from engineering alone
 
-## Normative conditions (PRD text)
+## Canonical root contract
 
-Substantive training and scientific AI claims remain blocked until **all** relevant
-conditions hold (names as in PRD):
+Import / reference:
 
 ```text
-schema_stable_on_real_cases
-human_second_review_completed
-blocking_schema_gaps == 0
-real_anchor_available
-license_scope_verified
-train_dev_test_split_frozen
-decisive_fields_reviewed
-real_baseline_executed
-synthetic_factory_human_calibrated
+packages/ntruth/reality_gate/     GatePurpose, GateValue, DataReadiness,
+                                  ScientificValidation, evaluate_reality_gate
+packages/ntruth/task_corpora/readiness.py
+                                  DatasetReadinessProjection
+                                  project_sourcedata_c0_c1()
 ```
 
-PRD explicit non-satisfaction:
+Do **not** re-implement scientific validation in task_corpora.
 
-> La presenza di public corpora, structured decoding, engineering smoke o SYN-G1
-> NON soddisfa il Reality Gate.
+## Normative conditions (PRD)
 
-## Dataset manifest fields (provisional)
+Substantive training and scientific AI claims remain blocked until **all** relevant
+conditions hold. Public corpora, structured decoding, engineering smoke or SYN-G1
+do **not** satisfy the Reality Gate.
 
-| Field | C0–C1 SourceData value |
-|-------|-------------------------|
-| `reality_gate_status` | `BLOCKED` |
-| `reality_gate_ref` | `prd_v7_section_0.7_provisional_dataset_manifest` |
-| `engineering_readiness` | `VERIFIED_FOR_C0_C1` |
+Dataset projection fields for C0–C1 SourceData:
+
+| Field | Value |
+|-------|-------|
+| `engineering_component_status` | `VERIFIED_FOR_C0_C1` |
+| `engineering_readiness` (root enum map) | `PARTIAL_OR_VERIFIED_BY_COMPONENT` |
 | `data_readiness` | `BLOCKED` |
 | `scientific_validation` | `NOT_STARTED` |
+| `reality_gate_status` | `BLOCKED` |
+| `real_anchor_available` | `FALSE` |
+| `substantive_training_allowed` | `false` |
+| `ai_claims_allowed` | `false` |
 | `reality_gate_satisfied_by_public_corpora` | `false` |
 | `reality_gate_satisfied_by_silver_adapter` | `false` |
 
-When the root Reality Gate contract lands, migrate these fields to the shared
-schema without rewriting historical audit documents.
+`reality_gate_ref` on new manifests:
+
+```text
+reality_gate@commit:f2faace47178
+# full SHA: f2faace471788bdc4255e42fa88d5868f906e732
+# pin is commit, not branch tip of main
+```
+
+Deprecated alias (historical manifests only):
+
+```text
+prd_v7_section_0.7_provisional_dataset_manifest
+```
+
+## Serialization impact
+
+`DatasetReadinessProjection` is written into **BuildManifest / leakage_audit /
+stats** metadata only. It does **not** change TaskRecord JSONL lines or
+`records_sha256` of the SourceData entity_roles corpus.
