@@ -27,6 +27,8 @@ api = ["fastapi>=0.115", "uvicorn>=0.30"]
 ml = [
     "mlx-lm[train]==0.31.3; platform_system == 'Darwin' and platform_machine == 'arm64'",
     "huggingface-hub>=1.0,<2; platform_system == 'Darwin' and platform_machine == 'arm64'",
+    # Structured decoding (Cluster 3A): optional; core remains importable without it.
+    "outlines>=1.0; platform_system == 'Darwin' and platform_machine == 'arm64'",
 ]
 dev = [
     "pytest>=8.3",
@@ -137,6 +139,8 @@ module = [
     "huggingface_hub.*",
     "mlx_lm",
     "mlx_lm.*",
+    "outlines",
+    "outlines.*",
     "transformers",
     "transformers.*",
 ]

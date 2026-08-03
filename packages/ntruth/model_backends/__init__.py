@@ -1,6 +1,7 @@
-"""Backend modello Train A — cluster 1+2 (Granite experimental + runtime registry).
+"""Backend modello Train A — cluster 1+2+3A.
 
 Factory default remains legacy_qwen. Registry publishes artifact-bound qualification.
+Structured decoding (Outlines/MLX) is optional and fail-closed; not a scientific gate.
 """
 
 from ntruth.model_backends.base import (
@@ -21,7 +22,9 @@ from ntruth.model_backends.constants import (
 )
 from ntruth.model_backends.errors import (
     ComponentLoadError,
+    ConstrainedDecodingError,
     ConstrainedDecodingUnavailable,
+    ConstrainedStatus,
     GraniteBackendError,
     RuntimeDevice,
 )
@@ -49,7 +52,9 @@ __all__ = [
     "MODEL_MUST_NOT_EMIT",
     "BackendResourceMetrics",
     "ComponentLoadError",
+    "ConstrainedDecodingError",
     "ConstrainedDecodingUnavailable",
+    "ConstrainedStatus",
     "GenerationRequest",
     "GenerationResult",
     "GraniteBackend",

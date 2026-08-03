@@ -1,19 +1,22 @@
 """Backend sperimentale IBM Granite 4.1 3B Instruct via MLX-LM.
 
-Cluster 1: backend disponibile e testabile, **non** default operativo e **non**
-qualificato. Stato di qualificazione: solo registry (commit successivo).
+Cluster 1+3A: backend disponibile e testabile, **non** default operativo e **non**
+scientificamente qualificabile da solo. Registry (cluster 2) resta autorità
+dello stato di qualificazione runtime.
 
 Checkpoint canonico: ``ibm-granite/granite-4.1-3b`` (Apache-2.0).
 Bootstrap Apple Silicon: conversione community ``mlx-community/granite-4.1-3b-4bit``
 (non artefatto ufficiale IBM).
 
-Candidate facts only. Constrained decoding non incluso in questo cluster:
-richieste ``constrained=True`` falliscono esplicitamente.
+Candidate facts only. Structured decoding (Cluster 3A) via Outlines opzionale:
+richieste constrained falliscono esplicitamente se Outlines manca — nessun
+fallback silenzioso a free-decode. Non estende PARTIALLY_VERIFIED.
 """
 
 from __future__ import annotations
 
 import hashlib
+import json
 import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -37,14 +40,16 @@ from ntruth.model_backends.constants import (
 )
 from ntruth.model_backends.errors import (
     ComponentLoadError,
+    ConstrainedDecodingError,
     ConstrainedDecodingUnavailable,
+    ConstrainedStatus,
     GraniteBackendError,
     RuntimeDevice,
 )
 
 
 class GraniteBackend(ModelBackend):
-    """Implementazione Granite via MLX-LM (Metal) — free decode only (cluster 1)."""
+    """Implementazione Granite via MLX-LM (Metal) — free + structured (Cluster 3A)."""
 
     MLX_LIBRARY_DEFAULT_MAX_TOKENS = 256
 
@@ -77,6 +82,7 @@ class GraniteBackend(ModelBackend):
         self._closed = False
         self._metrics = BackendResourceMetrics(unloaded=True)
         self._load_ms: float | None = None
+        self._outlines_adapter: Any = None
 
     def model_metadata(self) -> ModelMetadata:
         return ModelMetadata(
@@ -109,7 +115,17 @@ class GraniteBackend(ModelBackend):
         )
 
     def supports_constrained_decoding(self) -> bool:
-        return False
+        # Lazy probe: capability tecnica Outlines/MLX, non qualifica scientifica.
+        try:
+            from ntruth.model_backends.constrained import (  # noqa: PLC0415
+                probe_outlines_mlx,
+            )
+
+            return (
+                probe_outlines_mlx().status is ConstrainedStatus.CONSTRAINED_SUPPORTED
+            )
+        except Exception:  # noqa: BLE001
+            return False
 
     def load(self) -> None:
         if self._model is not None:
@@ -152,6 +168,7 @@ class GraniteBackend(ModelBackend):
         self._tokenizer = None
         self._generate = None
         self._sampler = None
+        self._outlines_adapter = None
         self._closed = True
         self._metrics = BackendResourceMetrics(
             load_ms=self._load_ms,
@@ -213,11 +230,7 @@ class GraniteBackend(ModelBackend):
     def generate_structured(self, request: GenerationRequest) -> GenerationResult:
         want_constrained = bool(request.constrained or request.output_schema is not None)
         if want_constrained:
-            raise ConstrainedDecodingUnavailable(
-                "constrained decoding non incluso nel cluster 1 del backend Granite; "
-                "richiedere free-decode oppure attendere il cluster constrained decoding. "
-                "Nessun fallback silenzioso."
-            )
+            return self._generate_constrained(request)
 
         self.load()
         assert self._model is not None and self._tokenizer is not None
@@ -238,6 +251,129 @@ class GraniteBackend(ModelBackend):
             max_tokens=max_tokens,
             temperature=temp,
             stop=request.stop,
+        )
+
+    def _get_outlines_adapter(self) -> Any:
+        from ntruth.model_backends.constrained import (  # noqa: PLC0415
+            OutlinesMlxAdapter,
+            require_constrained_capability,
+        )
+
+        require_constrained_capability()
+        self.load()
+        assert self._model is not None and self._tokenizer is not None
+        if self._outlines_adapter is None:
+            try:
+                self._outlines_adapter = OutlinesMlxAdapter(self._model, self._tokenizer)
+            except ConstrainedDecodingError:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                raise ConstrainedDecodingError(
+                    ConstrainedStatus.CONSTRAINT_INITIALIZATION_FAILED,
+                    f"inizializzazione OutlinesMlxAdapter fallita: {exc}",
+                ) from exc
+        return self._outlines_adapter
+
+    def _generate_constrained(self, request: GenerationRequest) -> GenerationResult:
+        """Percorso structured decoding fail-closed (nessun free-decode silenzioso)."""
+
+        from ntruth.model_backends.constrained import (  # noqa: PLC0415
+            resolve_output_type,
+        )
+
+        max_tokens = int(request.max_tokens)
+        if max_tokens <= 0:
+            raise ConstrainedDecodingError(
+                ConstrainedStatus.CONSTRAINT_INITIALIZATION_FAILED,
+                "max_tokens deve essere > 0 (esplicito)",
+            )
+
+        try:
+            output_type = resolve_output_type(
+                request.output_schema,
+                schema_name=request.schema_name,
+            )
+        except ConstrainedDecodingError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise ConstrainedDecodingError(
+                ConstrainedStatus.INVALID_OUTPUT_SCHEMA,
+                str(exc),
+            ) from exc
+
+        try:
+            adapter = self._get_outlines_adapter()
+        except ConstrainedDecodingUnavailable:
+            raise
+        except ConstrainedDecodingError:
+            raise
+        except ComponentLoadError as exc:
+            raise ConstrainedDecodingError(
+                ConstrainedStatus.BACKEND_LOAD_FAILED,
+                str(exc),
+            ) from exc
+
+        messages = self._prepare_messages(request)
+        prompt = self.apply_chat_template(messages, add_generation_prompt=True)
+        input_tokens = len(self.tokenize(prompt))
+
+        started = time.perf_counter()
+        structured = adapter.generate(
+            prompt,
+            output_type,
+            max_tokens=max_tokens,
+        )
+        latency_ms = (time.perf_counter() - started) * 1000.0
+
+        # Fail-closed: stati non-OK sollevano; non si degradano a free-decode.
+        if structured.status is not ConstrainedStatus.GENERATION_OK:
+            raise ConstrainedDecodingError(
+                structured.status,
+                (
+                    f"structured decoding fallito "
+                    f"(schema={structured.schema_name}@{structured.schema_version}): "
+                    f"{structured.diagnostics}"
+                ),
+            )
+
+        assert structured.parsed is not None
+        text = json.dumps(structured.parsed, ensure_ascii=False, sort_keys=True)
+        output_tokens = len(self.tokenize(text)) if text else 0
+        self._metrics = BackendResourceMetrics(
+            load_ms=self._load_ms,
+            last_latency_ms=latency_ms,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            unloaded=False,
+        )
+        return GenerationResult(
+            text=text,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            finish_reason="stop",
+            max_tokens=max_tokens,
+            terminated_by_eos=bool(structured.terminated_by_eos)
+            if structured.terminated_by_eos is not None
+            else False,
+            terminated_by_stop=bool(structured.terminated_by_stop)
+            if structured.terminated_by_stop is not None
+            else False,
+            truncated=structured.truncated,
+            constrained_status=structured.status.value,
+            raw={
+                "backend": "granite-mlx",
+                "mode": "constrained",
+                "fallback_used": structured.fallback_used,
+                "schema_valid": structured.schema_valid,
+                "schema_name": structured.schema_name,
+                "schema_version": structured.schema_version,
+                "schema_status": structured.schema_status,
+                "parsed": structured.parsed,
+                "raw_output": structured.raw_output,
+                "latency_ms": latency_ms,
+                "structured": structured.as_diagnostics_dict(),
+                "stop": list(request.stop),
+            },
         )
 
     def _generate_free(

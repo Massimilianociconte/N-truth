@@ -65,16 +65,31 @@ def test_granite_missing_weights_explicit_error(tmp_path: Path) -> None:
         backend.load()
 
 
-def test_granite_constrained_request_fails_closed() -> None:
+def test_granite_constrained_request_fails_closed_when_outlines_missing() -> None:
+    """Cluster 3A: constrained path is fail-closed (no silent free-decode)."""
+
+    from unittest.mock import patch
+
+    from ntruth.model_backends.constrained import ConstrainedCapability
+    from ntruth.model_backends.errors import ConstrainedStatus
+
     backend = GraniteBackend(model_path=Path("/tmp/unused-granite-path"))
     req = GenerationRequest(
         messages=[{"role": "user", "content": "hi"}],
         constrained=True,
         output_schema="evidence_extraction",
     )
-    with pytest.raises(ConstrainedDecodingUnavailable):
-        backend.generate_structured(req)
-    assert backend.supports_constrained_decoding() is False
+    with patch(
+        "ntruth.model_backends.constrained.probe_outlines_mlx",
+        return_value=ConstrainedCapability(
+            status=ConstrainedStatus.CONSTRAINED_UNAVAILABLE,
+            backend="outlines+mlx-lm",
+            detail="outlines non installato: test",
+        ),
+    ):
+        with pytest.raises(ConstrainedDecodingUnavailable):
+            backend.generate_structured(req)
+        assert backend.supports_constrained_decoding() is False
 
 
 def test_factory_default_is_qwen_backend(tmp_path: Path) -> None:
@@ -152,22 +167,24 @@ def test_granite_load_unload_reload_with_mock(tmp_path: Path) -> None:
             backend.unload()
 
 
-def test_package_init_does_not_export_constrained_or_ledger() -> None:
+def test_package_init_does_not_export_adapter_or_ledger() -> None:
     import ntruth.model_backends as mb
 
-    # Cluster 2 may export registry loaders; constrained decoding / stage schemas must not.
+    # Errors/status may be exported; adapter/schemas stay module-private.
     assert not hasattr(mb, "QualificationLedger")
     assert not hasattr(mb, "probe_outlines_mlx")
     assert not hasattr(mb, "STAGE_SCHEMA_REGISTRY")
     assert not hasattr(mb, "OutlinesMlxAdapter")
+    assert hasattr(mb, "ConstrainedStatus")
 
 
-def test_granite_module_import_graph_is_cluster1_closed() -> None:
+def test_granite_module_import_graph_stays_decoupled_from_registry_and_training() -> None:
     import ntruth.model_backends.granite as granite_mod
 
     source = Path(granite_mod.__file__).read_text(encoding="utf-8")
     assert "model_backends.registry" not in source
-    assert "model_backends.constrained" not in source
-    assert "stage_schemas" not in source
     assert "qualification_ledger" not in source
     assert "training" not in source
+    # Cluster 3A may lazy-import constrained inside methods; no eager stage_schemas.
+    assert "stage_schemas" not in source
+
