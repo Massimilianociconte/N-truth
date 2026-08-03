@@ -38,7 +38,7 @@ Isolated worktree: `…/dataset-acquisition-pipeline` on `main`.
 | `pytest --disable-warnings` | PASS (full suite) |
 | `uv build` | PASS (wheel + sdist) |
 | `scripts/smoke_release.py` | PASS |
-| `scripts/check_distribution.py` | FAIL without UI assets in wheel unless desktop built first; UI `pnpm build` PASS separately |
+| `scripts/check_distribution.py` | **PASS when the documented release sequence builds desktop assets (`pnpm run build` in `apps/desktop`) before packaging**; **FAIL in a raw checkout without generated UI assets** (order dependency, not a silent skip) |
 | `git diff --check` | clean |
 | Desktop vitest | 11/11 PASS |
 | Desktop vite build | PASS |

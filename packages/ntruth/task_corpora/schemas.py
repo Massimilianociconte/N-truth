@@ -192,5 +192,9 @@ class BuildManifest(BaseModel):
     # Explicit: public/silver engineering success does not satisfy Reality Gate.
     reality_gate_satisfied_by_public_corpora: bool = False
     reality_gate_satisfied_by_silver_adapter: bool = False
-    manifest_version: str = "0.2.1"
+    # Optional projection dump from DatasetReadinessProjection (manifest-only metadata).
+    dataset_readiness_projection: dict[str, object] | None = None
+    leakage_group_granularity: str = "RECORD_LEVEL_FALLBACK"
+    paper_level_leakage_claim_allowed: bool = False
+    manifest_version: str = "0.2.2"
     synthetic_fraction: float = 0.0

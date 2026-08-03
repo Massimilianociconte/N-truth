@@ -161,6 +161,22 @@
     "transform_version": {
       "title": "Transform Version",
       "type": "string"
+    },
+    "dataset_readiness_projection": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "Optional dump of DatasetReadinessProjection (manifest-only; not TaskRecord body)."
+    },
+    "leakage_group_granularity": {
+      "type": "string",
+      "description": "DOCUMENT_ID | MIXED | RECORD_LEVEL_FALLBACK"
+    },
+    "paper_level_leakage_claim_allowed": {
+      "type": "boolean",
+      "const": false,
+      "description": "Must remain false under RECORD_LEVEL_FALLBACK."
     }
   },
   "required": [
@@ -180,5 +196,6 @@
     "groups_crossing_splits"
   ],
   "title": "BuildManifest",
-  "type": "object"
+  "type": "object",
+  "description": " Manifest 0.2.2 adds readiness projection metadata."
 }

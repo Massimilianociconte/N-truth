@@ -14,17 +14,13 @@ from ntruth.task_corpora.authority import (
     SupervisionSource,
 )
 from ntruth.task_corpora.config import (
-    DATA_READINESS_BLOCKED,
     DEFAULT_ALLOWED_USES,
     DEFAULT_SEED,
-    ENGINEERING_READINESS_C0_C1,
     FORBIDDEN_GOLD_USES,
-    PROVISIONAL_REALITY_GATE_REF,
-    REALITY_GATE_STATUS_BLOCKED,
     RECORDS_SHA256_C1_INITIAL,
     RECORDS_SHA256_C1_USE_DECISION,
+    ROOT_REALITY_GATE_REF,
     SCHEMA_VERSION,
-    SCIENTIFIC_VALIDATION_NOT_STARTED,
     TASK_ENTITY_ROLES,
     TRANSFORM_VERSION,
     package_dir,
@@ -42,6 +38,7 @@ from ntruth.task_corpora.license_loader import (
     load_license_decision,
     training_permitted,
 )
+from ntruth.task_corpora.readiness import project_sourcedata_c0_c1
 from ntruth.task_corpora.schemas import (
     BuildManifest,
     EntityRolesPayload,
@@ -378,6 +375,24 @@ def build_sourcedata_entity_roles(root: Path, *, resume: bool = True) -> BuildMa
         },
     ]
 
+    total_emitted = sum(record_counts.values())
+    # Multitask snapshot currently has empty document_id; fallback is record_id →
+    # groups_crossing_splits is 0 by construction until document-level IDs land.
+    granularity = (
+        "DOCUMENT_ID"
+        if document_id_present == total_emitted and total_emitted > 0
+        else ("MIXED" if document_id_present > 0 else "RECORD_LEVEL_FALLBACK")
+    )
+
+    # Manifest-only readiness projection onto root Reality Gate contracts.
+    # Does not rewrite TaskRecord JSONL lines or change records_sha256 inputs.
+    readiness = project_sourcedata_c0_c1(
+        licence_verified=False,
+        paper_level_provenance=False,
+        ntruth_partition_approved=False,
+        leakage_group_granularity=granularity,
+    )
+
     manifest = BuildManifest(
         task_type=TASK_ENTITY_ROLES,
         source_dataset="SourceData",
@@ -400,13 +415,16 @@ def build_sourcedata_entity_roles(root: Path, *, resume: bool = True) -> BuildMa
         partition_preserved=True,
         ntruth_partition_approved=False,
         model_use_status="BLOCKED",
-        engineering_readiness=ENGINEERING_READINESS_C0_C1,
-        data_readiness=DATA_READINESS_BLOCKED,
-        scientific_validation=SCIENTIFIC_VALIDATION_NOT_STARTED,
-        reality_gate_status=REALITY_GATE_STATUS_BLOCKED,
-        reality_gate_ref=PROVISIONAL_REALITY_GATE_REF,
+        engineering_readiness=readiness.engineering_component_status,
+        data_readiness=readiness.data_readiness.value,
+        scientific_validation=readiness.scientific_validation.value,
+        reality_gate_status=readiness.reality_gate_status,
+        reality_gate_ref=ROOT_REALITY_GATE_REF,
         reality_gate_satisfied_by_public_corpora=False,
         reality_gate_satisfied_by_silver_adapter=False,
+        dataset_readiness_projection=readiness.model_dump(mode="json"),
+        leakage_group_granularity=granularity,
+        paper_level_leakage_claim_allowed=False,
         synthetic_fraction=0.0,
     )
     write_json(out_dir / "manifest.json", manifest.model_dump(mode="json"))
@@ -416,14 +434,6 @@ def build_sourcedata_entity_roles(root: Path, *, resume: bool = True) -> BuildMa
             "mapping_version": MAPPING_VERSION,
             "path": "packages/ntruth/task_corpora/label_maps/sourcedata_entity_roles.json",
         },
-    )
-    total_emitted = sum(record_counts.values())
-    # Multitask snapshot currently has empty document_id; fallback is record_id →
-    # groups_crossing_splits is 0 by construction until document-level IDs land.
-    granularity = (
-        "DOCUMENT_ID"
-        if document_id_present == total_emitted and total_emitted > 0
-        else ("MIXED" if document_id_present > 0 else "RECORD_LEVEL_FALLBACK")
     )
     write_json(
         out_dir / "leakage_audit.json",
@@ -438,6 +448,8 @@ def build_sourcedata_entity_roles(root: Path, *, resume: bool = True) -> BuildMa
                 "upstream_official splits preserved; "
                 "RECORD_LEVEL_FALLBACK is not sufficient for paper-level leakage claims"
             ),
+            "paper_level_leakage_claim_allowed": False,
         },
     )
+
     return manifest
