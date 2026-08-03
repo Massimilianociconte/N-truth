@@ -17,6 +17,9 @@ from ntruth.task_corpora.config import (
     DEFAULT_ALLOWED_USES,
     DEFAULT_SEED,
     FORBIDDEN_GOLD_USES,
+    RECORDS_SHA256_C1_INITIAL,
+    RECORDS_SHA256_C1_USE_DECISION,
+    SCHEMA_VERSION,
     TASK_ENTITY_ROLES,
     TRANSFORM_VERSION,
     package_dir,
@@ -330,11 +333,52 @@ def build_sourcedata_entity_roles(root: Path, *, resume: bool = True) -> BuildMa
     except ValueError:
         out_rel = str(out_dir)
 
+    # Preserve prior content hashes in lineage (do not rewrite historical evidence).
+    previous_sha = RECORDS_SHA256_C1_USE_DECISION
+    prev_manifest_path = out_dir / "manifest.json"
+    if prev_manifest_path.exists():
+        try:
+            old_man = json.loads(prev_manifest_path.read_text(encoding="utf-8"))
+            old_hash = old_man.get("records_sha256")
+            old_prev = old_man.get("previous_records_sha256")
+            if old_hash == records_sha:
+                # Idempotent rebuild: keep previous pointer from on-disk lineage.
+                previous_sha = old_prev or RECORDS_SHA256_C1_USE_DECISION
+            elif old_hash:
+                previous_sha = str(old_hash)
+        except (OSError, json.JSONDecodeError, TypeError):
+            previous_sha = RECORDS_SHA256_C1_USE_DECISION
+
+    change_reason = (
+        "schema_v0.2_partition_metadata_transform_bump;lineage_preserves_prior_content_hashes"
+    )
+    content_lineage = [
+        {
+            "records_sha256": RECORDS_SHA256_C1_INITIAL,
+            "transform_version": "0.1.0",
+            "schema_version": "0.1.0",
+            "change_reason": "initial_c1_entity_roles",
+        },
+        {
+            "records_sha256": RECORDS_SHA256_C1_USE_DECISION,
+            "transform_version": "0.1.0",
+            "schema_version": "0.1.0",
+            "change_reason": "granular_use_decision_and_evaluation_fail_closed",
+        },
+        {
+            "records_sha256": records_sha,
+            "transform_version": TRANSFORM_VERSION,
+            "schema_version": SCHEMA_VERSION,
+            "change_reason": change_reason,
+        },
+    ]
+
     manifest = BuildManifest(
         task_type=TASK_ENTITY_ROLES,
         source_dataset="SourceData",
         source_version="2.0.3",
         adapter=ADAPTER_NAME,
+        schema_version=SCHEMA_VERSION,
         transform_version=TRANSFORM_VERSION,
         mapping_version=MAPPING_VERSION,
         seed=DEFAULT_SEED,
@@ -343,7 +387,14 @@ def build_sourcedata_entity_roles(root: Path, *, resume: bool = True) -> BuildMa
         record_counts=record_counts,
         exclusion_counts=dict(exclusion_counter),
         records_sha256=records_sha,
+        previous_records_sha256=previous_sha,
+        change_reason=change_reason,
+        content_lineage=content_lineage,
         groups_crossing_splits=groups_crossing,
+        partition_origin="UPSTREAM_SOURCEDATA",
+        partition_preserved=True,
+        ntruth_partition_approved=False,
+        model_use_status="BLOCKED",
         synthetic_fraction=0.0,
     )
     write_json(out_dir / "manifest.json", manifest.model_dump(mode="json"))

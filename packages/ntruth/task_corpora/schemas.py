@@ -160,6 +160,7 @@ class BuildManifest(BaseModel):
     source_dataset: str
     source_version: str
     adapter: str
+    schema_version: str
     transform_version: str
     mapping_version: str
     seed: str
@@ -168,9 +169,17 @@ class BuildManifest(BaseModel):
     record_counts: dict[str, int]
     exclusion_counts: dict[str, int]
     records_sha256: str
+    previous_records_sha256: str | None = None
+    change_reason: str | None = None
+    content_lineage: list[dict[str, str]] = Field(default_factory=list)
     groups_crossing_splits: int = Field(
         ...,
         description="Count of leakage_group values that appear in more than one split",
     )
-    manifest_version: str = "0.1.0"
+    # Upstream SourceData partitions are preserved but not approved N-Truth model-use splits.
+    partition_origin: str = "UPSTREAM_SOURCEDATA"
+    partition_preserved: bool = True
+    ntruth_partition_approved: bool = False
+    model_use_status: str = "BLOCKED"
+    manifest_version: str = "0.2.0"
     synthetic_fraction: float = 0.0
