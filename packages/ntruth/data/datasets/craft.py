@@ -351,6 +351,7 @@ def install_craft(root: Path, refresh: bool = False) -> dict[str, Any]:
     if sum(split_counts.values()) != 97:
         source_status = "UNVERIFIED"
 
+    upstream_dev = split_counts["train"] + split_counts["validation"]
     return {
         "dataset": "CRAFT",
         "version": source_ref,
@@ -361,6 +362,23 @@ def install_craft(root: Path, refresh: bool = False) -> dict[str, Any]:
         "split_authority": split_authority,
         "split_counts": split_counts,
         "split_evidence": split_evidence,
+        "upstream_split": {
+            "development_articles": 67 if upstream_dev == 67 else upstream_dev,
+            "evaluation_articles": 30 if split_counts["test"] == 30 else split_counts["test"],
+            "authority": "craft_shared_task_2019_identifier_files",
+            "note": "Official CRAFT Shared Task partition is 67 development + 30 evaluation articles.",
+        },
+        "ntruth_split": {
+            "train": split_counts["train"],
+            "validation": split_counts["validation"],
+            "test": split_counts["test"],
+            "authority": "ntruth_derivation_from_official_development_partition",
+            "note": (
+                "60 train / 7 validation are an N-Truth derivation of the 67 official development "
+                "articles (official train→train, official dev→validation). This is NOT an official "
+                "three-way upstream split. Test remains the 30 official evaluation articles."
+            ),
+        },
         "license": "CC-BY-3.0",
         "native_annotation_tier": NativeAnnotationTier.HUMAN_CURATED_GOLD,
         "ntruth_usage_tier": NTruthUsageTier.SILVER_AUXILIARY,

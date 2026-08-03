@@ -283,6 +283,8 @@ def install_measeval(root: Path, refresh: bool = False) -> dict[str, Any]:
         atomic_write_text(out_dir / "records.jsonl", "".join(line + "\n" for line in lines))
         split_counts[split] = len(lines)
 
+    # Publication/group overlap between official train-derived splits and official eval (test)
+    # is an upstream property; block training_ready materialization for MeasEval.
     return {
         "dataset": "MeasEval",
         "version": source_ref[:12],
@@ -291,6 +293,9 @@ def install_measeval(root: Path, refresh: bool = False) -> dict[str, Any]:
         "processed_path": str(processed_root),
         "split_authority": "official_eval_plus_custom_train_validation",
         "split_counts": split_counts,
+        "status": "ACQUIRED_AND_PROCESSED_NOT_TRAINING_READY",
+        "training_ready_status": "BLOCKED_BY_UPSTREAM_GROUP_OVERLAP",
+        "training_ready_present": False,
         "native_annotation_tier": NativeAnnotationTier.HUMAN_CURATED_GOLD,
         "ntruth_usage_tier": NTruthUsageTier.SILVER_AUXILIARY,
         "files": [{"path": str(archive.relative_to(root)), "sha256": archive_sha}],

@@ -1,0 +1,47 @@
+{
+  "algorithm": "sha256 over sorted 'relative_path:file_sha256' lines of included trees; root hash is sha256 of that newline-joined list",
+  "path_encoding": "POSIX relative path from each included root directory for files inside dirs; basename for file roots",
+  "included_roots": [
+    "raw",
+    "processed",
+    "training_ready",
+    "manifests/splits.json",
+    "manifests/datasets.json"
+  ],
+  "excluded_from_walk": [
+    "AppleDouble ._*",
+    ".DS_Store",
+    "__MACOSX",
+    "logs",
+    "run-history",
+    "quarantine"
+  ],
+  "not_in_merkle_roots": [
+    "cache",
+    "downloads",
+    "logs",
+    "tools",
+    "manifests/reports",
+    "manifests/licenses",
+    "manifests/checksums (except regenerated verify)"
+  ],
+  "appledouble_handling": "is_ignorable_metadata skips ._* and .DS_Store",
+  "before_merkle": "e1fac7112991f9369d783f2b18e677b68a994693dbd907c71af42caf1db4de7d",
+  "after_merkle": "e1fac7112991f9369d783f2b18e677b68a994693dbd907c71af42caf1db4de7d",
+  "merkle_identical": true,
+  "network_download_count": 0,
+  "raw_markers_modified": 0,
+  "processed_records_modified": 0,
+  "training_ready_artifacts_modified": 0,
+  "downloads_modified": 0,
+  "canonical_manifest_hashes_changed": 0,
+  "split_assignments_changed": 0,
+  "changed_paths": {
+    "processed": [],
+    "training_ready": [],
+    "downloads": [],
+    "manifests": [],
+    "raw_markers": []
+  },
+  "idempotent": true
+}

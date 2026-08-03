@@ -1,0 +1,123 @@
+{
+  "generated_at": "2026-08-03T13:44:26Z",
+  "CRAFT": {
+    "upstream_split": {
+      "development_articles": 67,
+      "evaluation_articles": 30,
+      "authority": "craft_shared_task_2019_identifier_files"
+    },
+    "ntruth_split": {
+      "train": 60,
+      "validation": 7,
+      "test": 30,
+      "authority": "ntruth_derivation_from_official_development_partition",
+      "note": "60/7 is N-Truth derivation from 67 development (train+dev files), not official three-way split"
+    },
+    "pmcid_overlap_zero": true,
+    "status": "VERIFIED"
+  },
+  "MeasEval": {
+    "official_eval_as_test": true,
+    "custom_train_validation_from_official_train": true,
+    "trial_isolated": true,
+    "train_test_group_overlap": 45,
+    "train_validation_group_overlap": 0,
+    "training_ready_status": "BLOCKED_BY_UPSTREAM_GROUP_OVERLAP",
+    "status": "ACQUIRED_AND_PROCESSED_NOT_TRAINING_READY",
+    "five_missing_tsv": {
+      "S0019103512003995-3420": {
+        "split": "train",
+        "annotation_status": "missing_annotation_file",
+        "training_eligible": false,
+        "evaluation_eligible": false,
+        "requires_review": true
+      },
+      "S0019103512004009-2930": {
+        "split": "train",
+        "annotation_status": "missing_annotation_file",
+        "training_eligible": false,
+        "evaluation_eligible": false,
+        "requires_review": true
+      },
+      "S0022000014000026-7850": {
+        "split": "train",
+        "annotation_status": "missing_annotation_file",
+        "training_eligible": false,
+        "evaluation_eligible": false,
+        "requires_review": true
+      },
+      "S0164121213002641-2930": {
+        "split": "train",
+        "annotation_status": "missing_annotation_file",
+        "training_eligible": false,
+        "evaluation_eligible": false,
+        "requires_review": true
+      },
+      "S0167739X12001525-5094": {
+        "split": "train",
+        "annotation_status": "missing_annotation_file",
+        "training_eligible": false,
+        "evaluation_eligible": false,
+        "requires_review": true
+      }
+    }
+  },
+  "SourceData": {
+    "upstream_raw_counts": {
+      "ner": {
+        "train": 60266,
+        "validation": 8201,
+        "test": 6696
+      },
+      "roles_multi": {
+        "train": 60266,
+        "validation": 8201,
+        "test": 6696
+      }
+    },
+    "alignment_counts": {
+      "train": {
+        "matched_count": 60266,
+        "ner_only_count": 0,
+        "roles_only_count": 0,
+        "token_mismatches": 0,
+        "duplicate_count": 0,
+        "join_key": "positional_line_index_plus_identical_words"
+      },
+      "validation": {
+        "matched_count": 8201,
+        "ner_only_count": 0,
+        "roles_only_count": 0,
+        "token_mismatches": 0,
+        "duplicate_count": 0,
+        "join_key": "positional_line_index_plus_identical_words"
+      },
+      "test": {
+        "matched_count": 6696,
+        "ner_only_count": 0,
+        "roles_only_count": 0,
+        "token_mismatches": 0,
+        "duplicate_count": 0,
+        "join_key": "positional_line_index_plus_identical_words"
+      }
+    },
+    "derived_multitask_counts": {
+      "train": 60266,
+      "validation": 8201,
+      "test": 6696
+    },
+    "note": "derived multitask counts are NOT labeled as upstream split",
+    "lock_revision": "b457c14041b61c56f671c6f966b4324f682855b7",
+    "status": "VERIFIED_AUXILIARY"
+  },
+  "PreClinIE": {
+    "split_authority": "custom_group_stratified",
+    "split_counts": {
+      "train": 1160,
+      "validation": 146,
+      "test": 144
+    },
+    "group_leakage_count": 0,
+    "status": "VERIFIED_AUXILIARY"
+  }
+}
