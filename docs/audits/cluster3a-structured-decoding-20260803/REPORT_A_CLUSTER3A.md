@@ -1,9 +1,9 @@
 # REPORT A — CLUSTER 3A Structured Decoding (final review)
 
-**Stato sign-off:** `APPROVED`  
-**Data review:** 2026-08-03  
-**Branch:** `feat/structured-decoding-cluster3a`  
-**Commit candidato:** `64a160b`  
+**Stato sign-off:** `APPROVED`
+**Data review:** 2026-08-03
+**Branch:** `feat/structured-decoding-cluster3a`
+**Commit candidato:** `64a160b`
 **Base:** `fac3249` (ancestor verificato)
 
 ## Preflight
@@ -78,7 +78,7 @@ import senza Outlines eager; validation post-gen; registry byte-identical.
 
 ## Smoke reale
 
-`ENGINEERING_INTEGRATION_SMOKE` su pesi locali  
+`ENGINEERING_INTEGRATION_SMOKE` su pesi locali
 `/Users/massimilianociconte/Documents/N-truth/models/local/granite-4.1-3b-4bit`
 
 | Campo | Valore |
@@ -104,8 +104,10 @@ import senza Outlines eager; validation post-gen; registry byte-identical.
 ## Commit
 
 - Feature: `64a160b feat(model): add fail-closed structured decoding for Granite MLX`
-- Follow-up documentale: questo pack + nit whitespace (vedi log git)
+- Follow-up documentale: `4ceb5ae` (+ eventuale nit whitespace successivo)
 
 ## Sign-off
+
+**Commit finale (tip branch):** `4ceb5ae` (documentale) sopra feature `64a160b`
 
 **CLUSTER_3A_REVIEW: APPROVED**
