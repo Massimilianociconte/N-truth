@@ -63,6 +63,8 @@ def _record(**kwargs) -> TaskRecord:
             "pseudoreplication_verdict_gold",
             "allocation_gold",
             "biological_independence_gold",
+            "interference_gold",
+            "estimand_gold",
         ],
         licence=_licence(),
         training_eligible=False,
@@ -169,6 +171,59 @@ def test_synthetic_forbidden_c0_c1():
 def test_ntruth_gold_forbidden_for_public_adapter():
     with pytest.raises(ValidationError):
         _record(authority_level=AuthorityLevel.NTRUTH_GOLD)
+
+
+def test_auxiliary_must_forbid_interference_and_estimand_gold():
+    with pytest.raises(ValidationError):
+        _record(
+            forbidden_uses=[
+                "experimental_unit_gold",
+                "independent_n_gold",
+                "pseudoreplication_verdict_gold",
+                "allocation_gold",
+                "biological_independence_gold",
+                # missing interference_gold and estimand_gold
+            ]
+        )
+
+
+def test_author_assertion_is_not_experimental_unit_gold_label():
+    """Reported assertions remain distinct from gold roles (semantic invariant)."""
+    from ntruth.task_corpora.config import FORBIDDEN_GOLD_USES
+
+    assert "experimental_unit_gold" in FORBIDDEN_GOLD_USES
+    # AUTHOR_ASSERTION is a reporting semantics tag, not a gold use.
+    assert "AUTHOR_ASSERTION" not in FORBIDDEN_GOLD_USES
+    assert "REPORTED_METHOD_INDICATOR" not in FORBIDDEN_GOLD_USES
+
+
+def test_build_manifest_readiness_triad_defaults():
+    from ntruth.task_corpora.schemas import BuildManifest
+
+    m = BuildManifest(
+        task_type="entity_roles",
+        source_dataset="SourceData",
+        source_version="2.0.3",
+        adapter="test",
+        schema_version="0.2.0",
+        transform_version="0.2.0",
+        mapping_version="0.1.0",
+        seed="s",
+        root="/tmp",
+        output_dir="out",
+        record_counts={"train": 0},
+        exclusion_counts={},
+        records_sha256="00" * 32,
+        groups_crossing_splits=0,
+    )
+    assert m.engineering_readiness == "VERIFIED_FOR_C0_C1"
+    assert m.data_readiness == "BLOCKED"
+    assert m.scientific_validation == "NOT_STARTED"
+    assert m.reality_gate_status == "BLOCKED"
+    assert m.reality_gate_satisfied_by_public_corpora is False
+    assert m.reality_gate_satisfied_by_silver_adapter is False
+    assert m.ntruth_partition_approved is False
+    assert m.model_use_status == "BLOCKED"
 
 
 def test_permission_helpers_fail_closed():

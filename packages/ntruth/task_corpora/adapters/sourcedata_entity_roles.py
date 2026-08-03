@@ -14,12 +14,17 @@ from ntruth.task_corpora.authority import (
     SupervisionSource,
 )
 from ntruth.task_corpora.config import (
+    DATA_READINESS_BLOCKED,
     DEFAULT_ALLOWED_USES,
     DEFAULT_SEED,
+    ENGINEERING_READINESS_C0_C1,
     FORBIDDEN_GOLD_USES,
+    PROVISIONAL_REALITY_GATE_REF,
+    REALITY_GATE_STATUS_BLOCKED,
     RECORDS_SHA256_C1_INITIAL,
     RECORDS_SHA256_C1_USE_DECISION,
     SCHEMA_VERSION,
+    SCIENTIFIC_VALIDATION_NOT_STARTED,
     TASK_ENTITY_ROLES,
     TRANSFORM_VERSION,
     package_dir,
@@ -395,6 +400,13 @@ def build_sourcedata_entity_roles(root: Path, *, resume: bool = True) -> BuildMa
         partition_preserved=True,
         ntruth_partition_approved=False,
         model_use_status="BLOCKED",
+        engineering_readiness=ENGINEERING_READINESS_C0_C1,
+        data_readiness=DATA_READINESS_BLOCKED,
+        scientific_validation=SCIENTIFIC_VALIDATION_NOT_STARTED,
+        reality_gate_status=REALITY_GATE_STATUS_BLOCKED,
+        reality_gate_ref=PROVISIONAL_REALITY_GATE_REF,
+        reality_gate_satisfied_by_public_corpora=False,
+        reality_gate_satisfied_by_silver_adapter=False,
         synthetic_fraction=0.0,
     )
     write_json(out_dir / "manifest.json", manifest.model_dump(mode="json"))

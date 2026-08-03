@@ -33,13 +33,24 @@ ROUTING_LABELS = (
     "UNKNOWN",
 )
 
+# Public/silver corpora (PRD v7 §14.1) never satisfy these N-Truth gold roles.
 FORBIDDEN_GOLD_USES = (
     "experimental_unit_gold",
     "independent_n_gold",
     "pseudoreplication_verdict_gold",
     "allocation_gold",
     "biological_independence_gold",
+    "interference_gold",
+    "estimand_gold",
 )
+
+# Provisional Reality Gate reference (PRD v7 §0.7). Full root schema is owned by
+# the root-alignment workflow; dataset manifests only record status.
+PROVISIONAL_REALITY_GATE_REF = "prd_v7_section_0.7_provisional_dataset_manifest"
+REALITY_GATE_STATUS_BLOCKED = "BLOCKED"
+ENGINEERING_READINESS_C0_C1 = "VERIFIED_FOR_C0_C1"
+DATA_READINESS_BLOCKED = "BLOCKED"
+SCIENTIFIC_VALIDATION_NOT_STARTED = "NOT_STARTED"
 
 DEFAULT_ALLOWED_USES = (
     "encoder_pretraining",

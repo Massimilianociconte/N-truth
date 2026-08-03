@@ -140,6 +140,8 @@ class TaskRecord(BaseModel):
                 "pseudoreplication_verdict_gold",
                 "allocation_gold",
                 "biological_independence_gold",
+                "interference_gold",
+                "estimand_gold",
             ):
                 if ban not in self.forbidden_uses:
                     raise ValueError(f"AUXILIARY records must forbid {ban}")
@@ -181,5 +183,14 @@ class BuildManifest(BaseModel):
     partition_preserved: bool = True
     ntruth_partition_approved: bool = False
     model_use_status: str = "BLOCKED"
-    manifest_version: str = "0.2.0"
+    # PRD v7 readiness triad (dataset-side provisional; full Reality Gate is root-owned).
+    engineering_readiness: str = "VERIFIED_FOR_C0_C1"
+    data_readiness: str = "BLOCKED"
+    scientific_validation: str = "NOT_STARTED"
+    reality_gate_status: str = "BLOCKED"
+    reality_gate_ref: str = "prd_v7_section_0.7_provisional_dataset_manifest"
+    # Explicit: public/silver engineering success does not satisfy Reality Gate.
+    reality_gate_satisfied_by_public_corpora: bool = False
+    reality_gate_satisfied_by_silver_adapter: bool = False
+    manifest_version: str = "0.2.1"
     synthetic_fraction: float = 0.0
