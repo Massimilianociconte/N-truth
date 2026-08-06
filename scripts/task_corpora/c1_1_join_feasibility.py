@@ -28,7 +28,7 @@ from collections import Counter
 from pathlib import Path
 
 _WS = re.compile(r"\s+")
-_DOI = re.compile(r"^10\.\d{4,9}/\S+$")
+_DOI = re.compile(r"^10\.\d{4,9}/\S+\Z")
 
 
 def normalize_caption(text: str) -> str:

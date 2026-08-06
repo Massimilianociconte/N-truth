@@ -26,7 +26,7 @@ from collections import Counter
 from pathlib import Path
 
 _WS = re.compile(r"\s+")
-_DOI = re.compile(r"^10\.\d{4,9}/\S+$")
+_DOI = re.compile(r"^10\.\d{4,9}/\S+\Z")
 _MIN_SEGMENT_LEN = 40  # chars; very short segments cannot support containment evidence
 
 

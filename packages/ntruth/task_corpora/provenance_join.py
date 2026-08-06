@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from typing import Final, Literal
 
 _WS: Final = re.compile(r"\s+")
-_DOI: Final = re.compile(r"^10\.\d{4,9}/\S+$")
+_DOI: Final = re.compile(r"^10\.\d{4,9}/\S+\Z")
 
 MIN_CONTAINMENT_SEGMENT_CHARS: Final = 40
 

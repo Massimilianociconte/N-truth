@@ -124,6 +124,7 @@ class TestDoiWellFormedness:
             "10.123/",
             "11.1000/a",
             "10.1/a",
+            "10.1000/a\n",  # trailing newline must not slip past the end anchor
         ):
             assert not doi_is_well_formed(bad), bad
 
