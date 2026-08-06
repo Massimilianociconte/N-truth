@@ -1,9 +1,9 @@
 """Sidecar migration step 3: independent post-write validation.
 
 Re-validates the externally written sidecar from disk (independent of the
-build process): schema + tier-rule contract, exact 1:1 join back to the
-canonical corpus, audited tier counts, zero duplicate keys, and the
-matched-subset article-crossing diagnostic (fallback records excluded).
+build process): strict schema v0.2.0 + four-tier contract, exact 1:1 join
+back to the canonical corpus, audited tier counts, zero duplicate keys, and
+the matched-subset article-crossing diagnostic (fallback records excluded).
 
 Also re-confirms that the canonical records hash is unchanged after the write.
 """
@@ -22,7 +22,8 @@ from ntruth.task_corpora.provenance_sidecar import (
 
 EXPECTED_RECORDS_SHA256 = "562b6ac933c13f05a0ea536696857e7e11dd5a324503d1fe930d26149d071b10"
 EXPECTED_TIER_COUNTS = {
-    "TIER_1_PANEL_UNIQUE": 70158,
+    "TIER_1_PANEL_UNIQUE": 69983,
+    "TIER_1_FIGURE_UNIQUE": 175,
     "TIER_2_ARTICLE_ONLY": 3914,
     "RECORD_FALLBACK": 1091,
 }

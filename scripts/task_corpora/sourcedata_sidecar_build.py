@@ -1,14 +1,18 @@
 """Sidecar migration step 2: deterministic dual-build + validation + write.
 
-Fail-closed orchestrator for the SourceData provenance sidecar:
+Fail-closed orchestrator for the SourceData provenance sidecar (schema 0.2.0):
 
-  1. preflight: canonical records_sha256, raw roles_multi hashes and counts;
+  1. preflight: canonical records_sha256, per-file canonical JSONL hashes,
+     raw roles_multi hashes and counts;
   2. build the complete sidecar twice in separate staging directories;
   3. require byte-for-byte equality (content, order, SHA-256, tiers, keys);
   4. schema-validate every row and join 1:1 back to the canonical records;
-  5. require the audited tier counts exactly (70,158 / 3,914 / 1,091);
+  5. require the audited tier counts exactly
+     (69,983 panel / 175 figure / 3,914 article / 1,091 fallback);
   6. only then (--write) atomically write the sidecar to the external
-     provenance directory and re-hash it after rename.
+     provenance directory and re-hash it after rename. ``--replace`` permits
+     superseding an existing sidecar, but only when its pre-hash matches the
+     explicitly expected superseded SHA-256.
 
 Canonical TaskRecord JSONL, manifests and leakage audit are never touched
 here; the external manifest metadata update is a separate, explicitly
@@ -35,6 +39,12 @@ from ntruth.task_corpora.provenance_sidecar import (
 )
 
 EXPECTED_RECORDS_SHA256 = "562b6ac933c13f05a0ea536696857e7e11dd5a324503d1fe930d26149d071b10"
+EXPECTED_CANONICAL_JSONL_SHA256 = {
+    "train": "f2e7bc675294b2a041dee4481c344cc40e093364391e55a3e7a2417e7fe6b18c",
+    "validation": "76d2fc01d7cb6a96e41dda45e9bdb116e37eae38552c1eedb45d6377163fe886",
+    "test": "6bbc05663c6c18b490217d6eed8f70ebeb199330b58a322d150b9eb633817b9c",
+}
+EXPECTED_LEAKAGE_AUDIT_SHA256 = "d79c65f12a857e837923ea916b1062f321a4064f498597753f134ac3e92f46e7"
 EXPECTED_RAW_SHA256 = {
     "train": "c2ac812846265686502469208dae435a5dc5279d6149940409f3b4566764c925",
     "validation": "d2e98f0e71905e18cc4dbe208646113ddb4b869cf06d53af628156f6e1493715",
@@ -42,7 +52,8 @@ EXPECTED_RAW_SHA256 = {
 }
 EXPECTED_XML_SHA256 = "71f9899211efef62bc523275bbff7ba3e37ec8b4d1fc21405b58f4b68e93ba60"
 EXPECTED_TIER_COUNTS = {
-    "TIER_1_PANEL_UNIQUE": 70158,
+    "TIER_1_PANEL_UNIQUE": 69983,
+    "TIER_1_FIGURE_UNIQUE": 175,
     "TIER_2_ARTICLE_ONLY": 3914,
     "RECORD_FALLBACK": 1091,
 }
@@ -91,12 +102,34 @@ def main() -> None:
     ap.add_argument("--staging-root", required=True, type=Path)
     ap.add_argument("--upstream-reference", required=True)
     ap.add_argument("--write", type=Path, default=None, help="atomic external write target")
+    ap.add_argument(
+        "--replace",
+        action="store_true",
+        help="permit superseding an existing sidecar (requires --expect-superseded-sha)",
+    )
+    ap.add_argument(
+        "--expect-superseded-sha",
+        default=None,
+        help="SHA-256 the pre-existing sidecar must hash to before replacement",
+    )
     args = ap.parse_args()
 
     # -- preflight ------------------------------------------------------------
     canon_lines: list[str] = []
     for part in PARTITIONS:
-        canon_lines.extend(read_jsonl_physical_lines(args.canon_dir / f"{part}.jsonl"))
+        canon_path = args.canon_dir / f"{part}.jsonl"
+        actual_file_sha = sha256_file(canon_path)
+        if actual_file_sha != EXPECTED_CANONICAL_JSONL_SHA256[part]:
+            raise SystemExit(
+                f"canonical {part}.jsonl sha256 mismatch: {actual_file_sha} "
+                f"!= {EXPECTED_CANONICAL_JSONL_SHA256[part]}"
+            )
+        canon_lines.extend(read_jsonl_physical_lines(canon_path))
+    leakage_audit_path = args.canon_dir / "leakage_audit.json"
+    if leakage_audit_path.exists():
+        actual_leakage = sha256_file(leakage_audit_path)
+        if actual_leakage != EXPECTED_LEAKAGE_AUDIT_SHA256:
+            raise SystemExit(f"leakage_audit.json sha256 mismatch: {actual_leakage}")
     actual_records = records_content_sha256(canon_lines)
     if actual_records != EXPECTED_RECORDS_SHA256:
         raise SystemExit(f"records_sha256 mismatch: {actual_records}")
@@ -159,7 +192,17 @@ def main() -> None:
 
     if args.write is not None:
         if args.write.exists():
-            raise SystemExit(f"refusing to overwrite existing sidecar: {args.write}")
+            if not args.replace:
+                raise SystemExit(f"refusing to overwrite existing sidecar: {args.write}")
+            if not args.expect_superseded_sha:
+                raise SystemExit("--replace requires --expect-superseded-sha")
+            pre = sha256_file(args.write)
+            if pre != args.expect_superseded_sha:
+                raise SystemExit(
+                    f"existing sidecar sha256 {pre} != expected superseded "
+                    f"sha256 {args.expect_superseded_sha}; refusing to replace"
+                )
+            report["superseded_sidecar_sha256"] = pre
         atomic_write_text(args.write, blob_a.decode("utf-8"))
         post = sha256_file(args.write)
         if post != sidecar_sha:

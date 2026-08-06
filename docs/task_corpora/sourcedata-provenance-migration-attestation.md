@@ -1,5 +1,10 @@
 # SourceData provenance sidecar migration — attestation (2026-08-06)
 
+Supersession note: this v0.1.0 attestation is preserved as an immutable
+snapshot. The sidecar it describes was superseded on 2026-08-06 by schema
+0.2.0 (C1.1 erratum: panel/figure granularities separated); see
+`sourcedata-provenance-migration-v2-attestation.md`.
+
 Migration: SOURCEDATA DETERMINISTIC PROVENANCE SIDECAR V1
 Classification: PARTIAL_DETERMINISTIC (not full recovery)
 Base main SHA: fe089eff42c16e3fa55606be340c85df57c5442b (PR #8 merged)
@@ -28,8 +33,9 @@ no private absolute paths are recorded in-repo.
 - resolvable official reference (re-verified 2026-08-06):
   upstream main 04333ae21badc91671a537e875bbca61b62f87e3
 - historical acquisition revision b457c14041b61c56f671c6f966b4324f682855b7:
-  UNRESOLVABLE upstream; preserved as historical provenance only; historical
-  lock record untouched; no claim of Git-history restoration
+  currently unresolvable as of 2026-08-06; preserved as historical
+  provenance only; historical lock record untouched; no claim of
+  Git-history restoration
 - licence: LICENSE_REVIEW_REQUIRED / PENDING_LICENSE_SCOPE_CLOSURE
 
 ## Sidecar

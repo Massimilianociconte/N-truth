@@ -20,7 +20,6 @@ from ntruth.task_corpora.provenance_join import UpstreamCandidate, decide_proven
 from ntruth.task_corpora.provenance_sidecar import (
     ALGORITHM_VERSION,
     SCHEMA_VERSION,
-    SidecarRow,
     SidecarValidationError,
     build_sidecar_rows,
     decision_to_row_fields,
@@ -318,50 +317,52 @@ class TestSidecarValidation:
         assert validated["duplicate_keys"] == 0
 
     def test_validate_rejects_invented_panel_on_article_only(self) -> None:
-        row = SidecarRow(
-            schema_version=SCHEMA_VERSION,
-            dataset_id="SourceData",
-            dataset_version="2.0.3",
-            task_corpus="entity_roles",
-            partition="train",
-            source_row_index=0,
-            canonical_record_id="x",
-            exact_source_text_sha256="0" * 64,
-            provenance_tier="TIER_2_ARTICLE_ONLY",
-            match_basis="EXACT_SINGLE_ARTICLE_AMBIGUOUS_PANEL",
-            article_doi="10.1000/a",
-            figure_id=None,
-            panel_id="A",
-            ambiguity_reason=None,
-            upstream_asset_sha256="0" * 64,
-            upstream_reference="ref",
-            matching_algorithm_version=ALGORITHM_VERSION,
-        )
+        entry = {
+            "schema_version": SCHEMA_VERSION,
+            "dataset_id": "SourceData",
+            "dataset_version": "2.0.3",
+            "task_corpus": "entity_roles",
+            "partition": "train",
+            "source_row_index": 0,
+            "canonical_record_id": "x",
+            "exact_source_text_sha256": "0" * 64,
+            "provenance_tier": "TIER_2_ARTICLE_ONLY",
+            "granularity": "ARTICLE",
+            "match_basis": "EXACT_SINGLE_ARTICLE_AMBIGUOUS_PANEL",
+            "article_doi": "10.1000/a",
+            "figure_id": None,
+            "panel_id": "A",
+            "ambiguity_reason": None,
+            "upstream_asset_sha256": "0" * 64,
+            "upstream_reference": "ref",
+            "matching_algorithm_version": ALGORITHM_VERSION,
+        }
         with pytest.raises(SidecarValidationError):
-            validate_sidecar_rows([row.model_dump()], canonical_record_ids={"x"})
+            validate_sidecar_rows([entry], canonical_record_ids={"x"})
 
     def test_validate_rejects_fallback_with_doi(self) -> None:
-        row = SidecarRow(
-            schema_version=SCHEMA_VERSION,
-            dataset_id="SourceData",
-            dataset_version="2.0.3",
-            task_corpus="entity_roles",
-            partition="train",
-            source_row_index=0,
-            canonical_record_id="x",
-            exact_source_text_sha256="0" * 64,
-            provenance_tier="RECORD_FALLBACK",
-            match_basis=None,
-            article_doi="10.1000/a",
-            figure_id=None,
-            panel_id=None,
-            ambiguity_reason="UNMATCHED_NO_EVIDENCE",
-            upstream_asset_sha256="0" * 64,
-            upstream_reference="ref",
-            matching_algorithm_version=ALGORITHM_VERSION,
-        )
+        entry = {
+            "schema_version": SCHEMA_VERSION,
+            "dataset_id": "SourceData",
+            "dataset_version": "2.0.3",
+            "task_corpus": "entity_roles",
+            "partition": "train",
+            "source_row_index": 0,
+            "canonical_record_id": "x",
+            "exact_source_text_sha256": "0" * 64,
+            "provenance_tier": "RECORD_FALLBACK",
+            "granularity": "RECORD_FALLBACK",
+            "match_basis": None,
+            "article_doi": "10.1000/a",
+            "figure_id": None,
+            "panel_id": None,
+            "ambiguity_reason": "UNMATCHED_NO_EVIDENCE",
+            "upstream_asset_sha256": "0" * 64,
+            "upstream_reference": "ref",
+            "matching_algorithm_version": ALGORITHM_VERSION,
+        }
         with pytest.raises(SidecarValidationError):
-            validate_sidecar_rows([row.model_dump()], canonical_record_ids={"x"})
+            validate_sidecar_rows([entry], canonical_record_ids={"x"})
 
 
 class TestManifestBackwardCompatibility:
@@ -392,21 +393,26 @@ class TestManifestBackwardCompatibility:
             **self.BASE,
             manifest_version="0.3.0",
             provenance_sidecar={
-                "provenance_sidecar_status": "PARTIAL_DETERMINISTIC",
-                "provenance_sidecar_rows": 75163,
-                "provenance_panel_unique": 70158,
-                "provenance_article_only": 3914,
-                "provenance_record_fallback": 1091,
-                "provenance_map_sha256": "a" * 64,
-                "provenance_schema_version": SCHEMA_VERSION,
-                "provenance_algorithm_version": ALGORITHM_VERSION,
+                "status": "PARTIAL_DETERMINISTIC",
+                "rows": 75163,
+                "panel_unique": 69983,
+                "figure_unique": 175,
+                "article_only": 3914,
+                "record_fallback": 1091,
+                "map_sha256": "a" * 64,
+                "schema_version": SCHEMA_VERSION,
+                "algorithm_version": ALGORITHM_VERSION,
                 "upstream_xml_sha256": "b" * 64,
+                "matched_subset_records": 74072,
+                "matched_subset_articles": 3392,
                 "matched_subset_articles_crossing_existing_splits": 0,
                 "fallback_records_excluded_from_diagnostic": 1091,
+                "embedded_document_id_present": 0,
+                "global_paper_level_leakage_claim_allowed": False,
             },
         )
         assert m.provenance_sidecar is not None
-        assert m.provenance_sidecar["provenance_sidecar_rows"] == 75163
+        assert m.provenance_sidecar.rows == 75163
 
     def test_paper_level_claim_stays_false(self) -> None:
         m = BuildManifest(**self.BASE, paper_level_leakage_claim_allowed=False)
@@ -427,61 +433,65 @@ class TestDecisionMapping:
         assert fields["provenance_tier"] == "RECORD_FALLBACK"
         assert fields["article_doi"] is None
 
-    def test_unique_figure_unit_keeps_tier1_without_invented_panel(self) -> None:
+    def test_unique_figure_unit_maps_to_figure_tier_without_invented_panel(self) -> None:
         # Upstream figures without sd-panel elements are whole-figure units:
-        # unique provenance is kept, but no panel identifier is invented.
+        # unique provenance is kept in the FIGURE tier, and no panel
+        # identifier is invented.
         cand = UpstreamCandidate("10.1000/a", "fig7", "", "whole figure caption")
         d = decide_provenance("whole figure caption", (cand,), frozenset())
         fields = decision_to_row_fields(d)
-        assert fields["provenance_tier"] == "TIER_1_PANEL_UNIQUE"
+        assert fields["provenance_tier"] == "TIER_1_FIGURE_UNIQUE"
+        assert fields["granularity"] == "FIGURE"
         assert fields["figure_id"] == "fig7"
         assert fields["panel_id"] is None
 
-    def test_validate_accepts_figure_unit_tier1_row(self) -> None:
-        row = SidecarRow(
-            schema_version=SCHEMA_VERSION,
-            dataset_id="SourceData",
-            dataset_version="2.0.3",
-            task_corpus="entity_roles",
-            partition="train",
-            source_row_index=0,
-            canonical_record_id="x",
-            exact_source_text_sha256="0" * 64,
-            provenance_tier="TIER_1_PANEL_UNIQUE",
-            match_basis="deterministic exact unique-panel assignment",
-            article_doi="10.1000/a",
-            figure_id="fig7",
-            panel_id=None,
-            ambiguity_reason=None,
-            upstream_asset_sha256="0" * 64,
-            upstream_reference="ref",
-            matching_algorithm_version=ALGORITHM_VERSION,
-        )
-        result = validate_sidecar_rows([row.model_dump()], canonical_record_ids={"x"})
+    def test_validate_accepts_figure_tier_row(self) -> None:
+        entry = {
+            "schema_version": SCHEMA_VERSION,
+            "dataset_id": "SourceData",
+            "dataset_version": "2.0.3",
+            "task_corpus": "entity_roles",
+            "partition": "train",
+            "source_row_index": 0,
+            "canonical_record_id": "x",
+            "exact_source_text_sha256": "0" * 64,
+            "provenance_tier": "TIER_1_FIGURE_UNIQUE",
+            "granularity": "FIGURE",
+            "match_basis": "deterministic exact unique-figure assignment",
+            "article_doi": "10.1000/a",
+            "figure_id": "fig7",
+            "panel_id": None,
+            "ambiguity_reason": None,
+            "upstream_asset_sha256": "0" * 64,
+            "upstream_reference": "ref",
+            "matching_algorithm_version": ALGORITHM_VERSION,
+        }
+        result = validate_sidecar_rows([entry], canonical_record_ids={"x"})
         assert result["rows"] == 1
 
-    def test_validate_rejects_tier1_without_any_official_unit(self) -> None:
-        row = SidecarRow(
-            schema_version=SCHEMA_VERSION,
-            dataset_id="SourceData",
-            dataset_version="2.0.3",
-            task_corpus="entity_roles",
-            partition="train",
-            source_row_index=0,
-            canonical_record_id="x",
-            exact_source_text_sha256="0" * 64,
-            provenance_tier="TIER_1_PANEL_UNIQUE",
-            match_basis="deterministic exact unique-panel assignment",
-            article_doi="10.1000/a",
-            figure_id=None,
-            panel_id=None,
-            ambiguity_reason=None,
-            upstream_asset_sha256="0" * 64,
-            upstream_reference="ref",
-            matching_algorithm_version=ALGORITHM_VERSION,
-        )
+    def test_validate_rejects_panel_tier_without_any_official_unit(self) -> None:
+        entry = {
+            "schema_version": SCHEMA_VERSION,
+            "dataset_id": "SourceData",
+            "dataset_version": "2.0.3",
+            "task_corpus": "entity_roles",
+            "partition": "train",
+            "source_row_index": 0,
+            "canonical_record_id": "x",
+            "exact_source_text_sha256": "0" * 64,
+            "provenance_tier": "TIER_1_PANEL_UNIQUE",
+            "granularity": "PANEL",
+            "match_basis": "deterministic exact unique-panel assignment",
+            "article_doi": "10.1000/a",
+            "figure_id": None,
+            "panel_id": None,
+            "ambiguity_reason": None,
+            "upstream_asset_sha256": "0" * 64,
+            "upstream_reference": "ref",
+            "matching_algorithm_version": ALGORITHM_VERSION,
+        }
         with pytest.raises(SidecarValidationError):
-            validate_sidecar_rows([row.model_dump()], canonical_record_ids={"x"})
+            validate_sidecar_rows([entry], canonical_record_ids={"x"})
 
 
 class TestRecordSerializationUntouched:

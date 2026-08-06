@@ -1,4 +1,4 @@
-"""Deterministic SourceData provenance sidecar builder (v1).
+"""Deterministic SourceData provenance sidecar builder (schema v0.2.0).
 
 Generates one provenance row per canonical SourceData task record by joining
 the locked upstream XML v2.0.3 caption index against the raw roles_multi text,
@@ -13,22 +13,35 @@ Hard guarantees encoded here:
   - exact deterministic matches are evaluated before containment, and
     containment can never override an exact-tier decision;
   - no fuzzy similarity, no first-match behaviour, no invented identifiers;
-  - TIER_2_ARTICLE_ONLY is never serialized as panel provenance;
+  - unique panel-granularity units and unique whole-figure units (upstream
+    figures with no ``sd-panel`` child) are reported as separate tiers and are
+    never conflated;
+  - TIER_2_ARTICLE_ONLY is never serialized as panel or figure provenance;
   - RECORD_FALLBACK rows carry no upstream identifiers at all.
+
+Schema v0.2.0 changes over v0.1.0 (C1.1 erratum): the 175 authoritative
+whole-figure XML units are split out of ``TIER_1_PANEL_UNIQUE`` into
+``TIER_1_FIGURE_UNIQUE``; SidecarRow is strict (``extra="forbid"``) with
+cross-field tier validation; archive extraction is hardened against hostile
+member payloads.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import os
+import re
+import shutil
 import tarfile
+import tempfile
 import xml.etree.ElementTree as ET
 from collections import Counter
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Final, Literal
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ConfigDict, ValidationError, field_validator, model_validator
 
 from ntruth.task_corpora.io_util import (
     read_jsonl_physical_lines,
@@ -43,16 +56,34 @@ from ntruth.task_corpora.provenance_join import (
     normalize_caption,
 )
 
-SCHEMA_VERSION: Final = "0.1.0"
-ALGORITHM_VERSION: Final = "0.1.0"
+SCHEMA_VERSION: Final = "0.2.0"
+ALGORITHM_VERSION: Final = "0.2.0"
 
-ProvenanceTier = Literal["TIER_1_PANEL_UNIQUE", "TIER_2_ARTICLE_ONLY", "RECORD_FALLBACK"]
+ProvenanceTier = Literal[
+    "TIER_1_PANEL_UNIQUE",
+    "TIER_1_FIGURE_UNIQUE",
+    "TIER_2_ARTICLE_ONLY",
+    "RECORD_FALLBACK",
+]
+ProvenanceGranularity = Literal["PANEL", "FIGURE", "ARTICLE", "RECORD_FALLBACK"]
 
-PARTITIONS: Final[tuple[str, ...]] = ("train", "validation", "test")
+PARTITIONS: Final[tuple[Literal["train", "validation", "test"], ...]] = (
+    "train",
+    "validation",
+    "test",
+)
 
 MATCH_BASIS_EXACT_UNIQUE_PANEL: Final = "deterministic exact unique-panel assignment"
+MATCH_BASIS_EXACT_UNIQUE_FIGURE: Final = "deterministic exact unique-figure assignment"
 MATCH_BASIS_EXACT_SINGLE_ARTICLE: Final = "EXACT_SINGLE_ARTICLE_AMBIGUOUS_PANEL"
 MATCH_BASIS_CONTAINMENT_SINGLE_ARTICLE: Final = "CONTAINMENT_SINGLE_ARTICLE"
+
+_SHA256_HEX: Final = re.compile(r"^[0-9a-f]{64}\Z")
+
+# Extraction safety quotas (configurable per call).
+DEFAULT_MAX_FILES: Final = 20_000
+DEFAULT_MAX_FILE_BYTES: Final = 50 * 1024 * 1024
+DEFAULT_MAX_TOTAL_BYTES: Final = 5 * 1024 * 1024 * 1024
 
 
 class SidecarValidationError(ValueError):
@@ -60,17 +91,20 @@ class SidecarValidationError(ValueError):
 
 
 class SidecarRow(BaseModel):
-    """One provenance row for one canonical task record (versioned schema)."""
+    """One provenance row for one canonical task record (strict schema 0.2.0)."""
 
-    schema_version: str
-    dataset_id: str
-    dataset_version: str
-    task_corpus: str
-    partition: str
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["0.2.0"]
+    dataset_id: Literal["SourceData"]
+    dataset_version: Literal["2.0.3"]
+    task_corpus: Literal["entity_roles"]
+    partition: Literal["train", "validation", "test"]
     source_row_index: int
     canonical_record_id: str
     exact_source_text_sha256: str
     provenance_tier: ProvenanceTier
+    granularity: ProvenanceGranularity
     match_basis: str | None = None
     article_doi: str | None = None
     figure_id: str | None = None
@@ -78,7 +112,77 @@ class SidecarRow(BaseModel):
     ambiguity_reason: str | None = None
     upstream_asset_sha256: str
     upstream_reference: str
-    matching_algorithm_version: str
+    matching_algorithm_version: Literal["0.2.0"]
+
+    @field_validator("source_row_index")
+    @classmethod
+    def row_index_non_negative(cls, value: int) -> int:
+        if value < 0:
+            raise ValueError("source_row_index must be >= 0")
+        return value
+
+    @field_validator("canonical_record_id", "upstream_reference")
+    @classmethod
+    def non_empty(cls, value: str) -> str:
+        if not value:
+            raise ValueError("value must be non-empty")
+        return value
+
+    @field_validator("exact_source_text_sha256", "upstream_asset_sha256")
+    @classmethod
+    def lowercase_hex_sha256(cls, value: str) -> str:
+        if not _SHA256_HEX.match(value):
+            raise ValueError("must be lowercase 64-char hex SHA-256")
+        return value
+
+    @model_validator(mode="after")
+    def tier_cross_field_rules(self) -> SidecarRow:
+        tier = self.provenance_tier
+        if tier in {"TIER_1_PANEL_UNIQUE", "TIER_1_FIGURE_UNIQUE", "TIER_2_ARTICLE_ONLY"}:
+            if not self.article_doi or not doi_is_well_formed(self.article_doi):
+                raise ValueError(f"{tier} requires a well-formed article_doi")
+            if self.ambiguity_reason is not None:
+                raise ValueError(f"{tier} cannot carry ambiguity_reason")
+        if tier == "TIER_1_PANEL_UNIQUE":
+            if self.granularity != "PANEL":
+                raise ValueError("TIER_1_PANEL_UNIQUE requires granularity PANEL")
+            if not self.panel_id:
+                raise ValueError("TIER_1_PANEL_UNIQUE requires an official panel_id")
+            if self.match_basis != MATCH_BASIS_EXACT_UNIQUE_PANEL:
+                raise ValueError("TIER_1_PANEL_UNIQUE has a fixed match_basis")
+        elif tier == "TIER_1_FIGURE_UNIQUE":
+            if self.granularity != "FIGURE":
+                raise ValueError("TIER_1_FIGURE_UNIQUE requires granularity FIGURE")
+            if not self.figure_id:
+                raise ValueError("TIER_1_FIGURE_UNIQUE requires an official figure_id")
+            if self.panel_id is not None:
+                raise ValueError("TIER_1_FIGURE_UNIQUE must carry panel_id=null")
+            if self.match_basis != MATCH_BASIS_EXACT_UNIQUE_FIGURE:
+                raise ValueError("TIER_1_FIGURE_UNIQUE has a fixed match_basis")
+        elif tier == "TIER_2_ARTICLE_ONLY":
+            if self.granularity != "ARTICLE":
+                raise ValueError("TIER_2_ARTICLE_ONLY requires granularity ARTICLE")
+            if self.figure_id is not None or self.panel_id is not None:
+                raise ValueError("TIER_2_ARTICLE_ONLY never carries figure/panel identifiers")
+            if self.match_basis not in {
+                MATCH_BASIS_EXACT_SINGLE_ARTICLE,
+                MATCH_BASIS_CONTAINMENT_SINGLE_ARTICLE,
+            }:
+                raise ValueError("TIER_2_ARTICLE_ONLY has an invalid match_basis")
+        else:  # RECORD_FALLBACK
+            if self.granularity != "RECORD_FALLBACK":
+                raise ValueError("RECORD_FALLBACK requires granularity RECORD_FALLBACK")
+            if (
+                self.article_doi is not None
+                or self.figure_id is not None
+                or self.panel_id is not None
+            ):
+                raise ValueError("RECORD_FALLBACK must carry no upstream identifiers")
+            if not self.ambiguity_reason:
+                raise ValueError("RECORD_FALLBACK requires ambiguity_reason")
+            if self.match_basis is not None:
+                raise ValueError("RECORD_FALLBACK cannot carry match_basis")
+        return self
 
     def to_jsonl_bytes(self) -> bytes:
         body = json.dumps(self.model_dump(), ensure_ascii=False, sort_keys=True)
@@ -98,7 +202,7 @@ def sha256_file(path: Path) -> str:
 
 
 # --- Upstream XML caption index -------------------------------------------
-# Extraction and caption recovery mirror the audited C1.1 PoC
+# Caption recovery mirrors the audited C1.1 PoC
 # (scripts/task_corpora/c1_1_build_upstream_index.py) exactly, so index rows
 # are byte-comparable across investigation and migration.
 
@@ -151,28 +255,129 @@ def iter_upstream_captions(xml_dir: Path) -> Iterator[dict[str, str]]:
                 }
 
 
-def extract_xml_archive(archive_path: Path, dest_dir: Path, *, expected_sha256: str) -> None:
-    """Hash-verify then safely unpack the official XML provenance archive."""
+class ArchiveExtractionError(ValueError):
+    """The provenance archive failed a safety or integrity gate."""
+
+
+def _validate_member(
+    member: tarfile.TarInfo, seen_names: set[str], seen_basenames: set[str]
+) -> str | None:
+    """Screen one archive member; returns the output basename for XML members.
+
+    ``None`` marks a tolerated benign entry that is never extracted: directory
+    members and non-XML payloads (the official archive carries jsonl exports
+    under sibling directories). Every hostile member class raises instead.
+    """
+    if member.name.startswith("/") or Path(member.name).is_absolute():
+        raise ArchiveExtractionError(f"absolute path in archive: {member.name!r}")
+    parts = Path(member.name).parts
+    if not parts or any(p in {"..", "."} for p in parts):
+        raise ArchiveExtractionError(f"path traversal in archive: {member.name!r}")
+    if member.issym() or member.islnk():
+        raise ArchiveExtractionError(f"link member not allowed: {member.name!r}")
+    if member.isdir():
+        return None  # benign directory entry: tolerated, nothing extracted
+    if not member.isfile():
+        raise ArchiveExtractionError(f"non-file member not allowed: {member.name!r}")
+    base = Path(member.name).name
+    if not base or base.startswith("."):
+        raise ArchiveExtractionError(f"hidden payload not allowed: {member.name!r}")
+    if not base.endswith(".xml"):
+        return None  # benign non-XML payload: tolerated, never extracted
+    if member.name in seen_names:
+        raise ArchiveExtractionError(f"duplicate member name: {member.name!r}")
+    if base in seen_basenames:
+        raise ArchiveExtractionError(f"duplicate output basename: {base!r}")
+    seen_names.add(member.name)
+    seen_basenames.add(base)
+    return base
+
+
+def extract_xml_archive(
+    archive_path: Path,
+    dest_dir: Path,
+    *,
+    expected_sha256: str,
+    max_files: int = DEFAULT_MAX_FILES,
+    max_file_bytes: int = DEFAULT_MAX_FILE_BYTES,
+    max_total_bytes: int = DEFAULT_MAX_TOTAL_BYTES,
+) -> None:
+    """Hash-verify then safely unpack the official XML provenance archive.
+
+    Fail-closed hardening: the archive must hash-verify BEFORE any extraction;
+    the destination must not pre-exist (no stale or populated targets); member
+    names are screened for absolute paths, traversal, links, duplicates and
+    non-XML payloads; per-file and total decompressed quotas are enforced;
+    output is staged in a fresh temporary directory and published with a
+    single atomic rename; any partial output is removed on failure.
+    """
     actual = sha256_file(archive_path)
     if actual != expected_sha256:
-        raise ValueError(
+        raise ArchiveExtractionError(
             f"provenance archive sha256 mismatch: expected {expected_sha256} got {actual}"
         )
-    dest_dir.mkdir(parents=True, exist_ok=True)
+    if dest_dir.exists():
+        raise ArchiveExtractionError(
+            f"destination already exists (stale or populated target refused): {dest_dir}"
+        )
+    dest_dir.parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(prefix=f".{dest_dir.name}.", dir=dest_dir.parent))
     try:
+        try:
+            with tarfile.open(archive_path, "r:gz") as tar:
+                members = tar.getmembers()
+        except (tarfile.TarError, OSError, EOFError) as exc:
+            raise ArchiveExtractionError(
+                f"unreadable provenance archive {archive_path.name}: {exc}"
+            ) from exc
+        seen_names: set[str] = set()
+        seen_basenames: set[str] = set()
+        plan: list[tuple[tarfile.TarInfo, str]] = []
+        total = 0
+        for member in members:
+            base = _validate_member(member, seen_names, seen_basenames)
+            if base is None:
+                continue  # tolerated directory entry
+            if member.size > max_file_bytes:
+                raise ArchiveExtractionError(
+                    f"member exceeds maximum file size: {member.name!r} ({member.size} bytes)"
+                )
+            total += member.size
+            if total > max_total_bytes:
+                raise ArchiveExtractionError("decompressed total exceeds maximum")
+            plan.append((member, base))
+        if len(plan) > max_files:
+            raise ArchiveExtractionError(f"archive contains more than {max_files} files")
+
         with tarfile.open(archive_path, "r:gz") as tar:
-            for member in tar.getmembers():
-                if not member.isfile() or not member.name.endswith(".xml"):
-                    continue
-                name = Path(member.name).name
-                if not name or name.startswith(".") or ".." in name:
-                    continue
+            for member, base in plan:
                 source = tar.extractfile(member)
                 if source is None:
-                    continue
-                (dest_dir / name).write_bytes(source.read())
-    except (tarfile.TarError, OSError, EOFError) as exc:
-        raise ValueError(f"unreadable provenance archive {archive_path.name}: {exc}") from exc
+                    raise ArchiveExtractionError(f"unreadable member: {member.name!r}")
+                data = source.read()
+                if len(data) > max_file_bytes:
+                    raise ArchiveExtractionError(
+                        f"member exceeds maximum file size: {member.name!r}"
+                    )
+                target = staging / base
+                fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+                try:
+                    os.write(fd, data)
+                    os.fsync(fd)
+                finally:
+                    os.close(fd)
+        try:
+            dir_fd = os.open(staging, os.O_RDONLY)
+            try:
+                os.fsync(dir_fd)
+            finally:
+                os.close(dir_fd)
+        except OSError:
+            pass  # directory fsync unsupported on this platform
+        os.replace(staging, dest_dir)
+    except BaseException:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
 
 
 # --- Tier decision to sidecar fields ---------------------------------------
@@ -181,19 +386,36 @@ def extract_xml_archive(archive_path: Path, dest_dir: Path, *, expected_sha256: 
 def decision_to_row_fields(decision: JoinDecision, *, containment_used: bool = False) -> dict:
     """Map a fail-closed JoinDecision onto sidecar row fields.
 
-    ARTICLE-level decisions never carry panel identifiers; fallback decisions
-    carry no upstream identifiers at all. A unique upstream annotation unit
-    that is a whole figure (no ``sd-panel`` element upstream) keeps unique
-    provenance with ``panel_id=None``: the panel identifier is absent in the
-    authoritative XML path itself, so none is invented.
+    ARTICLE-level decisions never carry panel or figure identifiers; fallback
+    decisions carry no upstream identifiers at all. A unique upstream unit is
+    panel-granularity when the authoritative XML path carries an ``sd-panel``
+    element; a whole-figure unit (no ``sd-panel`` child upstream) is reported
+    as ``TIER_1_FIGURE_UNIQUE`` with ``panel_id=None`` — no panel identifier
+    is invented, and a figure unit is never claimed as panel provenance.
     """
     if decision.result == "TIER1_UNIQUE_PANEL":
+        if decision.panel_id:
+            return {
+                "provenance_tier": "TIER_1_PANEL_UNIQUE",
+                "granularity": "PANEL",
+                "match_basis": MATCH_BASIS_EXACT_UNIQUE_PANEL,
+                "article_doi": decision.article_doi,
+                "figure_id": decision.fig_id or None,
+                "panel_id": decision.panel_id,
+                "ambiguity_reason": None,
+            }
+        if not decision.fig_id:
+            raise SidecarValidationError(
+                "unique upstream unit has neither panel_id nor figure_id; "
+                "refusing to invent identifiers"
+            )
         return {
-            "provenance_tier": "TIER_1_PANEL_UNIQUE",
-            "match_basis": MATCH_BASIS_EXACT_UNIQUE_PANEL,
+            "provenance_tier": "TIER_1_FIGURE_UNIQUE",
+            "granularity": "FIGURE",
+            "match_basis": MATCH_BASIS_EXACT_UNIQUE_FIGURE,
             "article_doi": decision.article_doi,
-            "figure_id": decision.fig_id or None,
-            "panel_id": decision.panel_id or None,
+            "figure_id": decision.fig_id,
+            "panel_id": None,
             "ambiguity_reason": None,
         }
     if decision.result == "TIER2_SINGLE_DOI_ARTICLE":
@@ -204,6 +426,7 @@ def decision_to_row_fields(decision: JoinDecision, *, containment_used: bool = F
         )
         return {
             "provenance_tier": "TIER_2_ARTICLE_ONLY",
+            "granularity": "ARTICLE",
             "match_basis": basis,
             "article_doi": decision.article_doi,
             "figure_id": None,
@@ -212,6 +435,7 @@ def decision_to_row_fields(decision: JoinDecision, *, containment_used: bool = F
         }
     return {
         "provenance_tier": "RECORD_FALLBACK",
+        "granularity": "RECORD_FALLBACK",
         "match_basis": None,
         "article_doi": None,
         "figure_id": None,
@@ -259,9 +483,9 @@ def build_sidecar_rows(
     canon_dir: Path,
     upstream_asset_sha256: str,
     upstream_reference: str,
-    dataset_id: str = "SourceData",
-    dataset_version: str = "2.0.3",
-    task_corpus: str = "entity_roles",
+    dataset_id: Literal["SourceData"] = "SourceData",
+    dataset_version: Literal["2.0.3"] = "2.0.3",
+    task_corpus: Literal["entity_roles"] = "entity_roles",
     expected_records_sha256: str | None = None,
     expected_raw_sha256: dict[str, str] | None = None,
 ) -> list[SidecarRow]:
@@ -354,38 +578,12 @@ def build_sidecar_rows(
 
 # --- Independent validation ---------------------------------------------------
 
-
-def _check_tier_rules(row: SidecarRow) -> None:
-    tier = row.provenance_tier
-    if tier == "TIER_1_PANEL_UNIQUE":
-        if not row.article_doi or not doi_is_well_formed(row.article_doi):
-            raise SidecarValidationError(f"TIER_1 row requires well-formed DOI: {row}")
-        if not row.panel_id and not row.figure_id:
-            raise SidecarValidationError(
-                f"TIER_1 row requires an official panel_id, or a figure_id when the "
-                f"authoritative XML path carries no sd-panel unit: {row}"
-            )
-        if row.ambiguity_reason is not None:
-            raise SidecarValidationError(f"TIER_1 row cannot carry ambiguity_reason: {row}")
-    elif tier == "TIER_2_ARTICLE_ONLY":
-        if not row.article_doi or not doi_is_well_formed(row.article_doi):
-            raise SidecarValidationError(f"TIER_2 row requires well-formed DOI: {row}")
-        if row.panel_id is not None or row.figure_id is not None:
-            raise SidecarValidationError(
-                f"ARTICLE_ONLY must never carry panel/figure identifiers: {row}"
-            )
-        if row.match_basis not in {
-            MATCH_BASIS_EXACT_SINGLE_ARTICLE,
-            MATCH_BASIS_CONTAINMENT_SINGLE_ARTICLE,
-        }:
-            raise SidecarValidationError(f"TIER_2 row has invalid match_basis: {row}")
-    else:  # RECORD_FALLBACK
-        if row.article_doi is not None or row.figure_id is not None or row.panel_id is not None:
-            raise SidecarValidationError(
-                f"RECORD_FALLBACK must carry no upstream identifiers: {row}"
-            )
-        if not row.ambiguity_reason:
-            raise SidecarValidationError(f"RECORD_FALLBACK requires ambiguity_reason: {row}")
+ALL_TIERS: Final[tuple[ProvenanceTier, ...]] = (
+    "TIER_1_PANEL_UNIQUE",
+    "TIER_1_FIGURE_UNIQUE",
+    "TIER_2_ARTICLE_ONLY",
+    "RECORD_FALLBACK",
+)
 
 
 def validate_sidecar_rows(
@@ -398,7 +596,6 @@ def validate_sidecar_rows(
             row = SidecarRow.model_validate(entry)
         except ValidationError as exc:
             raise SidecarValidationError(f"sidecar row fails schema: {exc}") from exc
-        _check_tier_rules(row)
         rows.append(row)
 
     seen = Counter(r.canonical_record_id for r in rows)
@@ -418,7 +615,7 @@ def validate_sidecar_rows(
         "duplicate_keys": duplicate_keys,
         "missing_canonical_records": len(missing),
         "extra_sidecar_records": len(extra),
-        "tier_counts": dict(tier_counts),
+        "tier_counts": {tier: tier_counts.get(tier, 0) for tier in ALL_TIERS},
         "schema_version": SCHEMA_VERSION,
         "algorithm_version": ALGORITHM_VERSION,
     }
