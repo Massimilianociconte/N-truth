@@ -1,0 +1,134 @@
+# C1.1 SourceData upstream asset inventory (machine-readable)
+# Investigation date: 2026-08-06
+# Branch: chore/c1-1-sourcedata-document-provenance-v1 (not merged)
+# EXTERNAL_DATASETS_ROOT = placeholder for the external dataset volume root.
+
+investigation:
+  task: C1_1_SOURCEDATA_DOCUMENT_PROVENANCE
+  date: "2026-08-06"
+  root_main_baseline: 8afe8e0e35adfcae023316d58346685638c91f18
+  primary_status: RECOVERABLE_PARTIAL_DETERMINISTIC
+
+local_locked_export:
+  repository: EMBO/SourceData
+  source_url: https://huggingface.co/datasets/EMBO/SourceData
+  locked_revision: b457c14041b61c56f671c6f966b4324f682855b7
+  locked_revision_upstream_status: UNRESOLVABLE_404_ALL_PATHS
+  locked_revision_role: historical_provenance_not_currently_usable_pin
+  original_revision_history_restored: NOT_PROVEN
+  lock_record_modified_by_investigation: false
+  future_relock_requirement: pin content SHA-256 values AND a resolvable official upstream reference
+  current_upstream_main: 04333ae21badc91671a537e875bbca61b62f87e3
+  locked_files_byte_identical_at_current_main: true
+  semantic_version: 2.0.3
+  config: token_classification/v_2.0.3
+  fields_present: [words, labels, is_category, text]
+  provenance_fields_present: []
+  records_sha256_reverified: 562b6ac933c13f05a0ea536696857e7e11dd5a324503d1fe930d26149d071b10
+  counts: {train: 60266, validation: 8201, test: 6696, excluded: 0, total: 75163}
+  files:
+    - {path: raw/sourcedata/v2.0.3/ner/train.jsonl, sha256: 8aba9b5cb222b4f726cde73ca8e4ff16be6717b064d11237b8dd197226c7b8de, rows: 60266}
+    - {path: raw/sourcedata/v2.0.3/ner/validation.jsonl, sha256: 3ba7685a4f31f47915702f4f67e444db19c1c9a815a5a59bcc6be731f7432bd2, rows: 8201}
+    - {path: raw/sourcedata/v2.0.3/ner/test.jsonl, sha256: 4f684c9fae6537583520c35a1b6ecfed92144aff3d15f57caf1839448188c591, rows: 6696}
+    - {path: raw/sourcedata/v2.0.3/roles_multi/train.jsonl, sha256: c2ac812846265686502469208dae435a5dc5279d6149940409f3b4566764c925, rows: 60266}
+    - {path: raw/sourcedata/v2.0.3/roles_multi/validation.jsonl, sha256: d2e98f0e71905e18cc4dbe208646113ddb4b869cf06d53af628156f6e1493715, rows: 8201}
+    - {path: raw/sourcedata/v2.0.3/roles_multi/test.jsonl, sha256: f7fbee9acd7e7f52ed92944d3d719c83164ba75e18218841d3dc764956c21a75, rows: 6696}
+
+upstream_official_assets:
+  - asset: xml/source_data_xml_v2.0.3.tar.gz
+    official_source: https://huggingface.co/datasets/EMBO/SourceData/resolve/main/xml/source_data_xml_v2.0.3.tar.gz
+    publisher: EMBO
+    version_compatibility: v2.0.3_same_version_line
+    byte_size: 98703239
+    sha256_downloaded_copy: 71f9899211efef62bc523275bbff7ba3e37ec8b4d1fc21405b58f4b68e93ba60
+    retrieval_date: "2026-08-06"
+    licence_or_terms: cc-by-4.0_claimed_on_HF_card_no_LICENSE_file
+    schema: article@doi -> fig@id,label -> sd-panel@panel_id -> sd-tag@text
+    unit_of_annotation: figure panel caption segments
+    deterministic_join_key: verbatim caption text (whitespace-normalized)
+    leakage_group_level_obtainable: ARTICLE (PANEL for unique captions)
+    relationship_to_local_records: superset same-version annotation source
+  - asset: token_classification/v_2.0.3/panelization/{train,validation,test}.jsonl
+    official_source: https://huggingface.co/datasets/EMBO/SourceData/resolve/main/token_classification/v_2.0.3/panelization/
+    version_compatibility: v2.0.3_same_version_line
+    schema: words, labels(PANEL_START), text
+    deterministic_join_key: none explicit; concatenated segment text
+    leakage_group_level_obtainable: SEGMENT boundary hints only
+    note: explains unmatched multi-sentence local segments; join requires panelization-aware migration
+  - asset: neo_dumps/sourcedata_v2-0-2.db.dump.2023-09-25-08.45.40
+    byte_size: 166923503
+    version_compatibility: v2.0.2_MISMATCH_vs_local_v2.0.3
+    deterministic_join_key: unknown_without_inspection
+    status: NOT_DOWNLOADED_reported_only
+  - asset: bigbio/source_data_json_splits_2.0.2.zip
+    byte_size: 32745978
+    version_compatibility: v2.0.2_MISMATCH_vs_local_v2.0.3
+    status: NOT_DOWNLOADED_reported_only
+  - asset: split_files/split_v2.0.2.json
+    version_compatibility: v2.0.2_MISMATCH_vs_local_v2.0.3
+    status: NOT_DOWNLOADED_reported_only
+  - asset: information_extraction/*.json|csv
+    note: aggregated IE exports; no caption row join key
+    status: NOT_DOWNLOADED_reported_only
+
+downloaded_research_artefacts:
+  - name: README_main.md
+    source_url: https://huggingface.co/datasets/EMBO/SourceData/resolve/main/README.md
+    sha256: d6c0b72eadfb0def8ffb6e3f8b59c71563b7a7ccc20e1c2d0884830ea501428e
+    retrieval_date: "2026-08-06"
+    licence_or_terms: cc-by-4.0_claimed
+  - name: panelization_train_sample.txt
+    note: first 2 lines of token_classification/v_2.0.3/panelization/train.jsonl
+    sha256: ddfbb830f5e2743b756ed8ccd21856b8f3edbd5f0e0cc8da0f81472d4ef6f2d4
+    retrieval_date: "2026-08-06"
+
+licence:
+  status: LICENSE_REVIEW_REQUIRED / PENDING_LICENSE_SCOPE_CLOSURE
+  dataset_card_declaration: cc-by-4.0 tag on official Hugging Face card (evidence)
+  archive_or_file_licence_metadata: none observed in served assets
+  repository_level_license_file: ABSENT at current upstream main
+  card_label_invalidated_by_missing_license_file: false  # signals recorded separately
+  permissions:
+    local_processing: performed read-only under this investigation
+    development_use: BLOCKED
+    training_use: BLOCKED
+    evaluation_use: PENDING_LICENCE_DECISION
+    redistribution: NOT_ASSESSED_NOT_AUTHORISED
+
+join_rules:
+  doi_validation: every candidate DOI checked as well-formed before use (zero invalid upstream)
+  malformed_or_missing_doi_used_as_provenance: false
+  containment_overrides_exact: false
+  normalization: whitespace-collapse only; Unicode whitespace (U+00A0, U+2028, U+2029) to single space
+  case_folding: false
+  punctuation_or_symbol_changes: false
+
+join_metrics:
+  upstream_articles: 3515
+  upstream_panel_rows: 77688
+  upstream_distinct_normalized_captions: 73233
+  upstream_duplicate_caption_keys: 1953
+  local_duplicate_distinct_texts: 1942
+  tier1_unique_panel: 70158
+  tier2_single_doi_article: 3914   # 3912 ambiguous-exact + 2 containment
+  matched_any_tier: 74072
+  matched_pct: 98.548
+  unmatched: 1091                   # train 916 / validation 97 / test 78
+  articles_crossing_splits: 0
+  panels_crossing_splits: 0
+  fuzzy_similarity_used: false
+  first_match_behaviour: false
+
+states_preserved:
+  DATA_READINESS: BLOCKED
+  SCIENTIFIC_VALIDATION: NOT_STARTED
+  SOURCE_DATA_DEVELOPMENT_USE: BLOCKED
+  SOURCE_DATA_TRAINING_USE: BLOCKED
+  SOURCE_DATA_EVALUATION_USE: PENDING_LICENCE_DECISION
+  READY_FOR_B0: CANDIDATE
+  READY_FOR_B0_GO: BLOCKED
+  C2_PRECLINIE: DESIGN_ONLY
+  MODERNBERT_TRAINING: HOLD
+  GRANITE_PROMOTION: HOLD
+  SUBSTANTIVE_TRAINING: HOLD_PENDING_REAL_ANCHOR
+  LAZIC: ROLE_DECISION_PENDING_NOT_RECEIVED
