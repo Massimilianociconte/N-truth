@@ -38,23 +38,23 @@ class ProvenanceSidecarManifest(BaseModel):
     RECORD_FALLBACK population.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     status: Literal["PARTIAL_DETERMINISTIC"]
-    rows: int
-    panel_unique: int
-    figure_unique: int
-    article_only: int
-    record_fallback: int
+    rows: int = Field(ge=0)
+    panel_unique: int = Field(ge=0)
+    figure_unique: int = Field(ge=0)
+    article_only: int = Field(ge=0)
+    record_fallback: int = Field(ge=0)
     map_sha256: str
     schema_version: str
     algorithm_version: str
     upstream_xml_sha256: str
-    matched_subset_records: int
-    matched_subset_articles: int
-    matched_subset_articles_crossing_existing_splits: int
-    fallback_records_excluded_from_diagnostic: int
-    embedded_document_id_present: int
+    matched_subset_records: int = Field(ge=0)
+    matched_subset_articles: int = Field(ge=0)
+    matched_subset_articles_crossing_existing_splits: int = Field(ge=0)
+    fallback_records_excluded_from_diagnostic: int = Field(ge=0)
+    embedded_document_id_present: int = Field(ge=0)
     global_paper_level_leakage_claim_allowed: bool
 
     @field_validator("map_sha256")

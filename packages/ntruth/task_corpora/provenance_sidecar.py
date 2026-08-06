@@ -190,10 +190,12 @@ class SidecarRow(BaseModel):
 
 
 def sha256_bytes(blob: bytes) -> str:
+    """Return the lowercase hex SHA-256 of an in-memory byte payload."""
     return hashlib.sha256(blob).hexdigest()
 
 
 def sha256_file(path: Path) -> str:
+    """Stream-hash a file with SHA-256 (constant memory) and return lowercase hex."""
     h = hashlib.sha256()
     with path.open("rb") as fh:
         for chunk in iter(lambda: fh.read(1 << 20), b""):
@@ -307,9 +309,11 @@ def extract_xml_archive(
     Fail-closed hardening: the archive must hash-verify BEFORE any extraction;
     the destination must not pre-exist (no stale or populated targets); member
     names are screened for absolute paths, traversal, links, duplicates and
-    non-XML payloads; per-file and total decompressed quotas are enforced;
-    output is staged in a fresh temporary directory and published with a
-    single atomic rename; any partial output is removed on failure.
+    hidden payloads; verified-benign non-XML file members and directory
+    entries are tolerated but NEVER extracted; per-file and total decompressed
+    quotas are enforced; output is staged in a fresh temporary directory and
+    published with a single atomic rename; any partial output is removed on
+    failure.
     """
     actual = sha256_file(archive_path)
     if actual != expected_sha256:
@@ -578,6 +582,7 @@ def build_sidecar_rows(
 
 # --- Independent validation ---------------------------------------------------
 
+#: The canonical four-tier vocabulary; iteration order is fixed for determinism.
 ALL_TIERS: Final[tuple[ProvenanceTier, ...]] = (
     "TIER_1_PANEL_UNIQUE",
     "TIER_1_FIGURE_UNIQUE",
@@ -619,3 +624,178 @@ def validate_sidecar_rows(
         "schema_version": SCHEMA_VERSION,
         "algorithm_version": ALGORITHM_VERSION,
     }
+
+
+# --- Attested input bundle ----------------------------------------------------
+
+
+class ProvenanceBuildInputs(BaseModel):
+    """Immutable attested input contract for every provenance workflow stage.
+
+    One bundle pins ALL inputs of the extraction/index/build/validation
+    pipeline (canonical records and per-partition JSONL, raw roles_multi
+    exports, leakage audit, upstream XML archive, resolvable upstream
+    reference and the pinned schema/algorithm/dataset versions). Every stage
+    must consume the same attested bundle, and every stage report must record
+    :meth:`bundle_sha256` so a report from one input bundle can never be
+    accepted for an artifact generated from another.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    canonical_records_sha256: str
+    canonical_train_sha256: str
+    canonical_validation_sha256: str
+    canonical_test_sha256: str
+    raw_roles_train_sha256: str
+    raw_roles_validation_sha256: str
+    raw_roles_test_sha256: str
+    leakage_audit_sha256: str
+    upstream_xml_sha256: str
+    resolvable_upstream_reference: str
+    dataset_version: Literal["2.0.3"]
+    sidecar_schema_version: Literal["0.2.0"]
+    matching_algorithm_version: Literal["0.2.0"]
+
+    @field_validator(
+        "canonical_records_sha256",
+        "canonical_train_sha256",
+        "canonical_validation_sha256",
+        "canonical_test_sha256",
+        "raw_roles_train_sha256",
+        "raw_roles_validation_sha256",
+        "raw_roles_test_sha256",
+        "leakage_audit_sha256",
+        "upstream_xml_sha256",
+    )
+    @classmethod
+    def lowercase_hex_sha256(cls, value: str) -> str:
+        if not _SHA256_HEX.match(value):
+            raise ValueError("must be lowercase 64-char hex SHA-256")
+        return value
+
+    @field_validator("resolvable_upstream_reference")
+    @classmethod
+    def resolvable_https_reference(cls, value: str) -> str:
+        if not value.startswith("https://") or len(value) <= len("https://"):
+            raise ValueError("must be a non-empty resolvable https:// reference")
+        return value
+
+    def bundle_sha256(self) -> str:
+        """Deterministic identity of the whole attested bundle.
+
+        Canonical JSON serialization (sorted keys, no whitespace variance) is
+        hashed, so two bundles differ iff any attested field differs.
+        """
+        body = json.dumps(self.model_dump(), ensure_ascii=False, sort_keys=True)
+        return sha256_bytes(body.encode("utf-8"))
+
+
+def verify_provenance_build_inputs(
+    bundle: ProvenanceBuildInputs, *, canon_dir: Path, raw_dir: Path
+) -> None:
+    """Verify every attested file of the bundle on disk, fail-closed.
+
+    ``leakage_audit.json`` is MANDATORY: a missing file, a mismatched hash or
+    any unexpected replacement stops the workflow before sidecar generation
+    or any write.
+    """
+
+    def _check(path: Path, expected: str) -> None:
+        if not path.is_file():
+            raise SidecarValidationError(f"required input missing: {path.name}")
+        actual = sha256_file(path)
+        if actual != expected:
+            raise SidecarValidationError(
+                f"{path.name} sha256 mismatch: expected {expected} got {actual}"
+            )
+
+    for part in PARTITIONS:
+        _check(canon_dir / f"{part}.jsonl", getattr(bundle, f"canonical_{part}_sha256"))
+        _check(raw_dir / f"{part}.jsonl", getattr(bundle, f"raw_roles_{part}_sha256"))
+    _check(canon_dir / "leakage_audit.json", bundle.leakage_audit_sha256)
+
+
+# --- Build report publication ordering -----------------------------------------
+
+SUCCESS_REPORT_REQUIRED_KEYS: Final[frozenset[str]] = frozenset(
+    {
+        "sidecar_sha256",
+        "input_bundle_sha256",
+        "validation",
+        "tier_counts",
+        "dual_build_byte_identical",
+        "canonical_input_reverification",
+        "final_verification_complete",
+    }
+)
+
+
+def _atomic_write_json(path: Path, payload: dict[str, object]) -> None:
+    """Write a JSON report atomically: temp file + fsync + single rename."""
+    blob = (json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode(
+        "utf-8"
+    )
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(blob)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+        raise
+
+
+def publish_build_report(build_dir: Path, report: dict[str, object]) -> Path:
+    """Publish ``build_report.json`` only when the report proves completion.
+
+    A SUCCESS report is refused unless it carries every verification marker
+    (dual-build equality, schema validation, canonical input re-verification,
+    final verification flag) and, for external writes, a post-rename hash
+    equal to the built sidecar hash. Never persist a success report before
+    final artifact validation.
+    """
+    status = report.get("status")
+    if status not in {"SUCCESS", "FAILED", "ABORTED"}:
+        raise SidecarValidationError(f"unknown build report status: {status!r}")
+    if status == "SUCCESS":
+        missing = SUCCESS_REPORT_REQUIRED_KEYS - set(report)
+        if missing:
+            raise SidecarValidationError(
+                f"success report lacks verification markers: {sorted(missing)}"
+            )
+        if report.get("final_verification_complete") is not True:
+            raise SidecarValidationError("success report requires final_verification_complete=true")
+        if report.get("dual_build_byte_identical") is not True:
+            raise SidecarValidationError("success report requires byte-identical dual builds")
+        if report.get("canonical_input_reverification") != "PASSED":
+            raise SidecarValidationError("success report requires canonical re-verification")
+        if "written_path" in report and report.get("post_rename_sha256") != report.get(
+            "sidecar_sha256"
+        ):
+            raise SidecarValidationError(
+                "external write requires post_rename_sha256 == sidecar_sha256"
+            )
+    path = build_dir / "build_report.json"
+    _atomic_write_json(path, report)
+    return path
+
+
+def abort_build_report(
+    build_dir: Path, *, stage: str, error: str, status: Literal["FAILED", "ABORTED"] = "FAILED"
+) -> Path:
+    """Persist an explicitly FAILED or ABORTED report on partial failure."""
+    build_dir.mkdir(parents=True, exist_ok=True)
+    payload: dict[str, object] = {
+        "status": status,
+        "failed_stage": stage,
+        "error": error,
+        "schema_version": SCHEMA_VERSION,
+        "algorithm_version": ALGORITHM_VERSION,
+    }
+    path = build_dir / "build_report.json"
+    _atomic_write_json(path, payload)
+    return path

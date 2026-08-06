@@ -5,13 +5,17 @@ build process): strict schema v0.2.0 + four-tier contract, exact 1:1 join
 back to the canonical corpus, audited tier counts, zero duplicate keys, and
 the matched-subset article-crossing diagnostic (fallback records excluded).
 
-Also re-confirms that the canonical records hash is unchanged after the write.
+Also re-confirms that the canonical records hash is unchanged after the
+write. The validation report records the ``input_bundle_sha256`` of the
+attested build-input bundle it was invoked with, so a validation report can
+never be detached from the exact inputs the sidecar was generated from.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 
 from ntruth.task_corpora.io_util import read_jsonl_physical_lines, records_content_sha256
@@ -34,7 +38,15 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--sidecar", required=True, type=Path)
     ap.add_argument("--canon-dir", required=True, type=Path)
+    ap.add_argument(
+        "--input-bundle-sha256",
+        required=True,
+        help="bundle_sha256 of the attested ProvenanceBuildInputs used by the build",
+    )
     args = ap.parse_args()
+
+    if not re.fullmatch(r"[0-9a-f]{64}", args.input_bundle_sha256):
+        raise SystemExit(f"invalid --input-bundle-sha256: {args.input_bundle_sha256!r}")
 
     payload = [
         json.loads(line)
@@ -67,6 +79,7 @@ def main() -> None:
     crossing = sum(1 for splits in article_splits.values() if len(splits) > 1)
     result["matched_subset_articles_crossing_existing_splits"] = crossing
     result["records_sha256"] = records_sha
+    result["input_bundle_sha256"] = args.input_bundle_sha256
     result["problems"] = problems
     print(json.dumps(result, indent=2, sort_keys=True))
     if problems:

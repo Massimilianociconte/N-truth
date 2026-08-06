@@ -6,12 +6,16 @@ XML directory and the deterministic upstream caption index JSONL.
 
 Reads the immutable archive from the external volume; writes only inside the
 temporary work directory given on the command line.
+
+When ``--input-bundle-sha256`` is supplied, the extraction summary records it
+so this stage report is bound to the same attested ProvenanceBuildInputs
+bundle consumed by the build and validation stages.
 """
 
 from __future__ import annotations
 
+import argparse
 import json
-import sys
 from pathlib import Path
 
 from ntruth.task_corpora.provenance_sidecar import (
@@ -22,14 +26,20 @@ from ntruth.task_corpora.provenance_sidecar import (
 
 
 def main() -> None:
-    if len(sys.argv) != 4:
-        raise SystemExit(f"usage: {sys.argv[0]} ARCHIVE EXPECTED_SHA256 WORK_DIR")
-    archive = Path(sys.argv[1])
-    expected = sys.argv[2]
-    work_dir = Path(sys.argv[3])
-    xml_dir = work_dir / "xml_v2.0.3"
-    extract_xml_archive(archive, xml_dir, expected_sha256=expected)
-    index_path = work_dir / "upstream_caption_index.jsonl"
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("archive", type=Path)
+    ap.add_argument("expected_sha256")
+    ap.add_argument("work_dir", type=Path)
+    ap.add_argument(
+        "--input-bundle-sha256",
+        default=None,
+        help="bundle_sha256 of the attested ProvenanceBuildInputs, recorded in the summary",
+    )
+    args = ap.parse_args()
+
+    xml_dir = args.work_dir / "xml_v2.0.3"
+    extract_xml_archive(args.archive, xml_dir, expected_sha256=args.expected_sha256)
+    index_path = args.work_dir / "upstream_caption_index.jsonl"
     rows = 0
     articles: set[str] = set()
     with index_path.open("w", encoding="utf-8") as out:
@@ -40,12 +50,14 @@ def main() -> None:
     print(
         json.dumps(
             {
-                "archive": str(archive),
-                "archive_sha256": sha256_file(archive),
+                "archive": str(args.archive),
+                "archive_sha256": sha256_file(args.archive),
                 "xml_files": len(list(xml_dir.glob("*.xml"))),
                 "caption_rows": rows,
                 "articles": len(articles),
                 "index_path": str(index_path),
+                "index_sha256": sha256_file(index_path),
+                "input_bundle_sha256": args.input_bundle_sha256,
             },
             indent=2,
         )

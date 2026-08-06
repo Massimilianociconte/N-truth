@@ -486,11 +486,22 @@ class TestExtractionHardening:
         dest = self._extract(tmp_path, blob)
         assert (dest / "a.xml").read_bytes() == b"<article/>"
 
-    def test_corrupt_archive_fails(self, tmp_path: Path) -> None:
+    def test_corrupt_archive_fails_at_tar_read_after_sha_gate(self, tmp_path: Path) -> None:
+        """Truncated bytes hash-match their own expected SHA: the failure must
+        come from the tar/gzip read AFTER the hash gate, not from a mismatch."""
+        blob = _tar_bytes(lambda t: _add_file(t, "a.xml", b"<article/>"))
+        truncated = blob[: len(blob) // 2]
+        archive = tmp_path / "bad.tar.gz"
+        archive.write_bytes(truncated)
+        with pytest.raises(ValueError, match="unreadable provenance archive"):
+            extract_xml_archive(archive, tmp_path / "xml", expected_sha256=sha256_bytes(truncated))
+        assert not (tmp_path / "xml").exists()
+
+    def test_sha_mismatch_refused_before_tar_read(self, tmp_path: Path) -> None:
         blob = _tar_bytes(lambda t: _add_file(t, "a.xml", b"<article/>"))
         archive = tmp_path / "bad.tar.gz"
         archive.write_bytes(blob[: len(blob) // 2])
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="sha256 mismatch"):
             extract_xml_archive(archive, tmp_path / "xml", expected_sha256=sha256_bytes(blob))
 
     def test_stale_destination_refused(self, tmp_path: Path) -> None:

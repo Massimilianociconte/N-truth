@@ -2,17 +2,25 @@
 
 Fail-closed orchestrator for the SourceData provenance sidecar (schema 0.2.0):
 
-  1. preflight: canonical records_sha256, per-file canonical JSONL hashes,
-     raw roles_multi hashes and counts;
+  1. preflight against the attested ProvenanceBuildInputs bundle: canonical
+     records_sha256, per-file canonical JSONL hashes, raw roles_multi hashes,
+     and the MANDATORY leakage_audit.json hash (a missing or replaced audit
+     file stops the build before any generation or write);
   2. build the complete sidecar twice in separate staging directories;
   3. require byte-for-byte equality (content, order, SHA-256, tiers, keys);
   4. schema-validate every row and join 1:1 back to the canonical records;
   5. require the audited tier counts exactly
      (69,983 panel / 175 figure / 3,914 article / 1,091 fallback);
   6. only then (--write) atomically write the sidecar to the external
-     provenance directory and re-hash it after rename. ``--replace`` permits
-     superseding an existing sidecar, but only when its pre-hash matches the
-     explicitly expected superseded SHA-256.
+     provenance directory, re-hash it after rename and re-verify every
+     canonical input hash. ``--replace`` permits superseding an existing
+     sidecar, but only when its pre-hash matches the explicitly expected
+     superseded SHA-256;
+  7. publish the SUCCESS build report ONLY after all of the above passed;
+     on any partial failure write an explicitly FAILED/ABORTED report.
+
+Every report records ``input_bundle_sha256`` so a report from one input
+bundle can never be accepted for an artifact generated from another.
 
 Canonical TaskRecord JSONL, manifests and leakage audit are never touched
 here; the external manifest metadata update is a separate, explicitly
@@ -31,11 +39,15 @@ from ntruth.task_corpora.provenance_sidecar import (
     ALGORITHM_VERSION,
     PARTITIONS,
     SCHEMA_VERSION,
+    ProvenanceBuildInputs,
     SidecarRow,
+    abort_build_report,
     build_sidecar_rows,
+    publish_build_report,
     sha256_bytes,
     sha256_file,
     validate_sidecar_rows,
+    verify_provenance_build_inputs,
 )
 
 EXPECTED_RECORDS_SHA256 = "562b6ac933c13f05a0ea536696857e7e11dd5a324503d1fe930d26149d071b10"
@@ -60,9 +72,29 @@ EXPECTED_TIER_COUNTS = {
 EXPECTED_TOTAL = 75163
 
 
+def _attested_bundle(upstream_reference: str) -> ProvenanceBuildInputs:
+    """Pin the immutable input contract consumed by every workflow stage."""
+    return ProvenanceBuildInputs(
+        canonical_records_sha256=EXPECTED_RECORDS_SHA256,
+        canonical_train_sha256=EXPECTED_CANONICAL_JSONL_SHA256["train"],
+        canonical_validation_sha256=EXPECTED_CANONICAL_JSONL_SHA256["validation"],
+        canonical_test_sha256=EXPECTED_CANONICAL_JSONL_SHA256["test"],
+        raw_roles_train_sha256=EXPECTED_RAW_SHA256["train"],
+        raw_roles_validation_sha256=EXPECTED_RAW_SHA256["validation"],
+        raw_roles_test_sha256=EXPECTED_RAW_SHA256["test"],
+        leakage_audit_sha256=EXPECTED_LEAKAGE_AUDIT_SHA256,
+        upstream_xml_sha256=EXPECTED_XML_SHA256,
+        resolvable_upstream_reference=upstream_reference,
+        dataset_version="2.0.3",
+        sidecar_schema_version=SCHEMA_VERSION,
+        matching_algorithm_version=ALGORITHM_VERSION,
+    )
+
+
 def _build_once(
     *, index: Path, raw_dir: Path, canon_dir: Path, upstream_reference: str
 ) -> tuple[bytes, list[SidecarRow]]:
+    """One full sidecar build pass; returns its canonical JSONL bytes + rows."""
     rows = build_sidecar_rows(
         index_path=index,
         raw_dir=raw_dir,
@@ -77,6 +109,11 @@ def _build_once(
 
 
 def _article_crossing_diagnostic(rows: list[SidecarRow]) -> dict[str, object]:
+    """Count matched-subset articles whose records cross existing splits.
+
+    Fallback records carry no upstream DOI and are excluded by definition;
+    the exclusion count is reported so the diagnostic is self-auditing.
+    """
     article_splits: dict[str, set[str]] = {}
     matched = 0
     for r in rows:
@@ -114,101 +151,112 @@ def main() -> None:
     )
     args = ap.parse_args()
 
-    # -- preflight ------------------------------------------------------------
-    canon_lines: list[str] = []
-    for part in PARTITIONS:
-        canon_path = args.canon_dir / f"{part}.jsonl"
-        actual_file_sha = sha256_file(canon_path)
-        if actual_file_sha != EXPECTED_CANONICAL_JSONL_SHA256[part]:
-            raise SystemExit(
-                f"canonical {part}.jsonl sha256 mismatch: {actual_file_sha} "
-                f"!= {EXPECTED_CANONICAL_JSONL_SHA256[part]}"
-            )
-        canon_lines.extend(read_jsonl_physical_lines(canon_path))
-    leakage_audit_path = args.canon_dir / "leakage_audit.json"
-    if leakage_audit_path.exists():
-        actual_leakage = sha256_file(leakage_audit_path)
-        if actual_leakage != EXPECTED_LEAKAGE_AUDIT_SHA256:
-            raise SystemExit(f"leakage_audit.json sha256 mismatch: {actual_leakage}")
-    actual_records = records_content_sha256(canon_lines)
-    if actual_records != EXPECTED_RECORDS_SHA256:
-        raise SystemExit(f"records_sha256 mismatch: {actual_records}")
-    if len(canon_lines) != EXPECTED_TOTAL:
-        raise SystemExit(f"canonical record count mismatch: {len(canon_lines)}")
-
-    # -- deterministic dual build ----------------------------------------------
+    bundle = _attested_bundle(args.upstream_reference)
+    bundle_sha = bundle.bundle_sha256()
     build_a = args.staging_root / "build-a"
-    build_b = args.staging_root / "build-b"
     build_a.mkdir(parents=True, exist_ok=True)
-    build_b.mkdir(parents=True, exist_ok=True)
-    blob_a, rows_a = _build_once(
-        index=args.index,
-        raw_dir=args.raw_dir,
-        canon_dir=args.canon_dir,
-        upstream_reference=args.upstream_reference,
-    )
-    blob_b, _ = _build_once(
-        index=args.index,
-        raw_dir=args.raw_dir,
-        canon_dir=args.canon_dir,
-        upstream_reference=args.upstream_reference,
-    )
-    if blob_a != blob_b:
-        raise SystemExit("deterministic dual-build mismatch: builds are not byte-identical")
+    (args.staging_root / "build-b").mkdir(parents=True, exist_ok=True)
+    stage = "preflight"
+    try:
+        # -- preflight: attested bundle vs disk (leakage audit mandatory) ----
+        verify_provenance_build_inputs(bundle, canon_dir=args.canon_dir, raw_dir=args.raw_dir)
+        canon_lines: list[str] = []
+        for part in PARTITIONS:
+            canon_lines.extend(read_jsonl_physical_lines(args.canon_dir / f"{part}.jsonl"))
+        actual_records = records_content_sha256(canon_lines)
+        if actual_records != bundle.canonical_records_sha256:
+            raise ValueError(f"records_sha256 mismatch: {actual_records}")
+        if len(canon_lines) != EXPECTED_TOTAL:
+            raise ValueError(f"canonical record count mismatch: {len(canon_lines)}")
 
-    # -- schema validation + 1:1 join -------------------------------------------
-    payload = [json.loads(line) for line in blob_a.decode("utf-8").splitlines()]
-    canonical_ids = set()
-    for line in canon_lines:
-        canonical_ids.add(json.loads(line)["record_id"])
-    validation = validate_sidecar_rows(payload, canonical_record_ids=canonical_ids)
+        # -- deterministic dual build -----------------------------------------
+        stage = "dual_build"
+        blob_a, rows_a = _build_once(
+            index=args.index,
+            raw_dir=args.raw_dir,
+            canon_dir=args.canon_dir,
+            upstream_reference=args.upstream_reference,
+        )
+        blob_b, _ = _build_once(
+            index=args.index,
+            raw_dir=args.raw_dir,
+            canon_dir=args.canon_dir,
+            upstream_reference=args.upstream_reference,
+        )
+        if blob_a != blob_b:
+            raise ValueError("deterministic dual-build mismatch: builds are not byte-identical")
 
-    # -- tier counts must reproduce exactly --------------------------------------
-    tier_counts = validation["tier_counts"]
-    assert isinstance(tier_counts, dict)
-    if tier_counts != EXPECTED_TIER_COUNTS:
-        raise SystemExit(f"tier count drift: {tier_counts} != {EXPECTED_TIER_COUNTS}")
-    diagnostic = _article_crossing_diagnostic(rows_a)
+        # -- schema validation + 1:1 join -------------------------------------
+        stage = "validation"
+        payload = [json.loads(line) for line in blob_a.decode("utf-8").splitlines()]
+        canonical_ids = set()
+        for line in canon_lines:
+            canonical_ids.add(json.loads(line)["record_id"])
+        validation = validate_sidecar_rows(payload, canonical_record_ids=canonical_ids)
 
-    sidecar_sha = sha256_bytes(blob_a)
-    report = {
-        "sidecar_rows": len(rows_a),
-        "sidecar_bytes": len(blob_a),
-        "sidecar_sha256": sidecar_sha,
-        "schema_version": SCHEMA_VERSION,
-        "algorithm_version": ALGORITHM_VERSION,
-        "input_records_sha256": actual_records,
-        "upstream_archive_sha256": EXPECTED_XML_SHA256,
-        "upstream_reference": args.upstream_reference,
-        "dual_build_byte_identical": True,
-        "validation": validation,
-        "tier_counts": tier_counts,
-        "diagnostic": diagnostic,
-    }
-    (build_a / "sidecar.jsonl").write_bytes(blob_a)
-    (build_a / "build_report.json").write_text(
-        json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
+        tier_counts = validation["tier_counts"]
+        assert isinstance(tier_counts, dict)
+        if tier_counts != EXPECTED_TIER_COUNTS:
+            raise ValueError(f"tier count drift: {tier_counts} != {EXPECTED_TIER_COUNTS}")
+        diagnostic = _article_crossing_diagnostic(rows_a)
 
-    if args.write is not None:
-        if args.write.exists():
-            if not args.replace:
-                raise SystemExit(f"refusing to overwrite existing sidecar: {args.write}")
-            if not args.expect_superseded_sha:
-                raise SystemExit("--replace requires --expect-superseded-sha")
-            pre = sha256_file(args.write)
-            if pre != args.expect_superseded_sha:
-                raise SystemExit(
-                    f"existing sidecar sha256 {pre} != expected superseded "
-                    f"sha256 {args.expect_superseded_sha}; refusing to replace"
-                )
-            report["superseded_sidecar_sha256"] = pre
-        atomic_write_text(args.write, blob_a.decode("utf-8"))
-        post = sha256_file(args.write)
-        if post != sidecar_sha:
-            raise SystemExit(f"post-rename re-hash mismatch: {post} != {sidecar_sha}")
-        report["written_path"] = str(args.write)
-        report["post_rename_sha256"] = post
+        sidecar_sha = sha256_bytes(blob_a)
+        report: dict[str, object] = {
+            "status": "SUCCESS",
+            "sidecar_rows": len(rows_a),
+            "sidecar_bytes": len(blob_a),
+            "sidecar_sha256": sidecar_sha,
+            "schema_version": SCHEMA_VERSION,
+            "algorithm_version": ALGORITHM_VERSION,
+            "input_bundle_sha256": bundle_sha,
+            "input_records_sha256": actual_records,
+            "caption_index_sha256": sha256_file(args.index),
+            "upstream_archive_sha256": bundle.upstream_xml_sha256,
+            "upstream_reference": args.upstream_reference,
+            "dual_build_byte_identical": True,
+            "validation": validation,
+            "tier_counts": tier_counts,
+            "diagnostic": diagnostic,
+        }
+        (build_a / "sidecar.jsonl").write_bytes(blob_a)
+
+        # -- optional external write + post-write verification ----------------
+        stage = "write"
+        if args.write is not None:
+            if args.write.exists():
+                if not args.replace:
+                    raise ValueError(f"refusing to overwrite existing sidecar: {args.write}")
+                if not args.expect_superseded_sha:
+                    raise ValueError("--replace requires --expect-superseded-sha")
+                pre = sha256_file(args.write)
+                if pre != args.expect_superseded_sha:
+                    raise ValueError(
+                        f"existing sidecar sha256 {pre} != expected superseded "
+                        f"sha256 {args.expect_superseded_sha}; refusing to replace"
+                    )
+                report["superseded_sidecar_sha256"] = pre
+            atomic_write_text(args.write, blob_a.decode("utf-8"))
+            post = sha256_file(args.write)
+            if post != sidecar_sha:
+                raise ValueError(f"post-rename re-hash mismatch: {post} != {sidecar_sha}")
+            report["written_path"] = str(args.write)
+            report["post_rename_sha256"] = post
+
+        # -- canonical inputs re-verified AFTER any write ---------------------
+        stage = "canonical_reverification"
+        verify_provenance_build_inputs(bundle, canon_dir=args.canon_dir, raw_dir=args.raw_dir)
+        report["canonical_input_reverification"] = "PASSED"
+
+        # -- success report published only after all verification -------------
+        stage = "report"
+        report["final_verification_complete"] = True
+        publish_build_report(build_a, report)
+    except KeyboardInterrupt as exc:
+        abort_build_report(build_a, stage=stage, error=str(exc) or "interrupted", status="ABORTED")
+        raise SystemExit(130) from exc
+    except BaseException as exc:
+        abort_build_report(build_a, stage=stage, error=str(exc))
+        raise
     print(json.dumps(report, indent=2, sort_keys=True))
 
 

@@ -74,10 +74,18 @@ Tiers (canonical vocabulary, no competing enums):
 
 `extract_xml_archive` verifies the archive SHA-256 BEFORE extraction; refuses
 stale/populated destinations; rejects absolute paths, traversal, symlinks,
-hardlinks, duplicate member names, duplicate output basenames and non-XML
-payloads; enforces configurable maximum file count, per-file size and total
-decompressed bytes; stages output in a fresh temporary directory, fsyncs and
-publishes it with one atomic rename; removes partial output on any failure.
+hardlinks, duplicate member names and duplicate output basenames; enforces
+configurable maximum file count, per-file size and total decompressed bytes;
+stages output in a fresh temporary directory, fsyncs and publishes it with
+one atomic rename; removes partial output on any failure.
+
+Non-XML member policy (enforced and tested): the extractor tolerates
+verified-benign non-XML file members and directory entries — they are
+enumerated and screened exactly like XML members but are NEVER extracted —
+while every hostile member class (absolute path, traversal, link, hidden,
+non-file, duplicate) aborts the whole extraction fail-closed. Tolerated
+members contribute nothing to the output directory or to any downstream
+index.
 
 ## Typed manifest model
 
