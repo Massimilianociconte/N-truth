@@ -22,6 +22,7 @@ scientifiche senza il protocollo comparativo e i gate umani previsti.
 | [0010](0010-granite-4.1-3b-migration.md) | Migrazione a Granite 4.1 3B Instruct | architetturale done; runtime artifact-bound `PARTIALLY_VERIFIED`; science `NOT_STARTED` |
 | [0011](0011-constrained-decoding-outlines-mlx.md) | Constrained decoding Outlines + MLX-LM | accepted (forma ≠ semantica scientifica) |
 | [0012](0012-p0-lora-approved.md) | Approvazione protocollo LoRA P0 | accepted + HOLD esecuzione sostanziale |
+| [0013](0013-sourcedata-provenance-exporter-aligned-full-unit-hybrid.md) | SourceData provenance: ibrido full-unit allineato all'exporter (candidato Method C) | accepted (decisione progettuale umana, 2026-08-06) |
 
 ## Template minimo
 

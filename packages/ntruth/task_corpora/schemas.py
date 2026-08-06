@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import re
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from ntruth.task_corpora.authority import (
     AuthorityLevel,
@@ -14,6 +15,83 @@ from ntruth.task_corpora.authority import (
 
 # Tri-state permission: True | False | "unknown". Unknown must fail closed for the use.
 PermissionFlag = bool | Literal["unknown"]
+
+_SHA256_HEX = re.compile(r"^[0-9a-f]{64}\Z")
+
+# Audited canonical SourceData v2.0.3 task-corpus population.
+SIDECAR_EXPECTED_ROWS = 75_163
+
+
+def _lowercase_sha256(value: str, field: str) -> str:
+    if not _SHA256_HEX.match(value):
+        raise ValueError(f"{field} must be lowercase 64-char hex SHA-256")
+    return value
+
+
+class ProvenanceSidecarManifest(BaseModel):
+    """Typed manifest block for the external provenance sidecar (strict).
+
+    Additive in manifest_version 0.3.0. Every field is required and typed;
+    unknown fields are rejected. Fail-closed leakage posture is encoded as
+    invariants, not conventions: the paper-level leakage claim can never be
+    promoted through this block, and the diagnostic always excludes the
+    RECORD_FALLBACK population.
+    """
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    status: Literal["PARTIAL_DETERMINISTIC"]
+    rows: int = Field(ge=0)
+    panel_unique: int = Field(ge=0)
+    figure_unique: int = Field(ge=0)
+    article_only: int = Field(ge=0)
+    record_fallback: int = Field(ge=0)
+    map_sha256: str
+    schema_version: str
+    algorithm_version: str
+    upstream_xml_sha256: str
+    matched_subset_records: int = Field(ge=0)
+    matched_subset_articles: int = Field(ge=0)
+    matched_subset_articles_crossing_existing_splits: int = Field(ge=0)
+    fallback_records_excluded_from_diagnostic: int = Field(ge=0)
+    embedded_document_id_present: int = Field(ge=0)
+    global_paper_level_leakage_claim_allowed: bool
+
+    @field_validator("map_sha256")
+    @classmethod
+    def valid_map_sha256(cls, value: str) -> str:
+        return _lowercase_sha256(value, "map_sha256")
+
+    @field_validator("upstream_xml_sha256")
+    @classmethod
+    def valid_upstream_xml_sha256(cls, value: str) -> str:
+        return _lowercase_sha256(value, "upstream_xml_sha256")
+
+    @model_validator(mode="after")
+    def invariants(self) -> ProvenanceSidecarManifest:
+        total = self.panel_unique + self.figure_unique + self.article_only + self.record_fallback
+        if total != self.rows:
+            raise ValueError(f"tier counts sum {total} != rows {self.rows}")
+        if self.rows != SIDECAR_EXPECTED_ROWS:
+            raise ValueError(
+                f"rows must equal the audited corpus population {SIDECAR_EXPECTED_ROWS}"
+            )
+        matched = self.panel_unique + self.figure_unique + self.article_only
+        if self.matched_subset_records != matched:
+            raise ValueError(
+                f"matched_subset_records {self.matched_subset_records} != matched tiers {matched}"
+            )
+        if self.fallback_records_excluded_from_diagnostic != self.record_fallback:
+            raise ValueError("fallback_records_excluded_from_diagnostic must equal record_fallback")
+        if self.embedded_document_id_present != 0:
+            raise ValueError("the sidecar never replaces embedded document provenance")
+        if self.global_paper_level_leakage_claim_allowed:
+            raise ValueError("paper-level leakage claim stays fail-closed (false)")
+        if self.matched_subset_articles_crossing_existing_splits < 0:
+            raise ValueError("matched_subset_articles_crossing_existing_splits must be >= 0")
+        if self.matched_subset_articles < 0:
+            raise ValueError("matched_subset_articles must be >= 0")
+        return self
 
 
 class SourceIdentity(BaseModel):
@@ -198,3 +276,16 @@ class BuildManifest(BaseModel):
     paper_level_leakage_claim_allowed: bool = False
     manifest_version: str = "0.2.2"
     synthetic_fraction: float = 0.0
+    # Additive in 0.3.0: typed external provenance sidecar block. Absence
+    # means no sidecar exists (backward compatible); presence requires
+    # manifest_version >= 0.3.0 and satisfies every ProvenanceSidecarManifest
+    # invariant. Permissive dict payloads are rejected.
+    provenance_sidecar: ProvenanceSidecarManifest | None = None
+
+    @model_validator(mode="after")
+    def sidecar_block_requires_version_bump(self) -> BuildManifest:
+        if self.provenance_sidecar is not None:
+            parts = [int(x) for x in self.manifest_version.split(".") if x.isdigit()]
+            if parts < [0, 3, 0]:
+                raise ValueError("provenance_sidecar requires manifest_version >= 0.3.0")
+        return self
