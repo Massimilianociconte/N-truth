@@ -32,6 +32,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from typing import Any
 
 from ntruth.data.fs import atomic_write_text
 from ntruth.task_corpora.io_util import read_jsonl_physical_lines, records_content_sha256
@@ -89,6 +90,19 @@ def _attested_bundle(upstream_reference: str) -> ProvenanceBuildInputs:
         sidecar_schema_version=SCHEMA_VERSION,
         matching_algorithm_version=ALGORITHM_VERSION,
     )
+
+
+def parse_jsonl_blob(blob: bytes) -> list[dict[str, Any]]:
+    """Parse a sidecar JSONL blob with U+2028-safe physical-line semantics.
+
+    ``str.splitlines()`` is FORBIDDEN here: it also splits on U+000B,
+    U+000C, U+001C-U+001E, U+0085, U+2028 and U+2029, and
+    ``json.dumps(..., ensure_ascii=False)`` leaves several of those
+    unescaped inside string values — one caption containing U+2028 would
+    fragment a valid row into two invalid ones. The writer joins rows with
+    ``"\\n"`` only, so the reader must split on ``"\\n"`` only.
+    """
+    return [json.loads(line) for line in blob.decode("utf-8").split("\n") if line]
 
 
 def _build_once(
@@ -188,7 +202,7 @@ def main() -> None:
 
         # -- schema validation + 1:1 join -------------------------------------
         stage = "validation"
-        payload = [json.loads(line) for line in blob_a.decode("utf-8").splitlines()]
+        payload = parse_jsonl_blob(blob_a)
         canonical_ids = set()
         for line in canon_lines:
             canonical_ids.add(json.loads(line)["record_id"])
