@@ -26,11 +26,17 @@ from collections import Counter
 from pathlib import Path
 
 _WS = re.compile(r"\s+")
+_DOI = re.compile(r"^10\.\d{4,9}/\S+$")
 _MIN_SEGMENT_LEN = 40  # chars; very short segments cannot support containment evidence
 
 
 def normalize_caption(text: str) -> str:
     return _WS.sub(" ", text).strip()
+
+
+def doi_is_well_formed(value: str) -> bool:
+    """Malformed/missing DOIs can never serve as article provenance."""
+    return _DOI.match(value) is not None
 
 
 def main() -> None:
@@ -64,6 +70,10 @@ def main() -> None:
                 key = normalize_caption(rec["text"])
                 sp["total"] += 1
                 cands = exact.get(key, [])
+                if any(not doi_is_well_formed(c["article_doi"]) for c in cands):
+                    # Fail-closed: unverifiable article identity withholds assignment.
+                    sp["unmatched_invalid_doi"] += 1
+                    continue
                 if len(cands) == 1:
                     sp["tier1_unique"] += 1
                     doi = cands[0]["article_doi"]
@@ -85,6 +95,9 @@ def main() -> None:
                     continue
                 hits = [doi for doi, cap in captions if key in cap]
                 containment_scan_cost += len(captions)
+                if any(not doi_is_well_formed(d) for d in hits):
+                    sp["unmatched_containment_invalid_doi"] += 1
+                    continue
                 dois = set(hits)
                 if len(dois) == 1:
                     sp["tier2_containment_single_doi"] += 1
@@ -116,7 +129,9 @@ def main() -> None:
                 - stats["unmatched_multi_doi"]
                 - stats["unmatched_short_segment"]
                 - stats["unmatched_containment_multi_doi"]
-                - stats["unmatched_no_containment"],
+                - stats["unmatched_no_containment"]
+                - stats["unmatched_invalid_doi"]
+                - stats["unmatched_containment_invalid_doi"],
                 "per_split": per_split,
                 "articles_covered": len(article_splits),
                 "articles_crossing_splits": len(doi_crossing),

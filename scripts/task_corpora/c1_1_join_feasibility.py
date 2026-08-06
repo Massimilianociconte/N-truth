@@ -28,10 +28,16 @@ from collections import Counter
 from pathlib import Path
 
 _WS = re.compile(r"\s+")
+_DOI = re.compile(r"^10\.\d{4,9}/\S+$")
 
 
 def normalize_caption(text: str) -> str:
     return _WS.sub(" ", text).strip()
+
+
+def doi_is_well_formed(value: str) -> bool:
+    """Malformed/missing DOIs can never serve as article provenance."""
+    return _DOI.match(value) is not None
 
 
 def load_upstream(index_path: Path) -> dict[str, list[dict]]:
@@ -73,12 +79,18 @@ def main() -> None:
     per_split = Counter()
     per_split_matched = Counter()
     article_group_splits: dict[str, set[str]] = {}
+    invalid_doi_candidates = 0
 
     for row in local:
         split = row["split"]
         per_split[split] += 1
         key = normalize_caption(row["text"])
         cands = upstream.get(key, [])
+        if any(not doi_is_well_formed(c["article_doi"]) for c in cands):
+            # Fail-closed: unverifiable article identity withholds assignment.
+            invalid_doi_candidates += 1
+            unmatched += 1
+            continue
         if len(cands) == 1:
             matched_unique += 1
             per_split_matched[split] += 1
@@ -105,6 +117,7 @@ def main() -> None:
         "uniquely_matched": matched_unique,
         "ambiguous_multiply_matched": matched_ambiguous,
         "unmatched": unmatched,
+        "records_with_invalid_doi_candidates": invalid_doi_candidates,
         "coverage_pct_unique": round(100.0 * matched_unique / total, 3) if total else 0.0,
         "per_split_total": dict(per_split),
         "per_split_uniquely_matched": dict(per_split_matched),

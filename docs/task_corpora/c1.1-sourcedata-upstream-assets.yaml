@@ -14,6 +14,10 @@ local_locked_export:
   source_url: https://huggingface.co/datasets/EMBO/SourceData
   locked_revision: b457c14041b61c56f671c6f966b4324f682855b7
   locked_revision_upstream_status: UNRESOLVABLE_404_ALL_PATHS
+  locked_revision_role: historical_provenance_not_currently_usable_pin
+  original_revision_history_restored: NOT_PROVEN
+  lock_record_modified_by_investigation: false
+  future_relock_requirement: pin content SHA-256 values AND a resolvable official upstream reference
   current_upstream_main: 04333ae21badc91671a537e875bbca61b62f87e3
   locked_files_byte_identical_at_current_main: true
   semantic_version: 2.0.3
@@ -77,6 +81,27 @@ downloaded_research_artefacts:
     note: first 2 lines of token_classification/v_2.0.3/panelization/train.jsonl
     sha256: ddfbb830f5e2743b756ed8ccd21856b8f3edbd5f0e0cc8da0f81472d4ef6f2d4
     retrieval_date: "2026-08-06"
+
+licence:
+  status: LICENSE_REVIEW_REQUIRED / PENDING_LICENSE_SCOPE_CLOSURE
+  dataset_card_declaration: cc-by-4.0 tag on official Hugging Face card (evidence)
+  archive_or_file_licence_metadata: none observed in served assets
+  repository_level_license_file: ABSENT at current upstream main
+  card_label_invalidated_by_missing_license_file: false  # signals recorded separately
+  permissions:
+    local_processing: performed read-only under this investigation
+    development_use: BLOCKED
+    training_use: BLOCKED
+    evaluation_use: PENDING_LICENCE_DECISION
+    redistribution: NOT_ASSESSED_NOT_AUTHORISED
+
+join_rules:
+  doi_validation: every candidate DOI checked as well-formed before use (zero invalid upstream)
+  malformed_or_missing_doi_used_as_provenance: false
+  containment_overrides_exact: false
+  normalization: whitespace-collapse only; Unicode whitespace (U+00A0, U+2028, U+2029) to single space
+  case_folding: false
+  punctuation_or_symbol_changes: false
 
 join_metrics:
   upstream_articles: 3515
