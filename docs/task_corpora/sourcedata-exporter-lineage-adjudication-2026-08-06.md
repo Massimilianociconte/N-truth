@@ -90,9 +90,12 @@ For all 1,090 METHOD_B_ONLY records: `itertext == locked text` in 1,090/1,090
 cases; `attribute != locked text` in 1,090/1,090; `attribute == some OTHER
 locked text` in **0** cases (zero identifier conflicts introduced).
 
-The measurement corroborates the official-source conclusion: wherever the
-two projections diverge, the exporter text is the itertext projection; the
-attribute projection matches the exporter for zero units.
+The measurement corroborates the official-source conclusion: of the units
+whose locked exporter text matched exactly one caption projection, every one
+matched the itertext projection (1,114 units); the attribute projection
+matched the exporter for zero units. The 2,492 units matching neither
+projection and the 34 unavailable units carry no method-discriminating
+evidence and are not claimed as itertext matches.
 
 ## 6. Consequences
 

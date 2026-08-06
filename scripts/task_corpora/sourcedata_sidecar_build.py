@@ -148,6 +148,14 @@ def _article_crossing_diagnostic(rows: list[SidecarRow]) -> dict[str, object]:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--index", required=True, type=Path)
+    ap.add_argument(
+        "--expect-index-sha",
+        default=None,
+        help=(
+            "SHA-256 the caption index must hash to; when supplied it is "
+            "verified in preflight, before any build or external write"
+        ),
+    )
     ap.add_argument("--canon-dir", required=True, type=Path)
     ap.add_argument("--raw-dir", required=True, type=Path)
     ap.add_argument("--staging-root", required=True, type=Path)
@@ -174,6 +182,15 @@ def main() -> None:
     try:
         # -- preflight: attested bundle vs disk (leakage audit mandatory) ----
         verify_provenance_build_inputs(bundle, canon_dir=args.canon_dir, raw_dir=args.raw_dir)
+        # Attest the caption index BEFORE any build reads it. The index is
+        # derived from the attested upstream archive; when the operator pins
+        # its SHA we fail closed here, not after the dual build.
+        index_sha = sha256_file(args.index)
+        if args.expect_index_sha is not None and index_sha != args.expect_index_sha:
+            raise ValueError(
+                f"caption index sha256 {index_sha} != expected {args.expect_index_sha}; "
+                "refusing to build against an unattested caption index"
+            )
         canon_lines: list[str] = []
         for part in PARTITIONS:
             canon_lines.extend(read_jsonl_physical_lines(args.canon_dir / f"{part}.jsonl"))
@@ -224,7 +241,7 @@ def main() -> None:
             "algorithm_version": ALGORITHM_VERSION,
             "input_bundle_sha256": bundle_sha,
             "input_records_sha256": actual_records,
-            "caption_index_sha256": sha256_file(args.index),
+            "caption_index_sha256": index_sha,
             "upstream_archive_sha256": bundle.upstream_xml_sha256,
             "upstream_reference": args.upstream_reference,
             "dual_build_byte_identical": True,

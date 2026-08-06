@@ -13,6 +13,8 @@ from __future__ import annotations
 import importlib.util
 import io
 import json
+import os
+import subprocess
 import sys
 import tarfile
 from pathlib import Path
@@ -333,12 +335,20 @@ class TestAdjudication:
         return {"relations": relations, "delta_reasons": {}, "method_b_only_reasons": {}}
 
     def _b_summary(
-        self, s4: int = 0, *, ambiguous_keys: int = 0, dois: set[str] | None = None
+        self,
+        s4: int = 0,
+        *,
+        ambiguous_keys: int = 0,
+        dois: set[str] | None = None,
+        ambiguous_s3: int = 0,
+        label_outside_s4: int = 0,
     ) -> dict:
         return {
             "tier_counts": {"S4_UNIQUE_ANNOTATION_TUPLE": s4},
             "ambiguous_unit_keys": ambiguous_keys,
             "assigned_dois": sorted(dois if dois is not None else {"10.1000/x"}),
+            "ambiguous_key_records_emitted_s3": ambiguous_s3,
+            "label_assisted_rows_outside_s4": label_outside_s4,
         }
 
     def _adjudicate(
@@ -422,6 +432,14 @@ class TestAdjudication:
             dual_run_byte_identical=True,
         )
         assert out2["conditions_measured"]["duplicate_handling_fail_closed"] is True
+        # A non-zero ambiguous-key S3 emission breaks the fail-closed gate.
+        out4 = self._adjudicate(
+            {"IDENTICAL": 1},
+            b_summary=self._b_summary(ambiguous_s3=2),
+            dual_run_byte_identical=True,
+        )
+        assert out4["conditions_measured"]["duplicate_handling_fail_closed"] is False
+        assert out4["outcome"] == "INSUFFICIENT_EVIDENCE"
         # Canonical inputs must be re-verified after the pass.
         out3 = self._adjudicate(
             {"IDENTICAL": 1}, dual_run_byte_identical=True, input_bundle_reverified=False
@@ -430,6 +448,17 @@ class TestAdjudication:
         assert out3["outcome"] == "INSUFFICIENT_EVIDENCE"
         # Construction invariants are reported separately from measurements.
         assert "no_first_match_behaviour" in out3["conditions_by_construction"]
+
+    def test_missing_required_measured_field_fails_closed(self) -> None:
+        for field in (
+            "assigned_dois",
+            "ambiguous_key_records_emitted_s3",
+            "label_assisted_rows_outside_s4",
+        ):
+            summary = self._b_summary()
+            del summary[field]
+            with pytest.raises(ValueError, match="missing required measured fields"):
+                self._adjudicate({"IDENTICAL": 1}, b_summary=summary)
 
     def test_s4_reconstruction_status_is_partial(self) -> None:
         out = self._adjudicate({"IDENTICAL": 1}, b_summary=self._b_summary(s4=3))
@@ -553,10 +582,35 @@ class TestStrictParallelIteration:
 
 class TestFailClosedContracts:
     def test_delta_field_contract_enforced_without_assert(self) -> None:
-        # assert disappears under `python -O`; the contract must raise.
-        import inspect
-
-        assert "assert tuple(delta)" not in inspect.getsource(recon.run_delta)
+        # `python -O` strips assert statements, so the delta field contract
+        # must fail closed via a real raise, never via `assert`. Behavioral:
+        # enforce the contract inside an optimized interpreter and require a
+        # ValueError (an `assert` would be silently removed under -O).
+        packages = Path(__file__).resolve().parents[3] / "packages"
+        env = dict(os.environ)
+        env["PYTHONPATH"] = os.pathsep.join(
+            [str(packages), *filter(None, env.get("PYTHONPATH", "").split(os.pathsep))]
+        )
+        code = (
+            "import importlib.util, sys\n"
+            f"spec = importlib.util.spec_from_file_location('recon', r'{recon.__file__}')\n"
+            "m = importlib.util.module_from_spec(spec)\n"
+            "sys.modules['recon'] = m\n"
+            "spec.loader.exec_module(m)\n"
+            "row = dict.fromkeys(m.DELTA_FIELDS, 'x')\n"
+            "row['decision_relation'] = 'NOT_A_RELATION'\n"
+            "try:\n"
+            "    m._enforce_delta_contract(row)\n"
+            "except ValueError:\n"
+            "    print('RAISED_VALUE_ERROR')\n"
+            "else:\n"
+            "    print('NO_RAISE')\n"
+        )
+        proc = subprocess.run(
+            [sys.executable, "-O", "-c", code], capture_output=True, text=True, env=env
+        )
+        assert "RAISED_VALUE_ERROR" in proc.stdout, proc.stderr
+        assert "NO_RAISE" not in proc.stdout
 
     def test_out_of_vocabulary_relation_rejected(self) -> None:
         bad = dict.fromkeys(recon.DELTA_FIELDS, "x")
@@ -580,11 +634,16 @@ class TestXmlDirectoryBinding:
             recon.extract_xml_archive(arc, dest, expected_sha256=recon.sha256_file(arc))
 
     def test_pipeline_rerun_replaces_stale_xml_tree(self, tmp_path: Path) -> None:
-        # A second run into the same work dir must re-extract, never reuse.
-        import inspect
-
-        src = inspect.getsource(recon.run_pipeline)
-        assert "if not xml_dir.exists()" not in src
+        # A second pass into the same work dir must re-extract, never reuse:
+        # a stale file planted in the tree must disappear on re-extraction.
+        arc = _toy_archive(tmp_path, {"a.xml": b'<article doi="10.1000/x"/>'})
+        dest = tmp_path / "xml_v2.0.3"
+        recon._fresh_extract_xml(archive=arc, xml_dir=dest, expected_sha256=recon.sha256_file(arc))
+        assert (dest / "a.xml").exists()
+        (dest / "stale.xml").write_text("<x/>", encoding="utf-8")
+        recon._fresh_extract_xml(archive=arc, xml_dir=dest, expected_sha256=recon.sha256_file(arc))
+        assert not (dest / "stale.xml").exists()
+        assert (dest / "a.xml").exists()
 
     def test_attestation_binds_tree_to_archive_and_bundle(self, tmp_path: Path) -> None:
         arc = _toy_archive(tmp_path, {"a.xml": b'<article doi="10.1000/x"/>'})
@@ -699,6 +758,15 @@ class TestProjectionEquivalenceFixtures:
         unit = {"caption_itertext": "(C) both equal", "caption_attribute": "(C) both equal"}
         cats = recon.projection_equivalence_categories([unit], self.LOCKED)
         assert cats["projections_identical"] == 1
+
+    def test_both_match_distinct_locked_texts_fixture(self) -> None:
+        # Both projections exist in the locked universe as DIFFERENT texts:
+        # the only branch of _projection_category that records this case.
+        unit = {"caption_itertext": "(A) eps. protX", "caption_attribute": "(B) eps. prot-Y"}
+        cats = recon.projection_equivalence_categories([unit], self.LOCKED)
+        assert cats["both_match_distinct_locked_texts"] == 1
+        assert cats["itertext_matches_exporter"] == 0
+        assert cats["attribute_matches_exporter"] == 0
 
     def test_neither_and_unavailable_categories(self) -> None:
         units = [
@@ -853,7 +921,10 @@ class TestMethodBOnlyRecordAnalysis:
         assert len(rows) == 1
         row = rows[0]
         assert row["canonical_record_id"] == "rec-toy-1"
-        assert row["char_len_diff"] > 0 or row["token_count_diff"] >= 0
+        # Attribute differs from locked only by one same-width token char:
+        # exact zero deltas prove the length/token measurements are correct.
+        assert row["char_len_diff"] == 0
+        assert row["token_count_diff"] == 0
         assert row["attribute_equals_other_locked_text"] is False
         # No corpus text in the emitted rows.
         for value in row.values():
@@ -1144,7 +1215,7 @@ def _toy_dossier_run_dir(tmp_path: Path) -> Path:
                 "article_doi": "10.1000/toy.b",
                 "figure_id": "fig1",
                 "panel_id": "p1",
-                "method_b_tier": "S4_ENTITY_SPAN_UNIQUE",
+                "method_b_tier": "S4_UNIQUE_ANNOTATION_TUPLE",
                 "label_assisted": True,
                 "match_basis": "entity_span_tuple_unique",
             },

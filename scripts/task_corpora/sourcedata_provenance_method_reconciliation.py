@@ -572,7 +572,6 @@ def run_method_b(
     rows_written = 0
     assigned_dois: set[str] = set()
     ambiguous_unit_keys = 0
-    label_assisted_rows_outside_s4 = 0
     with out_path.open("w", encoding="utf-8") as out:
         for part in PARTITIONS:
             for i, entry in enumerate(parsed[part]):
@@ -618,8 +617,6 @@ def run_method_b(
                 per_split[part][tier] += 1
                 if doi is not None:
                     assigned_dois.add(doi)
-                if label_assisted and tier != "S4_UNIQUE_ANNOTATION_TUPLE":
-                    label_assisted_rows_outside_s4 += 1
                 rows_written += 1
                 out.write(
                     json.dumps(
@@ -647,15 +644,19 @@ def run_method_b(
         for key, candidates in units_by_key.items()
         if len(candidates) != 1 or rec_key_count[key] != 1
     )
-    # Measured duplicate-handling invariant: INDEPENDENTLY re-read the
-    # emitted rows and verify no S3 row carries an ambiguous caption key.
+    # Measured invariants, INDEPENDENTLY re-read from the emitted artifact:
+    # no S3 row may carry an ambiguous caption key (duplicate handling must
+    # fail closed) and no label-assisted row may escape the S4 tier.
     ambiguous_record_keys = {
         key for key, n in rec_key_count.items() if len(units_by_key.get(key, [])) != 1 or n != 1
     }
     ambiguous_key_records_emitted_s3 = 0
+    label_assisted_rows_outside_s4 = 0
     with out_path.open(encoding="utf-8") as fh:
         for line in fh:
             row = json.loads(line)
+            if row["label_assisted"] and row["method_b_tier"] != "S4_UNIQUE_ANNOTATION_TUPLE":
+                label_assisted_rows_outside_s4 += 1
             if row["method_b_tier"] != "S3_UNIQUE_UNIT":
                 continue
             key = normalize_caption(
@@ -1167,7 +1168,7 @@ def _dossier_categories(
             ),
             "evidence": {
                 "records": s4_count,
-                "historically_reported": 14,
+                "historically_reported": HISTORICAL_S4_REPORTED,
                 "status": "PARTIAL_NOT_HISTORICALLY_REPRODUCIBLE",
                 "production_eligibility": "NON_PRODUCTION",
                 "valid_for_split_grouping": False,
@@ -1448,7 +1449,12 @@ def analyze_method_b_only_records(
             if delta["decision_relation"] != "METHOD_B_ONLY":
                 continue
             record_id = delta["canonical_record_id"]
-            rec = parsed_raw[(delta["partition"], delta["source_row_index"])]
+            raw_key = (delta["partition"], delta["source_row_index"])
+            if raw_key not in parsed_raw:
+                raise ValueError(
+                    f"METHOD_B_ONLY record outside the locked raw universe: {record_id}"
+                )
+            rec = parsed_raw[raw_key]
             locked = normalize_caption(rec["text"])
             location = (
                 delta["method_b_doi"],
@@ -1592,8 +1598,18 @@ def adjudicate(
     s4_count = method_b_summary["tier_counts"].get("S4_UNIQUE_ANNOTATION_TUPLE", 0)
     granularity_deltas = relations.get("SAME_ARTICLE_DIFFERENT_GRANULARITY", 0)
 
-    # MEASURED conditions — every value is computed from run data:
-    assigned_dois = set(method_b_summary.get("assigned_dois", []))
+    # MEASURED conditions — every value is computed from run data. The
+    # fields below are REQUIRED: a summary that omits one cannot support a
+    # measured condition, so adjudication fails closed instead of assuming 0.
+    required_measured = (
+        "assigned_dois",
+        "ambiguous_key_records_emitted_s3",
+        "label_assisted_rows_outside_s4",
+    )
+    missing = [key for key in required_measured if key not in method_b_summary]
+    if missing:
+        raise ValueError(f"method_b_summary missing required measured fields: {missing}")
+    assigned_dois = set(method_b_summary["assigned_dois"])
     conditions_measured = {
         "zero_conflicting_article_assignments": (
             conflicts["CONFLICTING_ARTICLE"] <= policy.allowed_conflicting_assignments
@@ -1608,10 +1624,10 @@ def adjudicate(
             assigned_dois <= set(census_dois)
         ),
         "duplicate_handling_fail_closed": (
-            method_b_summary.get("ambiguous_key_records_emitted_s3", 0) == 0
+            method_b_summary["ambiguous_key_records_emitted_s3"] == 0
         ),
         "label_assisted_matches_isolated": (
-            method_b_summary.get("label_assisted_rows_outside_s4", 0) == 0
+            method_b_summary["label_assisted_rows_outside_s4"] == 0
         ),
         "repeated_runs_byte_identical": bool(dual_run_byte_identical),
         "no_canonical_record_or_split_modified": bool(input_bundle_reverified),
@@ -1699,9 +1715,11 @@ def attest_extracted_xml_dir(
 
     Records the archive SHA-256, the extracted-member inventory with
     per-file hashes, the file-count census, an aggregate tree SHA-256 and
-    the reconciliation input-bundle SHA-256. A directory is never trusted
-    merely because it exists; this attestation is the only basis for reuse
-    and it fails closed if the tree no longer matches the archive.
+    the reconciliation input-bundle SHA-256. This is provenance and
+    integrity EVIDENCE for the just-extracted tree and the input bundle;
+    it does not authorise reuse of the tree (every pipeline pass removes
+    the directory and re-extracts from the archive) and it is never used
+    to compare a later tree against the archive.
     """
     members: list[tuple[str, str]] = []
     for fp in sorted(xml_dir.rglob("*")):
@@ -1716,6 +1734,23 @@ def attest_extracted_xml_dir(
         "member_sha256": dict(members),
         "tree_sha256": hashlib.sha256(tree_payload.encode("utf-8")).hexdigest(),
     }
+
+
+def _lock_payload(lock: dict[str, Any]) -> dict[str, Any]:
+    """Comparable input-bundle payload (drops the injected bundle SHA key)."""
+    return {k: v for k, v in lock.items() if k != "input_bundle_sha256"}
+
+
+def _fresh_extract_xml(*, archive: Path, xml_dir: Path, expected_sha256: str) -> None:
+    """Verified clean extraction: any pre-existing tree is removed first.
+
+    A second pass into the same work dir must re-extract, never reuse a
+    stale, mixed or foreign tree, so the destination is always cleared
+    before the hash-verified extraction.
+    """
+    if xml_dir.exists():
+        shutil.rmtree(xml_dir)
+    extract_xml_archive(archive, xml_dir, expected_sha256=expected_sha256)
 
 
 def run_pipeline(
@@ -1744,9 +1779,9 @@ def run_pipeline(
     # Never reuse an existing extraction: stale, mixed or foreign trees
     # must fail closed, so every pass performs a verified clean extraction.
     xml_dir = work_dir / "xml_v2.0.3"
-    if xml_dir.exists():
-        shutil.rmtree(xml_dir)
-    extract_xml_archive(archive, xml_dir, expected_sha256=ATTESTED_INPUT_SHA256["upstream_xml"])
+    _fresh_extract_xml(
+        archive=archive, xml_dir=xml_dir, expected_sha256=ATTESTED_INPUT_SHA256["upstream_xml"]
+    )
     attestation = attest_extracted_xml_dir(
         archive=archive, xml_dir=xml_dir, input_bundle_sha256=bundle_sha
     )
@@ -1801,9 +1836,9 @@ def run_pipeline(
     # Canonical inputs re-verified AFTER the full pass (untouched guarantee)
     # and BEFORE any adjudication is written.
     reverify = lock_input_bundle(canon_dir=canon_dir, raw_dir=raw_dir, archive=archive)
-    input_bundle_reverified = reverify["records_sha256"] == lock["records_sha256"]
+    input_bundle_reverified = _lock_payload(reverify) == _lock_payload(lock)
     if not input_bundle_reverified:
-        raise ValueError("canonical records changed during reconciliation")
+        raise ValueError("canonical input bundle changed during reconciliation")
 
     adjudication = adjudicate(
         delta_summary,
@@ -1911,7 +1946,7 @@ def run_all_twice(
         json.loads((run2 / "method_b_summary.json").read_text(encoding="utf-8")),
         dual_run_byte_identical=True,
         census_dois=_census_dois(xml_dir=run2 / "xml_v2.0.3"),
-        input_bundle_reverified=reverify["records_sha256"] == lock2["records_sha256"],
+        input_bundle_reverified=_lock_payload(reverify) == _lock_payload(lock2),
         exporter_lineage_outcome=exporter_lineage_outcome,
     )
     _write_json(work_dir / "adjudication.json", final)
