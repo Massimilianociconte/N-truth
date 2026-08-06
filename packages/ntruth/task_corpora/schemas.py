@@ -198,3 +198,14 @@ class BuildManifest(BaseModel):
     paper_level_leakage_claim_allowed: bool = False
     manifest_version: str = "0.2.2"
     synthetic_fraction: float = 0.0
+    # Additive in 0.3.0: external provenance sidecar reference block. Absence
+    # means no sidecar exists; presence requires manifest_version >= 0.3.0.
+    provenance_sidecar: dict[str, object] | None = None
+
+    @model_validator(mode="after")
+    def sidecar_block_requires_version_bump(self) -> BuildManifest:
+        if self.provenance_sidecar is not None:
+            parts = [int(x) for x in self.manifest_version.split(".") if x.isdigit()]
+            if parts < [0, 3, 0]:
+                raise ValueError("provenance_sidecar requires manifest_version >= 0.3.0")
+        return self
