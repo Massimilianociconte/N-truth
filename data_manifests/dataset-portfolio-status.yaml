@@ -1,0 +1,204 @@
+registry_version: "0.1"
+updated_at: "2026-08-06"
+scope: dataset_portfolio_status_snapshot
+prd_ref: "N-Truth PRD v7.0 §14.1–14.4, §14.7"
+operation_ref: "docs/task_corpora/dataset-portfolio-status-2026-08-06.md"
+policy: >
+  Machine-readable twin of the 2026-08-06 portfolio matrix. Listing a source here
+  grants no use permission. All model-use permissions fail closed until licence,
+  access and partition decisions are written and machine-readable. No public corpus
+  is SCIENTIFIC_GOLD or MODEL_USE_ELIGIBLE; all remain SILVER_AUXILIARY at best.
+
+sources:
+  - source_id: sourcedata_v2_0_3
+    status: VERIFIED_PRESENT
+    pipeline_state: TASK_ADAPTER_READY
+    licence_status: LICENCE_REVIEW_REQUIRED
+    access_status: ACQUIRED_PINNED
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    download_decision: ALREADY_ACQUIRED
+    reason: >
+      All raw and processed files byte-verified against pins (13/13 streaming
+      SHA-256 checks PASS); task corpus records_sha256 recomputed OK; Merkle root
+      matches canonical pin across two verify passes. HF pin b457c140… is dead
+      upstream (C1.1 material caveat); re-lock is a separate future authorisation.
+    next_action:
+      - c1_1_migration_separately_authorised_future_task
+      - licence_scope_closure
+    estimated_additional_storage: 0
+
+  - source_id: preclinie_f38df55a
+    status: VERIFIED_PRESENT
+    pipeline_state: PROCESSED
+    licence_status: LICENCE_REVIEW_REQUIRED
+    access_status: ACQUIRED_PINNED
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    download_decision: ALREADY_ACQUIRED
+    reason: >
+      Archive SHA-256 and Merkle root PASS; raw and processed trees complete.
+      MIT repo licence verified but publication-text scope unclear. C2 adapter
+      remains DESIGN_ONLY.
+    next_action:
+      - licence_scope_confirmation
+      - c2_adapter_future_pr
+    estimated_additional_storage: 0
+
+  - source_id: measeval_1fa738b6
+    status: VERIFIED_PRESENT
+    pipeline_state: PROCESSED
+    licence_status: LICENCE_REVIEW_REQUIRED
+    access_status: ACQUIRED_PINNED
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    download_decision: ALREADY_ACQUIRED
+    reason: >
+      Archive SHA-256 and Merkle root PASS; data/trial present at the pin (2026-08-03
+      log error stale). No LICENSE file upstream; training blocked by policy and
+      licence; upstream train/test group overlap must not be fixed by moving records.
+    next_action:
+      - licence_review
+      - upstream_group_overlap_resolution_design_future_task
+    estimated_additional_storage: 0
+
+  - source_id: craft_v5_0_2
+    status: VERIFIED_PRESENT
+    pipeline_state: PROCESSED
+    licence_status: LICENSE_SCOPE_VERIFIED
+    access_status: ACQUIRED_PINNED
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    download_decision: ALREADY_ACQUIRED
+    reason: >
+      Archive SHA-256 and Merkle root PASS; CC-BY-3.0 annotation scope verified.
+      Model use still fail-closed pending adapter design and use decision; allowed
+      as SILVER_AUXILIARY with attribution.
+    next_action:
+      - adapter_backlog_design_future_pr
+    estimated_additional_storage: 0
+
+  - source_id: bioimage_archive_rembi_pilot
+    status: METADATA_PILOT_COMPLETE
+    pipeline_state: NOT_ACQUIRED
+    licence_status: PER_ACCESSION_VERIFIED_CC0_OR_CC_BY_4_0_WITH_1_REVERIFICATION_FLAG
+    licence_note: S-BIAD679 CC0-by-name with empty licence URL qualifier; re-verify before any sampling
+    access_status: METADATA_ONLY_RETRIEVED
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    download_decision: METADATA_ONLY_NOW
+    reason: >
+      Metadata-only pilot executed (16,973,278 bytes, under the 500 MiB cap by
+      more than 30x); 40 accessions classified; no images downloaded. Top four
+      accessions are SELECTIVE_SAMPLE_LATER candidates under separate authorisation.
+      EMBL-EBI response informational only; no partnership or endorsement.
+    next_action:
+      - separately_authorised_image_sample_pilot_if_approved
+      - per_accession_licence_recheck_before_any_sampling
+    estimated_additional_storage: "≤ 500 MiB only if a later image-sample pilot is approved"
+    registry_ref: data_manifests/bioimage-rembi-candidates.yaml
+
+  - source_id: pmc_open_access_subset
+    status: FUTURE_PROFILE
+    pipeline_state: NOT_ACQUIRED
+    licence_status: UNKNOWN
+    access_status: NOT_RECEIVED
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    download_decision: FUTURE_PROFILE
+    reason: >
+      Possible OA Methods/caption source. Official interfaces identified at
+      documentation level only (PMC Open Access Subset web service / FTP; Europe
+      PMC REST). No acquisition, no licensing filter executed.
+    next_action:
+      - documentation_level_feasibility_only
+    estimated_additional_storage: null
+
+  - source_id: isa_biostudies_sdrf
+    status: FUTURE_PROFILE
+    pipeline_state: NOT_ACQUIRED
+    licence_status: OPEN_SPECIFICATIONS
+    access_status: NOT_APPLICABLE
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    download_decision: DO_NOT_DOWNLOAD
+    reason: >
+      Metadata/provenance ecosystem standards — record schemas and exchange
+      formats, not one downloadable corpus.
+    next_action:
+      - schema_mapping_notes_if_imaging_profile_proceeds
+    estimated_additional_storage: 0
+
+  - source_id: ome_omero
+    status: FUTURE_PROFILE
+    pipeline_state: NOT_ACQUIRED
+    licence_status: OPEN_SPECIFICATIONS
+    access_status: NOT_APPLICABLE
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    download_decision: DO_NOT_DOWNLOAD
+    reason: >
+      Imaging metadata/interoperability mapping implications for the Imaging
+      Profile (OME data model, OME-Zarr, OMERO object model); no corpus to acquire.
+    next_action:
+      - mapping_review_if_imaging_profile_proceeds
+    estimated_additional_storage: 0
+
+  - source_id: cell_painting_gallery_jump_cp
+    status: FUTURE_PROFILE
+    pipeline_state: NOT_ACQUIRED
+    licence_status: UNKNOWN
+    access_status: NOT_RECEIVED
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    download_decision: FUTURE_PROFILE
+    reason: >
+      Future auxiliary plate-mapping/scalability source; candidate public datasets
+      (Cell Painting Gallery, JUMP-CP) are TB-scale, beyond volume headroom and
+      pilot budgets. No download, no sampling.
+    next_action:
+      - future_profiling_only_if_storage_and_authorisation_change
+    estimated_additional_storage: null
+
+  - source_id: lazic_in_vivo_pseudoreplication_data
+    status: ROLE_DECISION_PENDING
+    pipeline_state: NOT_ACQUIRED
+    licence_status: UNKNOWN
+    access_status: NOT_RECEIVED
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    download_decision: NOT_RECEIVED
+    reason: >
+      Offered in principle; details pending. No access, no download, no label
+      inspection. Profile-relative role decision required before any label access.
+    next_action:
+      - await_schema_case_counts_licence
+      - written_role_decision_before_label_access
+    estimated_additional_storage: null
+
+  - source_id: nc3rs_arrive_compliance_checker_dataset
+    status: ANNOUNCED_NOT_RELEASED
+    pipeline_state: NOT_ACQUIRED
+    licence_status: UNKNOWN
+    access_status: NOT_RELEASED
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    download_decision: NOT_AVAILABLE
+    reason: >
+      Announced, not released; no download attempted. AUXILIARY_CANDIDATE only;
+      NC3Rs is not a partner, approver or endorser of N-Truth.
+    next_action:
+      - await_release
+      - inspect_annotation_schema_and_licence_when_released
+    estimated_additional_storage: null

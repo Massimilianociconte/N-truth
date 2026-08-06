@@ -1,0 +1,803 @@
+registry_version: "0.1"
+updated_at: "2026-08-06"
+scope: bioimage_rembi_metadata_pilot_candidates
+prd_ref: "N-Truth PRD v7.0 §14.1–14.4"
+pilot_report_ref: "docs/task_corpora/bioimage-rembi-metadata-pilot.md"
+policy: >
+  Registry of the 40 BioImage Archive (BioStudies BioImages collection) accessions
+  analysed in the 2026-08-06 metadata-only pilot. Metadata retrieval
+  (METADATA_ONLY_NOW) was already executed for every entry; no images were
+  downloaded. All model-use permissions fail closed. EMBL-EBI's response was
+  informational only: no partnership, no endorsement, no bespoke curation.
+  Licences were verified per accession from the authoritative study JSON; anything
+  not explicitly CC0 / CC BY 4.0 fails closed. No automatic well = experimental
+  unit inference; no gold role is claimed for any accession.
+total_candidates: 40
+recommendation_class_distribution:
+  IMAGE_SAMPLE_CANDIDATE: 4
+  SMALL_FILELIST_CANDIDATE: 5
+  METADATA_CANDIDATE: 2
+  TOO_LARGE: 13
+  OUT_OF_PROFILE: 16
+  LICENCE_BLOCKED: 0
+  INSUFFICIENT_METADATA: 0
+total_metadata_bytes_downloaded: 16973278
+metadata_budget_bytes: 524288000
+
+candidates:
+  - accession: "S-BIAD1094"
+    title: "EUbOPEN Wave1 compounds Cell Painting Images"
+    licence: "CC BY 4.0"
+    licence_status: CC_BY_4_0_VERIFIED_PER_ACCESSION
+    recommendation_class: TOO_LARGE
+    declared_bytes: 2360274615701
+    declared_bytes_sampled_partial: false
+    file_count: 105
+    largest_file_bytes: 23758762233
+    rembi_present: true
+    rembi_template: "BioImages.v4"
+    release_date: "2024-03-29"
+    publication_ids:
+      - "doi:10.5281/zenodo.10894237"
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    metadata_status: METADATA_ONLY_NOW_EXECUTED
+    download_decision: DO_NOT_DOWNLOAD
+  - accession: "S-BIAD1259"
+    title: "An automated high-content screening and assay platform for the analysis of spheroids at subcellular resolution"
+    licence: "CC0"
+    licence_status: CC0_VERIFIED_PER_ACCESSION
+    recommendation_class: TOO_LARGE
+    declared_bytes: 13099239994
+    declared_bytes_sampled_partial: true
+    file_count: 137936
+    largest_file_bytes: 7057844
+    rembi_present: true
+    rembi_template: "BioImages.v4"
+    release_date: "2024-07-04"
+    publication_ids:
+      - "doi:10.6019/S-BIAD1259"
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    metadata_status: METADATA_ONLY_NOW_EXECUTED
+    download_decision: DO_NOT_DOWNLOAD
+  - accession: "S-BIAD1319"
+    title: "Compressed phenotypic screening empowers scalable biological discovery"
+    licence: "CC BY 4.0"
+    licence_status: CC_BY_4_0_VERIFIED_PER_ACCESSION
+    recommendation_class: TOO_LARGE
+    declared_bytes: 673904143535
+    declared_bytes_sampled_partial: true
+    file_count: 386248
+    largest_file_bytes: 23165392788
+    rembi_present: true
+    rembi_template: "BioImages.v4"
+    release_date: "2024-08-15"
+    publication_ids:
+      - "doi:10.6019/S-BIAD1319"
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    metadata_status: METADATA_ONLY_NOW_EXECUTED
+    download_decision: DO_NOT_DOWNLOAD
+  - accession: "S-BIAD1738"
+    title: "Characterizing protein sequence determinants of nuclear condensates by high-throughput pooled imaging with CondenSeq"
+    licence: "CC0"
+    licence_status: CC0_VERIFIED_PER_ACCESSION
+    recommendation_class: TOO_LARGE
+    declared_bytes: 9016119612117
+    declared_bytes_sampled_partial: true
+    file_count: 31906
+    largest_file_bytes: 1334997001131
+    rembi_present: true
+    rembi_template: "BioImages.v4"
+    release_date: "2025-03-26"
+    publication_ids:
+      - "doi:10.1038/s41592-025-02726-y"
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    metadata_status: METADATA_ONLY_NOW_EXECUTED
+    download_decision: DO_NOT_DOWNLOAD
+  - accession: "S-BIAD2076"
+    title: "spaCR: Spatial phenotype analysis of CRISPR-Cas9 screens."
+    licence: "CC BY 4.0"
+    licence_status: CC_BY_4_0_VERIFIED_PER_ACCESSION
+    recommendation_class: TOO_LARGE
+    declared_bytes: 23856582000
+    declared_bytes_sampled_partial: true
+    file_count: 98288
+    largest_file_bytes: 7952194
+    rembi_present: true
+    rembi_template: "BioImages.v4"
+    release_date: "2025-06-14"
+    publication_ids:
+      - "doi:10.6019/S-BIAD2076"
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    metadata_status: METADATA_ONLY_NOW_EXECUTED
+    download_decision: DO_NOT_DOWNLOAD
+  - accession: "S-BIAD2124"
+    title: "PARP7 is a proteotoxic stress sensor which labels proteins for autophagic degradation"
+    licence: "CC BY 4.0"
+    licence_status: CC_BY_4_0_VERIFIED_PER_ACCESSION
+    recommendation_class: IMAGE_SAMPLE_CANDIDATE
+    declared_bytes: 1725001287
+    declared_bytes_sampled_partial: false
+    file_count: 249
+    largest_file_bytes: 14799776
+    rembi_present: true
+    rembi_template: "BioImages.v5"
+    release_date: "2025-08-01"
+    publication_ids:
+      - "doi:10.6019/S-BIAD2124"
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    metadata_status: METADATA_ONLY_NOW_EXECUTED
+    download_decision: SELECTIVE_SAMPLE_LATER
+    download_decision_note: >
+      Ranked candidate for a later, separately authorised image-sample
+      pilot only; per-accession licence re-check required at download time.
+  - accession: "S-BIAD2135"
+    title: "Spatial phenotype analysis of CRISPR-Cas9 screens"
+    licence: "CC BY 4.0"
+    licence_status: CC_BY_4_0_VERIFIED_PER_ACCESSION
+    recommendation_class: TOO_LARGE
+    declared_bytes: 23875584000
+    declared_bytes_sampled_partial: true
+    file_count: 159718
+    largest_file_bytes: 7958528
+    rembi_present: true
+    rembi_template: "BioImages.v4"
+    release_date: "2025-07-04"
+    publication_ids:
+      - "doi:10.6019/S-BIAD2135"
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    metadata_status: METADATA_ONLY_NOW_EXECUTED
+    download_decision: DO_NOT_DOWNLOAD
+  - accession: "S-BIAD2192"
+    title: "Fluorescent protein and peptide tags alter condensate formation and dynamics in vivo and in vitro"
+    licence: "CC BY 4.0"
+    licence_status: CC_BY_4_0_VERIFIED_PER_ACCESSION
+    recommendation_class: METADATA_CANDIDATE
+    declared_bytes: 26157480262
+    declared_bytes_sampled_partial: true
+    file_count: 8165
+    largest_file_bytes: 227088137
+    rembi_present: true
+    rembi_template: "BioImages.v5"
+    release_date: "2025-07-25"
+    publication_ids:
+      - "doi:10.6019/S-BIAD2192"
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    metadata_status: METADATA_ONLY_NOW_EXECUTED
+    download_decision: DO_NOT_DOWNLOAD
+  - accession: "S-BIAD2193"
+    title: "Identification of cell types by cell morphology analysis"
+    licence: "CC0"
+    licence_status: CC0_VERIFIED_PER_ACCESSION
+    recommendation_class: IMAGE_SAMPLE_CANDIDATE
+    declared_bytes: 2015729525
+    declared_bytes_sampled_partial: false
+    file_count: 549
+    largest_file_bytes: 3690492
+    rembi_present: true
+    rembi_template: "BioImages.v5"
+    release_date: "2025-07-22"
+    publication_ids:
+      - "doi:10.6019/S-BIAD2193"
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    metadata_status: METADATA_ONLY_NOW_EXECUTED
+    download_decision: SELECTIVE_SAMPLE_LATER
+    download_decision_note: >
+      Ranked candidate for a later, separately authorised image-sample
+      pilot only; per-accession licence re-check required at download time.
+  - accession: "S-BIAD2261"
+    title: "HIT-MAP: A Scalable Approach to Multimodal Mapping of Subcellular Organization"
+    licence: "CC BY 4.0"
+    licence_status: CC_BY_4_0_VERIFIED_PER_ACCESSION
+    recommendation_class: SMALL_FILELIST_CANDIDATE
+    declared_bytes: 4939708355
+    declared_bytes_sampled_partial: false
+    file_count: 640
+    largest_file_bytes: 19050368
+    rembi_present: true
+    rembi_template: "BioImages.v5"
+    release_date: "2026-06-04"
+    publication_ids:
+      - "doi:10.6019/S-BIAD2261"
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    metadata_status: METADATA_ONLY_NOW_EXECUTED
+    download_decision: DO_NOT_DOWNLOAD
+  - accession: "S-BIAD2262"
+    title: "EUbOPEN compounds Cell Painting Images and profiles"
+    licence: "CC BY 4.0"
+    licence_status: CC_BY_4_0_VERIFIED_PER_ACCESSION
+    recommendation_class: TOO_LARGE
+    declared_bytes: 1857125376521
+    declared_bytes_sampled_partial: false
+    file_count: 213
+    largest_file_bytes: 29674059005
+    rembi_present: true
+    rembi_template: "BioImages.v5"
+    release_date: "2025-10-10"
+    publication_ids:
+      - "doi:10.6019/S-BIAD2262"
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    metadata_status: METADATA_ONLY_NOW_EXECUTED
+    download_decision: DO_NOT_DOWNLOAD
+  - accession: "S-BIAD2357"
+    title: "pan-ASLM: a high-resolution and large field-of-view light sheet microscope for Expansion Microscopy"
+    licence: "CC BY 4.0"
+    licence_status: CC_BY_4_0_VERIFIED_PER_ACCESSION
+    recommendation_class: OUT_OF_PROFILE
+    declared_bytes: 571617303157
+    declared_bytes_sampled_partial: false
+    file_count: 16
+    largest_file_bytes: 121569541439
+    rembi_present: true
+    rembi_template: "BioImages.v5"
+    release_date: "2025-10-25"
+    publication_ids:
+      - "doi:10.1038/s41467-020-17523-8"
+      - "doi:10.1101/2022.04.04.486901"
+      - "doi:10.1101/2025.07.28.667278"
+      - "doi:10.1101/2025.08.06.668765"
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    metadata_status: METADATA_ONLY_NOW_EXECUTED
+    download_decision: DO_NOT_DOWNLOAD
+  - accession: "S-BIAD2379"
+    title: "Data supporting Figures 3-6 from \"Central infusion of prostaglandin E2 reveals a unified representation of sickness in the mouse insular cortex\" Gretel B. Kamm*, Juan C. Boffi*, Muad Y. Abd El Hay*, Domitille Rajot, Ana Cukić, Martha N. Havenith, Marieke Scholvinck, Nicolas Renier, Hiroki Asari and Robert Prevedel.  bioRxiv 2025.04.28.651028; doi: https://doi.org/10.1101/2025.04.28.651028"
+    licence: "CC BY 4.0"
+    licence_status: CC_BY_4_0_VERIFIED_PER_ACCESSION
+    recommendation_class: OUT_OF_PROFILE
+    declared_bytes: 319001475749
+    declared_bytes_sampled_partial: true
+    file_count: 176190
+    largest_file_bytes: 83343690430
+    rembi_present: true
+    rembi_template: "BioImages.v5"
+    release_date: "2026-06-30"
+    publication_ids:
+      - "doi:10.1101/2025.04.28.651028"
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    metadata_status: METADATA_ONLY_NOW_EXECUTED
+    download_decision: DO_NOT_DOWNLOAD
+  - accession: "S-BIAD2466"
+    title: "Pulsed-electron illumination does not reduce beam damage for imaging biological macromolecules"
+    licence: "CC BY 4.0"
+    licence_status: CC_BY_4_0_VERIFIED_PER_ACCESSION
+    recommendation_class: OUT_OF_PROFILE
+    declared_bytes: 869090428067
+    declared_bytes_sampled_partial: false
+    file_count: 2351
+    largest_file_bytes: 3355444224
+    rembi_present: true
+    rembi_template: "BioImages.v5"
+    release_date: "2025-12-05"
+    publication_ids:
+      - "doi:10.1101/2025.07.29.667395"
+      - "doi:10.1101/2025.07.29.667395v1"
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    metadata_status: METADATA_ONLY_NOW_EXECUTED
+    download_decision: DO_NOT_DOWNLOAD
+  - accession: "S-BIAD2499"
+    title: "microglia synapses engulfment analysis 24h after TIA"
+    licence: "CC0"
+    licence_status: CC0_VERIFIED_PER_ACCESSION
+    recommendation_class: OUT_OF_PROFILE
+    declared_bytes: 7011925760
+    declared_bytes_sampled_partial: false
+    file_count: 20
+    largest_file_bytes: 424070560
+    rembi_present: true
+    rembi_template: "BioImages.v5"
+    release_date: "2026-07-31"
+    publication_ids:
+      - "doi:10.6019/S-BIAD2499"
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    metadata_status: METADATA_ONLY_NOW_EXECUTED
+    download_decision: DO_NOT_DOWNLOAD
+  - accession: "S-BIAD2500"
+    title: "microglia morphology analsis after ATP brain injection"
+    licence: "CC0"
+    licence_status: CC0_VERIFIED_PER_ACCESSION
+    recommendation_class: OUT_OF_PROFILE
+    declared_bytes: 14764765088
+    declared_bytes_sampled_partial: false
+    file_count: 49
+    largest_file_bytes: 369531360
+    rembi_present: true
+    rembi_template: "BioImages.v5"
+    release_date: "2026-07-31"
+    publication_ids:
+      - "doi:10.6019/S-BIAD2500"
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    metadata_status: METADATA_ONLY_NOW_EXECUTED
+    download_decision: DO_NOT_DOWNLOAD
+  - accession: "S-BIAD2501"
+    title: "glutamatergic synapses analysis after ATP injection in mouse brain"
+    licence: "CC0"
+    licence_status: CC0_VERIFIED_PER_ACCESSION
+    recommendation_class: OUT_OF_PROFILE
+    declared_bytes: 152016792
+    declared_bytes_sampled_partial: false
+    file_count: 50
+    largest_file_bytes: 3180100
+    rembi_present: true
+    rembi_template: "BioImages.v5"
+    release_date: "2026-07-31"
+    publication_ids:
+      - "doi:10.6019/S-BIAD2501"
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    metadata_status: METADATA_ONLY_NOW_EXECUTED
+    download_decision: DO_NOT_DOWNLOAD
+  - accession: "S-BIAD2502"
+    title: "Analysis of microglia morphology 24 hours after a TIA in control animals and animals treated with P2Y12Ri"
+    licence: "CC0"
+    licence_status: CC0_VERIFIED_PER_ACCESSION
+    recommendation_class: OUT_OF_PROFILE
+    declared_bytes: 9872420000
+    declared_bytes_sampled_partial: false
+    file_count: 28
+    largest_file_bytes: 426110400
+    rembi_present: true
+    rembi_template: "BioImages.v5"
+    release_date: "2026-07-31"
+    publication_ids:
+      - "doi:10.6019/S-BIAD2502"
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    metadata_status: METADATA_ONLY_NOW_EXECUTED
+    download_decision: DO_NOT_DOWNLOAD
+  - accession: "S-BIAD2504"
+    title: "glutamatergic synapses anaysis 24 hours after a TIA in control animals and animals treated with P2Y12Ri"
+    licence: "CC0"
+    licence_status: CC0_VERIFIED_PER_ACCESSION
+    recommendation_class: OUT_OF_PROFILE
+    declared_bytes: 53563772
+    declared_bytes_sampled_partial: false
+    file_count: 52
+    largest_file_bytes: 1048724
+    rembi_present: true
+    rembi_template: "BioImages.v5"
+    release_date: "2026-07-31"
+    publication_ids:
+      - "doi:10.6019/S-BIAD2504"
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    metadata_status: METADATA_ONLY_NOW_EXECUTED
+    download_decision: DO_NOT_DOWNLOAD
+  - accession: "S-BIAD2733"
+    title: "Endocytosed lipids induce cell aggregation via filopodia retraction in a close relative of animals"
+    licence: "CC0"
+    licence_status: CC0_VERIFIED_PER_ACCESSION
+    recommendation_class: SMALL_FILELIST_CANDIDATE
+    declared_bytes: 4496006072
+    declared_bytes_sampled_partial: false
+    file_count: 3
+    largest_file_bytes: 2880059513
+    rembi_present: true
+    rembi_template: "BioImages.v5"
+    release_date: "2026-03-07"
+    publication_ids:
+      - "doi:10.1101/2024.05.14.593945v1"
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    metadata_status: METADATA_ONLY_NOW_EXECUTED
+    download_decision: DO_NOT_DOWNLOAD
+  - accession: "S-BIAD2827"
+    title: "Synthetic protein binders reveal a cryptic regulatory pocket on Aurora A for selective allosteric inhibition"
+    licence: "CC0"
+    licence_status: CC0_VERIFIED_PER_ACCESSION
+    recommendation_class: SMALL_FILELIST_CANDIDATE
+    declared_bytes: 10972559607
+    declared_bytes_sampled_partial: false
+    file_count: 57
+    largest_file_bytes: 3507988970
+    rembi_present: true
+    rembi_template: "BioImages.v5"
+    release_date: "2026-02-06"
+    publication_ids:
+      - "doi:10.6019/S-BIAD2827"
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    metadata_status: METADATA_ONLY_NOW_EXECUTED
+    download_decision: DO_NOT_DOWNLOAD
+  - accession: "S-BIAD2914"
+    title: "Automated analysis of zebrafish vascular networks using the VISTA-Z pipeline"
+    licence: "CC0"
+    licence_status: CC0_VERIFIED_PER_ACCESSION
+    recommendation_class: OUT_OF_PROFILE
+    declared_bytes: 403906571776
+    declared_bytes_sampled_partial: false
+    file_count: 2160
+    largest_file_bytes: 469970080
+    rembi_present: true
+    rembi_template: "BioImages.v5"
+    release_date: "2026-02-08"
+    publication_ids:
+      - "doi:10.6019/S-BIAD2914"
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    metadata_status: METADATA_ONLY_NOW_EXECUTED
+    download_decision: DO_NOT_DOWNLOAD
+  - accession: "S-BIAD2942"
+    title: "Quantitative nanoscale imaging shows peptide–MHC I complexes are monomeric and spatially regulated in human dendritic cells"
+    licence: "CC0"
+    licence_status: CC0_VERIFIED_PER_ACCESSION
+    recommendation_class: TOO_LARGE
+    declared_bytes: 1116671953698
+    declared_bytes_sampled_partial: false
+    file_count: 12
+    largest_file_bytes: 704546460363
+    rembi_present: true
+    rembi_template: "BioImages.v5"
+    release_date: "2026-05-05"
+    publication_ids:
+      - "doi:10.6019/S-BIAD2942"
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    metadata_status: METADATA_ONLY_NOW_EXECUTED
+    download_decision: DO_NOT_DOWNLOAD
+  - accession: "S-BIAD3018"
+    title: "VPS26A Retromer Complex and SNX27 Mediate Stress-Induced Golgi Bypass of Membrane Proteins"
+    licence: "CC BY 4.0"
+    licence_status: CC_BY_4_0_VERIFIED_PER_ACCESSION
+    recommendation_class: IMAGE_SAMPLE_CANDIDATE
+    declared_bytes: 691217146
+    declared_bytes_sampled_partial: false
+    file_count: 160
+    largest_file_bytes: 11133458
+    rembi_present: true
+    rembi_template: "BioImages.v5"
+    release_date: "2026-03-11"
+    publication_ids:
+      - "doi:10.6019/S-BIAD3018"
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    metadata_status: METADATA_ONLY_NOW_EXECUTED
+    download_decision: SELECTIVE_SAMPLE_LATER
+    download_decision_note: >
+      Ranked candidate for a later, separately authorised image-sample
+      pilot only; per-accession licence re-check required at download time.
+  - accession: "S-BIAD3037"
+    title: "Anagrelide remodels the PDE3A–SLFN12 interactome to associate with translation initiation machinery in cancer cell lines"
+    licence: "CC BY 4.0"
+    licence_status: CC_BY_4_0_VERIFIED_PER_ACCESSION
+    recommendation_class: TOO_LARGE
+    declared_bytes: 5846384052
+    declared_bytes_sampled_partial: false
+    file_count: 2
+    largest_file_bytes: 5357178287
+    rembi_present: true
+    rembi_template: "BioImages.v5"
+    release_date: "2026-03-09"
+    publication_ids:
+      - "doi:10.6019/S-BIAD3037"
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    metadata_status: METADATA_ONLY_NOW_EXECUTED
+    download_decision: DO_NOT_DOWNLOAD
+  - accession: "S-BIAD3134"
+    title: "2-photon imaging raw data from striatal populations through GRIN lens"
+    licence: "CC BY 4.0"
+    licence_status: CC_BY_4_0_VERIFIED_PER_ACCESSION
+    recommendation_class: OUT_OF_PROFILE
+    declared_bytes: 293776243729
+    declared_bytes_sampled_partial: true
+    file_count: 3142
+    largest_file_bytes: 5746720888
+    rembi_present: true
+    rembi_template: "BioImages.v5"
+    release_date: "2026-06-12"
+    publication_ids:
+      - "doi:10.64898/2025.12.03.692128"
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    metadata_status: METADATA_ONLY_NOW_EXECUTED
+    download_decision: DO_NOT_DOWNLOAD
+  - accession: "S-BIAD3135"
+    title: "Holographic stimulation of neuronal ensembles in striatum"
+    licence: "CC BY 4.0"
+    licence_status: CC_BY_4_0_VERIFIED_PER_ACCESSION
+    recommendation_class: OUT_OF_PROFILE
+    declared_bytes: 44735398910
+    declared_bytes_sampled_partial: true
+    file_count: 4225816
+    largest_file_bytes: 6137943894
+    rembi_present: true
+    rembi_template: "BioImages.v5"
+    release_date: "2026-06-12"
+    publication_ids:
+      - "doi:10.64898/2025.12.03.692128"
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    metadata_status: METADATA_ONLY_NOW_EXECUTED
+    download_decision: DO_NOT_DOWNLOAD
+  - accession: "S-BIAD3162"
+    title: "Nucleophagy removes cytotoxic trapped PARP1"
+    licence: "CC0"
+    licence_status: CC0_VERIFIED_PER_ACCESSION
+    recommendation_class: METADATA_CANDIDATE
+    declared_bytes: 31088396299
+    declared_bytes_sampled_partial: true
+    file_count: 6509
+    largest_file_bytes: 380054111
+    rembi_present: true
+    rembi_template: "BioImages.v5"
+    release_date: "2026-03-28"
+    publication_ids:
+      - "doi:10.6019/S-BIAD3162"
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    metadata_status: METADATA_ONLY_NOW_EXECUTED
+    download_decision: DO_NOT_DOWNLOAD
+  - accession: "S-BIAD3296"
+    title: "oc3_project18 : Detection and Analysis of Nuclear Pore Complexes by DNA PAINT"
+    licence: "CC BY 4.0"
+    licence_status: CC_BY_4_0_VERIFIED_PER_ACCESSION
+    recommendation_class: IMAGE_SAMPLE_CANDIDATE
+    declared_bytes: 334854976
+    declared_bytes_sampled_partial: false
+    file_count: 4
+    largest_file_bytes: 167428936
+    rembi_present: true
+    rembi_template: "BioImages.v5"
+    release_date: "2026-07-14"
+    publication_ids:
+      - "doi:10.6019/S-BIAD3296"
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    metadata_status: METADATA_ONLY_NOW_EXECUTED
+    download_decision: SELECTIVE_SAMPLE_LATER
+    download_decision_note: >
+      Ranked candidate for a later, separately authorised image-sample
+      pilot only; per-accession licence re-check required at download time.
+  - accession: "S-BIAD3316"
+    title: "Mapping in-cell protein contact sites reveals hijacking of paraspeckles during influenza A virus infection"
+    licence: "CC BY 4.0"
+    licence_status: CC_BY_4_0_VERIFIED_PER_ACCESSION
+    recommendation_class: TOO_LARGE
+    declared_bytes: 263720329272
+    declared_bytes_sampled_partial: false
+    file_count: 26
+    largest_file_bytes: 69614497018
+    rembi_present: true
+    rembi_template: "BioImages.v5"
+    release_date: "2026-05-18"
+    publication_ids:
+      - "none_declared"
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    metadata_status: METADATA_ONLY_NOW_EXECUTED
+    download_decision: DO_NOT_DOWNLOAD
+  - accession: "S-BIAD3320"
+    title: "Lipid droplets promote the aberrant liquid-liquid phase separation of alpha-synuclein leading to impaired energy homeostasis"
+    licence: "CC BY 4.0"
+    licence_status: CC_BY_4_0_VERIFIED_PER_ACCESSION
+    recommendation_class: SMALL_FILELIST_CANDIDATE
+    declared_bytes: 17291206592
+    declared_bytes_sampled_partial: true
+    file_count: 5317
+    largest_file_bytes: 108723680
+    rembi_present: true
+    rembi_template: "BioImages.v5"
+    release_date: "2026-06-19"
+    publication_ids:
+      - "doi:10.1126/sciadv.ads7627"
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    metadata_status: METADATA_ONLY_NOW_EXECUTED
+    download_decision: DO_NOT_DOWNLOAD
+  - accession: "S-BIAD3370"
+    title: "Imaging data for in situ sequencing of hiPSC-derived cardiomyocytes and endothelial cells"
+    licence: "CC BY 4.0"
+    licence_status: CC_BY_4_0_VERIFIED_PER_ACCESSION
+    recommendation_class: TOO_LARGE
+    declared_bytes: 122953013380
+    declared_bytes_sampled_partial: false
+    file_count: 1
+    largest_file_bytes: 122953013380
+    rembi_present: true
+    rembi_template: "BioImages.v5"
+    release_date: "2026-05-14"
+    publication_ids:
+      - "doi:10.6019/S-BIAD3370"
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    metadata_status: METADATA_ONLY_NOW_EXECUTED
+    download_decision: DO_NOT_DOWNLOAD
+  - accession: "S-BIAD3460"
+    title: "2D Time-Lapse Multispectral and Bright-Field Imaging of iPSCs and iNeurons during Differentiation at Days 7, 14, 21, and 28"
+    licence: "CC BY 4.0"
+    licence_status: CC_BY_4_0_VERIFIED_PER_ACCESSION
+    recommendation_class: TOO_LARGE
+    declared_bytes: 588443133536
+    declared_bytes_sampled_partial: false
+    file_count: 360
+    largest_file_bytes: 2510786208
+    rembi_present: true
+    rembi_template: "BioImages.v5"
+    release_date: "2026-07-20"
+    publication_ids:
+      - "doi:10.6019/S-BIAD3460"
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    metadata_status: METADATA_ONLY_NOW_EXECUTED
+    download_decision: DO_NOT_DOWNLOAD
+  - accession: "S-BIAD3467"
+    title: "A tonsil organoid model reveals Epstein-Barr virus infected germinal center B cell states during primary infection"
+    licence: "CC BY 4.0"
+    licence_status: CC_BY_4_0_VERIFIED_PER_ACCESSION
+    recommendation_class: OUT_OF_PROFILE
+    declared_bytes: 2784510095
+    declared_bytes_sampled_partial: false
+    file_count: 5
+    largest_file_bytes: 780217839
+    rembi_present: true
+    rembi_template: "BioImages.v5"
+    release_date: "2026-05-31"
+    publication_ids:
+      - "doi:10.6019/S-BIAD3467"
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    metadata_status: METADATA_ONLY_NOW_EXECUTED
+    download_decision: DO_NOT_DOWNLOAD
+  - accession: "S-BIAD3613"
+    title: "Plant cells at the organ surface use mechanical cues to activate a specific growth control programme"
+    licence: "CC0"
+    licence_status: CC0_VERIFIED_PER_ACCESSION
+    recommendation_class: OUT_OF_PROFILE
+    declared_bytes: 21007419788
+    declared_bytes_sampled_partial: false
+    file_count: 41
+    largest_file_bytes: 15528001024
+    rembi_present: true
+    rembi_template: "BioImages.v5"
+    release_date: "2026-07-15"
+    publication_ids:
+      - "doi:10.6019/S-BIAD3613"
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    metadata_status: METADATA_ONLY_NOW_EXECUTED
+    download_decision: DO_NOT_DOWNLOAD
+  - accession: "S-BIAD3647"
+    title: "CDK8 remodels tumor microenvironment to resist KRASG12D inhibitors and daraxonrasib in PDAC"
+    licence: "CC0"
+    licence_status: CC0_VERIFIED_PER_ACCESSION
+    recommendation_class: OUT_OF_PROFILE
+    declared_bytes: 16376109853
+    declared_bytes_sampled_partial: true
+    file_count: 8569
+    largest_file_bytes: 1016306038
+    rembi_present: true
+    rembi_template: "BioImages.v5"
+    release_date: "2026-06-24"
+    publication_ids:
+      - "doi:10.6019/S-BIAD3647"
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    metadata_status: METADATA_ONLY_NOW_EXECUTED
+    download_decision: DO_NOT_DOWNLOAD
+  - accession: "S-BIAD3676"
+    title: "An annotated timelapse imaging dataset on dormancy exit dynamics of Escherichia coli cells in Mother Machine"
+    licence: "CC BY 4.0"
+    licence_status: CC_BY_4_0_VERIFIED_PER_ACCESSION
+    recommendation_class: TOO_LARGE
+    declared_bytes: 342548315305
+    declared_bytes_sampled_partial: false
+    file_count: 4
+    largest_file_bytes: 316791664640
+    rembi_present: true
+    rembi_template: "BioImages.v5"
+    release_date: "2026-07-07"
+    publication_ids:
+      - "doi:10.6019/S-BIAD3676"
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    metadata_status: METADATA_ONLY_NOW_EXECUTED
+    download_decision: DO_NOT_DOWNLOAD
+  - accession: "S-BIAD3759"
+    title: "The CCCH-type zinc-finger PfMD3 promotes translation for malaria parasite transmission"
+    licence: "CC0"
+    licence_status: CC0_VERIFIED_PER_ACCESSION
+    recommendation_class: OUT_OF_PROFILE
+    declared_bytes: 3255244
+    declared_bytes_sampled_partial: false
+    file_count: 52
+    largest_file_bytes: 189068
+    rembi_present: true
+    rembi_template: "BioImages.v5"
+    release_date: "2026-07-09"
+    publication_ids:
+      - "doi:10.6019/S-BIAD3759"
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    metadata_status: METADATA_ONLY_NOW_EXECUTED
+    download_decision: DO_NOT_DOWNLOAD
+  - accession: "S-BIAD3811"
+    title: "CD24 drives evolutionarily conserved innate immune evasion in colorectal cancer revealed by zebrafish xenografts"
+    licence: "CC BY 4.0"
+    licence_status: CC_BY_4_0_VERIFIED_PER_ACCESSION
+    recommendation_class: OUT_OF_PROFILE
+    declared_bytes: 57352879
+    declared_bytes_sampled_partial: false
+    file_count: 10
+    largest_file_bytes: 18632487
+    rembi_present: true
+    rembi_template: "BioImages.v5"
+    release_date: "2026-07-20"
+    publication_ids:
+      - "none_declared"
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    metadata_status: METADATA_ONLY_NOW_EXECUTED
+    download_decision: DO_NOT_DOWNLOAD
+  - accession: "S-BIAD679"
+    title: "The order of sequential exposure of U2OS cells to gamma and alpha radiation influences the formation and decay dynamics of NBS1 foci"
+    licence: "CC0"
+    licence_status: UNKNOWN_CC0_NAME_ONLY_URL_EMPTY_NEEDS_REVERIFICATION
+    recommendation_class: SMALL_FILELIST_CANDIDATE
+    declared_bytes: 10134742964
+    declared_bytes_sampled_partial: false
+    file_count: 57
+    largest_file_bytes: 184381808
+    rembi_present: true
+    rembi_template: "BioImages.v4"
+    release_date: "2023-04-25"
+    publication_ids:
+      - "doi:10.6019/S-BIAD679"
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    metadata_status: METADATA_ONLY_NOW_EXECUTED
+    download_decision: DO_NOT_DOWNLOAD

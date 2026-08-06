@@ -1,5 +1,5 @@
-registry_version: "0.2"
-updated_at: "2026-08-03"
+registry_version: "0.3"
+updated_at: "2026-08-06"
 scope: public_safe_only
 prd_ref: "N-Truth PRD v7.0"
 notes: >
@@ -23,6 +23,20 @@ status_vocabulary:
     - CONTACT
     - POTENTIAL_CONTRIBUTOR
     - FORMAL_PARTNER
+  # Fields introduced by the EMBL-EBI BioImage Archive entry (registry_version 0.3).
+  response_status:
+    - RESPONDED_INFORMATIONAL_ONLY
+  collaboration_status:
+    - NOT_A_PARTNER
+  bespoke_curation_capacity:
+    - NOT_AVAILABLE
+  guidance_received:
+    - SEARCH_PUBLIC_ARCHIVE
+    - USE_REMBI_METADATA
+    - VERIFY_ACCESSION_LICENCE
+  endorsement: boolean
+  data_commitment:
+    - none
 
 contacts:
   - contact_id: stan_lazic
@@ -81,3 +95,35 @@ contacts:
       training dataset. This is not a partnership, approval or endorsement of N-Truth.
     related_source_id: nc3rs_arrive_compliance_checker_dataset
     next_action: AWAIT_ARRIVE_RELEASE_UPDATES
+
+  - contact_id: embl_ebi_bioimage_archive
+    name: BioImage Archive correspondence
+    organization: EMBL-EBI BioImage Archive
+    relationship_class: CONTACT
+    domain_role:
+      - bioimage_archiving
+      - rembi_metadata
+      - public_imaging_data_access
+    engagement_status: RESPONSE_RECEIVED
+    commitment_status: NO_FORMAL_COMMITMENT
+    response_status: RESPONDED_INFORMATIONAL_ONLY
+    collaboration_status: NOT_A_PARTNER
+    bespoke_curation_capacity: NOT_AVAILABLE
+    guidance_received:
+      - SEARCH_PUBLIC_ARCHIVE
+      - USE_REMBI_METADATA
+      - VERIFY_ACCESSION_LICENCE
+    endorsement: false
+    data_commitment: none
+    potential_contribution:
+      - public_archive_access_documentation
+    public_note: >
+      EMBL-EBI BioImage Archive staff provided information-only guidance: no
+      bespoke curation capacity exists; the archive search is likely useful;
+      submissions use REMBI; studies may be CC0 or CC BY 4.0. Every accession's
+      licence must be verified individually from its authoritative study metadata;
+      official archive policy controls. This entry records informational contact
+      only and does not imply that EMBL-EBI supports, validates or endorses
+      N-Truth. No partnership, approval or data commitment exists.
+    related_source_id: bioimage_archive_rembi_pilot
+    next_action: VERIFY_ACCESSION_LICENCE_BEFORE_ANY_SAMPLING
