@@ -1415,3 +1415,52 @@ class TestRealScaleReportOrdering:
             )
         # A divergent rerun must never publish a final adjudication.
         assert not (tmp_path / "adjudication.json").exists()
+
+
+class TestCaptionIndexAttestationMandatory:
+    """The caption index attestation must be mandatory and fail closed."""
+
+    _SHA_A = "a" * 64
+    _SHA_B = "b" * 64
+
+    def test_matching_sha_passes(self) -> None:
+        build.attest_caption_index(actual_sha256=self._SHA_A, expected_sha256=self._SHA_A)
+
+    def test_mismatched_sha_fails_closed(self) -> None:
+        with pytest.raises(ValueError, match="unattested caption index"):
+            build.attest_caption_index(actual_sha256=self._SHA_A, expected_sha256=self._SHA_B)
+
+    @pytest.mark.parametrize("bad", ["", "abc", "A" * 64, "g" * 64, "a" * 63, "a" * 65])
+    def test_malformed_expected_sha_fails_closed(self, bad: str) -> None:
+        with pytest.raises(ValueError, match="must be a lowercase hex SHA-256"):
+            build.attest_caption_index(actual_sha256=self._SHA_A, expected_sha256=bad)
+
+    def test_cli_rejects_omitted_expect_index_sha(self, tmp_path: Path) -> None:
+        """Omitting --expect-index-sha must fail BEFORE any build or write."""
+        script = (
+            Path(__file__).resolve().parents[3] / "scripts/task_corpora/sourcedata_sidecar_build.py"
+        )
+        env = dict(os.environ)
+        env["PYTHONPATH"] = str(Path(__file__).resolve().parents[3] / "packages")
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(script),
+                "--index",
+                str(tmp_path / "index.jsonl"),
+                "--canon-dir",
+                str(tmp_path),
+                "--raw-dir",
+                str(tmp_path),
+                "--staging-root",
+                str(tmp_path / "staging"),
+                "--upstream-reference",
+                "https://example.invalid/upstream",
+            ],
+            capture_output=True,
+            text=True,
+            env=env,
+            check=False,
+        )
+        assert result.returncode == 2
+        assert "--expect-index-sha" in result.stderr

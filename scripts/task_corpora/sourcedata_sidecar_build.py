@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -71,6 +72,25 @@ EXPECTED_TIER_COUNTS = {
     "RECORD_FALLBACK": 1091,
 }
 EXPECTED_TOTAL = 75163
+
+_SHA256_HEX = re.compile(r"[0-9a-f]{64}")
+
+
+def attest_caption_index(*, actual_sha256: str, expected_sha256: str) -> None:
+    """Fail-closed attestation of the caption index BEFORE any build reads it.
+
+    The index is derived from the attested upstream archive; every build must
+    pin its SHA explicitly (the CLI makes ``--expect-index-sha`` mandatory),
+    so an unattested or substituted index stops the build in preflight, not
+    after the dual build or an external write.
+    """
+    if not _SHA256_HEX.fullmatch(expected_sha256):
+        raise ValueError(f"--expect-index-sha must be a lowercase hex SHA-256: {expected_sha256!r}")
+    if actual_sha256 != expected_sha256:
+        raise ValueError(
+            f"caption index sha256 {actual_sha256} != expected {expected_sha256}; "
+            "refusing to build against an unattested caption index"
+        )
 
 
 def _attested_bundle(upstream_reference: str) -> ProvenanceBuildInputs:
@@ -150,10 +170,10 @@ def main() -> None:
     ap.add_argument("--index", required=True, type=Path)
     ap.add_argument(
         "--expect-index-sha",
-        default=None,
+        required=True,
         help=(
-            "SHA-256 the caption index must hash to; when supplied it is "
-            "verified in preflight, before any build or external write"
+            "SHA-256 the caption index must hash to; mandatory and verified "
+            "in preflight, before any build or external write"
         ),
     )
     ap.add_argument("--canon-dir", required=True, type=Path)
@@ -183,14 +203,11 @@ def main() -> None:
         # -- preflight: attested bundle vs disk (leakage audit mandatory) ----
         verify_provenance_build_inputs(bundle, canon_dir=args.canon_dir, raw_dir=args.raw_dir)
         # Attest the caption index BEFORE any build reads it. The index is
-        # derived from the attested upstream archive; when the operator pins
-        # its SHA we fail closed here, not after the dual build.
+        # derived from the attested upstream archive; the operator MUST pin
+        # its SHA (--expect-index-sha is mandatory) and we fail closed here,
+        # not after the dual build.
         index_sha = sha256_file(args.index)
-        if args.expect_index_sha is not None and index_sha != args.expect_index_sha:
-            raise ValueError(
-                f"caption index sha256 {index_sha} != expected {args.expect_index_sha}; "
-                "refusing to build against an unattested caption index"
-            )
+        attest_caption_index(actual_sha256=index_sha, expected_sha256=args.expect_index_sha)
         canon_lines: list[str] = []
         for part in PARTITIONS:
             canon_lines.extend(read_jsonl_physical_lines(args.canon_dir / f"{part}.jsonl"))
