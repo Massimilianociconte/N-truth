@@ -24,6 +24,7 @@ from ntruth.schemas.experiment import (
     COUNT_KIND_V8_WIRE,
     CountKind,
     CountQuantifier,
+    Factor,
     InferenceTarget,
     NScope,
 )
@@ -865,3 +866,8 @@ class V8CountRecord(FrozenModel):
             self.cohort_id,
             self.quantifier.value if self.quantifier is not None else None,
         )
+
+
+# Risolve la forward reference di ``Factor.relative_timing``: experiment.py non
+# puo importare kernel a livello modulo (ciclo kernel -> experiment).
+Factor.model_rebuild(_types_namespace={"EventTiming": EventTiming})

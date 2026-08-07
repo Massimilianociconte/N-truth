@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from datetime import datetime
 from enum import StrEnum
-from typing import Any, Literal, Self
+from typing import TYPE_CHECKING, Any, Literal, Self
 
 from pydantic import (
     Field,
@@ -43,6 +43,9 @@ from ntruth.schemas.graph import (
     RelationType,
     rank_of,
 )
+
+if TYPE_CHECKING:  # pragma: no cover - solo annotazioni (ciclo kernel<->experiment)
+    from ntruth.schemas.kernel import EventTiming, TimingRelation
 
 
 class NKind(StrEnum):
@@ -1099,6 +1102,35 @@ class Correction(NTruthModel):
         return value
 
 
+#: Alias conservativi (case-insensitive) della stringa libera legacy
+#: ``allocation_timing`` -> relazione §7.7. Solo marcatori non ambigui vengono
+#: convertiti: mai l'ordine della frase, mai catene multi-evento (Appendice P.4).
+_LEGACY_TIMING_ALIASES: dict[str, str] = {
+    "before": "BEFORE",
+    "after": "AFTER",
+    "same event": "SAME_EVENT",
+    "same_event": "SAME_EVENT",
+    "overlap": "OVERLAPS",
+    "overlaps": "OVERLAPS",
+    "unknown": "UNKNOWN",
+}
+
+
+def legacy_timing_relation(allocation_timing: str | None) -> TimingRelation | None:
+    """Converte l'alias libero deprecato ``allocation_timing`` in relazione §7.7.
+
+    Restituisce ``None`` quando la stringa non e' convertibile in modo
+    univoco: il chiamante tratta l'esito come ``UNKNOWN`` (fail-closed).
+    """
+
+    from ntruth.schemas.kernel import TimingRelation  # lazy: evita il ciclo
+
+    if allocation_timing is None:
+        return None
+    token = _LEGACY_TIMING_ALIASES.get(allocation_timing.strip().lower())
+    return TimingRelation(token) if token is not None else None
+
+
 #: Campi timing/source del Factor proiettati nella semantica open-world v8 (AC).
 _FACTOR_V8_FIELDS = (
     "allocation_timing",
@@ -1133,6 +1165,10 @@ class Factor(NTruthModel):
     source_biological_preparation: str | None = None
     allocation_event_id: str | None = None
     allocation_timing: str | None = None
+    #: Timing tipizzato event-referenced (§7.7, Appendice P.4, additivo v8).
+    #: ``allocation_timing`` resta alias libero deprecato: la relazione viene
+    #: convertita solo se univoca, altrimenti UNKNOWN; mai l'ordine della frase.
+    relative_timing: EventTiming | None = None
     randomized: bool | None = None
     # UK spelling retained for the PRD example and serialized compatibility.
     randomised: bool | None = None
@@ -1210,6 +1246,14 @@ class Factor(NTruthModel):
                 raise ValueError(f"{field_name} non puo essere vuoto")
         return self
 
+    @model_serializer(mode="wrap")
+    def _freeze_v7_wire(self, handler: Any) -> Any:
+        """AE.1: il campo v8 non impostato non entra nella serializzazione legacy."""
+        data = handler(self)
+        if isinstance(data, dict) and self.relative_timing is None:
+            data.pop("relative_timing", None)
+        return data
+
     def knowledge_values(self) -> dict[str, Any]:
         """Proiezione v8 dei campi timing/source in ``KnowledgeValue``.
 
@@ -1228,6 +1272,31 @@ class Factor(NTruthModel):
             )
             for field_name in _FACTOR_V8_FIELDS
         }
+
+    def timing_relation(self) -> TimingRelation:
+        """Relazione temporale risolta del fattore (§7.7).
+
+        Il timing tipizzato ``relative_timing`` vince sempre. L'alias legacy
+        ``allocation_timing`` e' convertito solo se univoco; catena incompleta
+        o non convertibile -> ``UNKNOWN`` (fail-closed, Appendice P.4).
+        """
+
+        from ntruth.schemas.kernel import TimingRelation  # lazy: evita il ciclo
+
+        if self.relative_timing is not None:
+            return self.relative_timing.relation
+        relation = legacy_timing_relation(self.allocation_timing)
+        return relation if relation is not None else TimingRelation.UNKNOWN
+
+    def event_timing(self) -> EventTiming | None:
+        """Timing ancorato a event IDs, se presente.
+
+        La sola stringa legacy non àncora a un evento di riferimento (§7.7):
+        senza ``relative_timing`` la catena e' incompleta e non viene
+        ancorata a un evento inventato.
+        """
+
+        return self.relative_timing
 
 
 class Contrast(NTruthModel):
