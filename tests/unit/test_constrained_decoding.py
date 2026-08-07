@@ -27,7 +27,7 @@ def test_probe_reports_status() -> None:
 
 
 def test_stage_schemas_compile_and_forbid_extra() -> None:
-    for name, cls in STAGE_SCHEMA_REGISTRY.items():
+    for cls in STAGE_SCHEMA_REGISTRY.values():
         probe = compile_schema_probe(cls)
         assert probe["schema_bytes"] > 50
         assert probe["status"] == ConstrainedStatus.CONSTRAINED_SUPPORTED.value

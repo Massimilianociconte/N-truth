@@ -6,12 +6,11 @@ import hashlib
 import json
 import os
 from datetime import UTC, datetime
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-from enum import StrEnum
-
-from ntruth.model_backends.base import ModelProvider, ModelRole
+from ntruth.model_backends.base import ModelProvider
 
 REGISTRY_SCHEMA_VERSION = "1.3.0"
 
@@ -78,21 +77,14 @@ def _repo_root() -> Path:
 def default_profile_path() -> Path:
     """Profilo ML predefinito (Granite). Override: NTRUTH_ML_PROFILE / NTRUTH_MODEL_PROFILE_PATH."""
 
-    explicit = os.environ.get("NTRUTH_ML_PROFILE") or os.environ.get(
-        "NTRUTH_MODEL_PROFILE_PATH"
-    )
+    explicit = os.environ.get("NTRUTH_ML_PROFILE") or os.environ.get("NTRUTH_MODEL_PROFILE_PATH")
     if explicit:
         return Path(explicit).expanduser()
 
     checkout = _repo_root() / "models" / "configs" / DEFAULT_PROFILE_FILENAME
     if checkout.is_file():
         return checkout
-    bundled = (
-        Path(__file__).resolve().parents[1]
-        / "_bundled"
-        / "models"
-        / DEFAULT_PROFILE_FILENAME
-    )
+    bundled = Path(__file__).resolve().parents[1] / "_bundled" / "models" / DEFAULT_PROFILE_FILENAME
     return bundled
 
 
@@ -105,8 +97,7 @@ def resolve_provider() -> ModelProvider:
     if raw == "generic":
         return ModelProvider.GENERIC
     raise ModelRegistryError(
-        f"NTRUTH_MODEL_PROVIDER non supportato: {raw!r} "
-        "(attesi granite|legacy_qwen|generic)"
+        f"NTRUTH_MODEL_PROVIDER non supportato: {raw!r} (attesi granite|legacy_qwen|generic)"
     )
 
 
@@ -205,10 +196,7 @@ def _sync_and_verify_ledger(
                 if rebuild_json_mirror:
                     temporary = registry_file.with_suffix(registry_file.suffix + ".tmp")
                     temporary.write_text(
-                        json.dumps(
-                            payload, ensure_ascii=False, indent=2, sort_keys=True
-                        )
-                        + "\n",
+                        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
                         encoding="utf-8",
                     )
                     temporary.replace(registry_file)
@@ -400,7 +388,9 @@ def evaluate_qualification_against_artifact(
     effective_runtime = runtime
     effective_scientific = scientific
 
-    if isinstance(binding, dict) and any(binding.get(k) is not None for k in ARTIFACT_FINGERPRINT_KEYS):
+    if isinstance(binding, dict) and any(
+        binding.get(k) is not None for k in ARTIFACT_FINGERPRINT_KEYS
+    ):
         qualified = artifact_fingerprint(binding)
         if not fingerprints_equal(qualified, current):
             for key in ARTIFACT_FINGERPRINT_KEYS:
@@ -639,9 +629,7 @@ def claim_gates(registry: dict[str, Any] | None = None) -> dict[str, dict[str, A
         "exploratory_benchmark": evaluate_claim_gate("exploratory_benchmark", registry),
         "internal_pilot": evaluate_claim_gate("internal_pilot", registry),
         "external_validation": evaluate_claim_gate("external_validation", registry),
-        "scientifically_releasable": evaluate_claim_gate(
-            "scientifically_releasable", registry
-        ),
+        "scientifically_releasable": evaluate_claim_gate("scientifically_releasable", registry),
     }
 
 
@@ -823,9 +811,9 @@ __all__ = [
     "DEFAULT_MODEL_ID",
     "DEFAULT_PROFILE_FILENAME",
     "DEFAULT_PROVIDER",
+    "REGISTRY_SCHEMA_VERSION",
     "MigrationStatus",
     "ModelRegistryError",
-    "REGISTRY_SCHEMA_VERSION",
     "RuntimeQualificationStatus",
     "ScientificValidationStatus",
     "active_entry",

@@ -540,9 +540,7 @@ def create_app() -> Any:
                     status_code=409,
                     detail={
                         "code": "plan_execution_gold_mismatch",
-                        "message": (
-                            "gold.plan_execution.record_id non coincide con il candidato"
-                        ),
+                        "message": ("gold.plan_execution.record_id non coincide con il candidato"),
                     },
                 )
             if candidate.content_checksum != plan_execution_checksum:

@@ -466,9 +466,7 @@ class StorageDatabase:
             ).fetchall()
         else:
             if status not in {"candidate", "adjudicated_gold"}:
-                raise StorageIntegrityError(
-                    f"status plan_execution non ammesso: {status!r}"
-                )
+                raise StorageIntegrityError(f"status plan_execution non ammesso: {status!r}")
             rows = self.connection.execute(
                 """
                 SELECT * FROM plan_execution_records
@@ -499,13 +497,10 @@ class StorageDatabase:
                 (candidate_id,),
             ).fetchone()
             if candidate_row is None:
-                raise StorageIntegrityError(
-                    f"candidato plan_execution assente: {candidate_id}"
-                )
+                raise StorageIntegrityError(f"candidato plan_execution assente: {candidate_id}")
             if str(candidate_row["status"]) != "candidate":
                 raise StorageIntegrityError(
-                    f"record {candidate_id} non e un candidato (status="
-                    f"{candidate_row['status']!r})"
+                    f"record {candidate_id} non e un candidato (status={candidate_row['status']!r})"
                 )
 
             existing_gold = self.connection.execute(
@@ -517,8 +512,7 @@ class StorageDatabase:
             ).fetchone()
             if existing_gold is not None:
                 raise StorageIntegrityError(
-                    f"gold gia presente per candidato {candidate_id}: "
-                    f"{existing_gold['record_id']}"
+                    f"gold gia presente per candidato {candidate_id}: {existing_gold['record_id']}"
                 )
 
             project_id = str(candidate_row["project_id"])
@@ -684,9 +678,7 @@ def _plan_execution_from_row(row: sqlite3.Row) -> PlanExecutionStorageRecord:
         payload_json=str(row["payload_json"]),
         actor_role=str(row["actor_role"]) if row["actor_role"] is not None else None,
         parent_candidate_id=(
-            str(row["parent_candidate_id"])
-            if row["parent_candidate_id"] is not None
-            else None
+            str(row["parent_candidate_id"]) if row["parent_candidate_id"] is not None else None
         ),
         created_at=str(row["created_at"]),
     )

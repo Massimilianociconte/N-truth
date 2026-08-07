@@ -230,13 +230,13 @@ def benchmark_resources(
     deterministici. Non inventa picchi: senza misure complete fallisce.
     """
 
+    from ntruth.runtime_resources.schema import RuntimeProfileName
     from ntruth.training.mlx_runtime import load_profile
     from ntruth.training.runtime_benchmark import (
         DEFAULT_WORKLOADS,
         ProfileWorkload,
         run_full_runtime_benchmark,
     )
-    from ntruth.runtime_resources.schema import RuntimeProfileName
 
     try:
         loaded = load_profile(profile.resolve())
@@ -246,7 +246,7 @@ def benchmark_resources(
             else (repo.resolve() / loaded["model"]["local_path"]).resolve()
         )
         if quick:
-            workloads = (
+            workloads: tuple[ProfileWorkload, ...] = (
                 ProfileWorkload(
                     RuntimeProfileName.LOW_MEMORY,
                     prompt_chars=800,

@@ -191,11 +191,7 @@ class GraniteBackend(ModelBackend):
     def _prepare_messages(self, request: GenerationRequest) -> list[dict[str, str]]:
         messages = [dict(m) for m in request.messages]
         if request.task_tag:
-            tag = (
-                request.task_tag
-                if request.task_tag.startswith("<")
-                else f"<{request.task_tag}>"
-            )
+            tag = request.task_tag if request.task_tag.startswith("<") else f"<{request.task_tag}>"
             messages = [
                 {
                     "role": "system",

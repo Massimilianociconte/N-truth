@@ -167,8 +167,8 @@ def test_profile_has_consistent_storage_budget(tmp_path: Path) -> None:
 
 
 def test_default_profile_is_granite_not_qwen() -> None:
-    from ntruth.model_backends.registry import DEFAULT_MODEL_ID, resolve_provider
     from ntruth.model_backends.base import ModelProvider
+    from ntruth.model_backends.registry import DEFAULT_MODEL_ID, resolve_provider
 
     assert resolve_provider() is ModelProvider.GRANITE
     assert DEFAULT_MODEL_ID == "ibm-granite/granite-4.1-3b"

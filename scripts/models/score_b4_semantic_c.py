@@ -107,7 +107,6 @@ def recover_full_predictions_c(
     sys.path.insert(0, str(REPO / "scripts" / "models"))
     from run_b4_constrained_matrix import (  # type: ignore
         _build_messages,
-        compute_max_tokens_budget,
     )
 
     cases = _load_cases()
@@ -119,9 +118,7 @@ def recover_full_predictions_c(
 
     for stage in stages:
         matrix = _load_matrix(stage)
-        budget = matrix.get("max_tokens") or matrix.get("token_budget", {}).get(
-            "max_tokens"
-        )
+        budget = matrix.get("max_tokens") or matrix.get("token_budget", {}).get("max_tokens")
         for row in matrix["conditions"]["C"]["rows"]:
             case_id = row["case_id"]
             text = row.get("raw_preview") or ""
@@ -185,9 +182,7 @@ def recover_full_predictions_c(
         print(f"Recovery C full text for {sum(len(v) for v in need_recovery.values())} rows…")
         profile = load_profile(PROFILE)
         model_path = (REPO / profile["model"]["local_path"]).resolve()
-        backend = create_model_backend(
-            model_path=model_path, profile=profile, max_tokens=2048
-        )
+        backend = create_model_backend(model_path=model_path, profile=profile, max_tokens=2048)
         backend.load()
         try:
             for stage, case_ids in need_recovery.items():
@@ -203,9 +198,7 @@ def recover_full_predictions_c(
                 schema_cls = stage_schema(stage)
                 for case_id in case_ids:
                     case = evals[case_id]
-                    messages = _build_messages(
-                        case, demos, stage=stage, few_shot=False
-                    )
+                    messages = _build_messages(case, demos, stage=stage, few_shot=False)
                     gen = backend.generate_structured(
                         GenerationRequest(
                             messages=messages,
@@ -353,9 +346,7 @@ def run_scoring(*, frozen_path: Path) -> dict[str, Any]:
             "mean_primary_f1_a_content_if_json": (
                 sum(a_primary) / len(a_primary) if a_primary else None
             ),
-            "mean_primary_f1_c_all_case": (
-                sum(c_primary) / len(c_primary) if c_primary else None
-            ),
+            "mean_primary_f1_c_all_case": (sum(c_primary) / len(c_primary) if c_primary else None),
             "empty_rate_a_among_comparable": empty_a / comparable if comparable else None,
             "empty_rate_c_among_comparable": empty_c / comparable if comparable else None,
             "diagnostic_only": True,
@@ -393,14 +384,13 @@ def write_markdown(report: dict[str, Any], path: Path) -> None:
         a = agg["all_case_score"]["primary_f1"]
         c = agg["complete_output_score"]["primary_f1"]
         empty = agg["all_case_score"]["empty_output_rate"]
+
         def fmt(x: dict) -> str:
             if x.get("mean") is None:
                 return "n/a"
             return f"{x['mean']:.3f} [{x['low']:.3f}, {x['high']:.3f}] (n={x['n']})"
 
-        lines.append(
-            f"| {stage} | {fmt(a)} | {fmt(c)} | {100*empty:.1f}% |"
-        )
+        lines.append(f"| {stage} | {fmt(a)} | {fmt(c)} | {100 * empty:.1f}% |")
     lines.append("")
     lines.append("## Failure taxonomy (top)")
     lines.append("")
@@ -459,9 +449,7 @@ def main() -> int:
     if args.skip_recovery and (CONSTR / "predictions-C-frozen.jsonl").is_file():
         frozen = CONSTR / "predictions-C-frozen.jsonl"
     else:
-        frozen = recover_full_predictions_c(
-            stages=list(STAGES), force_rerun=args.force_recovery
-        )
+        frozen = recover_full_predictions_c(stages=list(STAGES), force_rerun=args.force_recovery)
 
     report = run_scoring(frozen_path=frozen)
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
@@ -498,12 +486,17 @@ def main() -> int:
         json.dumps(fp_manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
 
-    print(json.dumps({
-        "decision": report["decision"]["decision"],
-        "overall_f1": report["decision"]["overall_primary_f1_all_case_mean"],
-        "report": str(md_path.relative_to(REPO)),
-        "json": str(latest.relative_to(REPO)),
-    }, indent=2))
+    print(
+        json.dumps(
+            {
+                "decision": report["decision"]["decision"],
+                "overall_f1": report["decision"]["overall_primary_f1_all_case_mean"],
+                "report": str(md_path.relative_to(REPO)),
+                "json": str(latest.relative_to(REPO)),
+            },
+            indent=2,
+        )
+    )
     return 0
 
 

@@ -11,9 +11,10 @@ sul paper (PRD Train A / ADR-0002).
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any, Mapping, Sequence, Type
+from typing import Any
 
 
 class ModelProvider(StrEnum):
@@ -75,7 +76,7 @@ class GenerationRequest:
     task_tag: str | None = None
     schema_name: str | None = None
     # Reserved for a later constrained-decoding cluster; backends must fail closed.
-    output_schema: Type[Any] | str | None = None
+    output_schema: type[Any] | str | None = None
     constrained: bool = False
     sampling: SamplingConfig | None = None
 
@@ -162,9 +163,7 @@ class ModelBackend(ABC):
     ) -> str:
         """Default: non implementato; i backend concreti lo sovrascrivono."""
 
-        raise NotImplementedError(
-            f"{type(self).__name__} non implementa apply_chat_template"
-        )
+        raise NotImplementedError(f"{type(self).__name__} non implementa apply_chat_template")
 
 
 # Output policy reminder embedded for code search / audits.

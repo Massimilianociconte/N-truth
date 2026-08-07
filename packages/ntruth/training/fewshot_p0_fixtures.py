@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Iterable, Sequence
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from ntruth.parser_ai.contract import (
     CandidateEdge,
@@ -39,7 +39,7 @@ from ntruth.parser_ai.stages import (
     validate_candidate_graph_pair,
 )
 from ntruth.schemas.core import EvidenceType
-from ntruth.schemas.experiment import CountKind, CountQuantifier, LifecycleStatus
+from ntruth.schemas.experiment import CountKind, CountQuantifier
 from ntruth.schemas.graph import NodeType, RelationType
 
 FixtureKind = Literal[
@@ -411,13 +411,13 @@ def _family_counts() -> list[dict[str, Any]]:
         ),
     ]
     for spec in specs:
-        case_id = spec[0]
+        case_id = cast(str, spec[0])
         split = spec[1]
-        text = spec[2]
-        span = spec[3]
+        text = cast(str, spec[2])
+        span = cast(str, spec[3])
         value = spec[4]
-        unit = spec[5]
-        label = spec[6]
+        unit = cast(NodeType, spec[5])
+        label = cast(str, spec[6])
         quant = spec[7] if len(spec) > 7 else CountQuantifier.EXACT
         lo = spec[8] if len(spec) > 8 else None
         hi = spec[9] if len(spec) > 9 else None
@@ -684,6 +684,8 @@ def _family_factor_endpoint_relations() -> list[dict[str, Any]]:
         file_id = f"file-{case_id}"
         # same span ok if identical text
         ea = _span(evidence_id=f"ev-{case_id}-a", file_id=file_id, text=span_a, full=text)
+        spans: tuple[ParserAIEvidenceSpan, ...]
+        edge_ev: tuple[str, ...]
         if span_b != span_a:
             eb = _span(evidence_id=f"ev-{case_id}-b", file_id=file_id, text=span_b, full=text)
             spans = (ea, eb)
@@ -794,7 +796,7 @@ def _family_full_graph_and_contradiction() -> list[dict[str, Any]]:
         parts = [s.strip() for s in text.replace(". ", ".|").split("|") if s.strip()]
         spans = []
         for i, part in enumerate(parts[:3]):
-            snippet = part if part.endswith(".") else part
+            snippet = part
             # ensure substring exists
             if snippet not in text:
                 snippet = text[: min(40, len(text))]
@@ -816,7 +818,9 @@ def _family_full_graph_and_contradiction() -> list[dict[str, Any]]:
         n_parent = CandidateNode(
             node_id=f"node-{case_id}-parent",
             block_id=block.block_id,
-            node_type=_node_type(NodeType.HUMAN_DONOR if "donor" in text.lower() else NodeType.ANIMAL),
+            node_type=_node_type(
+                NodeType.HUMAN_DONOR if "donor" in text.lower() else NodeType.ANIMAL
+            ),
             label="primary units",
             evidence_ids=(e0.evidence_id,),
             confidence=0.88,

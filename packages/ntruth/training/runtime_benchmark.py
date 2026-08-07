@@ -65,17 +65,21 @@ class ProfileWorkload:
 # Workload conservativi ma distinti per profilo. Non sono claim di qualita:
 # servono a stressare context/generate entro i limiti del profilo.
 DEFAULT_WORKLOADS: tuple[ProfileWorkload, ...] = (
-    ProfileWorkload(RuntimeProfileName.LOW_MEMORY, prompt_chars=2_500, max_new_tokens=64, replicates=3),
-    ProfileWorkload(RuntimeProfileName.BALANCED, prompt_chars=6_000, max_new_tokens=128, replicates=3),
-    ProfileWorkload(RuntimeProfileName.QUALITY, prompt_chars=12_000, max_new_tokens=192, replicates=3),
+    ProfileWorkload(
+        RuntimeProfileName.LOW_MEMORY, prompt_chars=2_500, max_new_tokens=64, replicates=3
+    ),
+    ProfileWorkload(
+        RuntimeProfileName.BALANCED, prompt_chars=6_000, max_new_tokens=128, replicates=3
+    ),
+    ProfileWorkload(
+        RuntimeProfileName.QUALITY, prompt_chars=12_000, max_new_tokens=192, replicates=3
+    ),
 )
 
 
 def _stable_benchmark_id(*, machine_model: str, memory_bytes: int, measured_at: datetime) -> str:
     stamp = measured_at.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
-    digest = hashlib.sha256(
-        f"{machine_model}\0{memory_bytes}\0{stamp}".encode()
-    ).hexdigest()[:10]
+    digest = hashlib.sha256(f"{machine_model}\0{memory_bytes}\0{stamp}".encode()).hexdigest()[:10]
     return f"{DEFAULT_BENCHMARK_PREFIX}-{stamp}-{digest}"
 
 
@@ -101,9 +105,7 @@ def _resource_deltas(
     peak_values = [
         s.peak_resident_ram_bytes for s in snaps if s.peak_resident_ram_bytes is not None
     ]
-    swap_values = [
-        s.system_swap_used_bytes for s in snaps if s.system_swap_used_bytes is not None
-    ]
+    swap_values = [s.system_swap_used_bytes for s in snaps if s.system_swap_used_bytes is not None]
     if not rss_values or not peak_values or not swap_values:
         raise MLXPipelineError(
             "misure RAM/swap incomplete: impossibile produrre un budget reale fail-closed"
@@ -168,7 +170,9 @@ def measure_mlx_stage_observations(
     sampler = make_sampler(temp=0.0)
     # Warm Metal kernels without counting as profile generate.
     warm_prompt = _synthetic_prompt(512, label="warmup")
-    _ = generate(model, tokenizer, prompt=warm_prompt, max_tokens=16, sampler=sampler, verbose=False)
+    _ = generate(
+        model, tokenizer, prompt=warm_prompt, max_tokens=16, sampler=sampler, verbose=False
+    )
     load_latency_ms = (time.perf_counter() - load_started) * 1000.0
     after_load_rss, after_load_peak_rss, after_load_ru, after_load_swap = _resource_deltas(
         probe, samples=5
@@ -207,7 +211,7 @@ def measure_mlx_stage_observations(
                 max_tokens = min(workload.max_new_tokens, profile.reserved_output_tokens)
 
                 _stabilize(0.4)
-                base_rss, _, base_peak, base_swap = _resource_deltas(probe, samples=3)
+                base_rss, _, _base_peak, base_swap = _resource_deltas(probe, samples=3)
                 started = time.perf_counter()
                 # Campiona RSS durante la generazione con un thread-free loop:
                 # generate e sincrono; misuriamo prima/dopo e ru_maxrss.
@@ -308,7 +312,9 @@ def measure_cpu_stage_observations(
 
     observations: list[StageBenchmarkObservation] = []
     raw: list[dict[str, Any]] = []
-    root = Path(work_root) if work_root is not None else Path(tempfile.mkdtemp(prefix="ntruth-bench-"))
+    root = (
+        Path(work_root) if work_root is not None else Path(tempfile.mkdtemp(prefix="ntruth-bench-"))
+    )
     root.mkdir(parents=True, exist_ok=True)
 
     def _run_analysis() -> Any:
@@ -390,9 +396,7 @@ def build_budget_from_observations(
         if item.benchmark_id != identity.benchmark_id:
             raise MLXPipelineError("observation con benchmark_id diverso dall'identity")
         groups.setdefault((item.profile, item.stage_id), []).append(item)
-    stages = tuple(
-        derive_stage_budget(identity, tuple(items)) for items in groups.values()
-    )
+    stages = tuple(derive_stage_budget(identity, tuple(items)) for items in groups.values())
     return RuntimeResourceBudget(identity=identity, stages=stages)
 
 
@@ -484,9 +488,7 @@ def run_full_runtime_benchmark(
         "mlx_raw": mlx_raw,
         "cpu_raw": cpu_raw,
         "budget_path": str(budget_path),
-        "budget_stage_keys": [
-            f"{stage.profile.value}/{stage.stage_id}" for stage in budget.stages
-        ],
+        "budget_stage_keys": [f"{stage.profile.value}/{stage.stage_id}" for stage in budget.stages],
         "quality_notes": [
             "Envelope per stage = massimi osservati (derive_stage_budget).",
             "additional_peak_ram_bytes include footprint modello per fail-closed sequenziale.",
@@ -513,11 +515,11 @@ def run_full_runtime_benchmark(
 __all__ = [
     "DEFAULT_WORKLOADS",
     "PROTOCOL_VERSION",
-    "ProfileWorkload",
     "STAGE_HARD",
     "STAGE_MLX_GENERATE",
     "STAGE_RULES",
     "STAGE_SEMANTIC",
+    "ProfileWorkload",
     "build_budget_from_observations",
     "measure_cpu_stage_observations",
     "measure_mlx_stage_observations",

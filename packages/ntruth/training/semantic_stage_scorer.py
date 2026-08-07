@@ -9,12 +9,10 @@ I 39 casi hanno ruolo DEVELOPMENT / B4_CONSTRAINED_DEV.
 from __future__ import annotations
 
 import json
-import math
 import random
 import re
 from collections import Counter, defaultdict
-from collections.abc import Iterable, Sequence
-from dataclasses import dataclass, field
+from collections.abc import Sequence
 from typing import Any, Literal
 
 SCORER_VERSION = "1.0.0"
@@ -63,11 +61,7 @@ def _norm_text(value: str | None) -> str:
 def _prf(tp: int, fp: int, fn: int) -> dict[str, float | int]:
     precision = tp / (tp + fp) if tp + fp else float(fn == 0 and fp == 0)
     recall = tp / (tp + fn) if tp + fn else float(fp == 0 and tp == 0)
-    f1 = (
-        2.0 * precision * recall / (precision + recall)
-        if precision + recall
-        else 0.0
-    )
+    f1 = 2.0 * precision * recall / (precision + recall) if precision + recall else 0.0
     return {
         "true_positive": tp,
         "false_positive": fp,
@@ -186,9 +180,7 @@ def gold_count_items(case: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def gold_relation_items(case: dict[str, Any]) -> list[dict[str, Any]]:
-    nodes = {
-        n.get("node_id"): n for n in (case["gold"].get("candidate_nodes") or [])
-    }
+    nodes = {n.get("node_id"): n for n in (case["gold"].get("candidate_nodes") or [])}
     items = []
     for edge in case["gold"].get("candidate_edges") or []:
         rel = edge.get("relation_type")
@@ -201,9 +193,9 @@ def gold_relation_items(case: dict[str, Any]) -> list[dict[str, Any]]:
             {
                 "source_label": src.get("label") or edge.get("source_id") or "",
                 "target_label": tgt.get("label") or edge.get("target_id") or "",
-                "relation_type": rel if rel in DECISIVE_RELATIONS or rel in {
-                    "nested_in", "derived_from", "other"
-                } else "other",
+                "relation_type": rel
+                if rel in DECISIVE_RELATIONS or rel in {"nested_in", "derived_from", "other"}
+                else "other",
                 "evidence_ids": list(edge.get("evidence_ids") or []),
             }
         )
@@ -305,12 +297,8 @@ def pred_graph_payload(payload: dict[str, Any] | None) -> dict[str, Any]:
         "counts": pred_count_items(payload),
         "relations": pred_relation_items(payload),
         "evidence_spans": pred_evidence_items(payload),
-        "factors": [
-            f for f in (payload.get("factors") or []) if isinstance(f, dict)
-        ],
-        "endpoints": [
-            e for e in (payload.get("endpoints") or []) if isinstance(e, dict)
-        ],
+        "factors": [f for f in (payload.get("factors") or []) if isinstance(f, dict)],
+        "endpoints": [e for e in (payload.get("endpoints") or []) if isinstance(e, dict)],
         "missing_fact_predicates": list(payload.get("missing_fact_predicates") or []),
     }
 
@@ -408,26 +396,18 @@ def match_entities(
         gp = {lab for lab, ty in gold_exact if ty == t}
         pp = {lab for lab, ty in pred_exact if ty == t}
         type_rows.append({"type": t, **_set_prf(pp, gp)})
-    macro_f1 = (
-        sum(float(r["f1"]) for r in type_rows) / len(type_rows) if type_rows else 0.0
-    )
+    macro_f1 = sum(float(r["f1"]) for r in type_rows) / len(type_rows) if type_rows else 0.0
     return {
         "exact": exact,
         "relaxed": relaxed,
         "type_macro_f1": macro_f1,
         "type_rows": type_rows,
-        "hallucinated_entity_rate": (
-            float(exact["false_positive"]) / len(pred) if pred else 0.0
-        ),
-        "missed_entity_rate": (
-            float(exact["false_negative"]) / len(gold) if gold else 0.0
-        ),
+        "hallucinated_entity_rate": (float(exact["false_positive"]) / len(pred) if pred else 0.0),
+        "missed_entity_rate": (float(exact["false_negative"]) / len(gold) if gold else 0.0),
     }
 
 
-def match_counts(
-    pred: Sequence[dict[str, Any]], gold: Sequence[dict[str, Any]]
-) -> dict[str, Any]:
+def match_counts(pred: Sequence[dict[str, Any]], gold: Sequence[dict[str, Any]]) -> dict[str, Any]:
     """Match greedy on (value, quantifier) then score attributes."""
 
     if not gold and not pred:
@@ -489,7 +469,7 @@ def match_counts(
             continue
         if g.get("quantifier") in {"NOT_REPORTED", "UNKNOWN"} and g.get("value") is None:
             # look for any unmatched pred with same quantifier
-            for pi, p in enumerate(pred):
+            for _pi, p in enumerate(pred):
                 if _norm_text(str(p.get("quantifier"))) == _norm_text(str(g.get("quantifier"))):
                     matched += 1
                     quant_ok += 1
@@ -543,20 +523,13 @@ def match_relations(
         fwd = key(p, directed=True)
         if rev in gold_dir and fwd not in gold_dir:
             direction_errors += 1
-    types = sorted(
-        {_norm_text(r.get("relation_type")) for r in list(pred) + list(gold)} - {""}
-    )
+    types = sorted({_norm_text(r.get("relation_type")) for r in list(pred) + list(gold)} - {""})
     type_rows = []
     for t in types:
         gp = {key(r) for r in gold if _norm_text(r.get("relation_type")) == t}
         pp = {key(r) for r in pred if _norm_text(r.get("relation_type")) == t}
         type_rows.append({"type": t, **_set_prf(pp, gp)})
     macro = sum(float(r["f1"]) for r in type_rows) / len(type_rows) if type_rows else 0.0
-    # decisive subset
-    gold_dec = [r for r in gold if _norm_text(r.get("relation_type")) in DECISIVE_RELATIONS
-                or r.get("relation_type") in DECISIVE_RELATIONS]
-    pred_dec = [r for r in pred if _norm_text(r.get("relation_type")) in DECISIVE_RELATIONS
-                or r.get("relation_type") in DECISIVE_RELATIONS]
     # our stage schema only has nested_in/derived_from/other — map
     gold_dec_keys = {
         key(r)
@@ -585,15 +558,11 @@ def match_relations(
         "direction_error_rate": direction_errors / len(pred) if pred else 0.0,
         "decisive_edge_metrics": decisive,
         "dangling_reference_rate": dangling / len(pred) if pred else 0.0,
-        "duplicate_edge_rate": (
-            1.0 - (len(pred_dir) / len(pred)) if pred else 0.0
-        ),
+        "duplicate_edge_rate": (1.0 - (len(pred_dir) / len(pred)) if pred else 0.0),
     }
 
 
-def match_graph_minimal(
-    pred: dict[str, Any], gold_case: dict[str, Any]
-) -> dict[str, Any]:
+def match_graph_minimal(pred: dict[str, Any], gold_case: dict[str, Any]) -> dict[str, Any]:
     g_ent = gold_entity_items(gold_case)
     g_rel = gold_relation_items(gold_case)
     g_ev = gold_evidence_items(gold_case)
@@ -672,10 +641,9 @@ def classify_failures(
             add("MISSED_EVIDENCE", f"fn={exact.get('false_negative')}")
         if int(exact.get("false_positive") or 0) > 0:
             add("HALLUCINATED_EVIDENCE", f"fp={exact.get('false_positive')}")
-        if (
-            float(exact.get("f1") or 0) < 1.0
-            and float((metrics.get("overlap_span") or {}).get("f1") or 0) > float(exact.get("f1") or 0)
-        ):
+        if float(exact.get("f1") or 0) < 1.0 and float(
+            (metrics.get("overlap_span") or {}).get("f1") or 0
+        ) > float(exact.get("f1") or 0):
             add("WRONG_ENTITY_BOUNDARY", "overlap better than exact (boundary mismatch)")
         if p and g and float(exact.get("f1") or 0) == 0:
             add("CORRECT_SCHEMA_WRONG_CONTENT", "schema ok, zero exact span match")
@@ -691,7 +659,10 @@ def classify_failures(
         if int((ent.get("exact") or {}).get("false_negative") or 0) > 0:
             add("MISSED_EVIDENCE", f"missed entities fn={ent['exact']['false_negative']}")
         if int((ent.get("exact") or {}).get("false_positive") or 0) > 0:
-            add("HALLUCINATED_EVIDENCE", f"hallucinated entities fp={ent['exact']['false_positive']}")
+            add(
+                "HALLUCINATED_EVIDENCE",
+                f"hallucinated entities fp={ent['exact']['false_positive']}",
+            )
         if float(ent.get("hallucinated_entity_rate") or 0) > 0:
             add("WRONG_ENTITY_TYPE", "type or label mismatch contributing to FP")
         if gc and float(cnt.get("value_exact_accuracy") or 0) < 1.0:
@@ -726,14 +697,16 @@ def classify_failures(
             add("ENTITY_ID_MISMATCH", "dangling source/target labels")
 
     elif stage == "candidate_graph_minimal":
-        g = metrics.get("graph") or {}
-        if g.get("empty_output_bias"):
+        graph_m = metrics.get("graph") or {}
+        if graph_m.get("empty_output_bias"):
             add("EMPTY_OUTPUT_BIAS", "empty graph with non-empty gold")
             add("UNDER_EXTRACTION", "empty minimal graph")
-        if float((g.get("nodes") or {}).get("f1") or 0) < 1.0:
-            add("CORRECT_SCHEMA_WRONG_CONTENT", f"node_f1={g.get('nodes', {}).get('f1')}")
-        if float((g.get("edges") or {}).get("f1") or 0) < 1.0 and gold_relation_items(gold_case):
-            add("MISSING_REQUIRED_RELATION", f"edge_f1={g.get('edges', {}).get('f1')}")
+        if float((graph_m.get("nodes") or {}).get("f1") or 0) < 1.0:
+            add("CORRECT_SCHEMA_WRONG_CONTENT", f"node_f1={graph_m.get('nodes', {}).get('f1')}")
+        if float((graph_m.get("edges") or {}).get("f1") or 0) < 1.0 and gold_relation_items(
+            gold_case
+        ):
+            add("MISSING_REQUIRED_RELATION", f"edge_f1={graph_m.get('edges', {}).get('f1')}")
 
     return failures
 
@@ -799,9 +772,7 @@ def score_case_stage(
     if stage == "evidence_extraction":
         g, p = gold_evidence_items(case), pred_evidence_items(payload)
         metrics["exact_span"] = match_spans_exact(p, g) if complete else _zero_prf(g, p)
-        metrics["overlap_span"] = (
-            match_spans_overlap(p, g) if complete else _zero_prf(g, p)
-        )
+        metrics["overlap_span"] = match_spans_overlap(p, g) if complete else _zero_prf(g, p)
         metrics["empty_lists"] = complete and len(p) == 0
         metrics["unsupported_evidence_rate"] = (
             float(metrics["exact_span"]["false_positive"]) / len(p) if p else 0.0
@@ -856,9 +827,7 @@ def score_case_stage(
             }
         metrics["empty_lists"] = complete and len(pr) == 0
         metrics["primary_f1"] = float(metrics["relations"]["directed_edge"]["f1"])
-        metrics["decisive_f1"] = float(
-            metrics["relations"]["decisive_edge_metrics"]["f1"]
-        )
+        metrics["decisive_f1"] = float(metrics["relations"]["decisive_edge_metrics"]["f1"])
 
     elif stage == "candidate_graph_minimal":
         if complete:
@@ -873,12 +842,9 @@ def score_case_stage(
                 "empty_output_bias": True,
                 "referential_integrity": False,
             }
-        metrics["empty_lists"] = bool(
-            complete and metrics["graph"].get("empty_output_bias")
-        )
+        metrics["empty_lists"] = bool(complete and metrics["graph"].get("empty_output_bias"))
         metrics["primary_f1"] = (
-            float(metrics["graph"]["nodes"]["f1"])
-            + float(metrics["graph"]["edges"]["f1"])
+            float(metrics["graph"]["nodes"]["f1"]) + float(metrics["graph"]["edges"]["f1"])
         ) / 2.0
     else:
         raise ValueError(f"stage sconosciuto: {stage}")
@@ -887,9 +853,7 @@ def score_case_stage(
         stage=stage, gold_case=case, payload=payload, metrics=metrics
     )
     # ALL-CASE primary: zero if incomplete
-    metrics["primary_f1_all_case"] = (
-        float(metrics["primary_f1"]) if complete else 0.0
-    )
+    metrics["primary_f1_all_case"] = float(metrics["primary_f1"]) if complete else 0.0
     return metrics
 
 
@@ -906,9 +870,9 @@ def aggregate_stage_scores(
     all_rows = list(case_scores)
 
     def collect(rows: Sequence[dict[str, Any]], key: str) -> list[float]:
-        out = []
+        out: list[float] = []
         for r in rows:
-            val = r
+            val: Any = r
             for part in key.split("."):
                 if not isinstance(val, dict):
                     val = None
@@ -921,9 +885,7 @@ def aggregate_stage_scores(
     primary_complete = collect(complete, "primary_f1")
     primary_all = collect(all_rows, "primary_f1_all_case")
     empty_rate_complete = (
-        sum(1 for c in complete if c.get("empty_lists")) / len(complete)
-        if complete
-        else None
+        sum(1 for c in complete if c.get("empty_lists")) / len(complete) if complete else None
     )
     empty_rate_all = sum(1 for c in all_rows if c.get("empty_lists")) / len(all_rows)
 
@@ -954,8 +916,7 @@ def aggregate_stage_scores(
             "empty_output_rate": empty_rate_all,
         },
         "by_kind_all_case_f1": {
-            kind: bootstrap_ci(vals, seed=seed + 2)
-            for kind, vals in sorted(by_kind.items())
+            kind: bootstrap_ci(vals, seed=seed + 2) for kind, vals in sorted(by_kind.items())
         },
         "failure_taxonomy": {
             "counts": dict(fail_counter.most_common()),

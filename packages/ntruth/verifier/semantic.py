@@ -33,6 +33,7 @@ desiderato, in ``VerifierResult`` del parser stage.
 
 from __future__ import annotations
 
+import itertools
 from collections.abc import Mapping, Sequence
 from enum import StrEnum
 from typing import Literal, Self
@@ -110,7 +111,9 @@ class SemanticVerificationResult(FrozenModel):
     @model_validator(mode="after")
     def _status_matches_checks(self) -> Self:
         blocking_failed = [
-            item.code for item in self.checks if item.severity is SemanticCheckSeverity.BLOCKING and not item.passed
+            item.code
+            for item in self.checks
+            if item.severity is SemanticCheckSeverity.BLOCKING and not item.passed
         ]
         if tuple(blocking_failed) != self.blocking_failure_codes:
             raise ValueError("blocking_failure_codes incoerente con i check")
@@ -118,7 +121,10 @@ class SemanticVerificationResult(FrozenModel):
             raise ValueError("status=pass con failure blocking")
         if self.can_override_hard_invalid:
             raise ValueError("il semantic verifier non puo override hard-invalid")
-        if self.backend is SemanticBackend.MODEL_PROVISIONAL and self.scientifically_validated_backend:
+        if (
+            self.backend is SemanticBackend.MODEL_PROVISIONAL
+            and self.scientifically_validated_backend
+        ):
             raise ValueError(
                 "model_provisional non puo dichiararsi scientifically_validated_backend"
             )
@@ -256,9 +262,11 @@ def _numeric_lifecycle_consistency(block: ExperimentBlock) -> list[SemanticCheck
         CountKind.ANALYSED_N,
     )
     checks: list[SemanticCheck] = []
-    present = [(kind, values[0]) for kind, values in exact.items() if len(values) == 1 and kind in order]
+    present = [
+        (kind, values[0]) for kind, values in exact.items() if len(values) == 1 and kind in order
+    ]
     present_map = dict(present)
-    for left, right in zip(order, order[1:], strict=False):
+    for left, right in itertools.pairwise(order):
         if left in present_map and right in present_map:
             ok = present_map[left] >= present_map[right]
             checks.append(
@@ -429,11 +437,7 @@ def _determinability_author_assertion_gate(block: ExperimentBlock) -> SemanticCh
             passed=True,
             severity=SemanticCheckSeverity.ADVISORY,
         )
-    types = {
-        span.evidence_type
-        for span in block.evidence
-        if span.evidence_type is not None
-    }
+    types = {span.evidence_type for span in block.evidence if span.evidence_type is not None}
     if types and types <= {EvidenceType.AUTHOR_ASSERTION}:
         return _check(
             check_id="det-author-gate",

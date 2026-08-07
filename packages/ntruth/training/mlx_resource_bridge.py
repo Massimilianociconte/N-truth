@@ -24,6 +24,7 @@ from ntruth.runtime_resources.manager import (
     ComponentFactory,
     ComponentLoadError,
     ResourceProbe,
+    RuntimeComponent,
     RuntimeInput,
     RuntimeResourceManager,
     StageInvocation,
@@ -117,7 +118,7 @@ def _default_mlx_factory(
     adapter_path: Path | None,
     max_tokens: int,
 ) -> ComponentFactory:
-    def factory(device: RuntimeDevice):
+    def factory(device: RuntimeDevice) -> RuntimeComponent:
         from ntruth.training.mlx_component import MLXGenerateComponent
 
         try:
@@ -224,8 +225,7 @@ def run_predict_bundle(
             payload = dict(request)
         else:
             raise MLXPipelineError(
-                f"request[{index}] deve essere str o mapping, ricevuto "
-                f"{type(request).__name__}"
+                f"request[{index}] deve essere str o mapping, ricevuto {type(request).__name__}"
             )
         inputs.append(
             RuntimeInput(

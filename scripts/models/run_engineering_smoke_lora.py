@@ -40,9 +40,7 @@ def assert_gates() -> dict:
     if not prog.get("engineering_smoke_training_allowed"):
         raise SystemExit("engineering_smoke_training_allowed is false")
     if prog.get("substantive_p0_training_allowed"):
-        raise SystemExit(
-            "substantive_p0_training_allowed is true: refuse smoke under wrong gate"
-        )
+        raise SystemExit("substantive_p0_training_allowed is true: refuse smoke under wrong gate")
     if prog.get("current_synthetic_snapshot_status") != "SYN_G1_UNANCHORED":
         print(
             "WARN: snapshot status unexpected:",
@@ -119,7 +117,7 @@ def main() -> int:
             smoke_test=True,
             resume=False,
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         finished_fail = datetime.now(UTC).isoformat().replace("+00:00", "Z")
         fail_doc = {
             **meta,
@@ -138,15 +136,17 @@ def main() -> int:
     # 3) verify adapter exists + constrained still works on base (smoke adapter optional)
     adapter_best = SMOKE_RUN / "best"
     checks = {
-        "run_result_keys": list(result.keys()) if isinstance(result, dict) else type(result).__name__,
+        "run_result_keys": list(result.keys())
+        if isinstance(result, dict)
+        else type(result).__name__,
         "best_dir_exists": adapter_best.is_dir(),
         "best_files": [p.name for p in adapter_best.iterdir()] if adapter_best.is_dir() else [],
     }
     # Outlines on base model still works
     try:
+        from ntruth.model_backends.base import GenerationRequest
         from ntruth.model_backends.constrained import probe_outlines_mlx
         from ntruth.model_backends.factory import create_model_backend
-        from ntruth.model_backends.base import GenerationRequest
         from ntruth.model_backends.stage_schemas import EvidenceExtractionStage
         from ntruth.training.mlx_runtime import load_profile
 
@@ -176,7 +176,7 @@ def main() -> int:
             "truncated": gen.truncated,
         }
         backend.unload()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         checks["constrained_after_smoke_error"] = str(exc)
 
     finished = datetime.now(UTC).isoformat().replace("+00:00", "Z")

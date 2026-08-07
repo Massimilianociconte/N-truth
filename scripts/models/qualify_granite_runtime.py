@@ -116,26 +116,22 @@ def build_fingerprint(
 
 def run_qualification() -> dict[str, Any]:
     sys.path.insert(0, str(REPO / "packages"))
+    import importlib.metadata
+
     from ntruth.model_backends.base import (
         MODEL_MUST_NOT_EMIT,
         GenerationRequest,
     )
     from ntruth.model_backends.factory import create_model_backend
     from ntruth.model_backends.granite import chat_template_fingerprint
+    from ntruth.parser_ai import ParserAIInput
     from ntruth.parser_ai.stages import (
         CandidateGraphSet,
-        StageAuthority,
-        StageName,
-        StageProvenance,
-        StageStatus,
+        validate_candidate_graph_pair,
     )
-    from ntruth.parser_ai import ParserAIInput
-    from ntruth.parser_ai.stages import validate_candidate_graph_pair
     from ntruth.runtime_resources.manager import HostResourceProbe
     from ntruth.training.mlx_dataset import SYSTEM_PROMPT
     from ntruth.training.mlx_runtime import load_profile
-
-    import importlib.metadata
 
     checks: list[dict[str, Any]] = []
     errors: list[str] = []
@@ -152,10 +148,11 @@ def run_qualification() -> dict[str, Any]:
     try:
         snap = probe.snapshot()
         evidence["host"] = {
-            "platform": getattr(snap, "platform", None) or str(getattr(snap, "model_dump", lambda: {})()),
+            "platform": getattr(snap, "platform", None)
+            or str(getattr(snap, "model_dump", lambda: {})()),
             "raw": snap.model_dump(mode="json") if hasattr(snap, "model_dump") else repr(snap),
         }
-    except Exception as exc:  # noqa: BLE001 — collect and continue
+    except Exception as exc:
         evidence["host"] = {"error": str(exc)}
         try:
             import platform
@@ -168,7 +165,7 @@ def run_qualification() -> dict[str, Any]:
                 "hw.memsize_bytes": int(mem),
                 "platform": platform.platform(),
             }
-        except Exception as exc2:  # noqa: BLE001
+        except Exception as exc2:
             evidence["host"] = {"error": f"{exc}; fallback: {exc2}"}
 
     # --- 1. Weights ---
@@ -201,7 +198,7 @@ def run_qualification() -> dict[str, Any]:
 
     try:
         mlx_lm_version = importlib.metadata.version("mlx-lm")
-    except Exception:  # noqa: BLE001
+    except Exception:
         mlx_lm_version = "unknown"
 
     fingerprint = build_fingerprint(
@@ -218,7 +215,7 @@ def run_qualification() -> dict[str, Any]:
         )
     )
 
-    # --- 3–5. Load + template + generation ---
+    # --- 3-5. Load + template + generation ---
     backend = create_model_backend(
         model_path=model_path,
         profile=profile,
@@ -230,7 +227,7 @@ def run_qualification() -> dict[str, Any]:
         backend.load()
         load_ms = (time.perf_counter() - t0) * 1000.0
         checks.append(_check("end_to_end_load", True, f"load_ms={load_ms:.1f}"))
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         checks.append(_check("end_to_end_load", False, str(exc)))
         errors.append(f"load failed: {exc}")
         evidence["ok"] = False
@@ -270,8 +267,12 @@ def run_qualification() -> dict[str, Any]:
             )
         )
         evidence["chat_template_sample"] = rendered[:400]
-        evidence["special_tokens"] = {"eos": eos, "pad": pad, "bos": getattr(tok, "bos_token", None)}
-    except Exception as exc:  # noqa: BLE001
+        evidence["special_tokens"] = {
+            "eos": eos,
+            "pad": pad,
+            "bos": getattr(tok, "bos_token", None),
+        }
+    except Exception as exc:
         checks.append(_check("chat_template_and_stop_conditions_checked", False, str(exc)))
         errors.append(f"chat template: {exc}")
 
@@ -297,7 +298,7 @@ def run_qualification() -> dict[str, Any]:
             "output_tokens": simple.output_tokens,
             "raw": simple.raw,
         }
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         checks.append(_check("end_to_end_inference_success", False, str(exc)))
         errors.append(f"simple generate: {exc}")
 
@@ -380,7 +381,11 @@ def run_qualification() -> dict[str, Any]:
         if parsed is not None:
             # Strip forbidden keys if model hallucinated them — record and reject.
             forbidden_present = sorted(
-                k for k in parsed if k in MODEL_MUST_NOT_EMIT or k in {
+                k
+                for k in parsed
+                if k in MODEL_MUST_NOT_EMIT
+                or k
+                in {
                     "determinability",
                     "verdict",
                     "n",
@@ -402,7 +407,7 @@ def run_qualification() -> dict[str, Any]:
                         f"validated graph_set_id={graph.graph_set_id} "
                         f"stage={graph.stage} authority={graph.provenance.authority}"
                     )
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:
                     # Fallback: validate host-owned empty graph proves contract path.
                     schema_detail = f"model_json_invalid: {exc}"
                     schema_ok = False
@@ -429,10 +434,10 @@ def run_qualification() -> dict[str, Any]:
                         f"empty_graph_ok id={empty.graph_set_id}",
                     )
                 )
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 checks.append(_check("schema_contract_path_verified", False, str(exc)))
                 errors.append(f"schema contract: {exc}")
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         checks.append(_check("structured_output_conforming", False, str(exc)))
         errors.append(f"structured generate: {exc}")
 
@@ -485,7 +490,7 @@ def run_qualification() -> dict[str, Any]:
                 "schema still declares forbidden fields",
             )
             errors.append("schema has forbidden fields")
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         checks.append(_check("parser_cannot_emit_n_or_verdicts", False, str(exc)))
 
     # Load / unload / reload
@@ -515,19 +520,17 @@ def run_qualification() -> dict[str, Any]:
             )
         )
         evidence["reload"] = {"reload_ms": reload_ms, "ping": ping.text}
-    except Exception as exc:  # noqa: BLE001
-        checks.append(
-            _check("no_critical_load_unload_resource_manager_errors", False, str(exc))
-        )
+    except Exception as exc:
+        checks.append(_check("no_critical_load_unload_resource_manager_errors", False, str(exc)))
         errors.append(f"load/unload: {exc}")
 
     # Micro-benchmark (quick, real measures)
     try:
+        from ntruth.runtime_resources.schema import RuntimeProfileName
         from ntruth.training.runtime_benchmark import (
             ProfileWorkload,
             run_full_runtime_benchmark,
         )
-        from ntruth.runtime_resources.schema import RuntimeProfileName
 
         workloads = (
             ProfileWorkload(
@@ -564,7 +567,7 @@ def run_qualification() -> dict[str, Any]:
                 f"benchmark completed type={type(report).__name__}",
             )
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         # Fallback lighter measurement if full harness API differs
         try:
             from mlx_lm import generate, load
@@ -589,8 +592,12 @@ def run_qualification() -> dict[str, Any]:
             evidence["benchmark_fallback"] = {
                 "latency_ms": latency,
                 "output_preview": str(out)[:200],
-                "before": before.model_dump(mode="json") if hasattr(before, "model_dump") else str(before),
-                "after": after.model_dump(mode="json") if hasattr(after, "model_dump") else str(after),
+                "before": before.model_dump(mode="json")
+                if hasattr(before, "model_dump")
+                else str(before),
+                "after": after.model_dump(mode="json")
+                if hasattr(after, "model_dump")
+                else str(after),
             }
             checks.append(
                 _check(
@@ -599,7 +606,7 @@ def run_qualification() -> dict[str, Any]:
                     f"fallback_bench latency_ms={latency:.1f} err={exc}",
                 )
             )
-        except Exception as exc2:  # noqa: BLE001
+        except Exception as exc2:
             checks.append(
                 _check(
                     "initial_benchmark_mac_m5_24gb",
@@ -624,15 +631,16 @@ def run_qualification() -> dict[str, Any]:
     missing = sorted(required - set(by_name))
     failed = sorted(name for name in required if name in by_name and not by_name[name]["ok"])
     # structured_output: allow pass if JSON extracted OR schema path verified
-    if "structured_output_conforming" in failed:
-        if by_name.get("schema_contract_path_verified", {}).get("ok") and evidence.get(
-            "structured_parsed"
-        ) is not None:
-            failed = [f for f in failed if f != "structured_output_conforming"]
-            by_name["structured_output_conforming"]["ok"] = True
-            by_name["structured_output_conforming"]["detail"] += (
-                " | accepted_via_json_extract_and_contract_path"
-            )
+    if (
+        "structured_output_conforming" in failed
+        and by_name.get("schema_contract_path_verified", {}).get("ok")
+        and evidence.get("structured_parsed") is not None
+    ):
+        failed = [f for f in failed if f != "structured_output_conforming"]
+        by_name["structured_output_conforming"]["ok"] = True
+        by_name["structured_output_conforming"]["detail"] += (
+            " | accepted_via_json_extract_and_contract_path"
+        )
 
     all_ok = not missing and not failed and not errors
     evidence["required_failed"] = failed
@@ -699,12 +707,12 @@ def apply_registry_transition(evidence: dict[str, Any]) -> dict[str, Any]:
     # Sync model entry runtime status from authoritative registry after transition
     loaded = load_registry()
     payload = json.loads(path.read_text(encoding="utf-8"))
-    payload["models"]["ibm-granite/granite-4.1-3b"]["runtime_qualification_status"] = (
-        loaded["qualification"]["runtime_qualification_status"]
-    )
-    payload["models"]["ibm-granite/granite-4.1-3b"]["verification_status"] = (
-        loaded["qualification"]["runtime_qualification_status"]
-    )
+    payload["models"]["ibm-granite/granite-4.1-3b"]["runtime_qualification_status"] = loaded[
+        "qualification"
+    ]["runtime_qualification_status"]
+    payload["models"]["ibm-granite/granite-4.1-3b"]["verification_status"] = loaded[
+        "qualification"
+    ]["runtime_qualification_status"]
     payload["updated_at"] = datetime.now(UTC).date().isoformat()
     temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text(
@@ -731,12 +739,20 @@ def main() -> int:
     out.write_text(json.dumps(evidence, indent=2, ensure_ascii=False, sort_keys=True) + "\n")
     latest = EVIDENCE_DIR / "runtime-qualification-latest.json"
     latest.write_text(json.dumps(evidence, indent=2, ensure_ascii=False, sort_keys=True) + "\n")
-    print(json.dumps({"evidence_path": str(out.relative_to(REPO)), "ok": evidence.get("ok"),
-                      "failed": evidence.get("required_failed"),
-                      "missing": evidence.get("required_missing"),
-                      "fingerprint": (evidence.get("qualified_artifact") or {}).get(
-                          "canonical_fingerprint_sha256"
-                      )}, indent=2))
+    print(
+        json.dumps(
+            {
+                "evidence_path": str(out.relative_to(REPO)),
+                "ok": evidence.get("ok"),
+                "failed": evidence.get("required_failed"),
+                "missing": evidence.get("required_missing"),
+                "fingerprint": (evidence.get("qualified_artifact") or {}).get(
+                    "canonical_fingerprint_sha256"
+                ),
+            },
+            indent=2,
+        )
+    )
 
     if not evidence.get("ok"):
         print("QUALIFICATION FAILED — no status transition", file=sys.stderr)

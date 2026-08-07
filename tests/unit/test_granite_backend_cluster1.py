@@ -61,7 +61,7 @@ def test_technical_profile_validates_and_forbids_operational_status() -> None:
 
 def test_granite_missing_weights_explicit_error(tmp_path: Path) -> None:
     backend = GraniteBackend(model_path=tmp_path / "no-such-model")
-    with pytest.raises(ComponentLoadError, match="assenti|missing|pesi"):
+    with pytest.raises(ComponentLoadError, match=r"assenti|missing|pesi"):
         backend.load()
 
 
@@ -103,9 +103,7 @@ def test_granite_load_unload_reload_with_mock(tmp_path: Path) -> None:
     fake_model = object()
     fake_tok = MagicMock()
     fake_tok.encode = lambda text, add_special_tokens=False: [1, 2, 3]
-    fake_tok.apply_chat_template = MagicMock(
-        return_value="<|start_of_role|>user<|end_of_role|>hi"
-    )
+    fake_tok.apply_chat_template = MagicMock(return_value="<|start_of_role|>user<|end_of_role|>hi")
     fake_tok.eos_token = "</s>"
 
     def fake_generate(*_a: Any, **_k: Any) -> str:

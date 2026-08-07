@@ -57,9 +57,7 @@ def detect_unified_memory_bytes() -> int:
             try:
                 value = int(raw)
             except ValueError as exc:
-                raise RuntimeEnvironmentProbeError(
-                    f"hw.memsize non intero: {raw!r}"
-                ) from exc
+                raise RuntimeEnvironmentProbeError(f"hw.memsize non intero: {raw!r}") from exc
             if value > 0:
                 return value
             raise RuntimeEnvironmentProbeError("hw.memsize non positivo")

@@ -34,9 +34,7 @@ def resolve_provider(*, provider: str | None = None) -> ModelProvider:
         return ModelProvider.LEGACY_QWEN
     if raw in {"generic"}:
         return ModelProvider.GENERIC
-    raise ValueError(
-        f"provider sconosciuto: {raw!r}; usare granite | legacy_qwen"
-    )
+    raise ValueError(f"provider sconosciuto: {raw!r}; usare granite | legacy_qwen")
 
 
 def create_model_backend(
@@ -72,7 +70,9 @@ def create_model_backend(
                 or model.get("canonical_model_id")
                 or GRANITE_CANONICAL_MODEL_ID
             ),
-            mlx_repo=str(model.get("repository") or model.get("mlx_repository") or GRANITE_MLX_REPO),
+            mlx_repo=str(
+                model.get("repository") or model.get("mlx_repository") or GRANITE_MLX_REPO
+            ),
             revision=str(model.get("revision") or ""),
             weight_sha256=str(model.get("expected_weight_sha256") or "") or None,
             context_window_tokens=int(

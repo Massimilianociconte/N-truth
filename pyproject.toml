@@ -140,6 +140,8 @@ module = [
     "huggingface_hub.*",
     "mlx_lm",
     "mlx_lm.*",
+    "outlines",
+    "outlines.*",
     "transformers",
     "transformers.*",
 ]

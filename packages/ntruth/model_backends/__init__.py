@@ -29,7 +29,11 @@ from ntruth.model_backends.errors import (
 from ntruth.model_backends.factory import create_model_backend, resolve_provider
 from ntruth.model_backends.granite import GraniteBackend, chat_template_fingerprint
 
+# Alias pubblico: il modello di default coincide con il checkpoint canonico Granite.
+DEFAULT_MODEL_ID = GRANITE_CANONICAL_MODEL_ID
+
 __all__ = [
+    "DEFAULT_MODEL_ID",
     "GRANITE_CANONICAL_MODEL_ID",
     "GRANITE_MLX_REPO",
     "GRANITE_MLX_REVISION",

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import sqlite3
 import threading
 from pathlib import Path
@@ -57,9 +56,7 @@ def test_append_only_triggers_block_update_and_delete(tmp_path: Path) -> None:
         ledger.verify_chain(verify_evidence=True)
 
         with pytest.raises(sqlite3.IntegrityError, match="append-only"):
-            ledger.connection.execute(
-                "UPDATE qualification_transitions SET rationale = 'tamper'"
-            )
+            ledger.connection.execute("UPDATE qualification_transitions SET rationale = 'tamper'")
         with pytest.raises(sqlite3.IntegrityError, match="append-only"):
             ledger.connection.execute("DELETE FROM qualification_transitions")
 
@@ -106,9 +103,7 @@ def test_skipped_sequence_fails_verify(tmp_path: Path) -> None:
             source_json_sha256="d" * 64,
             schema_version="1.3.0",
         )
-        ledger.connection.executescript(
-            "DROP TRIGGER qualification_transitions_forbid_update;"
-        )
+        ledger.connection.executescript("DROP TRIGGER qualification_transitions_forbid_update;")
         # Forza sequence saltata 1 -> 7
         ledger.connection.execute(
             "UPDATE qualification_transitions SET sequence = 7 WHERE sequence = 1"
@@ -131,9 +126,7 @@ def test_wrong_previous_hash_fails_verify(tmp_path: Path) -> None:
             actor="a",
             rationale="step",
         )
-        ledger.connection.executescript(
-            "DROP TRIGGER qualification_transitions_forbid_update;"
-        )
+        ledger.connection.executescript("DROP TRIGGER qualification_transitions_forbid_update;")
         ledger.connection.execute(
             "UPDATE qualification_transitions SET previous_transition_hash = 'deadbeef' "
             "WHERE sequence = 2"
@@ -212,13 +205,13 @@ def test_initialized_empty_chain_rejects_automatic_reseed(tmp_path: Path) -> Non
             DELETE FROM qualification_transitions;
             """
         )
-        with pytest.raises(QualificationLedgerError, match="reseed|vuota|inizializzato"):
+        with pytest.raises(QualificationLedgerError, match=r"reseed|vuota|inizializzato"):
             seed_ledger_from_json_log(
                 ledger,
                 [],
                 allow_reseed=False,
             )
-        with pytest.raises(QualificationLedgerError, match="initialized=1|catena vuota|vuota"):
+        with pytest.raises(QualificationLedgerError, match=r"initialized=1|catena vuota|vuota"):
             ledger.verify_chain()
 
 
@@ -244,7 +237,7 @@ def test_concurrent_appends_keep_monotonic_sequence(tmp_path: Path) -> None:
                     actor=f"w{i}",
                     rationale=f"concurrent {i}",
                 )
-        except BaseException as exc:  # noqa: BLE001 — collect for assert
+        except BaseException as exc:
             errors.append(exc)
 
     threads = [threading.Thread(target=worker, args=(i,)) for i in range(8)]

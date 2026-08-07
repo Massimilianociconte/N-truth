@@ -182,8 +182,7 @@ def test_plan_execution_candidate_is_idempotent_append_only_and_promotable(
             second.record_id,
         ]
         assert [
-            item.record_id
-            for item in database.list_plan_executions(project_id, status="candidate")
+            item.record_id for item in database.list_plan_executions(project_id, status="candidate")
         ] == [first.record_id, second.record_id]
 
         gold = database.promote_plan_execution_gold(
@@ -232,12 +231,14 @@ def test_plan_execution_candidate_is_idempotent_append_only_and_promotable(
 
 def test_plan_execution_requires_registered_project(tmp_path: Path) -> None:
     database_path = tmp_path / "state.sqlite3"
-    with StorageDatabase(database_path) as database:
-        with pytest.raises(StorageIntegrityError, match="progetto non registrato"):
-            database.put_plan_execution_candidate(
-                "missing-project",
-                {"record_id": "orphan"},
-            )
+    with (
+        StorageDatabase(database_path) as database,
+        pytest.raises(StorageIntegrityError, match="progetto non registrato"),
+    ):
+        database.put_plan_execution_candidate(
+            "missing-project",
+            {"record_id": "orphan"},
+        )
 
 
 def test_project_keeps_legacy_sources_and_adds_content_addressed_storage(
