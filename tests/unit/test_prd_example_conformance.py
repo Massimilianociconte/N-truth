@@ -92,9 +92,7 @@ def load_fixture(name: str) -> Any:
     """Carica un esempio normativo preservando il contenuto verbatim."""
     raw = (FIXTURE_DIR / name).read_text(encoding="utf-8")
     if name.endswith(".json"):
-        stripped = [
-            line for line in raw.splitlines() if not line.lstrip().startswith("//")
-        ]
+        stripped = [line for line in raw.splitlines() if not line.lstrip().startswith("//")]
         return json.loads("\n".join(stripped))
     return yaml.safe_load(raw)
 
@@ -308,9 +306,7 @@ def test_knowledge_value_forbids_bare_null_and_empty_semantics() -> None:
     with pytest.raises(ValidationError):
         KnowledgeValue[Any].model_validate(None)
     with pytest.raises(ValidationError):
-        KnowledgeValue[Any].model_validate(
-            {"knowledge_state": "PRESENT", "value": ""}
-        )
+        KnowledgeValue[Any].model_validate({"knowledge_state": "PRESENT", "value": ""})
     with pytest.raises(ValidationError):
         KnowledgeValue[Any].model_validate({"knowledge_state": "PRESENT"})
 
@@ -321,9 +317,7 @@ def test_knowledge_value_state_specific_requirements() -> None:
         KnowledgeValue[Any].model_validate({"knowledge_state": "NOT_APPLICABLE"})
     # Appendice AC: ABSENT_EXPLICIT richiede evidence.
     with pytest.raises(ValidationError):
-        KnowledgeValue[Any].model_validate(
-            {"knowledge_state": "ABSENT_EXPLICIT", "items": []}
-        )
+        KnowledgeValue[Any].model_validate({"knowledge_state": "ABSENT_EXPLICIT", "items": []})
     # CONFLICTING richiede la lista dei valori incompatibili.
     with pytest.raises(ValidationError):
         KnowledgeValue[Any].model_validate({"knowledge_state": "CONFLICTING"})
@@ -458,9 +452,7 @@ def test_derived_claim_set_keyed_to_query() -> None:
     bundle = load_fixture("appendix_a_experiment_bundle.yaml")
     claim_set = DerivedClaimSet(
         query_id="IQ-001",
-        claims=tuple(
-            DerivedClaim.model_validate(raw) for raw in bundle["derived_claims"]
-        ),
+        claims=tuple(DerivedClaim.model_validate(raw) for raw in bundle["derived_claims"]),
     )
     assert len(claim_set.claims) == 3
     with pytest.raises(ValidationError):
@@ -558,9 +550,7 @@ def test_section_15_10_count_record() -> None:
 
 def test_appendix_a_counts() -> None:
     bundle = load_fixture("appendix_a_experiment_bundle.yaml")
-    declared, observational = (
-        V8CountRecord.model_validate(raw) for raw in bundle["counts"]
-    )
+    declared, observational = (V8CountRecord.model_validate(raw) for raw in bundle["counts"])
     assert declared.kind is CountKind.DECLARED_N
     assert declared.value == 3
     assert declared.query_id == "IQ-001"
@@ -637,10 +627,7 @@ def test_appendix_ag_contamination_attestation() -> None:
     assert attestation.model_selection_eligible is False
     assert attestation.backbone.model_id == "ibm-granite/granite-4.1-3b"
     assert attestation.backbone.release_date == "2026-XX-XX"
-    assert (
-        attestation.backbone.documented_training_cutoff.knowledge_state
-        is KnowledgeState.UNKNOWN
-    )
+    assert attestation.backbone.documented_training_cutoff.knowledge_state is KnowledgeState.UNKNOWN
     assert attestation.text_exposure_risk is TextExposureRisk.LOW
     assert attestation.exposure_assessment.probes_run == ()
     assert attestation.permitted_claim == ("project_pipeline_generalization",)
@@ -673,10 +660,11 @@ def test_appendix_a_report_resolution_token_is_a_finding() -> None:
     with pytest.raises(ValueError):
         ReportResolutionState(bundle["report_resolution_state"])
     states = tuple(
-        DerivedClaim.model_validate(raw).determinability_state
-        for raw in bundle["derived_claims"]
+        DerivedClaim.model_validate(raw).determinability_state for raw in bundle["derived_claims"]
     )
-    assert aggregate_report_resolution(states) is ReportResolutionState.MULTI_SCENARIO
+    # Claim (MPG, INSUFFICIENT, INSUFFICIENT): la precedenza fail-closed mette
+    # i gap azionabili davanti al multi-scenario (SRR-0011).
+    assert aggregate_report_resolution(states) is ReportResolutionState.PARTIAL_WITH_ACTIONABLE_GAPS
 
 
 def test_aggregation_precedence_is_fail_closed() -> None:
@@ -692,15 +680,10 @@ def test_aggregation_precedence_is_fail_closed() -> None:
         is R.MULTI_SCENARIO
     )
     assert (
-        aggregate_report_resolution(
-            (D.MULTIPLE_PLAUSIBLE_GRAPHS, D.INSUFFICIENT_INFORMATION)
-        )
+        aggregate_report_resolution((D.MULTIPLE_PLAUSIBLE_GRAPHS, D.INSUFFICIENT_INFORMATION))
         is R.PARTIAL_WITH_ACTIONABLE_GAPS
     )
-    assert (
-        aggregate_report_resolution((D.CONFLICTING_INFORMATION, D.DETERMINATE))
-        is R.CONFLICTED
-    )
+    assert aggregate_report_resolution((D.CONFLICTING_INFORMATION, D.DETERMINATE)) is R.CONFLICTED
     assert aggregate_report_resolution((D.INVALID_GRAPH,)) is R.INVALID
     assert aggregate_report_resolution((D.OUT_OF_SCOPE,)) is R.OUT_OF_SCOPE
     assert (
@@ -741,7 +724,7 @@ def test_design_adequacy_families_match_section_10_5() -> None:
         "REPORTING_INCOMPLETE",
         "REPORTING_CONFLICTING",
     }
-    assert {member.value for member in DesignAdequacyFinding.finding_values()} == expected
+    assert DesignAdequacyFinding.finding_values() == expected
 
 
 def test_design_adequacy_requires_evidence_and_never_derives_from_determinability() -> None:

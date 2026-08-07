@@ -40,6 +40,8 @@ dev = [
     "fastapi>=0.115",
     "httpx2>=2.7",
     "jsonschema>=4.26.0",
+    # Conformance CI degli esempi normativi YAML del PRD v8.0 (§26.9).
+    "pyyaml>=6.0",
 ]
 
 [project.urls]
