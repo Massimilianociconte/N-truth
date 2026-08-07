@@ -1,0 +1,24 @@
+# Theory Reference Entry - mai generato dall'output del Rulebook (PRD §10.9).
+theory_reference_entry:
+  entry_id: TR-DT-SOURCE-COUNT-01-001
+  clause_id: DT-SOURCE-COUNT-01
+  family: D
+  status: SCIENTIFIC_REVIEW_REQUIRED
+  source_basis:
+    - "PRD v8.0 §7.15 D"
+    - "PRD v8.0 §7.5 (replica biologica)"
+    - "PRD v8.0 Appendice A (CLAIM-SOURCE-01)"
+  expected_behavior:
+    positive: >
+      Il biological-source count deriva esclusivamente dalla provenienza
+      confermata: ogni fonte biologica distinta e confermata contribuisce al
+      count, indipendentemente dal numero di unita tecniche derivate.
+    negative: >
+      Il source count non modifica automaticamente il count dell'EU; colture o
+      cellule dallo stesso donatore restano annidate e non aggiungono fonti.
+      Una fonte non confermata non entra nel count.
+    minimal_counterfactual: >
+      Due record con identico numero di colture: nel primo le colture provengono
+      da donatori distinti con provenienza confermata, nel secondo derivano tutte
+      da un unico donatore. Il biological-source count deve differire (es. 3 vs 1)
+      mentre l'EU count interno alla fonte resta invariato.

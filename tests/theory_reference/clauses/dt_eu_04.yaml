@@ -1,0 +1,25 @@
+# Theory Reference Entry - mai generato dall'output del Rulebook (PRD §10.9).
+theory_reference_entry:
+  entry_id: TR-DT-EU-04-001
+  clause_id: DT-EU-04
+  family: B
+  status: SCIENTIFIC_REVIEW_REQUIRED
+  source_basis:
+    - "PRD v8.0 §7.15 B"
+    - "PRD v8.0 §10.6 (output condizionale, theory_clause DT-EU-04)"
+    - "PRD v8.0 §8.7 (rule_challenge RC-001 realized-exposure clause)"
+  expected_behavior:
+    positive: >
+      Se application/exposure realizza il trattamento in modo separabile sulla
+      candidate unit, il claim EU/count puo' restare determinato per gruppo.
+    negative: >
+      Se application/exposure collassa la separabilita' (es. bagno o
+      preparazione condivisa), il sistema eleva l'unita soltanto con evidence
+      sufficiente; altrimenti emette ramo condizionale o informazione
+      insufficiente, mai un valore unico incondizionato.
+    minimal_counterfactual: >
+      Due colture con gli stessi pozzetti: nel primo record le preparazioni sono
+      separabili e distinte prima dell'assegnazione (branch control=4/drug=4),
+      nel secondo condividono una preparazione o l'assegnazione precede la
+      separazione (branch control=1/drug=1). La sola differenza di realized
+      exposure deve cambiare i branch outputs della clausola DT-EU-04.

@@ -1,0 +1,31 @@
+# Theory Reference Entry - mai generato dall'output del Rulebook (PRD §10.9).
+# Fonte: solo testo normativo PRD v8.0. Stato: SCIENTIFIC_REVIEW_REQUIRED
+# perche' l'intera teoria derivation-theory-0.1.0 non e' revisionata (SRR-0003).
+theory_reference_entry:
+  entry_id: TR-DT-EU-ASSIGNMENT-01-001
+  clause_id: DT-EU-ASSIGNMENT-01
+  family: A
+  status: SCIENTIFIC_REVIEW_REQUIRED
+  source_basis:
+    - "PRD v8.0 §7.15 A"
+    - "PRD v8.0 §13.7"
+    - "PRD v8.0 Appendice A (scenario_set SCEN-01)"
+    - "PRD v8.0 Appendice N (riga assignment separability TRUE)"
+  expected_behavior:
+    positive: >
+      Con factor/levels dichiarati, assignment event o meccanismo equivalente
+      documentato, candidate unit identificata e separability support, l'
+      assignment unit e' derivabile; il claim EXPERIMENTAL_UNIT puo' assumere
+      stato DETERMINATE con i predicati richiesti risolti.
+    negative: >
+      La keyword "independent" o la sola presenza di well non sono sufficienti:
+      in assenza di separability support il claim non e' derivabile e il sistema
+      emette ramo condizionale, scenari o INSUFFICIENT_INFORMATION, mai un valore
+      incondizionato.
+    minimal_counterfactual: >
+      Due record ammissibili identici salvo il valore del predicato di
+      separabilita' dell'assegnazione: nel primo le colture sono avviate come
+      preparazioni distinte prima dell'assegnazione (scenario S-A), nel secondo
+      i run ripetuti condividono una preparazione (scenario S-B). D_T(G1,P,Q) e
+      D_T(G2,P,Q) devono produrre valori o stati diversi per il claim
+      EXPERIMENTAL_UNIT; nessuna keyword testuale puo' sostituire la differenza.

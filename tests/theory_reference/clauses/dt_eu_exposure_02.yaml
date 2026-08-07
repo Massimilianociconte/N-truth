@@ -1,0 +1,25 @@
+# Theory Reference Entry - mai generato dall'output del Rulebook (PRD §10.9).
+theory_reference_entry:
+  entry_id: TR-DT-EU-EXPOSURE-02-001
+  clause_id: DT-EU-EXPOSURE-02
+  family: B
+  status: SCIENTIFIC_REVIEW_REQUIRED
+  source_basis:
+    - "PRD v8.0 §7.15 B"
+    - "PRD v8.0 §7.2 (effective exposure unit/cluster)"
+    - "PRD v8.0 §2.7 (interference e shared exposure)"
+  expected_behavior:
+    positive: >
+      Quando l'esposizione effettiva e' separabile per unita (es. trattamento
+      per pozzetto con preparazioni distinte), l'effective exposure coincide
+      con l'EU e il contrasto e' supportato al livello dichiarato.
+    negative: >
+      Quando una esposizione condivisa documentata (es. stessa preparazione,
+      bagno o gabbia) impedisce la realizzazione distinta del trattamento, il
+      cluster di esposizione effettiva diventa il livello rilevante per il
+      contrasto; il claim EU/count viene ricalcolato o reso condizionale.
+    minimal_counterfactual: >
+      Stessi pozzetti e stesso fattore: nel primo record ogni pozzetto riceve
+      trattamento separabile, nel secondo i pozzetti condividono una
+      preparazione/blocco. Solo il secondo deve elevare il cluster di
+      esposizione come livello rilevante, senza cambiare il resto del grafo.

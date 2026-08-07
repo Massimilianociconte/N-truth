@@ -1,0 +1,64 @@
+{
+  "asset": "theory_reference_set",
+  "prd_basis": ["PRD v8.0 §10.9", "PRD v8.0 §7.13", "PRD v8.0 §26.3"],
+  "theory_version": "derivation-theory-0.1.0",
+  "anti_circularity_rule": "Il Theory Reference Set non consuma MAI l'output del Rulebook come riferimento: le aspettative derivano esclusivamente dal testo normativo PRD v8.0 e da revisione esperta.",
+  "status": "SCIENTIFIC_REVIEW_REQUIRED",
+  "srr_entry": "SRR-0003",
+  "entries": [
+    {
+      "entry_id": "TR-DT-EU-ASSIGNMENT-01-001",
+      "clause_id": "DT-EU-ASSIGNMENT-01",
+      "family": "A",
+      "path": "tests/theory_reference/clauses/dt_eu_assignment_01.yaml"
+    },
+    {
+      "entry_id": "TR-DT-EU-01-001",
+      "clause_id": "DT-EU-01",
+      "family": "B",
+      "path": "tests/theory_reference/clauses/dt_eu_01.yaml"
+    },
+    {
+      "entry_id": "TR-DT-EU-04-001",
+      "clause_id": "DT-EU-04",
+      "family": "B",
+      "path": "tests/theory_reference/clauses/dt_eu_04.yaml"
+    },
+    {
+      "entry_id": "TR-DT-EU-EXPOSURE-02-001",
+      "clause_id": "DT-EU-EXPOSURE-02",
+      "family": "B",
+      "path": "tests/theory_reference/clauses/dt_eu_exposure_02.yaml"
+    },
+    {
+      "entry_id": "TR-DT-EU-COUNT-01-001",
+      "clause_id": "DT-EU-COUNT-01",
+      "family": "C",
+      "path": "tests/theory_reference/clauses/dt_eu_count_01.yaml"
+    },
+    {
+      "entry_id": "TR-DT-SOURCE-COUNT-01-001",
+      "clause_id": "DT-SOURCE-COUNT-01",
+      "family": "D",
+      "path": "tests/theory_reference/clauses/dt_source_count_01.yaml"
+    },
+    {
+      "entry_id": "TR-DT-EXP-02-001",
+      "clause_id": "DT-EXP-02",
+      "family": "E",
+      "path": "tests/theory_reference/clauses/dt_exp_02.yaml"
+    },
+    {
+      "entry_id": "TR-DT-ANALYTICAL-01-001",
+      "clause_id": "DT-ANALYTICAL-01",
+      "family": "F",
+      "path": "tests/theory_reference/clauses/dt_analytical_01.yaml"
+    },
+    {
+      "entry_id": "TR-DT-SOURCE-SCOPE-02-001",
+      "clause_id": "DT-SOURCE-SCOPE-02",
+      "family": "G",
+      "path": "tests/theory_reference/clauses/dt_source_scope_02.yaml"
+    }
+  ]
+}

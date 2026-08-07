@@ -1,0 +1,26 @@
+# Theory Reference Entry - mai generato dall'output del Rulebook (PRD §10.9).
+theory_reference_entry:
+  entry_id: TR-DT-EU-01-001
+  clause_id: DT-EU-01
+  family: B
+  status: SCIENTIFIC_REVIEW_REQUIRED
+  source_basis:
+    - "PRD v8.0 §7.15 B"
+    - "PRD v8.0 §10.2 (required_predicates del claim EXPERIMENTAL_UNIT)"
+    - "PRD v8.0 Appendice N (righe assignment separability TRUE/FALSE)"
+  expected_behavior:
+    positive: >
+      Quando il trattamento rilevante e' assegnato e realizzato in modo
+      separabile alla candidate unit, l'EU e' derivabile: il livello di
+      assegnazione coincide con l'unita sperimentale del contrasto (es.
+      intervento materno: la madre o la cucciolata e' l'unita).
+    negative: >
+      Se il trattamento e' assegnato a un livello piu' alto dell'unita
+      analizzata, l'unita analizzata non e' EU per quel fattore: osservazioni
+      piu' fini restano annidate e non indipendenti; il sistema risale al
+      livello assegnabile.
+    minimal_counterfactual: >
+      Due grafi identici per nesting salvo il livello di assegnazione del
+      fattore (cultura vs cellula): solo il primo rende la cellula EU; nel
+      secondo le cellule restano osservazioni annidate. La differenza deve
+      cambiare lo stato o il valore del claim EXPERIMENTAL_UNIT.
