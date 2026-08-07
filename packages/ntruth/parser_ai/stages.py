@@ -63,7 +63,12 @@ class StageAuthority(StrEnum):
 
 
 class StageErrorCode(StrEnum):
-    """Tassonomia minima normativa del PRD v6, sezione 13.6."""
+    """Tassonomia minima normativa del PRD §13.6 (v6 prima, v8.0 poi).
+
+    ``RULE_THEORY_MISMATCH`` e' aggiunto dal PRD v8.0: un ruleset che dichiara
+    una Derivation Theory ma contiene regole non collegabili a una clausola
+    esistente e' rifiutato in modo fail-closed (§10.11, §20.3, NFR-33).
+    """
 
     UNSUPPORTED_FORMAT = "UNSUPPORTED_FORMAT"
     CHUNK_COVERAGE_INCOMPLETE = "CHUNK_COVERAGE_INCOMPLETE"
@@ -73,6 +78,7 @@ class StageErrorCode(StrEnum):
     INVALID_COUNT_INVARIANT = "INVALID_COUNT_INVARIANT"
     UNSUPPORTED_DESIGN_PROFILE = "UNSUPPORTED_DESIGN_PROFILE"
     VERIFIER_DISAGREEMENT = "VERIFIER_DISAGREEMENT"
+    RULE_THEORY_MISMATCH = "RULE_THEORY_MISMATCH"
 
 
 class StageWarningCode(StrEnum):

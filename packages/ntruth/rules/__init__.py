@@ -4,8 +4,10 @@ from ntruth.rules.engine import RuleRunResult, apply_rules
 from ntruth.rules.loader import (
     DEFAULT_RULESET_ID,
     DEFAULT_RULESET_VERSION,
+    RuleTheoryMismatchError,
     RulesetNotFound,
     available_rulesets,
+    declared_theory,
     load_ruleset,
     load_ruleset_file,
 )
@@ -17,10 +19,12 @@ __all__ = [
     "REGISTRY",
     "RuleContext",
     "RuleRunResult",
+    "RuleTheoryMismatchError",
     "RulesetNotFound",
     "UnknownPredicate",
     "apply_rules",
     "available_rulesets",
+    "declared_theory",
     "load_ruleset",
     "load_ruleset_file",
     "resolve_type",

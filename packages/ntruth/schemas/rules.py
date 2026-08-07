@@ -52,6 +52,17 @@ class RuleFixtureKind(StrEnum):
     EXCEPTION = "exception"
 
 
+class TheoryLinkageStatus(StrEnum):
+    """Stato del collegamento regola<->clausola di teoria (PRD v8 §10.11, §13.6).
+
+    Una regola senza clausola difendibile non viene inventata ne eliminata:
+    resta nel ruleset, disabilitata e marcata, in attesa di revisione
+    scientifica registrata (registro SRR).
+    """
+
+    SCIENTIFIC_REVIEW_REQUIRED = "SCIENTIFIC_REVIEW_REQUIRED"
+
+
 class RuleFixture(NTruthModel):
     """Fixture dichiarata e collegata a uno scenario riproducibile.
 
@@ -90,6 +101,12 @@ class Rule(NTruthModel):
     requires_human_confirmation: bool = False
     scope_dimension: str = "contrast"  # contrast | endpoint | block
     enabled: bool = True
+    #: Collegamento theory v8 (PRD §7.14: ogni regola eseguibile riferisce una
+    #: clausola). None e' lecito solo nei ruleset legacy (senza theory_version)
+    #: oppure nella forma fail-closed esplicita: regola disabilitata con
+    #: ``theory_status=SCIENTIFIC_REVIEW_REQUIRED``.
+    theory_clause: str | None = None
+    theory_status: TheoryLinkageStatus | None = None
 
     @model_validator(mode="after")
     def _has_message(self) -> Rule:
@@ -113,6 +130,13 @@ class Rule(NTruthModel):
         return tuple(normalize_predicate(p) for p in self.abstain_if)
 
 
+class TheoryCoverageGap(NTruthModel):
+    """Clausola theory dichiarata non coperta dal ruleset, con rationale (NFR-33)."""
+
+    clause_id: str
+    rationale: str = Field(min_length=1)
+
+
 class Ruleset(NTruthModel):
     """Insieme versionato di regole, con checksum per il report."""
 
@@ -121,6 +145,15 @@ class Ruleset(NTruthModel):
     description: str = ""
     rules: tuple[Rule, ...] = ()
     source_path: str | None = None
+    #: Riferimento theory ``<theory_id>-<version>`` (PRD §20.3, NFR-33).
+    #: None = ruleset legacy pre-v8 senza collegamento theory.
+    theory_version: str | None = None
+    theory_coverage_gaps: tuple[TheoryCoverageGap, ...] = ()
+
+    @property
+    def is_legacy(self) -> bool:
+        """Ruleset precedente al contratto theory v8 (nessun collegamento)."""
+        return self.theory_version is None
 
     @model_validator(mode="after")
     def _unique_ids(self) -> Ruleset:
@@ -132,8 +165,14 @@ class Ruleset(NTruthModel):
         return self
 
     def checksum(self) -> str:
+        #: ``exclude_none``: i campi theory assenti (ruleset legacy) non
+        #: alterano il checksum storico dei ruleset pre-v8; i valori di
+        #: collegamento presenti nei ruleset v8 restano invece nel checksum.
         return content_checksum(
-            [r.model_dump(mode="json", exclude={"fixtures"}) for r in self.rules]
+            [
+                r.model_dump(mode="json", exclude={"fixtures"}, exclude_none=True)
+                for r in self.rules
+            ]
         )
 
     def rule(self, rule_id: str) -> Rule | None:

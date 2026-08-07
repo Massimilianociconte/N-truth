@@ -118,6 +118,12 @@ def apply_rules(
 
         for rule in ruleset.rules:
             if not rule.enabled:
+                #: audit esplicito: una regola disabilitata non e mai silenziosa
+                #: e non viene mai eliminata dal ruleset (PRD v8 §10.11).
+                evaluations.append(_disabled_rule_audit(rule, ruleset, context))
+                warnings.append(
+                    f"regola {rule.rule_id} disabilitata: non valutata (audit esplicito)"
+                )
                 continue
             evaluation, alert, rule_questions = _apply_rule(
                 block_id, rule, ruleset, context, lang=lang
@@ -153,6 +159,24 @@ def apply_rules(
 
 def build_factor_of(build: BuildResult, assessment: UnitAssessment) -> Factor | None:
     return next((f for f in build.factors if f.id == assessment.scope.factor_id), None)
+
+
+def _disabled_rule_audit(rule: Rule, ruleset: Ruleset, context: RuleContext) -> RuleEvaluation:
+    """Traccia di audit per una regola disabilitata: esclusa, mai ignorata.
+
+    Le regole disabilitate per assenza di clausola theory difendibile restano
+    nel ruleset con ``theory_status=SCIENTIFIC_REVIEW_REQUIRED`` e devono
+    comparire nella traccia di valutazione (PRD v8 §10.11, NFR-33).
+    """
+    reason = "rule_disabled"
+    if rule.theory_status is not None:
+        reason = f"rule_disabled:{rule.theory_status.value}"
+    return _evaluation(
+        rule,
+        ruleset,
+        RuleOutcome.NOT_APPLICABLE,
+        scope_label=f"{context.assessment.scope.describe()}|{reason}",
+    )
 
 
 def _apply_rule(
