@@ -19,6 +19,7 @@ from ntruth.capabilities import (
     CORE_PROFILE_REFERENCE,
     assess_core_profile_capability,
 )
+from ntruth.derivation_theory.loader import load_theory
 from ntruth.design import (
     DesignCompilation,
     compile_experiment_block,
@@ -27,7 +28,9 @@ from ntruth.design import (
 from ntruth.extract import extract
 from ntruth.extract.blocks import SegmentedDocument, segment_document_ir
 from ntruth.graph.builder import BuildResult, build_graph
+from ntruth.graph.claims import derive_claim_set
 from ntruth.graph.determinability import derive_determinability
+from ntruth.graph.index import GraphIndex
 from ntruth.graph.units import resolve_units
 from ntruth.graph.validation import (
     assert_valid_experiment_block,
@@ -38,6 +41,11 @@ from ntruth.parsers.registry import build_document_ir
 from ntruth.reporting.positive import build_positive_output
 from ntruth.rules.engine import apply_rules
 from ntruth.rules.loader import load_ruleset
+from ntruth.schemas.claims import (
+    DerivedClaimSet,
+    DesignAdequacyFinding,
+    ReportResolutionState,
+)
 from ntruth.schemas.core import Determinability, Severity, stable_id
 from ntruth.schemas.document import DocumentIR, ParserStatus
 from ntruth.schemas.experiment import (
@@ -81,6 +89,11 @@ class BlockAnalysis:
     release_profile: ReleaseProfile
     rule_warnings: tuple[str, ...] = ()
     semantic_verification: SemanticVerificationResult | None = None
+    #: Proiezione claim-specific v8 (§10.2): vuota sui percorsi hard-invalid.
+    derived_claim_sets: tuple[DerivedClaimSet, ...] = ()
+    design_adequacy_findings: tuple[DesignAdequacyFinding, ...] = ()
+    #: Stato aggregato del blocco (§10.4): mai un sostituto degli stati claim.
+    report_resolution_state: ReportResolutionState = ReportResolutionState.INVALID
 
 
 @dataclass
@@ -300,6 +313,9 @@ def _analyze_block(
     assert_valid_experiment_block(candidate_block)
     assessments, resolver_questions = resolve_units(block_id, build)
     assessments = enforce_evidence_floor(assessments, document)
+    # Indice del grafo costruito una sola volta e riusato da regole e claim
+    # (NFR-06/NFR-07): mai ricostruito nei singoli passaggi.
+    graph_index = GraphIndex(build.hierarchy)
     rule_run = apply_rules(
         block_id,
         build,
@@ -307,6 +323,7 @@ def _analyze_block(
         ruleset,
         lang=lang,
         evidence_by_id={item.id: item for item in candidate_block.evidence},
+        index=graph_index,
     )
     abstention = evaluate_abstention(document, build, rule_run.assessments)
     questions_by_id = {
@@ -351,6 +368,17 @@ def _analyze_block(
         supported_profile=supported_profile,
         verification_valid=not verification.violations,
     )
+    claim_derivation = derive_claim_set(
+        block,
+        compilation,
+        None,
+        load_theory(),
+        ruleset,
+        build=build,
+        assessments=block.unit_assessments,
+        evaluations=rule_run.evaluations,
+        index=graph_index,
+    )
     return BlockAnalysis(
         document=document,
         block=block,
@@ -362,6 +390,9 @@ def _analyze_block(
         release_profile=release_profile,
         rule_warnings=rule_run.warnings,
         semantic_verification=semantic,
+        derived_claim_sets=claim_derivation.claim_sets,
+        design_adequacy_findings=claim_derivation.design_adequacy_findings,
+        report_resolution_state=claim_derivation.report_resolution_state,
     )
 
 
