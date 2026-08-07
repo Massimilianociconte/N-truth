@@ -273,7 +273,8 @@ def test_write_boundary_reverifies_block_and_ignores_stale_complete_cache(
     )
     assert any("Verificatore hard live fallito" in item for item in exported["limits"])
     assert not any(
-        item["kind"] == "independent_n" and item["value"] is not None
+        # v8: ``independent_n`` e' alias deprecato di experimental_unit_count.
+        item["kind"] == "experimental_unit_count" and item["value"] is not None
         for item in public_block["count_records"]
     )
     assert "99991" not in written["html"].read_text(encoding="utf-8")

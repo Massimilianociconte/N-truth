@@ -102,20 +102,61 @@ class CountQuantifier(StrEnum):
 
 
 class CountKind(StrEnum):
-    """Nomi non ambigui dei count canonici v6."""
+    """Registro canonico dei count: vocabolario v8 (PRD §7.9) + alias (SRR-0006).
 
-    PLANNED_N = "planned_n"
-    ALLOCATED_N = "allocated_n"
-    TREATED_N = "treated_n"
-    OBSERVED_N = "observed_n"
-    EXCLUDED_N = "excluded_n"
-    ANALYSED_N = "analysed_n"
-    DECLARED_N = "declared_n"
-    OBSERVATIONAL_N = "observational_n"
-    ANALYTICAL_N = "analytical_n"
-    INDEPENDENT_N = "independent_n"
+    I membri canonici seguono la denominazione §7.9 (``*_unit_count``).
+    I nomi v6/Appendice P.1 restano alias deprecati sullo stesso valore
+    (pattern ``INDETERMINATE``): il carico accetta entrambi i vocabolari, la
+    serializzazione usa sempre il nome canonico v8.
+    """
+
+    DECLARED_N = "declared_n"  # canonico in §7.9 e Appendice P.1.
+    PLANNED_UNIT_COUNT = "planned_unit_count"
+    ALLOCATED_UNIT_COUNT = "allocated_unit_count"
+    TREATED_UNIT_COUNT = "treated_unit_count"
+    OBSERVED_UNIT_COUNT = "observed_unit_count"
+    EXCLUDED_UNIT_COUNT = "excluded_unit_count"
+    ANALYZED_UNIT_COUNT = "analyzed_unit_count"
+    OBSERVATIONAL_MEASUREMENT_COUNT = "observational_measurement_count"
+    ANALYTICAL_ROW_COUNT = "analytical_row_count"
+    EXPERIMENTAL_UNIT_COUNT = "experimental_unit_count"
     BIOLOGICAL_SOURCE_COUNT = "biological_source_count"
-    EFFECTIVE_N = "effective_n"
+    DIAGNOSTIC_EFFECTIVE_N = "diagnostic_effective_n"
+
+    # Alias deprecati v6/Appendice P.1: solo compatibilita di lettura.
+    PLANNED_N = "planned_unit_count"
+    ALLOCATED_N = "allocated_unit_count"
+    TREATED_N = "treated_unit_count"
+    OBSERVED_N = "observed_unit_count"
+    EXCLUDED_N = "excluded_unit_count"
+    ANALYSED_N = "analyzed_unit_count"
+    ANALYZED_N = "analyzed_unit_count"
+    OBSERVATIONAL_N = "observational_measurement_count"
+    ANALYTICAL_N = "analytical_row_count"
+    # ``independent_n`` e' alias di report deprecato (§7.9, P.1).
+    INDEPENDENT_N = "experimental_unit_count"
+    EFFECTIVE_N = "diagnostic_effective_n"
+    EFFECTIVE_N_DIAGNOSTIC = "diagnostic_effective_n"
+
+    @classmethod
+    def _missing_(cls, value: object) -> CountKind | None:
+        """Accetta i nomi deprecati senza perpetuarli nella serializzazione."""
+
+        aliases = {
+            "planned_n": cls.PLANNED_UNIT_COUNT,
+            "allocated_n": cls.ALLOCATED_UNIT_COUNT,
+            "treated_n": cls.TREATED_UNIT_COUNT,
+            "observed_n": cls.OBSERVED_UNIT_COUNT,
+            "excluded_n": cls.EXCLUDED_UNIT_COUNT,
+            "analysed_n": cls.ANALYZED_UNIT_COUNT,
+            "analyzed_n": cls.ANALYZED_UNIT_COUNT,
+            "observational_n": cls.OBSERVATIONAL_MEASUREMENT_COUNT,
+            "analytical_n": cls.ANALYTICAL_ROW_COUNT,
+            "independent_n": cls.EXPERIMENTAL_UNIT_COUNT,
+            "effective_n": cls.DIAGNOSTIC_EFFECTIVE_N,
+            "effective_n_diagnostic": cls.DIAGNOSTIC_EFFECTIVE_N,
+        }
+        return aliases.get(value) if isinstance(value, str) else None
 
 
 class ExclusionPhase(StrEnum):
@@ -353,7 +394,12 @@ class NStatement(NTruthModel):
 
 
 class CountScope(NTruthModel):
-    """Scope esplicito del count; i ``null`` hanno sempre un reason code."""
+    """Scope esplicito del count; i ``null`` hanno sempre un reason code.
+
+    La v8 aggiunge ``query_id`` e ``cohort_id`` (Appendice A/P.1): sono
+    opzionali per compatibilita con i payload v6 e non rientrano nell'audit
+    dei null dello scope fisico.
+    """
 
     unit_type: NodeType | None
     factor_id: str | None
@@ -364,6 +410,8 @@ class CountScope(NTruthModel):
     lifecycle: LifecycleStatus | None
     population: str | None
     condition: str | None
+    query_id: str | None = None
+    cohort_id: str | None = None
     unknown_reasons: dict[str, str] = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -431,7 +479,12 @@ class CountScope(NTruthModel):
 
 
 class CountRecord(NTruthModel):
-    """Wire contract canonico per ogni significato di ``n`` del PRD v6."""
+    """Wire contract canonico per ogni significato di ``n`` (PRD v6 e v8).
+
+    La v8 lega ogni count a ``query_id``/``cohort_id`` (Appendice A/P.1); i
+    campi restano opzionali per non alterare i payload v6 e la risoluzione
+    esistente (la proiezione derivazionale arriva in FASE 3).
+    """
 
     count_id: str
     kind: CountKind
@@ -440,6 +493,8 @@ class CountRecord(NTruthModel):
     lower_bound: StrictInt | StrictFloat | None = Field(default=None, ge=0)
     upper_bound: StrictInt | StrictFloat | None = Field(default=None, ge=0)
     scope: CountScope
+    query_id: str | None = None
+    cohort_id: str | None = None
     evidence_ids: tuple[str, ...] = ()
     rule_trace_ids: tuple[str, ...] = ()
     diagnostic_only: bool = False
@@ -487,6 +542,24 @@ class CountRecord(NTruthModel):
             if not set(self.evidence_ids).issubset(self.provenance.evidence_ids):
                 raise ValueError("count evidence_ids assenti dalla provenance")
         return self
+
+    def scope_key(self) -> tuple[object | None, ...]:
+        """Chiave canonica dello scope v8 (Appendice P.1, §7.9).
+
+        unit type, factor, contrast, group, endpoint, timepoint,
+        lifecycle cohort e quantifier identificano un count senza ambiguita'.
+        """
+
+        return (
+            self.scope.unit_type,
+            self.scope.factor_id,
+            self.scope.contrast_id,
+            self.scope.group_or_level,
+            self.scope.endpoint_id,
+            self.scope.timepoint,
+            self.scope.cohort_id or self.cohort_id,
+            self.quantifier,
+        )
 
     @classmethod
     def from_legacy(cls, statement: NStatement) -> CountRecord:
