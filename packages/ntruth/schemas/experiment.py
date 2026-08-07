@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from datetime import datetime
 from enum import StrEnum
-from typing import Literal, Self
+from typing import Any, Literal, Self
 
 from pydantic import Field, StrictFloat, StrictInt, field_validator, model_validator
 
@@ -807,6 +807,25 @@ class InferenceTarget(NTruthModel):
         return self
 
 
+#: Campi count v6 proiettati nella semantica open-world v8 (Appendice AC).
+#: Costante di modulo: un attributo underscore nel corpo del modello pydantic
+#: diventerebbe un ModelPrivateAttr e non sarebbe piu' ispezionabile dai test.
+_UNIT_ASSESSMENT_V8_FIELDS = (
+    "n_planned",
+    "n_declared",
+    "n_allocated",
+    "n_treated",
+    "n_observed",
+    "n_excluded",
+    "n_analysed",
+    "n_observational",
+    "n_analytical",
+    "n_independent",
+    "biological_source_count",
+    "effective_n",
+)
+
+
 class UnitAssessment(NTruthModel):
     """Unita e n per uno scope specifico (PRD 12.2)."""
 
@@ -870,6 +889,26 @@ class UnitAssessment(NTruthModel):
         if len(conditions) != len(set(conditions)):
             raise ValueError("conditional_scenarios contiene condizioni duplicate")
         return self
+
+    def knowledge_values(self) -> dict[str, Any]:
+        """Proiezione v8 dei count scalari in wrapper ``KnowledgeValue``.
+
+        Scelta di migrazione (Appendice AC/AE): i campi legacy restano
+        invariati per non rompere storage e payload golden; la semantica
+        open-world vive in questa proiezione di confine, dove ogni bare null
+        diventa uno stato esplicito con audit (regole field-specific in
+        ``ntruth.schemas.kernel.LEGACY_NULL_RULES``). ``n_analyzed`` non e'
+        proiettato: e' l'alias serializzato di ``n_analysed``.
+        """
+
+        from ntruth.schemas.kernel import KnowledgeValue  # lazy: evita il ciclo
+
+        return {
+            field_name: KnowledgeValue.migrate_legacy(
+                getattr(self, field_name), legacy_field=field_name
+            )
+            for field_name in _UNIT_ASSESSMENT_V8_FIELDS
+        }
 
 
 class Question(NTruthModel):
@@ -1005,6 +1044,13 @@ class Correction(NTruthModel):
         return value
 
 
+#: Campi timing/source del Factor proiettati nella semantica open-world v8 (AC).
+_FACTOR_V8_FIELDS = (
+    "allocation_timing",
+    "source_biological_preparation",
+)
+
+
 class Factor(NTruthModel):
     """Fattore con allocazione e applicazione mantenute separate.
 
@@ -1108,6 +1154,25 @@ class Factor(NTruthModel):
             if value is not None and not value.strip():
                 raise ValueError(f"{field_name} non puo essere vuoto")
         return self
+
+    def knowledge_values(self) -> dict[str, Any]:
+        """Proiezione v8 dei campi timing/source in ``KnowledgeValue``.
+
+        Scelta di migrazione (Appendice AC/AE): i campi legacy restano
+        invariati per non rompere storage e payload golden; il silenzio
+        diventa stato esplicito solo nella proiezione di confine, con regole
+        field-specific e audit (``ntruth.schemas.kernel.LEGACY_NULL_RULES``):
+        timing esecutivo -> NOT_REPORTED, provenienza biologica -> UNKNOWN.
+        """
+
+        from ntruth.schemas.kernel import KnowledgeValue  # lazy: evita il ciclo
+
+        return {
+            field_name: KnowledgeValue.migrate_legacy(
+                getattr(self, field_name), legacy_field=field_name
+            )
+            for field_name in _FACTOR_V8_FIELDS
+        }
 
 
 class Contrast(NTruthModel):
