@@ -1,0 +1,11 @@
+# Verbatim from PRD v8.0 §9.7 (SensitivityRecord), lines 1475-1486.
+sensitivity_record:
+  id: SENS-001
+  derived_claim_id: CLAIM-N-01
+  decisive_predicate_id: PRED-INDEP-01
+  current_support_grade: SELF_REPORT_ONLY
+  current_value: true
+  counterfactual_value: false
+  current_output: {experimental_unit_count: 4}
+  counterfactual_output: {experimental_unit_count: 1}
+  interpretation: "The reported n depends entirely on this confirmation."

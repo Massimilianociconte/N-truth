@@ -1,0 +1,23 @@
+# Verbatim from PRD v8.0 §10.2 (DerivedClaim contract), lines 1519-1542.
+derived_claim:
+  claim_id: CLAIM-EU-001
+  claim_type: EXPERIMENTAL_UNIT
+  inferential_query_id: IQ-001
+  value:
+    unit_type: well
+  determinability_state: DETERMINATE
+  support_grade: DIRECT_SINGLE_SOURCE
+  required_predicates:
+    - assignment_unit
+    - assignment_separability
+    - realized_exposure_separability
+  irrelevant_predicates:
+    - id: biological_source_independence
+      rationale: "Not required to identify the treatment EU; used for inference scope."
+  assumptions:
+    - record_complete_for_claim
+  sensitivity_records: [SENS-001]
+  theory_version: derivation-theory-0.1.0
+  theory_clauses: [DT-EU-01, DT-EU-04]
+  rule_trace: [EU-ALLOC-001]
+  profile_coverage: COVERED_WITH_KNOWN_GAPS

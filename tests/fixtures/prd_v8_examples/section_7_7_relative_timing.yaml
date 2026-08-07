@@ -1,0 +1,6 @@
+# Verbatim from PRD v8.0 §7.7 (Eventi e timing referenziato), lines 952-958.
+relative_timing:
+  subject_event_id: EVT-APPLY-01
+  reference_event_id: EVT-SPLIT-02
+  relation: BEFORE|AFTER|SAME_EVENT|OVERLAPS|UNKNOWN
+  evidence_refs: [EV-12]

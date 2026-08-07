@@ -1,0 +1,24 @@
+# Verbatim from PRD v8.0 Appendice AG (External Challenge Contamination Attestation), lines 5266-5290.
+challenge_item_id: ECH-001
+source_class: PROSPECTIVE_PRIVATE|POST_CUTOFF_PUBLIC|LEGACY_PUBLIC
+publication_or_creation_date: 2026-09-01
+study_family_id: SF-9001
+training_eligible: false
+model_selection_eligible: false
+backbone:
+  model_id: ibm-granite/granite-4.1-3b
+  release_date: 2026-XX-XX
+  documented_training_cutoff:
+    knowledge_state: UNKNOWN
+text_exposure_risk: LOW|MEDIUM|HIGH|UNKNOWN
+exposure_assessment:
+  evidence:
+    - prospective_private_source
+  probes_run: []
+  residual_risk: LOW
+permitted_claim:
+  - project_pipeline_generalization
+forbidden_claim:
+  - proof_of_no_pretraining_exposure
+custodian: external_or_independent
+attested_by: reviewer_id

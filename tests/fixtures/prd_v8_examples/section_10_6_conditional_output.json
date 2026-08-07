@@ -1,0 +1,19 @@
+// Verbatim from PRD v8.0 §10.6 (Output condizionale leggibile), lines 1586-1604.
+// Stored as JSON with a provenance comment extracted at load time.
+{
+  "claim_type": "EXPERIMENTAL_UNIT_COUNT",
+  "determinability_state": "CONDITIONALLY_DETERMINATE",
+  "scenario_coverage": "EXHAUSTIVE_WITHIN_PROFILE",
+  "branches": [
+    {
+      "condition": "Cultures were initiated as separable preparations before treatment assignment.",
+      "output": {"control": 4, "drug": 4}
+    },
+    {
+      "condition": "Cultures share one preparation or treatment was assigned before separation.",
+      "output": {"control": 1, "drug": 1}
+    }
+  ],
+  "primary_question": "Were the cultures separable preparations before treatment assignment?",
+  "theory_clause": "DT-EU-04"
+}

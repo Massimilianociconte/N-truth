@@ -1,0 +1,16 @@
+# Verbatim from PRD v8.0 §0.7 (Reality Gate v8), lines 255-271.
+schema_stable_on_real_cases: true
+core_semantic_kernel_reviewed: true
+derivation_theory_reviewed: true
+profile_predicate_closure_reviewed: true
+human_second_review_completed: true
+blocking_schema_gaps: 0
+real_anchor_available: true
+license_scope_verified: true
+train_dev_test_split_frozen: true
+decisive_predicates_reviewed: true
+reference_stability_report_available: true
+real_baseline_executed: true
+synthetic_factory_human_calibrated: true
+end_to_end_metric_contract_frozen: true
+external_challenge_contamination_protocol_ready: true

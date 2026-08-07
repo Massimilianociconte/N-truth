@@ -1,0 +1,23 @@
+# Verbatim from PRD v8.0 §2.4 (Causal, exposure e measurement context), lines 447-469.
+assignment_context:
+  declared_level: well
+  mechanism: random|blocked_random|matched|manual|convenience|unknown
+  assignment_event_id: EVT-ASSIGN-01
+  separability_state: PRESENT|UNKNOWN|CONFLICTING
+
+application_context:
+  application_unit: well
+  application_event_id: EVT-APPLY-01
+  relative_to_event:
+    event_id: EVT-SPLIT-02
+    relation: AFTER
+
+exposure_context:
+  exposure_pathway: direct_dosing|shared_medium|diffusion|co_culture|unknown
+  exposure_container: well|plate|bath|cage|device|unknown
+  interference_status: no_known_path|possible|documented|unknown
+  interference_cluster: plate_01|unknown
+
+source_context:
+  preparation_id: culture_batch_01
+  biological_source_state: PRESENT|UNKNOWN|CONFLICTING

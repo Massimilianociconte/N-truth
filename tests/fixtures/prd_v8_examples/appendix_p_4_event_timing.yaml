@@ -1,0 +1,4 @@
+# Verbatim from PRD v8.0 Appendix P.4 (Event timing), lines 4761-4765.
+timing:
+  relation: BEFORE|AFTER|SAME_EVENT|OVERLAPS|UNKNOWN
+  reference_event_id: SPLIT-02

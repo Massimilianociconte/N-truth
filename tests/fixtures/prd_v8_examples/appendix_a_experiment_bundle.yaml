@@ -1,0 +1,212 @@
+# Verbatim from PRD v8.0 Appendice A (Esempio completo di Experiment Bundle v8), lines 4045-4257.
+bundle_id: NT-EX-0001
+bundle_version: 8.0-example
+profile:
+  id: simple_cell_culture
+  theory_version: derivation-theory-0.1.0
+  ruleset_version: ntruth-core-0.3.0
+  coverage_status: PARTIAL_PROFILE_COVERAGE
+  known_gaps:
+    - undocumented_culture_origin_across_runs
+
+domain: simple_cell_culture
+record_context: RETROSPECTIVE_DOCUMENT_RECONSTRUCTION
+
+sources:
+  - id: methods_01
+    source_class: PUBLISHED_METHODS
+    planned_or_executed: CLAIMED_EXECUTED
+    license: CC-BY-4.0
+    sha256: example-placeholder
+  - id: sheet_01
+    source_class: SAMPLE_METADATA_EXECUTED
+    planned_or_executed: EXECUTED_RECORD
+    license: LOCAL_PERMISSION
+    sha256: example-placeholder
+
+inferential_query:
+  id: IQ-001
+  factor_id: treatment
+  compared_levels: [vehicle, drug_x]
+  endpoint_id: neurite_length
+  condition_or_timepoint: 48h
+  effect_measure_or_estimand:
+    knowledge_state: PRESENT
+    value: mean_difference
+  inference_population:
+    knowledge_state: PRESENT
+    value: cultures_under_protocol_x
+  inference_level:
+    knowledge_state: PRESENT
+    value: well
+
+factor:
+  id: treatment
+  levels: [vehicle, drug_x]
+
+assignment_event:
+  id: ASSIGN-01
+  factor_id: treatment
+  assigned_unit_type:
+    knowledge_state: PRESENT
+    value: well
+  mechanism:
+    knowledge_state: UNKNOWN
+  separability:
+    knowledge_state: UNKNOWN
+  timing:
+    relation: AFTER
+    reference_event_id: SPLIT-01
+    knowledge_state: PRESENT
+
+application_event:
+  id: APPLY-01
+  factor_id: treatment
+  application_unit_type:
+    knowledge_state: PRESENT
+    value: well
+  timing:
+    relation: AFTER
+    reference_event_id: PLATE-01
+    knowledge_state: PRESENT
+
+exposure_assessment:
+  factor_id: treatment
+  exposure_pathway:
+    knowledge_state: UNKNOWN
+  effective_exposure_cluster:
+    knowledge_state: UNKNOWN
+  interference_status:
+    knowledge_state: PRESENT
+    value: POSSIBLE
+  shared_environment:
+    knowledge_state: PRESENT
+    items: [plate_01, day_01]
+
+source_context:
+  preparation_id:
+    knowledge_state: PRESENT
+    value: culture_batch_01
+  biological_source_independence:
+    knowledge_state: UNKNOWN
+  biological_source_type:
+    knowledge_state: PRESENT
+    value: donor
+
+endpoint:
+  id: neurite_length
+  measured_on: segmented_cell
+
+contrast:
+  id: drug_vs_vehicle
+  factor_id: treatment
+  compared_levels: [vehicle, drug_x]
+
+units:
+  - {id: donor_01, type: donor}
+  - {id: culture_01, type: culture}
+  - {id: well_A01, type: well}
+  - {id: field_A01_01, type: field}
+
+relations:
+  - {source: culture_01, type: derived_from, target: donor_01}
+  - {source: well_A01, type: derived_from, target: culture_01}
+  - {source: field_A01_01, type: acquired_from, target: well_A01}
+
+counts:
+  - count_id: CNT-DECL-01
+    kind: declared_n
+    knowledge_state: PRESENT
+    value: 3
+    quantifier: EXACT
+    unit_type:
+      knowledge_state: PRESENT
+      value: experiment_run
+    query_id: IQ-001
+    group_id: ALL
+    cohort_id: COHORT-01
+    scope_status: AMBIGUOUS
+    source_evidence: [EV-02]
+  - count_id: CNT-OBS-01
+    kind: observational_n
+    knowledge_state: NOT_REPORTED
+    query_id: IQ-001
+    group_id: ALL
+    cohort_id: COHORT-01
+
+planned_executed_reconciliation:
+  status: NOT_AVAILABLE
+  rationale: no prospective plan was provided
+
+evidence:
+  - id: EV-01
+    type: STRUCTURAL_FACT
+    text: Each culture was divided into six wells.
+    source_id: methods_01
+  - id: EV-02
+    type: AUTHOR_ASSERTION
+    text: Three independent experiments were performed.
+    source_id: methods_01
+  - id: EV-03
+    type: PROCEDURAL_EVENT
+    text: Drug X was added after plating.
+    source_id: methods_01
+
+missing_predicates:
+  - predicate_id: PRED-RUN-SOURCE-IDENTITY
+    knowledge_state: UNKNOWN
+    affects_claims: [CLAIM-EU-01, CLAIM-N-01, CLAIM-SCOPE-01]
+
+questions:
+  - id: Q-001
+    predicate_id: PRED-RUN-SOURCE-IDENTITY
+    priority: PRIMARY
+    text: Were the three experiment runs initiated from distinct biological preparations, and were treatment levels assignable separately within each run?
+
+scenario_set:
+  id: SCEN-01
+  exhaustive: false
+  coverage_basis:
+    - DT-EU-ASSIGNMENT-01
+    - DT-SOURCE-SCOPE-02
+  coverage_caveat: Other undocumented preparation histories may remain possible.
+  scenarios:
+    - id: S-A
+      assumption: distinct_preparations_and_separate_assignment
+    - id: S-B
+      assumption: repeated_runs_from_shared_preparation
+
+derived_claims:
+  - claim_id: CLAIM-EU-01
+    claim_type: EXPERIMENTAL_UNIT
+    query_id: IQ-001
+    determinability: MULTIPLE_PLAUSIBLE_GRAPHS
+    value:
+      knowledge_state: UNKNOWN
+    support_grade: MIXED_UNRESOLVED
+    theory_clauses: [DT-EU-ASSIGNMENT-01, DT-EU-EXPOSURE-02]
+    rule_trace: [EU-WELL-CANDIDATE-01]
+    assumptions:
+      - assignment separability unresolved
+      - effective exposure cluster unresolved
+    profile_coverage: PARTIAL_PROFILE_COVERAGE
+  - claim_id: CLAIM-SOURCE-01
+    claim_type: BIOLOGICAL_SOURCE_COUNT
+    query_id: IQ-001
+    determinability: INSUFFICIENT_INFORMATION
+    value:
+      knowledge_state: UNKNOWN
+    support_grade: NOT_SUPPORTED
+    theory_clauses: [DT-SOURCE-COUNT-01]
+  - claim_id: CLAIM-ADEQUACY-01
+    claim_type: DESIGN_ADEQUACY_FINDING
+    query_id: IQ-001
+    determinability: INSUFFICIENT_INFORMATION
+    value:
+      knowledge_state: UNKNOWN
+    support_grade: NOT_SUPPORTED
+
+report_resolution_state: MULTIPLE_PLAUSIBLE_GRAPHS
+
+epistemic_boundary:
+  statement: N-Truth evaluated the inspected records and confirmations; it did not observe the experiment directly.

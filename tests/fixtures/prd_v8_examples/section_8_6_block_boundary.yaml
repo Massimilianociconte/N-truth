@@ -1,0 +1,9 @@
+# Verbatim from PRD v8.0 §8.6 (Experiment Block boundary record), lines 1277-1286.
+block_boundary:
+  block_id: EB-01
+  boundary_basis:
+    - distinct_assignment_history
+    - distinct_source_population
+  source_refs: [METHODS-S2, FIG-3]
+  status: CONFIRMED|CANDIDATE|CONFLICTING
+  rationale: "Treatment and endpoint belong to a distinct allocation history."

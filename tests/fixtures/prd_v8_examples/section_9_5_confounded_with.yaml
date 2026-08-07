@@ -1,0 +1,5 @@
+# Verbatim from PRD v8.0 §9.5 (KnowledgeState normativo), lines 1449-1454.
+confounded_with:
+  knowledge_state: NOT_REPORTED
+  items: []
+  source_scope: [methods_01, sample_sheet_01]

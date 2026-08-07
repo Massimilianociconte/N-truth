@@ -1,0 +1,9 @@
+# Verbatim from PRD v8.0 §8.7 (Authority, conflict e rule-challenge records), lines 1303-1310.
+conflict_record:
+  id: CONFLICT-001
+  field: biological_source_count
+  sources: [methods_ev_12, sample_sheet_rowset_4]
+  status: unresolved|resolved_with_rationale
+  resolution_event:
+    knowledge_state: NOT_APPLICABLE
+    rationale: conflict remains unresolved

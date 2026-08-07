@@ -1,0 +1,13 @@
+# Verbatim from PRD v8.0 §10.12 (ConditionRecord e domanda primaria), lines 1695-1708.
+condition_record:
+  id: COND-001
+  predicate: independent_preparations_before_assignment
+  claim_ids: [CLAIM-EU-01, CLAIM-N-01]
+  human_readable:
+    it: "Le colture erano preparazioni separabili prima dell'assegnazione?"
+    en: "Were cultures separable preparations before assignment?"
+  evidence_required: [preparation_id, assignment_event_id]
+  if_true_effect: "EU=culture; count by group"
+  if_false_effect: "EU collapses to shared preparation or remains unknown"
+  scenario_coverage: EXHAUSTIVE_WITHIN_PROFILE
+  primary_question_id: Q-001

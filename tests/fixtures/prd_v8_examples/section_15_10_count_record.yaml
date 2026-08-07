@@ -1,0 +1,13 @@
+# Verbatim from PRD v8.0 §15.10 (Schema scope-aware dei conteggi), lines 2462-2475.
+count_id: CNT-001
+kind: experimental_unit_count
+value: 6
+unit_type: culture
+factor_id: treatment
+contrast_id: vehicle_vs_drug
+endpoint_id: mitochondrial_length
+timepoint_id: T1
+population_scope: donor_linked_primary_cultures
+condition: confirmed_independent_cultures
+source_evidence: [EV-01, EV-02, EV-03]
+rule_trace: [EU-ALLOC-001, COUNT-004]

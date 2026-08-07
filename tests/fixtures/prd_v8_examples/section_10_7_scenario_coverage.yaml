@@ -1,0 +1,11 @@
+# Verbatim from PRD v8.0 §10.7 (ScenarioCoverage), lines 1612-1623.
+scenario_coverage:
+  status: EXHAUSTIVE_WITHIN_PROFILE|NON_EXHAUSTIVE|UNKNOWN
+  profile_id: simple_cell_culture
+  theory_version: derivation-theory-0.1.0
+  emitting_clauses: [DT-EU-04, DT-EXP-02]
+  omitted_dimensions:
+    knowledge_state: ABSENT_EXPLICIT
+    items: []
+  caveat:
+    knowledge_state: NOT_APPLICABLE
