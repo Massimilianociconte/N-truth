@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from ntruth import SCHEMA_VERSION, __version__
 from ntruth.api.sessions import (
@@ -31,15 +32,30 @@ from ntruth.governance import (
     PrivacyBlocked,
     PrivacyPolicy,
     RedactionManifest,
+    enforce_privacy,
+    scan_text,
 )
 from ntruth.ingest.safety import SafetyError
+from ntruth.prospective import (
+    MAX_PROSPECTIVE_D0_BODY_BYTES,
+    MAX_PROSPECTIVE_D0_ROWS,
+    ProspectiveD0CompileRequest,
+    ProspectiveD0RulesetError,
+    ProspectiveD0ValidationError,
+    ProspectiveGoldRecord,
+    ProspectivePlanExecutionRecord,
+    ProspectiveSession,
+    ProspectiveSessionNotFound,
+    ProspectiveSessionRegistry,
+    compile_prospective_d0,
+)
 from ntruth.reporting import read_json, report_to_dict
 from ntruth.rules.loader import (
     DEFAULT_RULESET_ID,
     DEFAULT_RULESET_VERSION,
     RulesetNotFound,
 )
-from ntruth.schemas.core import Provenance, ProvenanceKind, stable_id
+from ntruth.schemas.core import Provenance, ProvenanceKind, content_checksum, stable_id
 from ntruth.schemas.experiment import (
     Correction,
     CorrectionReason,
@@ -48,7 +64,8 @@ from ntruth.schemas.experiment import (
     InferenceTargetStatus,
 )
 from ntruth.schemas.graph import NodeType
-from ntruth.schemas.manifest import LicenseManifest
+from ntruth.schemas.manifest import LicenseManifest, ReleaseProfile
+from ntruth.storage import StorageDatabase, StorageIntegrityError
 from ntruth.transparency import SUPPORTED_DOMAINS, VALIDATED_DOMAINS, assess_domain
 
 
@@ -64,6 +81,7 @@ class AnalyzeRequest(BaseModel):
     domain: str = "quantitative_microscopy"
     ruleset_id: str = DEFAULT_RULESET_ID
     ruleset_version: str = DEFAULT_RULESET_VERSION
+    release_profile: ReleaseProfile = ReleaseProfile.D0_CORE
     acknowledge_unvalidated_domain: bool = False
 
 
@@ -87,6 +105,7 @@ class ApplyCorrectionRequest(BaseModel):
 class NavigateCorrectionRequest(BaseModel):
     session_id: str
     block_id: str
+    reviewer_role: str = Field(default="reviewer", min_length=2, max_length=64)
 
 
 class InferenceTargetDraft(BaseModel):
@@ -137,6 +156,23 @@ class DistributionReadinessRequest(BaseModel):
     acknowledgement_reference: str | None = None
 
 
+class PlanExecutionAppendRequest(BaseModel):
+    """Append di un candidato piano/esecuzione su storage locale SQLite."""
+
+    project_id: str = Field(min_length=1, max_length=200)
+    project_dir: str = Field(min_length=1, max_length=4000)
+    record: dict[str, Any]
+    actor_role: str | None = Field(default=None, max_length=64)
+
+
+class PlanExecutionGoldRequest(BaseModel):
+    """Promozione a gold adjudicato di un candidato piano/esecuzione."""
+
+    project_dir: str = Field(min_length=1, max_length=4000)
+    gold: dict[str, Any]
+    actor_role: str | None = Field(default=None, max_length=64)
+
+
 def create_app() -> Any:
     """Crea l'app senza rendere FastAPI una dipendenza del core."""
 
@@ -158,6 +194,50 @@ def create_app() -> Any:
         allowed_hosts=["127.0.0.1", "localhost", "testserver"],
     )
     sessions = SessionRegistry()
+    prospective_sessions = ProspectiveSessionRegistry()
+
+    @api.middleware("http")
+    async def reject_oversized_prospective_body(request: Any, call_next: Any) -> Any:
+        path = request.url.path
+        if path == "/v1/prospective/d0/compile" or path.startswith(
+            "/v1/prospective/plan-execution"
+        ):
+            raw_length = request.headers.get("content-length")
+            if raw_length is not None:
+                try:
+                    body_length = int(raw_length)
+                except ValueError:
+                    return JSONResponse(
+                        status_code=400,
+                        content={"detail": {"code": "invalid_content_length"}},
+                    )
+                if body_length > MAX_PROSPECTIVE_D0_BODY_BYTES:
+                    return JSONResponse(
+                        status_code=413,
+                        content={
+                            "detail": {
+                                "code": "prospective_payload_too_large",
+                                "max_body_bytes": MAX_PROSPECTIVE_D0_BODY_BYTES,
+                            }
+                        },
+                    )
+            body = bytearray()
+            async for chunk in request.stream():
+                if len(body) + len(chunk) > MAX_PROSPECTIVE_D0_BODY_BYTES:
+                    return JSONResponse(
+                        status_code=413,
+                        content={
+                            "detail": {
+                                "code": "prospective_payload_too_large",
+                                "max_body_bytes": MAX_PROSPECTIVE_D0_BODY_BYTES,
+                            }
+                        },
+                    )
+                body.extend(chunk)
+            # Starlette riusa il body gia verificato nel receive wrapper di
+            # ``call_next``; nessun secondo buffering legge lo stream originale.
+            request._body = bytes(body)
+        return await call_next(request)
 
     @api.get("/health")
     @api.get("/v1/health")
@@ -172,12 +252,321 @@ def create_app() -> Any:
             "validated_domains": list(VALIDATED_DOMAINS),
             "privacy_scan": "local_stand_off",
             "distribution_gate": "explicit_fail_closed",
+            "prospective_d0_limits": {
+                "max_rows": MAX_PROSPECTIVE_D0_ROWS,
+                "max_body_bytes": MAX_PROSPECTIVE_D0_BODY_BYTES,
+                "session_persistence": "ephemeral_process_memory",
+            },
+            "plan_execution_persistence": "sqlite_append_only",
+            "default_release_profile": ReleaseProfile.D0_CORE.value,
+            "input_profiles": {
+                ReleaseProfile.D0_CORE.value: [".txt", ".md", ".csv"],
+                ReleaseProfile.EXTENDED_EXPERIMENTAL.value: [
+                    ".docx",
+                    ".xlsx",
+                    ".pdf",
+                    ".xml/.nxml/.jats",
+                    ".r/.py/.rmd",
+                ],
+            },
         }
 
     @api.post("/preflight")
     @api.post("/v1/preflight")
     def preflight(payload: DomainPreflightRequest) -> dict[str, Any]:
         return assess_domain(payload.domain).model_dump(mode="json")
+
+    def prospective_response(session: ProspectiveSession) -> dict[str, Any]:
+        return {
+            "session_id": session.id,
+            "session_persistence": "ephemeral_process_memory",
+            "audit_trail": [item.model_dump(mode="json") for item in session.audit_trail],
+            **session.compilation.model_dump(mode="json"),
+        }
+
+    @api.post("/v1/prospective/d0/compile")
+    def compile_prospective(payload: ProspectiveD0CompileRequest) -> dict[str, Any]:
+        """Compila il wizard D0; input non valido non crea alcuna sessione."""
+
+        try:
+            compilation = compile_prospective_d0(payload)
+        except ProspectiveD0RulesetError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": exc.code,
+                    "allowed_ruleset": (f"{DEFAULT_RULESET_ID}@{DEFAULT_RULESET_VERSION}"),
+                    "message": str(exc),
+                },
+            ) from exc
+        except ProspectiveD0ValidationError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": "prospective_d0_invalid",
+                    "issues": [item.model_dump(mode="json") for item in exc.issues],
+                },
+            ) from exc
+        session = prospective_sessions.create(
+            compilation,
+            actor_role=payload.draft.reviewer_role,
+            input_checksum=content_checksum(payload.model_dump(mode="json")),
+        )
+        return prospective_response(session)
+
+    @api.get("/v1/prospective/d0/sessions/{session_id}")
+    def prospective_session(session_id: str) -> dict[str, Any]:
+        try:
+            return prospective_response(prospective_sessions.get(session_id))
+        except ProspectiveSessionNotFound as exc:
+            raise HTTPException(status_code=404, detail="Sessione prospettica non trovata") from exc
+
+    @api.get("/v1/prospective/d0/sessions/{session_id}/export")
+    def export_prospective_session(session_id: str) -> Any:
+        """Esporta soltanto JSON canonico; nessun file viene pubblicato o caricato."""
+
+        try:
+            session = prospective_sessions.get(session_id)
+        except ProspectiveSessionNotFound as exc:
+            raise HTTPException(status_code=404, detail="Sessione prospettica non trovata") from exc
+        filename = f"ntruth-d0-{session.compilation.compilation_id}.json"
+        export_payload = {
+            **session.compilation.model_dump(mode="json"),
+            "audit_trail": [item.model_dump(mode="json") for item in session.audit_trail],
+        }
+        serialized_export = json.dumps(
+            export_payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        privacy_scan = scan_text(
+            serialized_export,
+            artifact_id=session.compilation.compilation_id,
+            field_path="prospective_d0_export",
+        )
+        try:
+            enforce_privacy(privacy_scan, PrivacyPolicy.BLOCKED)
+        except PrivacyBlocked as exc:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "privacy_export_blocked",
+                    "message": (
+                        "L'export contiene identificatori potenzialmente sensibili; "
+                        "creare una copia redatta prima della distribuzione."
+                    ),
+                    "finding_count": len(privacy_scan.findings),
+                    "finding_kinds": sorted(
+                        {finding.kind.value for finding in privacy_scan.findings}
+                    ),
+                },
+            ) from exc
+        return JSONResponse(
+            content=export_payload,
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    def _open_project_database(project_dir: str) -> StorageDatabase:
+        root = Path(project_dir).expanduser()
+        if root.is_symlink():
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": "invalid_project_dir",
+                    "message": "project_dir symlink non ammesso",
+                },
+            )
+        database_path = root / "ntruth.sqlite3"
+        if database_path.is_symlink():
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": "invalid_project_dir",
+                    "message": "database SQLite symlink non ammesso",
+                },
+            )
+        try:
+            return StorageDatabase(database_path)
+        except StorageIntegrityError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "storage_integrity_error", "message": str(exc)},
+            ) from exc
+
+    def _ensure_project_registered(
+        database: StorageDatabase,
+        *,
+        project_id: str,
+        manifest_checksum: str,
+    ) -> None:
+        exists = database.connection.execute(
+            "SELECT 1 FROM projects WHERE project_id = ?", (project_id,)
+        ).fetchone()
+        if exists is None:
+            database.upsert_project(
+                project_id=project_id,
+                name=project_id,
+                manifest_path="manifest.json",
+                manifest_checksum=manifest_checksum,
+            )
+
+    def _plan_execution_response(record: Any) -> dict[str, Any]:
+        return {
+            "record_id": record.record_id,
+            "project_id": record.project_id,
+            "status": record.status,
+            "content_checksum": record.content_checksum,
+            "payload": record.payload,
+            "actor_role": record.actor_role,
+            "parent_candidate_id": record.parent_candidate_id,
+            "created_at": record.created_at,
+        }
+
+    @api.post("/v1/prospective/plan-execution")
+    def append_plan_execution(payload: PlanExecutionAppendRequest) -> dict[str, Any]:
+        """Persiste un candidato piano/esecuzione su SQLite append-only locale."""
+
+        try:
+            validated = ProspectivePlanExecutionRecord.model_validate(payload.record)
+        except ValidationError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": "plan_execution_invalid",
+                    "message": "ProspectivePlanExecutionRecord non valido",
+                    "errors": json.loads(exc.json()),
+                },
+            ) from exc
+
+        record_payload = validated.model_dump(mode="json")
+        canonical = json.dumps(
+            record_payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+        bootstrap_checksum = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+        with _open_project_database(payload.project_dir) as database:
+            _ensure_project_registered(
+                database,
+                project_id=payload.project_id,
+                manifest_checksum=bootstrap_checksum,
+            )
+            try:
+                stored = database.put_plan_execution_candidate(
+                    payload.project_id,
+                    record_payload,
+                    actor_role=payload.actor_role,
+                )
+            except StorageIntegrityError as exc:
+                raise HTTPException(
+                    status_code=409,
+                    detail={"code": "plan_execution_storage_error", "message": str(exc)},
+                ) from exc
+        return _plan_execution_response(stored)
+
+    @api.get("/v1/prospective/plan-execution/{record_id}")
+    def get_plan_execution(record_id: str, project_dir: str) -> dict[str, Any]:
+        """Carica un record piano/esecuzione da storage locale."""
+
+        with _open_project_database(project_dir) as database:
+            stored = database.get_plan_execution(record_id)
+        if stored is None:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "code": "plan_execution_not_found",
+                    "message": "Record piano/esecuzione non trovato",
+                },
+            )
+        return _plan_execution_response(stored)
+
+    @api.post("/v1/prospective/plan-execution/{record_id}/gold")
+    def promote_plan_execution_gold(
+        record_id: str, payload: PlanExecutionGoldRequest
+    ) -> dict[str, Any]:
+        """Promuove un candidato a gold adjudicato senza mutare il candidato."""
+
+        try:
+            gold = ProspectiveGoldRecord.model_validate(payload.gold)
+        except ValidationError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": "plan_execution_gold_invalid",
+                    "message": "ProspectiveGoldRecord non valido",
+                    "errors": json.loads(exc.json()),
+                },
+            ) from exc
+
+        gold_payload = gold.model_dump(mode="json")
+        plan_execution_payload = gold.plan_execution.model_dump(mode="json")
+        plan_execution_canonical = json.dumps(
+            plan_execution_payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+        plan_execution_checksum = hashlib.sha256(
+            plan_execution_canonical.encode("utf-8")
+        ).hexdigest()
+
+        with _open_project_database(payload.project_dir) as database:
+            candidate = database.get_plan_execution(record_id)
+            if candidate is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail={
+                        "code": "plan_execution_not_found",
+                        "message": "Candidato piano/esecuzione non trovato",
+                    },
+                )
+            if candidate.status != "candidate":
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": "plan_execution_not_candidate",
+                        "message": "Solo un candidato puo essere promosso a gold",
+                        "status": candidate.status,
+                    },
+                )
+            candidate_domain_id = candidate.payload.get("record_id")
+            if candidate_domain_id != gold.plan_execution.record_id:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": "plan_execution_gold_mismatch",
+                        "message": (
+                            "gold.plan_execution.record_id non coincide con il candidato"
+                        ),
+                    },
+                )
+            if candidate.content_checksum != plan_execution_checksum:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": "plan_execution_gold_mismatch",
+                        "message": (
+                            "gold.plan_execution non coincide con il payload del candidato"
+                        ),
+                    },
+                )
+            try:
+                stored = database.promote_plan_execution_gold(
+                    record_id,
+                    gold_payload,
+                    actor_role=payload.actor_role or gold.adjudicator_role,
+                )
+            except StorageIntegrityError as exc:
+                raise HTTPException(
+                    status_code=409,
+                    detail={"code": "plan_execution_gold_conflict", "message": str(exc)},
+                ) from exc
+        return _plan_execution_response(stored)
 
     @api.post("/analyze")
     @api.post("/v1/analyze")
@@ -201,6 +590,7 @@ def create_app() -> Any:
                 domain=payload.domain,
                 ruleset_id=payload.ruleset_id,
                 ruleset_version=payload.ruleset_version,
+                release_profile=payload.release_profile,
                 require_domain_acknowledgement=True,
                 acknowledged_unvalidated_domain=payload.acknowledge_unvalidated_domain,
             )
@@ -493,9 +883,9 @@ def create_app() -> Any:
         try:
             session = sessions.get(payload.session_id)
             update = (
-                session.undo(payload.block_id)
+                session.undo(payload.block_id, actor_role=payload.reviewer_role)
                 if action == "undo"
-                else session.redo(payload.block_id)
+                else session.redo(payload.block_id, actor_role=payload.reviewer_role)
             )
             return correction_response(update)
         except (SessionNotFound, SessionBlockNotFound) as exc:

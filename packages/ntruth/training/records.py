@@ -19,7 +19,7 @@ from typing import Any, Literal
 
 from pydantic import Field, JsonValue, ValidationError, field_validator, model_validator
 
-from ntruth.governance.lineage import CorpusSplit
+from ntruth.governance.lineage import CorpusSplit, validate_split_eligibility
 from ntruth.schemas.core import FrozenModel, content_checksum
 
 TRAINING_RECORD_SCHEMA_VERSION = "1.0.0"
@@ -54,10 +54,16 @@ class SupervisionProvenance(FrozenModel):
     source_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     governance_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     publication_id: str | None = None
+    supplement_id: str | None = None
+    preprint_id: str | None = None
+    dataset_id: str | None = None
     project_id: str | None = None
     bundle_id: str | None = None
     laboratory_id: str | None = None
+    facility_id: str | None = None
     corresponding_author_id: str | None = None
+    synthetic_family_id: str | None = None
+    counterfactual_family_id: str | None = None
     license_or_authorization_id: str | None = None
     guideline_version: str
     reviewer_count: int = Field(default=0, ge=0)
@@ -69,10 +75,16 @@ class SupervisionProvenance(FrozenModel):
         "source_id",
         "source_asset_id",
         "publication_id",
+        "supplement_id",
+        "preprint_id",
+        "dataset_id",
         "project_id",
         "bundle_id",
         "laboratory_id",
+        "facility_id",
         "corresponding_author_id",
+        "synthetic_family_id",
+        "counterfactual_family_id",
         "license_or_authorization_id",
         "guideline_version",
         "adjudication_id",
@@ -105,7 +117,9 @@ class SupervisedRecord(FrozenModel):
     provenance: SupervisionProvenance
     annotation_status: AnnotationStatus = AnnotationStatus.CANDIDATE
     training_eligible: bool = False
-    requested_split: CorpusSplit | None = None
+    evaluation_eligible: bool = False
+    release_eligible: bool = False
+    requested_split: CorpusSplit | None = CorpusSplit.UNASSIGNED
     metadata: dict[str, JsonValue] = Field(default_factory=dict)
 
     @field_validator("record_id", "task", "language", "input_text")
@@ -134,15 +148,27 @@ class SupervisedRecord(FrozenModel):
                 raise ValueError("adjudicated richiede almeno due revisioni")
             if self.provenance.adjudication_id is None:
                 raise ValueError("adjudicated richiede adjudication_id")
-        eligible_statuses = {
+        curated_statuses = {
             AnnotationStatus.DOUBLE_REVIEWED,
             AnnotationStatus.ADJUDICATED,
         }
-        if self.training_eligible and self.annotation_status not in eligible_statuses:
-            raise ValueError("un record candidate/single_reviewed non e training-eligible")
-        if self.training_eligible and self.provenance.license_or_authorization_id is None:
-            raise ValueError("training_eligible richiede licenza o autorizzazione esplicita")
-        if self.provenance.synthetic and self.requested_split not in {None, CorpusSplit.TRAIN}:
+        any_eligible = self.training_eligible or self.evaluation_eligible or self.release_eligible
+        if any_eligible and self.annotation_status not in curated_statuses:
+            raise ValueError(
+                "un record candidate/single_reviewed non e idoneo per training, evaluation o release"
+            )
+        if any_eligible and self.provenance.license_or_authorization_id is None:
+            raise ValueError("l'idoneita richiede licenza o autorizzazione esplicita")
+        validate_split_eligibility(
+            self.requested_split,
+            training_eligible=self.training_eligible,
+            evaluation_eligible=self.evaluation_eligible,
+        )
+        if self.provenance.synthetic and self.requested_split not in {
+            None,
+            CorpusSplit.UNASSIGNED,
+            CorpusSplit.TRAIN,
+        }:
             raise ValueError("i record sintetici possono essere assegnati soltanto a train")
         return self
 
@@ -233,9 +259,16 @@ class PreparedRecord(FrozenModel):
     split: CorpusSplit
 
     @model_validator(mode="after")
-    def _synthetic_only_train(self) -> PreparedRecord:
+    def _validate_final_split(self) -> PreparedRecord:
+        if self.split is CorpusSplit.UNASSIGNED:
+            raise ValueError("un record preparato deve avere uno split definitivo")
         if self.record.provenance.synthetic and self.split is not CorpusSplit.TRAIN:
             raise ValueError("i record sintetici possono apparire soltanto in train")
+        validate_split_eligibility(
+            self.split,
+            training_eligible=self.record.training_eligible,
+            evaluation_eligible=self.record.evaluation_eligible,
+        )
         return self
 
 
@@ -250,8 +283,21 @@ class ManifestRecord(FrozenModel):
     source_asset_id: str
     source_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     governance_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    publication_id: str | None = None
+    supplement_id: str | None = None
+    preprint_id: str | None = None
+    dataset_id: str | None = None
+    project_id: str | None = None
+    bundle_id: str | None = None
+    laboratory_id: str | None = None
+    facility_id: str | None = None
+    corresponding_author_id: str | None = None
+    synthetic_family_id: str | None = None
+    counterfactual_family_id: str | None = None
     annotation_status: AnnotationStatus
     training_eligible: bool
+    evaluation_eligible: bool = False
+    release_eligible: bool = False
     license_or_authorization_id: str | None = None
     reviewer_count: int = Field(ge=0)
     adjudication_id: str | None = None
@@ -259,19 +305,27 @@ class ManifestRecord(FrozenModel):
 
     @model_validator(mode="after")
     def _validate_training_authorization(self) -> ManifestRecord:
-        if not self.training_eligible:
-            return self
-        if self.annotation_status not in {
+        if self.split is CorpusSplit.UNASSIGNED:
+            raise ValueError("un record nel dataset manifest deve avere uno split definitivo")
+        validate_split_eligibility(
+            self.split,
+            training_eligible=self.training_eligible,
+            evaluation_eligible=self.evaluation_eligible,
+        )
+        any_eligible = self.training_eligible or self.evaluation_eligible or self.release_eligible
+        if any_eligible and self.annotation_status not in {
             AnnotationStatus.DOUBLE_REVIEWED,
             AnnotationStatus.ADJUDICATED,
         }:
-            raise ValueError("training_eligible richiede revisione doppia o adjudication")
-        if self.reviewer_count < 2:
-            raise ValueError("training_eligible richiede almeno due reviewer")
-        if self.license_or_authorization_id is None:
-            raise ValueError("training_eligible richiede licenza o autorizzazione")
+            raise ValueError("l'idoneita richiede revisione doppia o adjudication")
+        if any_eligible and self.reviewer_count < 2:
+            raise ValueError("l'idoneita richiede almeno due reviewer")
+        if any_eligible and self.license_or_authorization_id is None:
+            raise ValueError("l'idoneita richiede licenza o autorizzazione")
         if self.annotation_status is AnnotationStatus.ADJUDICATED and self.adjudication_id is None:
             raise ValueError("adjudicated richiede adjudication_id nel manifest")
+        if self.synthetic and self.split is not CorpusSplit.TRAIN:
+            raise ValueError("record sintetici ammessi soltanto in train")
         return self
 
 
@@ -390,9 +444,28 @@ class PreparedDataset(FrozenModel):
                 or prepared.near_fingerprint != entry.near_fingerprint
                 or prepared.record.annotation_status is not entry.annotation_status
                 or prepared.record.training_eligible != entry.training_eligible
+                or prepared.record.evaluation_eligible != entry.evaluation_eligible
+                or prepared.record.release_eligible != entry.release_eligible
                 or (
                     prepared.record.provenance.license_or_authorization_id
                     != entry.license_or_authorization_id
+                )
+                or prepared.record.provenance.publication_id != entry.publication_id
+                or prepared.record.provenance.supplement_id != entry.supplement_id
+                or prepared.record.provenance.preprint_id != entry.preprint_id
+                or prepared.record.provenance.dataset_id != entry.dataset_id
+                or prepared.record.provenance.project_id != entry.project_id
+                or prepared.record.provenance.bundle_id != entry.bundle_id
+                or prepared.record.provenance.laboratory_id != entry.laboratory_id
+                or prepared.record.provenance.facility_id != entry.facility_id
+                or (
+                    prepared.record.provenance.corresponding_author_id
+                    != entry.corresponding_author_id
+                )
+                or prepared.record.provenance.synthetic_family_id != entry.synthetic_family_id
+                or (
+                    prepared.record.provenance.counterfactual_family_id
+                    != entry.counterfactual_family_id
                 )
                 or prepared.record.provenance.reviewer_count != entry.reviewer_count
                 or prepared.record.provenance.adjudication_id != entry.adjudication_id

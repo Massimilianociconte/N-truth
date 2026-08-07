@@ -38,7 +38,25 @@ N-Truth non carica automaticamente `.env`; un valore vuoto non va esportato.
 Formati supportati: TXT/Markdown, JATS/XML, DOCX, PDF con testo estraibile, CSV/XLSX,
 R, Python e R Markdown. JSON generici, archivi e binari sconosciuti vengono scartati.
 Usare un file sorgente preciso invece della cartella se la cartella contiene artefatti
-di test o output.
+di test o output. Quando `SOURCE` e una directory, `--out` e l'eventuale `--project`
+devono trovarsi fuori da quella directory: N-Truth rifiuta il nesting prima di creare
+un run, per evitare di reingerire copie e revisioni storiche nelle analisi successive.
+
+## Manifest legacy rifiutato
+
+La migrazione non e una scorciatoia per un manifest v6 alterato. Fare prima una copia
+del workspace e calcolare indipendentemente il digest del file legacy esatto:
+
+```bash
+shasum -a 256 workspace/manifest.json
+uv run ntruth verify workspace \
+  --migrate-legacy-manifest \
+  --legacy-manifest-sha256 DIGEST
+```
+
+Il digest esplicito e obbligatorio per un manifest pre-v6 privo del vecchio checksum.
+Se esistono `release_profile` o `ntruth.sqlite3`, il workspace e gia v6 e la mancanza
+di `integrity` e trattata come alterazione, non come migrazione.
 
 ## PDF scansionato o OCR degradato
 
@@ -105,9 +123,10 @@ uv run ntruth-ml check
 ```
 
 - `apple_silicon=false`: la corsia MLX è supportata solo su macOS arm64;
-- `memory=false`: il profilo iniziale richiede 24 GiB di memoria unificata;
+- `memory=false`: il runner smoke corrente ha come target 24 GiB di memoria unificata;
 - `disk_download_headroom=false`: liberare spazio senza cancellare dataset o run non
-  revisionati; il download deve lasciare almeno 50 GiB liberi;
+  revisionati; il guardrail bootstrap lascia almeno 50 GiB liberi, ma prima di un run
+  reale serve un profilo Runtime Resource Manager misurato;
 - `runtime_version=false`: eseguire `uv sync --extra ml --locked`;
 - `model_present=false`: eseguire il download esplicito soltanto dopo aver letto la
   licenza e il budget.

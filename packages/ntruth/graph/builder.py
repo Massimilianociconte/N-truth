@@ -40,6 +40,7 @@ from ntruth.schemas.experiment import (
     ProcessFact,
     Question,
     StatisticalModelFact,
+    TriState,
 )
 from ntruth.schemas.graph import (
     CLUSTER_TYPES,
@@ -109,16 +110,27 @@ def build_graph(block_id: str, extraction: ExtractionResult) -> BuildResult:
     # ricchi del contratto legacy dei candidate facts. In particolare,
     # application e declared_clustering devono avere un nodo bersaglio senza
     # essere reinterpretati come allocation.
-    required_types.update(
+    design_required_types = {
         level
         for factor in factors
         for level in (factor.allocation_level, factor.application_level)
         if level is not None
+    }
+    design_required_types.update(
+        endpoint.measured_on for endpoint in endpoints if endpoint.measured_on is not None
     )
-    required_types.update(level for model in models for level in model.declared_clustering)
+    design_required_types.update(level for model in models for level in model.declared_clustering)
+    source_entity_types = {fact.node_type for fact in extraction.entities}
+    design_only_required = design_required_types - required_types - source_entity_types
+    required_types.update(design_required_types)
     has_exclusions = any(process.kind == "exclusion" for process in processes)
     aggregate_nodes = _build_nodes(
-        block_id, extraction.entities, required_types, acc, has_exclusions=has_exclusions
+        block_id,
+        extraction.entities,
+        required_types,
+        acc,
+        has_exclusions=has_exclusions,
+        design_only_required=design_only_required,
     )
     instance_nodes, instance_index = _build_instance_nodes(
         block_id,
@@ -176,13 +188,6 @@ def _required_types(extraction: ExtractionResult) -> set[NodeType]:
         types.add(instance_relation.target_type)
     types.update(fact.node_type for fact in extraction.entity_instances)
     types.update(fact.node_type for fact in extraction.instance_assignments)
-    for factor in extraction.factors:
-        for level in (factor.allocation_level, factor.application_level):
-            if level is not None:
-                types.add(level)
-    for endpoint in extraction.endpoints:
-        if endpoint.measured_on is not None:
-            types.add(endpoint.measured_on)
     for n_fact in extraction.n_facts:
         if n_fact.node_type is not None:
             types.add(n_fact.node_type)
@@ -268,6 +273,7 @@ def _build_nodes(
     acc: _Accumulator,
     *,
     has_exclusions: bool = False,
+    design_only_required: set[NodeType] | None = None,
 ) -> dict[NodeType, GraphNode]:
     grouped: dict[NodeType, list[EntityFact]] = {}
     for fact in entities:
@@ -313,6 +319,8 @@ def _build_nodes(
         )
 
         attributes: dict[str, str | int | float | bool | None] = {"aggregate": True}
+        if not facts and node_type in (design_only_required or set()):
+            attributes["materialized_from_design_field"] = True
         count: int | None = None
         if len(totals) == 1:
             count = totals[0]
@@ -342,6 +350,7 @@ def _build_nodes(
                     "fonti diverse"
                 ),
                 evidence_ids=evidence_ids,
+                retained_interpretations=tuple(f"{node_type} count = {value}" for value in totals),
             )
             acc.contradictions.append(contradiction)
             acc.questions.append(
@@ -585,6 +594,9 @@ def _build_relations(
                     f"cardinalita contraddittoria per {source_type} in {target_type}: {counts}"
                 ),
                 evidence_ids=tuple(f.evidence.id for f in facts if f.evidence is not None),
+                retained_interpretations=tuple(
+                    f"{source_type} per {target_type} = {value}" for value in counts
+                ),
             )
             acc.contradictions.append(contradiction)
             attributes["conflicting_per_parent"] = ", ".join(str(c) for c in counts)
@@ -703,6 +715,7 @@ def _build_factors(
                     fact.evidence,
                     fact.allocation_evidence,
                     fact.application_evidence,
+                    fact.independence_evidence,
                 )
                 if e is not None
             )
@@ -719,6 +732,13 @@ def _build_factors(
                 fact.application_evidence.id
                 for fact in facts
                 if fact.application_evidence is not None
+            )
+        )
+        independence_evidence_ids = tuple(
+            dict.fromkeys(
+                fact.independence_evidence.id
+                for fact in facts
+                if fact.independence_evidence is not None
             )
         )
 
@@ -768,6 +788,9 @@ def _build_factors(
                     evidence_ids=(
                         allocation_evidence if dimension == "allocation" else application_evidence
                     ),
+                    retained_interpretations=tuple(
+                        f"{dimension}_level = {candidate}" for candidate in candidates
+                    ),
                 )
                 acc.contradictions.append(contradiction)
                 acc.questions.append(
@@ -794,8 +817,9 @@ def _build_factors(
                 Question(
                     id=stable_id("qst", block_id, dimension, factor_name),
                     text=(
-                        "Quale unita ha ricevuto indipendentemente il livello del fattore "
-                        f"'{factor_name}'?"
+                        "A quale unita e stato allocato il livello del fattore "
+                        f"'{factor_name}'? L'indipendenza operativa viene verificata "
+                        "separatamente."
                         if dimension == "allocation"
                         else "A quale unita e stato materialmente applicato il fattore "
                         f"'{factor_name}'?"
@@ -821,6 +845,36 @@ def _build_factors(
             if any(f.origin is ProvenanceKind.TABULAR for f in facts)
             else ProvenanceKind.EXPLICIT
         )
+        independence_states = {fact.independently_assigned for fact in facts}
+        independently_assigned = (
+            next(iter(independence_states)) if len(independence_states) == 1 else TriState.UNKNOWN
+        )
+        mechanisms = tuple(
+            dict.fromkeys(
+                fact.independence_mechanism.strip()
+                for fact in facts
+                if fact.independence_mechanism and fact.independence_mechanism.strip()
+            )
+        )
+        independence_mechanism = mechanisms[0] if len(mechanisms) == 1 else None
+        if independently_assigned is TriState.TRUE and independence_mechanism is None:
+            independently_assigned = TriState.UNKNOWN
+        if independently_assigned is TriState.UNKNOWN:
+            acc.questions.append(
+                Question(
+                    id=stable_id("qst", block_id, "operational-independence", name),
+                    text=(
+                        f"Le unita allocate al fattore '{name}' sono operativamente "
+                        "indipendenti? Indicare il meccanismo concreto, la preparazione "
+                        "biologica e gli eventuali ambienti condivisi."
+                    ),
+                    reason="indipendenza operativa non dimostrata",
+                    missing_field=f"factor[{name}].independently_assigned",
+                    priority=100,
+                    decisive=True,
+                    impact="Senza tri-state TRUE e meccanismo non e pubblicabile un singolo n.",
+                )
+            )
         factors.append(
             Factor(
                 id=stable_id("fac", block_id, name),
@@ -833,6 +887,31 @@ def _build_factors(
                 application_confidence=application_confidence,
                 allocation_evidence_ids=allocation_evidence_ids,
                 application_evidence_ids=application_evidence_ids,
+                independence_evidence_ids=independence_evidence_ids,
+                independently_assigned=independently_assigned,
+                independence_mechanism=independence_mechanism,
+                source_biological_preparation=next(
+                    (
+                        fact.source_biological_preparation
+                        for fact in facts
+                        if fact.source_biological_preparation
+                    ),
+                    None,
+                ),
+                allocation_event_id=next(
+                    (fact.allocation_event_id for fact in facts if fact.allocation_event_id),
+                    None,
+                ),
+                allocation_timing=next(
+                    (fact.allocation_timing for fact in facts if fact.allocation_timing),
+                    None,
+                ),
+                shared_environment=tuple(
+                    dict.fromkeys(value for fact in facts for value in fact.shared_environment)
+                ),
+                confounded_with=tuple(
+                    dict.fromkeys(value for fact in facts for value in fact.confounded_with)
+                ),
                 randomized=True if any(f.randomized for f in facts) else None,
                 evidence_ids=evidence_ids,
                 provenance=Provenance(
@@ -1006,10 +1085,11 @@ def _build_design_graph(
                 node,
                 allocation_node,
                 evidence_ids=allocation_evidence,
-                provenance=Provenance(
-                    origin=factor.provenance.origin,
-                    evidence_ids=allocation_evidence,
-                    derivation="allocation_level dichiarato sul fattore",
+                provenance=factor.provenance.model_copy(
+                    update={
+                        "evidence_ids": allocation_evidence,
+                        "derivation": "allocation_level dichiarato sul fattore",
+                    }
                 ),
                 confidence=factor.allocation_confidence,
             )
@@ -1019,10 +1099,11 @@ def _build_design_graph(
                     node,
                     allocation_node,
                     evidence_ids=allocation_evidence,
-                    provenance=Provenance(
-                        origin=factor.provenance.origin,
-                        evidence_ids=allocation_evidence,
-                        derivation="randomizzazione dichiarata sul fattore",
+                    provenance=factor.provenance.model_copy(
+                        update={
+                            "evidence_ids": allocation_evidence,
+                            "derivation": "randomizzazione dichiarata sul fattore",
+                        }
                     ),
                     confidence=factor.allocation_confidence,
                 )
@@ -1034,10 +1115,11 @@ def _build_design_graph(
                 node,
                 application_node,
                 evidence_ids=factor.application_evidence_ids,
-                provenance=Provenance(
-                    origin=factor.provenance.origin,
-                    evidence_ids=factor.application_evidence_ids,
-                    derivation="application_level dichiarato sul fattore",
+                provenance=factor.provenance.model_copy(
+                    update={
+                        "evidence_ids": factor.application_evidence_ids,
+                        "derivation": "application_level dichiarato sul fattore",
+                    }
                 ),
                 confidence=factor.application_confidence,
             )
@@ -1133,6 +1215,97 @@ def _build_design_graph(
             )
 
     return nodes, relations
+
+
+def materialize_design_graph(
+    hierarchy: Hierarchy,
+    *,
+    block_id: str,
+    factors: tuple[Factor, ...],
+    contrasts: tuple[Contrast, ...],
+    endpoints: tuple[Endpoint, ...],
+    models: tuple[StatisticalModelFact, ...],
+    inference_targets: tuple[InferenceTarget, ...],
+    estimands: tuple[Estimand, ...],
+) -> Hierarchy:
+    """Rigenera l'intero sottografo di design dopo una correzione umana.
+
+    I nodi di unita/istanza e le loro relazioni fisiche restano intatti; root,
+    fattori, livelli, contrasti, endpoint, modelli, target ed estimand vengono
+    ricostruiti dai record correnti. In questo modo una rimozione dal record non
+    lascia oggetti obsoleti nel ``graph.json``.
+    """
+
+    design_types = {
+        NodeType.EXPERIMENT_BLOCK,
+        NodeType.FACTOR,
+        NodeType.FACTOR_LEVEL,
+        NodeType.CONTRAST,
+        NodeType.ENDPOINT,
+        NodeType.STATISTICAL_MODEL,
+        NodeType.INFERENCE_TARGET,
+        NodeType.ESTIMAND,
+    }
+    removed_ids = {
+        node.id
+        for node in hierarchy.nodes
+        if node.type in design_types or bool(node.attributes.get("materialized_from_design_field"))
+    }
+    retained_nodes = [node for node in hierarchy.nodes if node.id not in removed_ids]
+    retained_relations = [
+        relation
+        for relation in hierarchy.relations
+        if relation.source not in removed_ids and relation.target not in removed_ids
+    ]
+
+    unit_nodes: dict[NodeType, GraphNode] = {}
+    for node in retained_nodes:
+        if not bool(node.attributes.get("instance")):
+            unit_nodes.setdefault(node.type, node)
+
+    required_unit_types = {
+        unit_type
+        for factor in factors
+        for unit_type in (factor.allocation_level, factor.application_level)
+        if unit_type is not None
+    }
+    required_unit_types.update(
+        endpoint.measured_on for endpoint in endpoints if endpoint.measured_on is not None
+    )
+    required_unit_types.update(
+        unit_type for model in models for unit_type in model.declared_clustering
+    )
+    for unit_type in sorted(required_unit_types, key=str):
+        if unit_type in unit_nodes:
+            continue
+        node = GraphNode(
+            id=make_node_id(block_id, unit_type, str(unit_type)),
+            type=unit_type,
+            label=str(unit_type),
+            attributes={"materialized_from_design_field": True},
+            provenance=Provenance(
+                origin=ProvenanceKind.DERIVED,
+                derivation="livello richiesto da un record di design corretto",
+            ),
+            confidence=0.5,
+        )
+        retained_nodes.append(node)
+        unit_nodes[unit_type] = node
+
+    design_nodes, design_relations = _build_design_graph(
+        block_id,
+        factors=factors,
+        contrasts=contrasts,
+        endpoints=endpoints,
+        models=models,
+        unit_nodes=unit_nodes,
+        inference_targets=inference_targets,
+        estimands=estimands,
+    )
+    return Hierarchy(
+        nodes=(*retained_nodes, *design_nodes),
+        relations=(*retained_relations, *design_relations),
+    )
 
 
 def materialize_inferential_graph(
@@ -1307,6 +1480,10 @@ def _build_endpoints(
                     f"{sorted(str(item) for item in measured_candidates)}"
                 ),
                 evidence_ids=evidence_ids,
+                retained_interpretations=tuple(
+                    f"measured_on = {candidate}"
+                    for candidate in sorted(measured_candidates, key=str)
+                ),
             )
             acc.contradictions.append(contradiction)
             acc.questions.append(
@@ -1447,6 +1624,9 @@ def _build_n_statements(
             node_type=fact.node_type,
             scope=scope,
             kind=fact.kind,
+            quantifier=fact.quantifier,
+            lower_bound=fact.lower_bound,
+            upper_bound=fact.upper_bound,
             qualifiers=fact.qualifiers,
             raw_text=fact.raw_text,
             evidence_ids=evidence_ids,
@@ -1550,6 +1730,7 @@ def _register_n_statement_conflicts(
                     evidence_id for statement in scoped for evidence_id in statement.evidence_ids
                 )
             ),
+            retained_interpretations=tuple(f"n = {value}" for value in values),
         )
         acc.contradictions.append(contradiction)
         acc.questions.append(

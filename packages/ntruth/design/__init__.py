@@ -1,6 +1,10 @@
 """Design compiler local-first: specifica, elicitazione e handoff neutro."""
 
-from ntruth.design.compiler import compile_design, compile_experiment_block
+from ntruth.design.compiler import (
+    compile_design,
+    compile_experiment_block,
+    finalize_experiment_block_compilation,
+)
 from ntruth.design.elicit import elicit_design
 from ntruth.design.io import (
     design_specification_json_schema,
@@ -50,6 +54,7 @@ __all__ = [
     "dumps_design_compilation",
     "dumps_design_specification",
     "elicit_design",
+    "finalize_experiment_block_compilation",
     "load_design_specification",
     "loads_design_specification",
     "write_design_compilation",

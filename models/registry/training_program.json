@@ -1,0 +1,205 @@
+{
+  "schema_version": "1.2.0",
+  "training_program_status": "P0_LORA_APPROVED",
+  "training_execution_gate": "HOLD_PENDING_REAL_ANCHOR",
+  "engineering_smoke_training_allowed": true,
+  "substantive_p0_training_allowed": false,
+  "current_synthetic_snapshot_status": "SYN_G1_UNANCHORED",
+  "current_synthetic_snapshot_path": "data/training/p0-alpha",
+  "annotation_protocol_status": "REALITY_CHECK_PROTOCOL_DRAFT",
+  "annotation_protocol_paths": {
+    "guideline": "docs/annotation-reality-check-p0-v0.1.md",
+    "bundle_schema": "data/annotations/reality-check/schemas/real_experiment_bundle.schema.json",
+    "pilot_internal": "data/annotations/reality-check/pilot-internal",
+    "formal_10_20": "data/annotations/reality-check/formal-10-20"
+  },
+  "pilot_internal_constraints": {
+    "bundle_role": "INTERNAL_REALITY_CHECK",
+    "gold": false,
+    "training_eligible": false,
+    "evaluation_eligible": false,
+    "sources_immutable_hashed": true,
+    "second_review_blind_on_decisive_fields": true,
+    "no_retroactive_guideline_edits": true,
+    "heterogeneous_battery_required": true,
+    "gate_to_formal_10_20": {
+      "pilot_cases_completed": ">=3",
+      "all_sources_hashed": true,
+      "second_review_completed": true,
+      "blocking_schema_gaps": 0,
+      "guideline_major_revision_pending": false,
+      "training_eligibility_still_false": true
+    }
+  },
+  "future_promotion_path": {
+    "after_synthetic_human_audit": "SYN_G2_HUMAN_AUDITED",
+    "after_reviewed_real_annotations": "CALIBRATION_SET_AVAILABLE",
+    "after_valid_split_and_pilot": "READY_FOR_ANCHORED_P0_EXPERIMENT",
+    "note": "Do not set READY only because PDFs were collected; need reviewed annotations + frozen train/dev/test + human-calibrated synthetic factory."
+  },
+  "substantive_lora_release_gates": {
+    "human_second_review_completed": false,
+    "guideline_frozen_for_pilot": false,
+    "blocking_schema_gaps": null,
+    "real_experiment_blocks_reviewed_target": "30-50",
+    "real_experiment_blocks_reviewed_current": 0,
+    "decisive_fields_double_reviewed": false,
+    "train_dev_test_split_frozen": false,
+    "synthetic_factory_human_calibrated": false,
+    "when_all_true_set_execution_gate_to": "READY_FOR_ANCHORED_P0_EXPERIMENT",
+    "scientific_validation_status_remains": "NOT_STARTED"
+  },
+  "hybrid_training_design_when_ready": {
+    "components": [
+      "graph_first_synthetic",
+      "small_real_annotated_core",
+      "structured_decoding"
+    ],
+    "arms_to_compare": [
+      "base_granite_plus_constrained_decoding",
+      "lora_synthetic_only",
+      "lora_real_only_small",
+      "lora_synthetic_plus_real_anchor"
+    ],
+    "real_data_split_roles": ["real_anchor_train", "real_development", "real_test"],
+    "real_test_exclusions": [
+      "training",
+      "hyperparameter_selection",
+      "prompt_engineering",
+      "generator_correction",
+      "checkpoint_selection"
+    ]
+  },
+  "parallel_workstreams_while_hold": [
+    "close_human_trial_reb_20260802_003",
+    "guideline_v0_2_draft_after_human_human",
+    "additional_real_source_trials",
+    "formal_10_20_then_calibration_30_50",
+    "multiagent_readonly_repo_audit",
+    "deterministic_rules_engine_track",
+    "runtime_qualification_toward_verified",
+    "partnerships_and_annotator_recruitment"
+  ],
+  "real_anchor_status": "NOT_STARTED",
+  "first_public_source_protocol_trial": {
+    "bundle_id": "reb-20260802-003",
+    "reality_check_class": "REAL_SOURCE_PROTOCOL_TRIAL",
+    "real_anchor_eligible": false,
+    "gold": false,
+    "training_eligible": false,
+    "evaluation_eligible": false,
+    "source": "PMC13296359 / 10.3390/antiox15060754 / CC BY 4.0",
+    "status": "HUMAN_SECOND_REVIEW_PACKET_READY",
+    "primary_freeze": "data/annotations/reality-check/pilot-internal/reb-20260802-003/submission.primary.FREEZE.json",
+    "primary_sha256": "35906d6e163a4080083c5a4e0d9eb40ba2fb7c3f09d8572d6f6653600169676d",
+    "ai_second_review_freeze": "data/annotations/reality-check/pilot-internal/reb-20260802-003/second-review-blind/submission.second_review.FREEZE.json",
+    "ai_second_review_sha256": "771e731a31f8fcdcc2bfaadfde0d06943248dc637da1db464fc01288b160be7e",
+    "human_second_review_packet": "data/annotations/reality-check/pilot-internal/reb-20260802-003/second-review-human-blind/",
+    "human_second_review_freeze": null,
+    "human_second_review_sha256": null,
+    "source_sha256": "203f1ab4321d5153fc788da63f142fb34c69047ecc00927ae87380888c5e46c0",
+    "ai_second_review_classification": {
+      "reviewer_type": "AI_AGENT_INDEPENDENT_SESSION",
+      "review_independence": "PROCESS_ISOLATED",
+      "blindness_level": "PATH_RESTRICTED",
+      "human_second_review": false,
+      "formal_human_iaa_eligible": false,
+      "blindness_compromised": false
+    },
+    "human_second_review_classification_expected": {
+      "reviewer_type": "HUMAN_DOMAIN_REVIEWER",
+      "review_independence": "PERSON_INDEPENDENT",
+      "blindness_level": "PATH_RESTRICTED",
+      "human_second_review": true,
+      "human_pair_comparison_eligible": true,
+      "formal_human_iaa_eligible": false
+    },
+    "comparison_type": "HUMAN_PRIMARY_VS_AI_INDEPENDENT_SECOND",
+    "comparison_type_when_run": "HUMAN_PRIMARY_VS_AI_INDEPENDENT_SECOND",
+    "comparison_artifacts": {
+      "disagreement_log": "data/annotations/reality-check/pilot-internal/reb-20260802-003/DISAGREEMENT_LOG.md",
+      "disagreement_log_sha256": "c1646aff12bc32f8c08ff9ec249d68a2006fe2131291ef23cfc028677822708a",
+      "comparison_machine_readable": "data/annotations/reality-check/pilot-internal/reb-20260802-003/comparison.machine-readable.json",
+      "comparison_machine_readable_sha256": "e9f621b31d52a5aa12a2b82e97b583dc21a67c610fe0eb7a72aead7dc371b583",
+      "comparison_meta": "data/annotations/reality-check/pilot-internal/reb-20260802-003/comparison.meta.json"
+    },
+    "next_comparison_type": "HUMAN_PRIMARY_VS_HUMAN_SECOND",
+    "ai_comparison_use": "diagnostic_only_after_human_human",
+    "note": "HUMAN_SECOND_REVIEW_PACKET_READY: packet prepared; human annotator not yet started. Set HUMAN_SECOND_REVIEW_IN_PROGRESS only when reviewer opens material and records review_started_at. AI comparison already done diagnostically only. Not gold. Not real anchor. Awaiting independent human freeze before human-human comparison and any guideline v0.2 draft."
+  },
+  "approved_at": "2026-08-02T00:00:00Z",
+  "approved_by": "ntruth-maintainers",
+  "decision_source": "B4_semantic_C_GO_LORA_P0",
+  "execution_decision_source": "HOLD_synthetic_only_no_real_anchor_PRD_v6.1",
+  "annotation_sequence": [
+    "freeze_bundle_template",
+    "internal_trial_3_5_not_gold",
+    "revise_guideline_fields",
+    "optional_multiagent_readonly_audit",
+    "freeze_guideline",
+    "formal_reality_check_10_20",
+    "calibration_pilot_30_50"
+  ],
+  "semantic_baseline_report": "benchmarks/fewshot_p0/constrained/semantic-C-latest.json",
+  "scope": {
+    "tasks": [
+      "TASK_EVIDENCE",
+      "TASK_ENTITY_COUNT",
+      "TASK_FACTOR_ENDPOINT",
+      "TASK_EXPLICIT_RELATIONS"
+    ],
+    "adapter_name": "p0-alpha",
+    "base_model": "ibm-granite/granite-4.1-3b",
+    "runtime_fingerprint_binding": "models/registry/default.json#qualification.qualified_artifact",
+    "experiment_class": "synthetic_pre_adaptation"
+  },
+  "out_of_scope_until_real_anchor": [
+    "full_curriculum_a_b_c",
+    "best_checkpoint_selection_on_b4_dev",
+    "mixture_search",
+    "hyperparameter_tuning",
+    "pre_post_as_model_progress_claim",
+    "adapter_promotion_to_b5",
+    "substantive_lora_p0_on_2000_synthetic"
+  ],
+  "out_of_scope": [
+    "implicit_allocation",
+    "operational_independence",
+    "decisive_coreference",
+    "complex_alternative_graphs",
+    "estimand",
+    "inferential_target",
+    "full_candidate_graph_set_as_train_target",
+    "n_independent",
+    "scientific_verdicts"
+  ],
+  "engineering_smoke": {
+    "allowed": true,
+    "label": "ENGINEERING_SMOKE_ONLY",
+    "status": "completed",
+    "run_path": "models/runs/engineering-smoke-p0-pipe",
+    "distributable": false,
+    "promotable": false
+  },
+  "official_statuses_unchanged": {
+    "migration_status": "ARCHITECTURE_MIGRATED",
+    "runtime_qualification_status": "PARTIALLY_VERIFIED",
+    "scientific_validation_status": "NOT_STARTED"
+  },
+  "dev_protection": {
+    "benchmark_role": "B4_CONSTRAINED_DEV",
+    "n_cases": 39,
+    "training_eligible": false,
+    "generator_inaccessible": true,
+    "not_for_checkpoint_selection": true
+  },
+  "notes": [
+    "P0_LORA_APPROVED = protocol designed; not data sufficiency.",
+    "HOLD_PENDING_REAL_ANCHOR blocks substantive LoRA only — not deterministic track, runtime, audit, or data partnerships.",
+    "Do not revise guideline v0.2 from primary–AI comparison alone; wait for human second freeze + human–human comparison on reb-20260802-003.",
+    "Formal 10–20 = structured reality check; first substantive LoRA target ~30–50 double-reviewed Experiment Blocks with frozen split.",
+    "Do not auto-set READY after mere document collection.",
+    "Strategic priority: people+real data → stable protocol → anchored synthetic factory → hybrid train → independent eval."
+  ],
+  "updated_at": "2026-08-02T14:00:00Z"
+}

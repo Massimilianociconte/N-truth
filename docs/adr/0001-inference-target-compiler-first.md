@@ -1,6 +1,6 @@
 # ADR-0001 — Target inferenziale esplicito e compiler-first
 
-**Stato:** accepted for development; amended by PRD v3<br>
+**Stato:** accepted for development; amended by PRD v3 e PRD v6<br>
 **Data:** 2026-07-31
 **Gate scientifico:** revisione biostatistica ancora richiesta
 
@@ -22,8 +22,10 @@ quello scope sostenga la popolazione o il claim desiderato.
    popolazione, fattori, contrasti, endpoint, unità biologica target, evidenza e stato.
 3. Il PRD v3 aggiunge un `Estimand` distinto con endpoint, misura dell'effetto, popolazione/unità
    target, livello di generalizzazione, fattori ed eventuale tempo/condizione.
-4. Allocazione indipendente e applicazione fisica del fattore sono campi separati; l'alias legacy
-   `assignment_level` corrisponde soltanto all'allocazione.
+4. Allocazione e applicazione fisica del fattore sono campi separati; l'alias legacy
+   `assignment_level` corrisponde soltanto all'allocazione. La v6 aggiunge
+   `independently_assigned` tri-state e richiede un meccanismo operativo esplicito per
+   il valore `TRUE`: il solo livello di allocazione non dimostra indipendenza.
 5. Un target estratto automaticamente resta candidato. Soltanto `user_confirmed` può arrivare
    allo stato strutturalmente `supported`; questo stato non certifica validità scientifica.
 6. Se target, estimando, allocazione o riferimenti sono incompleti, il compiler produce
@@ -53,8 +55,9 @@ quello scope sostenga la popolazione o il claim desiderato.
 
 - **“LLM sostituisce NER con l'1% dello sforzo”**: nessun benchmark N-Truth lo dimostra.
   Rules-only, encoder, LLM locale e ibrido saranno confrontati sullo stesso gold blinded.
-- **Soglia IAA unica come kill-switch**: i 30 casi sono un calibration set fuori dal test;
-  il feasibility pilot v3 è 150–250 bundle. Vanno riportati accordo per variabile,
+- **Soglia IAA unica come kill-switch**: i 30-50 casi sono un calibration set fuori dal test;
+  il feasibility pilot v6 adotta provvisoriamente 100-150 casi (l'Appendice D.2 conserva
+  l'erratum 150-250). Vanno riportati accordo per variabile,
   intervalli, prevalenza, confusioni e cause del disaccordo; la decisione non dipende
   da un solo coefficiente arbitrario.
 - **Formula mixed-model automatica**: gerarchia e target non identificano da soli distribuzione,

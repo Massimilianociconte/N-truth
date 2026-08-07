@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-RULESET_PATH = ROOT / "rulesets" / "ntruth-core-0.1.0.json"
+RULESET_PATH = ROOT / "rulesets" / "ntruth-core-0.2.0.json"
 REGISTRY_PATH = ROOT / "rulesets" / "scientific-references-0.1.0.json"
 
 

@@ -144,7 +144,7 @@ def _complete_block() -> ExperimentBlock:
     )
 
 
-def test_only_allocation_determines_experimental_unit() -> None:
+def test_allocation_is_only_a_candidate_without_operational_independence() -> None:
     block = _complete_block()
     build = BuildResult(
         hierarchy=block.hierarchy,
@@ -155,8 +155,8 @@ def test_only_allocation_determines_experimental_unit() -> None:
 
     assessments, _ = resolve_units(block.id, build)
 
-    assert assessments[0].experimental_unit is NodeType.ANIMAL
-    assert assessments[0].experimental_unit is not NodeType.WELL
+    assert assessments[0].allocation_unit_candidate is NodeType.ANIMAL
+    assert assessments[0].experimental_unit is None
     assert assessments[0].n_allocated == 4
     assert assessments[0].n_analyzed == 24
     assert assessments[0].n_independent is None
@@ -238,7 +238,7 @@ def test_design_v02_accepts_v01_and_compiles_estimand_neutral_handoff() -> None:
     specification = DesignSpecification.from_experiment_block(block)
     compilation = compile_experiment_block(block)
 
-    assert specification.specification_version == "0.2.0"
+    assert specification.specification_version == "0.3.0"
     assert compilation.status is CompilationStatus.READY
     assert compilation.analysis_handoff.allocations[0].allocation_level is NodeType.ANIMAL
     assert compilation.analysis_handoff.applications[0].application_level is NodeType.WELL
@@ -258,7 +258,7 @@ def test_design_v02_accepts_v01_and_compiles_estimand_neutral_handoff() -> None:
     legacy_factor.pop("allocation_evidence_ids")
     restored = DesignSpecification.model_validate(legacy_payload)
 
-    assert restored.specification_version == "0.2.0"
+    assert restored.specification_version == "0.3.0"
     assert restored.factors[0].allocation_level is NodeType.ANIMAL
 
 
@@ -320,7 +320,9 @@ def test_conditional_n_uses_two_graph_derived_values_and_never_invents_missing_b
     unknown_assessments, unknown_questions = resolve_units("block-unknown", unknown_build)
 
     assert unknown_assessments[0].conditional_scenarios == ()
-    assert any(question.missing_field == "source_independence" for question in unknown_questions)
+    assert any(
+        question.missing_field == "factor.independently_assigned" for question in unknown_questions
+    )
 
 
 def test_nested_counts_produce_a_conditional_n_instead_of_false_precision() -> None:
@@ -354,7 +356,7 @@ def test_nested_counts_produce_a_conditional_n_instead_of_false_precision() -> N
     assert assessment.n_independent is None
     assert assessment.conditional_scenarios[0].if_confirmed == {"per_group": 8}
     assert assessment.conditional_scenarios[0].if_rejected == {"per_group": 2}
-    assert [question.missing_field for question in questions] == ["source_independence"]
+    assert [question.missing_field for question in questions] == ["factor.independently_assigned"]
 
 
 def test_biological_count_without_independence_evidence_requires_confirmation() -> None:
@@ -383,7 +385,7 @@ def test_biological_count_without_independence_evidence_requires_confirmation() 
     assert assessment.inferability is Inferability.REQUIRES_CONFIRMATION
     assert assessment.n_allocated == 4
     assert assessment.n_independent is None
-    assert any(question.missing_field == "source_independence" for question in questions)
+    assert any(question.missing_field == "factor.independently_assigned" for question in questions)
     abstention = evaluate_abstention(DocumentIR(id="document-primary-cultures"), build, assessments)
     assert abstention.abstained is True
     assert "source_independence_unknown" in abstention.codes
@@ -417,3 +419,33 @@ def test_unscoped_global_n_is_not_bound_when_contrast_is_absent() -> None:
 
     assert assessments[0].scope.contrast_id is None
     assert assessments[0].n_declared is None
+
+
+def test_effective_n_never_becomes_a_declared_or_independent_count() -> None:
+    block = _complete_block()
+    effective = NStatement(
+        id="n-effective-diagnostic",
+        value=10000,
+        entity_type="effective sample size",
+        node_type=NodeType.ANIMAL,
+        scope=NScope(
+            factor_id=block.factors[0].id,
+            contrast_id=block.contrasts[0].id,
+            endpoint_id=block.endpoints[0].id,
+        ),
+        kind=NKind.EFFECTIVE,
+        provenance=_user_provenance(),
+    )
+    build = BuildResult(
+        hierarchy=block.hierarchy,
+        factors=block.factors,
+        contrasts=block.contrasts,
+        endpoints=block.endpoints,
+        n_statements=(effective,),
+    )
+
+    assessments, _ = resolve_units(block.id, build)
+
+    assert assessments
+    assert all(assessment.n_declared is None for assessment in assessments)
+    assert all(assessment.n_independent is None for assessment in assessments)

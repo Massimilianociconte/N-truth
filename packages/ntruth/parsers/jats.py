@@ -5,6 +5,7 @@ Parsing difensivo: entita esterne e DTD non vengono risolte (PRD NFR-13).
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
@@ -12,6 +13,7 @@ from ntruth.parsers.base import ParseFailure, RawBlock, RawDocument, RawTable
 from ntruth.schemas.document import ParserStatus
 
 _MAX_DEPTH = 64
+_FORBIDDEN_DTD = re.compile(rb"<!\s*(?:DOCTYPE|ENTITY)\b", re.IGNORECASE)
 
 
 class JatsParser:
@@ -22,8 +24,11 @@ class JatsParser:
 
     def parse(self, path: Path) -> RawDocument:
         raw = path.read_bytes()
-        # ElementTree non risolve entita esterne ne DTD remoti: il file viene letto
-        # come dato inerte. Le dichiarazioni trovate vengono comunque segnalate.
+        # Il rifiuto avviene sui byte prima di costruire XMLParser o invocare
+        # ElementTree: anche le entita interne non possono essere espanse.
+        if _FORBIDDEN_DTD.search(raw):
+            raise ParseFailure(path, "DOCTYPE/ENTITY non ammessi negli input XML/JATS")
+
         parser = ET.XMLParser()
         try:
             root = ET.fromstring(raw, parser=parser)
@@ -31,8 +36,6 @@ class JatsParser:
             raise ParseFailure(path, f"XML non valido (riga {exc.position[0]})") from exc
 
         doc = RawDocument(parser=self.name)
-        if b"<!ENTITY" in raw:
-            doc.warnings.append("dichiarazioni ENTITY ignorate per sicurezza")
 
         title = _text_of(root.find(".//article-title"))
         if title:

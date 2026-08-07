@@ -55,6 +55,12 @@ def _raise_if_errors(
         raise DatasetValidationError(errors)
 
 
+def _has_governed_use(record: SupervisedRecord) -> bool:
+    """Un record puo essere conservato per training, evaluation o release."""
+
+    return record.training_eligible or record.evaluation_eligible or record.release_eligible
+
+
 def prepare_dataset(
     records: Iterable[SupervisedRecord],
     *,
@@ -76,22 +82,24 @@ def prepare_dataset(
 
     issues: list[ValidationIssue] = []
     if active_config.require_training_eligible:
-        selected = tuple(record for record in normalized_all if record.record.training_eligible)
+        # Il manifest e un inventario governato, non il solo batch di gradienti:
+        # conserva anche TEST/EXTERNAL_CHALLENGE evaluation-only e record release-only.
+        selected = tuple(record for record in normalized_all if _has_governed_use(record.record))
         excluded_ids = tuple(
             sorted(
                 record.record.record_id
                 for record in normalized_all
-                if not record.record.training_eligible
+                if not _has_governed_use(record.record)
             )
         )
         if excluded_ids:
             issues.append(
                 ValidationIssue(
-                    code="training_ineligible_excluded",
+                    code="use_ineligible_excluded",
                     severity=IssueSeverity.WARNING,
                     detail=(
-                        "record non autorizzati o non sufficientemente revisionati "
-                        "esclusi dal dataset"
+                        "record non idonei per training, evaluation o release "
+                        "esclusi dal manifest governato"
                     ),
                     record_ids=excluded_ids,
                 )
@@ -147,14 +155,22 @@ def prepare_dataset(
     )
     issues.extend(split_result.issues)
     ordered_issues = _ordered_issues(issues)
-    _raise_if_errors(ordered_issues, fail_on_error=active_config.fail_on_error)
+    eligibility_blocker = any(
+        issue.code == "training_eligible_group_in_evaluation_split" for issue in ordered_issues
+    )
+    _raise_if_errors(
+        ordered_issues,
+        fail_on_error=active_config.fail_on_error,
+        always=eligibility_blocker,
+    )
 
     assignment_by_id = {assignment.record_id: assignment for assignment in split_result.assignments}
     split_order = {
         CorpusSplit.TRAIN: 0,
         CorpusSplit.VALIDATION: 1,
         CorpusSplit.TEST: 2,
-        CorpusSplit.EXTERNAL: 3,
+        CorpusSplit.EXTERNAL_CHALLENGE: 3,
+        CorpusSplit.UNASSIGNED: 4,
     }
     prepared_records = tuple(
         sorted(

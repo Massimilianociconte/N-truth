@@ -66,16 +66,29 @@ def test_write_all_exports_parser_ai_schemas_and_ro_crate_does_not_relicense_dat
 
     assert {
         "parser_ai_input_schema",
-        "parser_ai_output_schema",
+        "parser_ai_output_legacy_schema",
+        "parser_stage_candidate_graph_set_schema",
         "ro_crate",
     } <= written.keys()
     input_schema = json.loads(written["parser_ai_input_schema"].read_text(encoding="utf-8"))
-    output_schema = json.loads(written["parser_ai_output_schema"].read_text(encoding="utf-8"))
+    candidate_schema = json.loads(
+        written["parser_stage_candidate_graph_set_schema"].read_text(encoding="utf-8")
+    )
+    legacy_schema = json.loads(
+        written["parser_ai_output_legacy_schema"].read_text(encoding="utf-8")
+    )
     assert {"documents", "tables", "metadata", "statistical_code"} <= set(
         input_schema["properties"]
     )
-    assert {"candidate_nodes", "candidate_edges", "determinability"} <= set(
-        output_schema["properties"]
+    assert {"candidate_nodes", "candidate_edges", "missing_facts"} <= set(
+        candidate_schema["properties"]
+    )
+    assert {"determinability", "model_metadata"} <= set(legacy_schema["properties"])
+    assert "determinability" not in candidate_schema["properties"]
+    assert "verdict" not in candidate_schema["properties"]
+    assert (
+        len([key for key in written if key.startswith("parser_stage_") and key.endswith("_schema")])
+        == 10
     )
 
     crate = json.loads(written["ro_crate"].read_text(encoding="utf-8"))
@@ -87,6 +100,9 @@ def test_write_all_exports_parser_ai_schemas_and_ro_crate_does_not_relicense_dat
     assert root["ntruth:inputRightsStatus"] == "not_inferred"
     assert software["license"] == {"@id": "https://spdx.org/licenses/Apache-2.0"}
     assert entities["parser-ai-input.schema.json"]["conformsTo"] == {
+        "@id": "https://json-schema.org/draft/2020-12/schema"
+    }
+    assert entities["candidate-graph-set.schema.json"]["conformsTo"] == {
         "@id": "https://json-schema.org/draft/2020-12/schema"
     }
 

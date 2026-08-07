@@ -1,0 +1,107 @@
+{
+  "b4_dev_protection": {
+    "benchmark_role": "B4_CONSTRAINED_DEV",
+    "path": "benchmarks/fewshot_p0/cases.jsonl",
+    "training_eligible": false
+  },
+  "checksums": {
+    "train_sha256": "80534c15f6b11a39e3c7f4d203d1375c3e7a62367526e20e35b9cc3517969679",
+    "validation_sha256": "0477a189bcd1e66a01a5e53299a1ffa84a3997efc50216bbfbb52e373c1ac624"
+  },
+  "current_synthetic_snapshot_status": "SYN_G1_UNANCHORED",
+  "dev_fingerprints": 461,
+  "experiment_class": "synthetic_pre_adaptation",
+  "family_ids_train": [
+    "fam-animals_cages",
+    "fam-batches_aliquots",
+    "fam-cell_line_drug",
+    "fam-count_approx_cells",
+    "fam-count_range_cages",
+    "fam-count_unknown",
+    "fam-cultures_wells",
+    "fam-dams_explants",
+    "fam-donors_cells",
+    "fam-empty_methods",
+    "fam-images_fields",
+    "fam-libraries_samples",
+    "fam-n10-organoid",
+    "fam-n15-field",
+    "fam-n3-humandonor",
+    "fam-n4-batch",
+    "fam-n6-animal",
+    "fam-n8-well",
+    "fam-n9-animal",
+    "fam-patients_sections",
+    "fam-rel-ROIs-nested_in-images",
+    "fam-rel-aliquots-nested_in-batches",
+    "fam-rel-fields-nested_in-wells",
+    "fam-rel-images-derived_from-wells",
+    "fam-rel-libraries-derived_from-samples",
+    "fam-rel-sections-derived_from-animals",
+    "fam-sections_rois",
+    "fam-wells_plates"
+  ],
+  "family_ids_validation": [
+    "fam-litters_offspring",
+    "fam-mice_diet",
+    "fam-n7-cage",
+    "fam-organoids_lines",
+    "fam-rel-cells-nested_in-wells",
+    "fam-rel-wells-nested_in-plates"
+  ],
+  "frozen": true,
+  "frozen_at": "2026-08-02T10:44:22.418977Z",
+  "label": "synthetic_pre_adaptation_experiment",
+  "n_families_train": 28,
+  "n_families_validation": 6,
+  "n_train": 2000,
+  "n_validation": 300,
+  "not": [
+    "scientific_validation",
+    "external_challenge",
+    "pilot_validated"
+  ],
+  "notes": [
+    "Frozen unanchored synthetic snapshot. Do not use for substantive LoRA or scientific claims.",
+    "Await human-anchored calibration and P0-beta before full training."
+  ],
+  "paths": {
+    "train": "train.jsonl",
+    "train_chat": "train.chat.jsonl",
+    "validation": "validation.jsonl",
+    "validation_chat": "validation.chat.jsonl"
+  },
+  "quality_gate": {
+    "error_count": 0,
+    "errors": [],
+    "n_train": 2000,
+    "n_validation": 300,
+    "passed": true,
+    "production_size_ok": true,
+    "task_counts": {
+      "TASK_ENTITY_COUNT": 587,
+      "TASK_EVIDENCE": 577,
+      "TASK_EXPLICIT_RELATIONS": 583,
+      "TASK_FACTOR_ENDPOINT": 553
+    }
+  },
+  "rejection_log_count": 1169,
+  "rejection_reasons": {
+    "dev_contamination": 284,
+    "exact_duplicate_text": 885
+  },
+  "renderer_version": "p0-graph-first-1.0.0",
+  "scientific_validation_status": "NOT_STARTED",
+  "seed": 13,
+  "snapshot": "p0-alpha",
+  "snapshot_schema": "p0-alpha-1.0.0",
+  "substantive_training_allowed": false,
+  "tasks": [
+    "TASK_EVIDENCE",
+    "TASK_ENTITY_COUNT",
+    "TASK_FACTOR_ENDPOINT",
+    "TASK_EXPLICIT_RELATIONS"
+  ],
+  "training_execution_gate": "HOLD_PENDING_REAL_ANCHOR",
+  "training_program_status": "P0_LORA_APPROVED"
+}

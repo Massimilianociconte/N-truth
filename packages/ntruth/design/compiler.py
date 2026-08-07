@@ -19,7 +19,7 @@ from ntruth.design.schema import (
     TargetPopulationSupport,
     UnresolvedAssumption,
 )
-from ntruth.schemas.core import stable_id
+from ntruth.schemas.core import Determinability, stable_id
 from ntruth.schemas.experiment import (
     ExperimentBlock,
     InferenceTarget,
@@ -48,6 +48,70 @@ def compile_experiment_block(block: ExperimentBlock) -> DesignCompilation:
     """Compila un blocco senza mutarlo e senza invocare la pipeline o il grafo."""
 
     return compile_design(DesignSpecification.from_experiment_block(block))
+
+
+def finalize_experiment_block_compilation(
+    block: ExperimentBlock,
+    *,
+    supported_profile: bool | None = None,
+    verification_valid: bool = True,
+) -> DesignCompilation:
+    """Compila lo snapshot pubblico finale e ne riallinea il gate di handoff.
+
+    ``compile_experiment_block`` resta il passaggio preliminare usato per
+    derivare la determinabilita. Questa funzione va invece chiamata soltanto
+    dopo ``derive_determinability`` e ``apply_output_policy``. I fatti del
+    design restano ispezionabili, ma un'assunzione bloccante impedisce che un
+    consumer interpreti l'handoff come pronto fuori dallo stato DETERMINATE.
+    """
+
+    compilation = compile_experiment_block(block)
+    ready = (
+        block.determinability is Determinability.DETERMINATE
+        and supported_profile is not False
+        and verification_valid
+        and not compilation.abstained
+    )
+    if ready:
+        return compilation
+
+    if not verification_valid:
+        reason_code = "hard-verification-failed"
+        reason = "Il verificatore hard non ha autorizzato l'handoff del design."
+    elif supported_profile is False:
+        reason_code = "profile-not-supported"
+        reason = "Il disegno non appartiene al profilo scientifico supportato."
+    elif block.determinability is not Determinability.DETERMINATE:
+        reason_code = f"determinability-{block.determinability.value.casefold()}"
+        reason = (
+            "Lo stato canonico non autorizza un singolo handoff inferenziale: "
+            f"{block.determinability.value}."
+        )
+    else:
+        reason_code = "design-compiler-abstained"
+        reason = "Il compiler del design richiede ancora informazioni decisive."
+
+    assumptions = compilation.analysis_handoff.unresolved_assumptions
+    if not any(item.code == reason_code for item in assumptions):
+        assumptions = (
+            *assumptions,
+            UnresolvedAssumption(
+                id=stable_id("asm", compilation.specification_id, reason_code),
+                code=reason_code,
+                message=reason,
+                blocking=True,
+            ),
+        )
+    return compilation.model_copy(
+        update={
+            "status": CompilationStatus.ABSTAINED,
+            "abstained": True,
+            "elicitation": compilation.elicitation.model_copy(update={"complete": False}),
+            "analysis_handoff": compilation.analysis_handoff.model_copy(
+                update={"unresolved_assumptions": assumptions}
+            ),
+        }
+    )
 
 
 def compile_design(specification: DesignSpecification) -> DesignCompilation:

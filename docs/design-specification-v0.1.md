@@ -7,7 +7,7 @@ singolo `ExperimentBlock`. Formalizza fatti già presenti nel blocco e li passa 
 compilatore deterministico. Non seleziona test statistici, non genera formule di
 modello e non esegue power analysis.
 
-Il PRD v3 distingue due oggetti collegati ma non intercambiabili:
+Il PRD v6 distingue due oggetti collegati ma non intercambiabili:
 
 - `InferenceTarget`: domanda/claim, popolazione di inferenza e riferimenti agli
   oggetti del disegno;
@@ -47,10 +47,47 @@ Per ogni fattore il contratto conserva:
   indipendentemente;
 - `application_level`, confidence ed evidence: dove la procedura è materialmente
   applicata.
+- `independently_assigned`: valutazione operativa tri-state (`true`, `false`,
+  `unknown`);
+- `independence_mechanism` e `independence_evidence_ids`: il meccanismo concreto che
+  rende indipendenti assegnazione e trattamento e il suo supporto dedicato.
 
 I campi possono differire e non vengono sincronizzati tra loro. `assignment_level`
 resta soltanto un alias di compatibilità della precedente v0.1 e corrisponde
 all'allocazione, mai all'applicazione.
+
+Il solo `allocation_level` non dimostra l'indipendenza operativa. Un fattore con
+`independently_assigned=true` senza un meccanismo esplicito è invalido; con stato
+`false` o `unknown`, il livello resta un'`allocation_unit_candidate` e non viene
+promosso automaticamente a `experimental_unit`. Le frasi dell'autore e gli ID di
+campione sono evidenze da conservare, non scorciatoie per chiudere il grafo.
+
+## Conteggi e determinabilità
+
+La specifica conserva separatamente i conteggi legacy e il contratto canonico v6:
+
+- lifecycle: `planned_n`, `allocated_n`, `treated_n`, `observed_n`, `excluded_n`,
+  `analysed_n`;
+- significato: `declared_n`, `observational_n`, `analytical_n`, `independent_n`,
+  `biological_source_count`, `effective_n`;
+- quantificatore: esatto, limite inferiore/superiore, approssimato, intervallo,
+  sconosciuto o non riportato;
+- scope: unità, fattore, contrasto, gruppo, endpoint, tempo e fase del lifecycle.
+
+Un campo assente non equivale a zero. Ogni `null` decisivo nel `CountScope` richiede
+un reason code; esclusioni e attrition sono oggetti separati e tracciabili.
+
+Gli output utilizzano i sette stati v6: `DETERMINATE`,
+`CONDITIONALLY_DETERMINATE`, `MULTIPLE_PLAUSIBLE_GRAPHS`,
+`INSUFFICIENT_INFORMATION`, `CONFLICTING_INFORMATION`, `INVALID_GRAPH` e
+`OUT_OF_SCOPE`. Un singolo `n_independent` è ammesso solo nello stato determinato;
+negli scenari condizionali resta nullo e i valori sono esposti per ramo.
+
+Prima della derivazione, il capability contract versionato
+`ntruth-core@0.1-D` separa un campo mancante da un disegno esplicitamente fuori
+profilo. Misure ripetute, pairing/matching/crossing, split/pooling, timepoint
+multipli e modelli avanzati o longitudinali producono `OUT_OF_SCOPE` anche con il
+release profile di input `extended_experimental`.
 
 ## Flusso del compiler
 
@@ -64,7 +101,7 @@ ExperimentBlock
 
 L'elicitazione non completa valori per inferenza. Produce domande deterministiche su
 target, popolazione, fattori, contrasti, endpoint, estimando, unità biologica,
-allocazione e applicazione.
+allocazione, applicazione, indipendenza operativa e relativo meccanismo.
 
 Il compiler si astiene quando il target manca/non è confermato, un estimando richiesto
 è incompleto, esistono conflitti irrisolti o gli assessment non sono collegati allo
@@ -85,6 +122,8 @@ strutturalmente completo. Non è un verdetto scientifico.
 - target e assessment associati;
 - estimandi minimi;
 - allocazioni e applicazioni in collezioni separate;
+- assessment dell'unità sperimentale senza promuovere candidati non dimostrati;
+- conteggi lifecycle/scoped ed esclusioni tracciabili;
 - nesting, derivazione, splitting e pooling espliciti;
 - cluster da grafo/assessment e clustering dichiarato dai modelli;
 - relazioni `repeated_measure_of`;

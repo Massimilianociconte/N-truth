@@ -7,9 +7,18 @@ from pathlib import Path
 import pytest
 
 from ntruth.governance.lineage import CorpusSplit
-from ntruth.parser_ai.contract import ParserAIInput, ParserAIOutput
+from ntruth.parser_ai.contract import ParserAIInput
+from ntruth.parser_ai.stages import (
+    CandidateGraphSet,
+    StageAuthority,
+    StageName,
+    StageProvenance,
+    StageStatus,
+)
 from ntruth.training import (
     AnnotationStatus,
+    GoldParserTarget,
+    SubmissionComparison,
     SupervisedRecord,
     SupervisionProvenance,
     prepare_dataset,
@@ -20,13 +29,17 @@ from ntruth.training.calibration import (
     negative_log_likelihood,
 )
 from ntruth.training.cli import DEFAULT_PROFILE
-from ntruth.training.metrics import (
+from ntruth.training.metrics_v6 import (
     aggregate_scores,
     parse_prediction_text,
     score_invalid_output,
     score_output,
 )
-from ntruth.training.mlx_dataset import create_runtime_smoke_dataset, export_mlx_dataset
+from ntruth.training.mlx_dataset import (
+    PARSER_CANDIDATE_GRAPH_TASK,
+    create_runtime_smoke_dataset,
+    export_mlx_dataset,
+)
 from ntruth.training.mlx_inference import calibrate_predictions
 from ntruth.training.mlx_runtime import (
     MLXPipelineError,
@@ -41,37 +54,49 @@ def _sha(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()
 
 
-def _output(*, confidence: float = 0.5) -> ParserAIOutput:
-    return ParserAIOutput.model_validate(
-        {
-            "contract_version": "2.0.0",
-            "experiment_blocks": [],
-            "evidence_spans": [],
-            "candidate_nodes": [],
-            "candidate_edges": [],
-            "factors": [],
-            "endpoints": [],
-            "contrasts": [],
-            "candidate_estimands": [],
-            "determinability": {
-                "status": "INDETERMINATE",
-                "rationale": "No decisive evidence.",
-                "confidence": confidence,
-                "evidence_ids": [],
-            },
-            "alternatives": [],
-            "clarification_questions": [],
-            "model_metadata": {
-                "adapter_name": "gold",
-                "model_name": "annotation",
-                "model_version": "1",
-                "model_checksum": None,
-                "prompt_template_version": "test",
-                "contract_version": "2.0.0",
-                "local_execution": True,
-            },
-        }
+def _output(
+    *, variant: str = "gold", authority: StageAuthority = StageAuthority.MODEL
+) -> CandidateGraphSet:
+    return CandidateGraphSet(
+        result_id=f"result-{variant}",
+        status=StageStatus.COMPLETE,
+        provenance=StageProvenance(
+            stage_run_id=f"stage-{variant}",
+            stage=StageName.CANDIDATE_GRAPH_SET,
+            authority=authority,
+            producer="test-candidate-parser",
+            producer_version=variant,
+        ),
+        graph_set_id=f"graph-{variant}",
     )
+
+
+def _gold_target(record_id: str) -> dict[str, object]:
+    return GoldParserTarget(
+        target_id=f"target-{record_id}",
+        source_record_id=record_id,
+        guideline_version="6.0",
+        adjudication_id=f"adjudication-{record_id}",
+        adjudication_rationale="Two blind submissions reconciled for a technical test.",
+        adjudicator_roles=("wet-lab", "biostatistician"),
+        source_submission_ids=(f"{record_id}-blind-a", f"{record_id}-blind-b"),
+        comparisons=(
+            SubmissionComparison(
+                submission_id=f"{record_id}-blind-a",
+                reviewer_role="wet-lab",
+                summary="No differences in the empty technical graph.",
+            ),
+            SubmissionComparison(
+                submission_id=f"{record_id}-blind-b",
+                reviewer_role="biostatistician",
+                summary="No differences in the empty technical graph.",
+            ),
+        ),
+        adjudicated_graph=_output(
+            variant=f"adjudicated-{record_id}",
+            authority=StageAuthority.ADJUDICATION,
+        ),
+    ).model_dump(mode="json")
 
 
 def _record(record_id: str, split: CorpusSplit) -> SupervisedRecord:
@@ -80,43 +105,74 @@ def _record(record_id: str, split: CorpusSplit) -> SupervisedRecord:
         domain_hint="runtime_test",
         language="en",
     )
+    training_eligible = split is CorpusSplit.TRAIN
+    evaluation_eligible = split in {CorpusSplit.VALIDATION, CorpusSplit.TEST}
     return SupervisedRecord(
         record_id=record_id,
-        task="parser_ai_v2",
+        task=PARSER_CANDIDATE_GRAPH_TASK,
         language="en",
         domain="runtime_test",
         input_text=parser_input.model_dump_json(),
-        target=_output().model_dump(mode="json"),
+        target=_gold_target(record_id),
         provenance=SupervisionProvenance(
             source_id=f"source-{record_id}",
             source_asset_id=f"asset-{record_id}",
             source_sha256=_sha(f"source-{record_id}"),
             governance_hash=_sha(f"governance-{record_id}"),
             license_or_authorization_id=f"license-{record_id}",
-            guideline_version="test",
+            guideline_version="6.0",
             reviewer_count=2,
             reviewer_roles=("wet-lab", "biostatistician"),
+            adjudication_id=f"adjudication-{record_id}",
         ),
-        annotation_status=AnnotationStatus.DOUBLE_REVIEWED,
-        training_eligible=True,
+        annotation_status=AnnotationStatus.ADJUDICATED,
+        training_eligible=training_eligible,
+        evaluation_eligible=evaluation_eligible,
         requested_split=split,
     )
 
 
-def test_profile_has_consistent_storage_budget() -> None:
-    path = Path("models/configs/qwen3-4b-instruct-2507-mlx-qlora.json")
+def test_profile_has_consistent_storage_budget(tmp_path: Path) -> None:
+    path = Path("models/configs/granite-4.1-3b-mlx-qlora.json")
     profile = load_profile(path)
     budget = storage_budget(profile)
 
-    assert profile["model"]["revision"] == "50d427756c6b1b2fe0c0a10f67fbda1fc8e82c1b"
-    assert profile["model"]["expected_weight_bytes"] == 2_263_022_417
+    assert profile["model"]["provider"] == "granite"
+    assert profile["model"]["canonical_repository"] == "ibm-granite/granite-4.1-3b"
+    assert profile["model"]["repository"] == "mlx-community/granite-4.1-3b-4bit"
+    assert profile["model"]["revision"] == "b1b476b5a17c46b7d6cd663b4a8ed44b66720aef"
+    assert profile["model"]["expected_weight_bytes"] == 2_127_162_429
     assert (
         profile["model"]["expected_weight_sha256"]
-        == "2a73c6c248601ab904e035548abd8e6abb65ea27dcb5f342fb0a8910eb44173f"
+        == "cff9d052cc3c68ea66b3d364788eb96fca2be82868d9ad92bd968e73b125194d"
     )
-    assert budget["total_gib"] == pytest.approx(35.5)
+    assert profile["model"]["selection_role"] == "provisional_primary_train_a"
+    assert profile["model"]["scientifically_selected"] is False
+    assert "qwen" not in profile["model"]["repository"].casefold()
+    assert profile["data"]["task"] == PARSER_CANDIDATE_GRAPH_TASK
+    assert profile["data"]["parser_input_contract_version"] == "2.0.0"
+    assert profile["data"]["candidate_graph_contract_version"] == "1.0.0"
+    assert profile["data"]["gold_target_contract_version"] == "1.0.0"
+    assert "contract_version" not in profile["data"]
     assert budget["total_gib"] <= budget["workspace_cap_gib"]
     assert DEFAULT_PROFILE.is_file()
+    assert DEFAULT_PROFILE.name == "granite-4.1-3b-mlx-qlora.json"
+
+    legacy = json.loads(path.read_text(encoding="utf-8"))
+    legacy["data"]["contract_version"] = "2.0.0"
+    legacy_path = tmp_path / "legacy-profile.json"
+    legacy_path.write_text(json.dumps(legacy), encoding="utf-8")
+    with pytest.raises(MLXPipelineError, match="contract_version e ambiguo"):
+        load_profile(legacy_path)
+
+
+def test_default_profile_is_granite_not_qwen() -> None:
+    from ntruth.model_backends.registry import DEFAULT_MODEL_ID, resolve_provider
+    from ntruth.model_backends.base import ModelProvider
+
+    assert resolve_provider() is ModelProvider.GRANITE
+    assert DEFAULT_MODEL_ID == "ibm-granite/granite-4.1-3b"
+    assert "qwen" not in DEFAULT_PROFILE.name.casefold()
 
 
 def test_runtime_environment_records_lock_and_source_without_secrets() -> None:
@@ -190,16 +246,17 @@ def test_prediction_parser_rejects_trailing_prose() -> None:
         parse_prediction_text(payload + " explanation")
 
 
-def test_structured_score_does_not_require_identical_metadata() -> None:
-    predicted = _output(confidence=0.9)
-    gold = _output(confidence=0.5)
+def test_structured_score_does_not_require_identical_envelope_ids() -> None:
+    predicted = _output(variant="prediction")
+    gold = _output(variant="gold")
 
     score = score_output(predicted, gold)
 
     assert score["schema_valid"] is True
     assert score["micro"]["f1"] == 1.0
-    assert score["determinability_accuracy"] == 1.0
     assert score["exact_contract_match"] is False
+    assert "determinability" not in score
+    assert "determinability_accuracy" not in score
 
 
 def test_invalid_empty_prediction_is_not_reported_as_perfect() -> None:
@@ -209,7 +266,7 @@ def test_invalid_empty_prediction_is_not_reported_as_perfect() -> None:
     assert score["micro"]["f1"] == 0.0
     assert aggregate["invalid_output_count"] == 1
     assert aggregate["schema_valid_rate"] == 0.0
-    assert aggregate["determinability_macro_f1"] == 0.0
+    assert all("determinability" not in key for key in aggregate)
     assert aggregate["macro_category_f1"] == 0.0
     assert all(category["f1"] == 0.0 for category in aggregate["categories"].values())
     assert aggregate["micro"]["precision"] == 0.0
@@ -235,7 +292,42 @@ def test_governed_dataset_exports_mlx_chat_and_snapshot(tmp_path: Path) -> None:
     assert validated["counts"] == {"train": 1, "valid": 1, "test": 1}
     train = json.loads((output / "train.jsonl").read_text().splitlines()[0])
     assert train["messages"][-1]["role"] == "assistant"
-    ParserAIOutput.model_validate_json(train["messages"][-1]["content"])
+    assistant = CandidateGraphSet.model_validate_json(train["messages"][-1]["content"])
+    payload = assistant.model_dump(mode="json")
+    assert assistant.provenance.authority is StageAuthority.MODEL
+    assert "determinability" not in payload
+    assert "verdict" not in payload
+
+
+def test_legacy_parser_output_task_cannot_enter_v6_training(tmp_path: Path) -> None:
+    legacy = _record("legacy", CorpusSplit.TRAIN).model_copy(update={"task": "parser_ai_v2"})
+    dataset = prepare_dataset((legacy,))
+
+    with pytest.raises(MLXPipelineError, match="task atteso parser_candidate_graph_v6"):
+        export_mlx_dataset(dataset, tmp_path / "legacy")
+
+
+def test_parser_gold_identity_must_match_the_supervised_record(tmp_path: Path) -> None:
+    record = _record("identity", CorpusSplit.TRAIN)
+    target = dict(record.target)
+    target["source_record_id"] = "different-record"
+    inconsistent = record.model_copy(update={"target": target})
+    dataset = prepare_dataset((inconsistent,))
+
+    with pytest.raises(MLXPipelineError, match="record sorgente diverso"):
+        export_mlx_dataset(dataset, tmp_path / "inconsistent")
+
+
+def test_double_reviewed_flag_cannot_substitute_parser_gold_adjudication(
+    tmp_path: Path,
+) -> None:
+    record = _record("not-adjudicated", CorpusSplit.TRAIN).model_copy(
+        update={"annotation_status": AnnotationStatus.DOUBLE_REVIEWED}
+    )
+    dataset = prepare_dataset((record,))
+
+    with pytest.raises(MLXPipelineError, match="annotation_status=adjudicated"):
+        export_mlx_dataset(dataset, tmp_path / "not-adjudicated")
 
 
 def test_runtime_smoke_dataset_is_allowed_only_with_explicit_smoke_gate(tmp_path: Path) -> None:

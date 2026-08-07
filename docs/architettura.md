@@ -1,140 +1,190 @@
-# Architettura e invarianti PRD v3
+# Architettura v6
 
-## Flusso
+## Due train coordinati
+
+N-Truth separa il valore deterministico dal rischio di ricerca del parser AI.
+
+| Train | Responsabilita | Stato conservativo |
+|---|---|---|
+| Train D | Ingest locale D0, schema, grafo, regole, determinabilita, hard verifier, correzioni e report | Implementazione software disponibile; revisione scientifica ed external validation non completate |
+| Train A | Parser a stadi, corpus, training, calibrazione e validazione esterna | Contratti e tooling preparatorio disponibili; nessun modello N-Truth addestrato/validato |
+
+La visione completa richiede entrambi i train e revisione umana. Train A propone fatti
+candidati; non sostituisce il compilatore deterministico o il verificatore hard.
+
+## Flusso Train D corrente
 
 ```text
-Experiment Bundle locale
-   |
-   v
-ingest       manifest, checksum, MIME, ruoli file, limiti su input ostili
-   |
-   v
-parsers      JATS/DOCX/PDF/CSV/XLSX/TXT + R/Python read-only -> Document IR
-   |
-   +--> baseline deterministica ---------------------------+
-   |                                                        |
-   +--> parser AI locale opzionale -> candidate fact -------+
-                                                            v
-                                                      grafi alternativi
-                                                            |
-                                                            v
-                                                conferma/correzione umana
-                                                            |
-                                                            v
-design compiler -> grafo validato -> rules engine -> report positivo/alert/domande
-                                                            |
-                                                            v
-                                      revisioni append-only ed export versionati
+file locali
+  -> safety gate e release profile
+  -> progetto: manifest + copie sorgente + blob SHA-256 + SQLite
+  -> Document IR con coordinate
+  -> segmentazione in ExperimentBlock
+  -> estrazione deterministica
+  -> candidate graph
+  -> preflight hard degli invarianti
+       -> se invalido: INVALID_GRAPH, stop regole, report dell'errore
+       -> se valido: resolver di unita + evidence floor + rules engine
+  -> compilatore del disegno + DeterminabilityState
+  -> output policy
+  -> hard verifier finale
+  -> report ed export versionati
 ```
 
-Il parser AI è centrale per la visione v1.0. La corsia MLX opzionale può già preparare
-dati governati, addestrare un adapter e generare candidate fact validate; non è ancora
-integrata nel flusso standard e non dispone di gold o metriche scientifiche. Il motore
-deterministico resta utilizzabile e verificabile senza dipendenze ML.
+Una correzione umana viene applicata come patch append-only a una revisione nota; il
+blocco corretto viene ricalcolato senza reinterpretare o modificare la fonte. Undo e
+redo cambiano la revisione attiva mantenendo intatta la storia.
+
+Nel runtime API corrente il registro di sessione e memory-bounded. Le revisioni di
+report e gli audit di correzione vengono pubblicati su file in modo atomico, ma non va
+dedotta da questo una sessione collaborativa persistente o ripristinabile dopo il
+riavvio del processo.
+
+Il `SampleSheetSpec` v6 ha generatore e validatore CLI dedicati. La validazione
+canonica va eseguita prima dell'analisi generale del CSV; non e ancora un gate
+automatico per ogni CSV importato.
+
+## Flusso contrattuale Train A
+
+```text
+DocumentRouteResult
+  -> EvidenceExtractionResult / EntityCountResult / ProceduralEventResult
+  -> CandidateGraphSet (senza verdict e determinability)
+  -> hard verifier sempre / semantic verifier solo se invocato
+  -> HumanRevisionPatch
+  -> grafo validato o scenario esplicitamente condizionale
+  -> RuleResult / QuestionRecord
+  -> ReportBundle
+```
+
+Questa e una separazione di responsabilita normativa. Gli schema staged esistono, ma
+non rappresentano ancora un parser AI addestrato ne un'orchestrazione scientificamente
+validata di tutte le fasi.
 
 ## Moduli
 
-| Package | Responsabilità |
+| Package | Responsabilita |
 |---|---|
-| `ntruth.schemas` | Document IR, Experiment Bundle, grafo, fattori, estimandi, regole e report |
-| `ntruth.ingest` | progetto locale, checksum, manifest e controlli di sicurezza |
-| `ntruth.parsers` | byte → sezioni/tabelle/code artifact con coordinate; codice `never_execute` |
-| `ntruth.extract` | baseline deterministica di candidate fact da testo e sample sheet |
-| `ntruth.parser_ai` | contratto input/output, JSON Schema, adapter e validazione; nessun modello incluso |
-| `ntruth.training` | preparazione/deduplica/split, snapshot MLX, QLoRA locale, metriche, calibrazione ed export adapter |
-| `ntruth.design` | target/estimando, elicitazione e handoff conservativo |
-| `ntruth.graph` | merge delle fonti, alternative, conflitti e unità per scope |
-| `ntruth.rules` | predicati e motore su grafo validato con trace |
-| `ntruth.reporting` | percorso verde, alert, domande ed export leggibili/machine-readable |
-| `ntruth.corrections` | JSON Patch validate, ledger, undo/redo e ricalcolo |
-| `ntruth.governance` | autorizzazioni, privacy, snapshot corpus, anti-leakage e lineage |
-| `ntruth.api` | API loopback, sessioni bounded, artefatti e UI locale |
-| `ntruth.cli` | comandi locali |
-| `ntruth.pipeline` | orchestrazione dei passaggi |
+| `ntruth.schemas` | Document IR, manifest, Experiment Graph, conteggi, regole e report |
+| `ntruth.ingest` | Progetto locale, manifest, checksum, profilo input e controlli di sicurezza |
+| `ntruth.storage` | SQLite locale, migrazioni, revisioni/audit e blob store content-addressed |
+| `ntruth.parsers` | Byte -> testo, sezioni, tabelle e code artifact con coordinate; codice `never_execute` |
+| `ntruth.sample_sheet` | Schema v6, generazione, validazione e I/O CSV sicuro |
+| `ntruth.prospective` | Compiler D0 e contratti separati planned/executed con deviazioni tipizzate |
+| `ntruth.extract` | Segmentazione e baseline deterministica di candidate fact |
+| `ntruth.parser_ai` | Contratti staged v6, compatibilita v2 e validazione; nessun peso incluso |
+| `ntruth.runtime_resources` | Profili benchmark-derived, scheduling sequenziale, chunking, cache, fallback e telemetria |
+| `ntruth.graph` | Costruzione, validazione, unita per scope e determinabilita |
+| `ntruth.verifier` | Verifica hard e matrice normativa degli output |
+| `ntruth.rules` | Ruleset versionati, predicati ed esecuzione con trace |
+| `ntruth.design` | Target/estimando, elicitazione e compilation del disegno |
+| `ntruth.corrections` | JSON Patch validate, ledger, undo/redo, audit e ricalcolo |
+| `ntruth.reporting` | Output positivo, JSON/YAML/HTML, graph e metadati di export |
+| `ntruth.governance` | Autorizzazioni, privacy, lineage, snapshot e split anti-leakage |
+| `ntruth.training` | Gold target contract, preparazione e tooling MLX futuro |
+| `ntruth.api` | API locale loopback e sessioni bounded |
+| `ntruth.cli` | Comandi locali e messaggi di errore espliciti |
+| `ntruth.pipeline` | Orchestrazione deterministica Train D |
+
+## Persistenza locale
+
+Ogni progetto creato dalla pipeline contiene:
+
+```text
+project/
+├── manifest.json
+├── sources/
+│   └── <copie locali registrate>
+├── blobs/
+│   └── sha256/<prime-2-cifre>/<sha256-completo>
+└── ntruth.sqlite3
+```
+
+`sources/` e mantenuta per compatibilita e accesso locale. Il blob store e immutabile,
+deduplica per contenuto, pubblica atomicamente e verifica digest e dimensione. SQLite
+registra progetti, blob, collegamenti progetto-blob, revisioni, sessioni, run, eventi
+di audit e migrazioni. Usa foreign key, WAL, `synchronous=FULL`, transazioni e
+savepoint; trigger impediscono update/delete di revisioni ed eventi di audit.
+
+L'apertura di un workspace precedente esegue un backfill non distruttivo nel blob
+store soltanto quando la copia legacy corrisponde al checksum. Il comando
+`ntruth verify` ricontrolla copia sorgente e blob.
+
+SQLite e il backend locale iniziale. PostgreSQL o un graph database non sono
+funzionalita collaborative dichiarate come implementate.
+
+## Trust boundary degli input
+
+Il core non apre indiscriminatamente ogni file:
+
+- D0 accetta TXT, Markdown e CSV semplice;
+- formati complessi richiedono `extended_experimental`;
+- estensione e firma/media type devono essere coerenti;
+- symlink, traversal, macro e archivi/input oltre i limiti sono rifiutati;
+- JATS/XML non puo contenere `DOCTYPE` o `ENTITY`;
+- script statistici sono dati testuali e non vengono mai eseguiti;
+- il contenuto di una fonte e sempre dato, mai istruzione per il sistema.
+
+Il profilo e persistito nel manifest. Un workspace non puo essere riaperto con un
+profilo differente senza creare un progetto separato.
 
 ## Invarianti scientifici
 
-1. L'unità sperimentale è derivata per fattore e contrasto; non esiste una label
-   globale del paper.
-2. `allocation_level` e `application_level` sono distinti. Il primo determina il
-   candidato EU; il secondo descrive la procedura.
-3. L'estimando minimo è separato dal target inferenziale e deve essere esplicito per
-   sostenere un handoff completo.
-4. `n_declared`, `n_allocated`, `n_analyzed`, `n_observational` e `n_independent` non
-   sono alias.
-5. Un'incertezza decisiva produce astensione o scenario condizionale con domanda.
-6. Replicazione del disegno, dipendenza analitica e portata dell'inferenza generano
-   classi di alert separate.
-7. Un modello statistico può dichiarare clustering o gestire dipendenza; non crea
-   replicazione del disegno.
-8. Una dichiarazione dell'autore genera un candidato, non una prova di indipendenza.
-9. La confidenza si applica ai fatti candidati; una conseguenza deterministica espone
-   regola e premesse, non una probabilità propria.
+1. L'unita sperimentale e derivata per fattore, contrasto ed endpoint, non per paper.
+2. Allocazione, applicazione e indipendenza operativa sono concetti distinti.
+3. Un `independent_n` richiede indipendenza operativa confermata e uno scope valido.
+4. Conteggi, quantificatori, lifecycle ed esclusioni non vengono compressi in un solo
+   `n`.
+5. Un'incertezza decisiva produce astensione, alternative o rami condizionali.
+6. Replicazione del disegno, dipendenza analitica e portata inferenziale restano tre
+   classi separate.
+7. Statistical code e author assertion non provano da soli allocazione o
+   indipendenza.
+8. Solo la matrice di determinabilita autorizza un valore singolo di EU/n.
 
-## Invarianti di tracciabilità
+## Invarianti di provenance e correzione
 
-1. Il Document IR conserva coordinate di testo, celle e code span.
-2. Ogni candidate fact riferisce evidence span esistenti.
-3. Il graph builder conserva alternative e conflitti; non sceglie silenziosamente.
-4. Il rules engine legge il grafo validato, non interpreta il testo grezzo.
-5. Il renderer non introduce fatti assenti dal JSON.
-6. Una correzione crea una patch append-only; non cancella estrazione o revisione
-   precedenti.
-7. Ogni run e revisione è isolato e pubblicato atomicamente.
-8. Gli artefatti restano `not_gold` finché un workflow umano separato non li promuove.
+1. Document IR conserva file, checksum e coordinate di testo/cella/codice.
+2. Candidate fact e relazioni puntano a evidenze esistenti.
+3. Alternative e conflitti non vengono risolti silenziosamente.
+4. Il rules engine non interpreta testo grezzo.
+5. Il renderer non introduce fatti assenti dagli artefatti strutturati.
+6. Correzioni, revisioni ed audit sono append-only e verificabili per checksum; ogni
+   evento registra ruolo dell'attore e timestamp con fuso, senza identita personale.
+7. Un artefatto resta `not_gold` fino a doppia annotazione/adjudication prevista dal
+   protocollo.
+8. Parser Gold e Derivation Gold restano separati.
+9. La Evidence View desktop e attualmente consultiva: il backend accetta patch agli
+   span solo se coordinate, testo, sezione e cella coincidono con il Document IR
+   immutabile; l'editor visuale dei locator appartiene al gate A1.
 
-## Codice statistico
+## Governance e rete
 
-Gli script `.R`, `.r`, `.Rmd` e `.py` sono importati come testo e non vengono mai
-eseguiti. Pattern come `(1|culture/well)` o grouping in una formula possono creare
-`declared_clustering` con evidenza `STATISTICAL_CODE`. Non possono creare
-`allocated_to`, `applied_to` o `randomized_at`: descrivono il modello dichiarato, non
-il processo fisico di allocazione.
+Le autorizzazioni `analyze`, `annotate`, `train`, `share` e `redistribute` sono
+separate. Un record mancante, scaduto, revocato o incoerente con il checksum nega
+l'azione governata. Lo scanner privacy e assistivo e produce finding stand-off;
+`distribution-check` valuta un gate e non trasferisce file.
 
-## Contratto parser AI
+La API baseline e single-user, senza autenticazione e destinata al loopback. Non deve
+essere pubblicata su `0.0.0.0`, reverse proxy, LAN o Internet.
 
-`ParserAIInput` separa documenti, tabelle, metadata e codice statistico.
-`ParserAIOutput` accetta soltanto candidate fact, alternative, determinabilità e
-domande. Non contiene un verdetto. La validazione controlla vocabolari, riferimenti,
-coordinate, evidenze e versione del contratto prima dell'ingresso nel grafo.
+## Limiti correnti
 
-Il boundary è usato dalla corsia `ntruth-ml`, ma il backend non viene attivato dalla
-CLI/API/UI deterministica. La presenza della pipeline non implica che esista un modello
-N-Truth addestrato o che siano disponibili metriche scientifiche.
-
-## Persistenza, revisioni e concorrenza
-
-`execute_analysis` pubblica una revisione iniziale in un run nuovo. Il riuso di un
-progetto richiede opt-in esplicito. Le correzioni API vengono serializzate nella
-sessione e ogni commit costruisce uno snapshot privato, scrive gli artefatti e lo rende
-visibile con un rename atomico.
-
-Checksum e versioni consentono di verificare contenuto, annotazioni e audit. La
-licenza del codice non viene trasferita alle fonti incluse in un bundle o in un export.
-
-## Governance e privacy
-
-Gli usi `analyze`, `annotate`, `train`, `share` e `redistribute` sono autorizzazioni
-separate. Un record assente, revocato, scaduto o non coerente con il checksum produce
-un diniego fail-closed. Gli snapshot del corpus includono gruppi anti-leakage e lineage
-di schema/parser/guideline/ontologia.
-
-Lo scanner privacy crea finding stand-off e copie redatte separate. È assistivo. La
-pipeline applicativa genera scan e readiness negata per default; API e CLI applicano i
-gate immediatamente prima di valutare `share`/`redistribute`. L'esito riguarda gli
-artefatti e checksum correnti e non esegue trasferimenti. Una chiamata di basso livello
-senza Document IR non scansiona le fonti e non costituisce readiness.
-
-## Limiti della baseline
-
-- Nessun modello AI N-Truth scientificamente addestrato o pubblicato è disponibile; il
-  modello base opzionale e gli adapter locali restano esclusi da Git.
+- Nessun modello AI N-Truth addestrato, calibrato o pubblicato e disponibile.
 - Segmentazione, estrazione e coreference rules-only non sono validate su un corpus
-  reale.
-- PDF senza testo estraibile/OCR degradato richiedono fallimento esplicito o una
-  pipeline futura.
-- Nessun agreement umano, human ceiling, calibrazione su gold o external challenge è
-  stato misurato; la sola calibrazione implementata è un componente non ancora
-  applicabile senza validation gold.
-- Le fixture sintetiche verificano contratti software, non validità scientifica.
-- L'editor locale non sostituisce il workflow di doppia annotazione e adjudication.
+  reale rappresentativo.
+- Il semantic verifier e un contratto opzionale, non un runtime scientificamente
+  validato.
+- Il Runtime Resource Manager e implementato come confine backend-agnostic ma non e
+  ancora collegato al runner MLX, e manca un artifact benchmark reale sul Mac target.
+- Il record prospettico planned/executed e validato in memoria ma non e ancora
+  persistito in SQLite ne esposto dal wizard/API.
+- Il profilo esteso abilita sperimentazione, non supporto stabile.
+- Nessun human ceiling, agreement, external challenge o studio utente completato e
+  dichiarato.
+- Fixture sintetiche e test software verificano implementazione e contratti, non la
+  validita scientifica delle conclusioni.
+
+Per i confini operativi vedere [Core Profile D0](core-profile-d0.md),
+[SampleSheetSpec v6](sample-sheet-v6.md) e
+[contratto parser/verifier](parser-ai-contract.md).

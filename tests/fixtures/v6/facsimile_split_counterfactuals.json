@@ -1,0 +1,149 @@
+{
+  "fixture_id": "V6-FACSIMILE-SPLIT-COUNTERFACTUALS-001",
+  "description": "Minimal mutations for record-to-view scientific and split invariants.",
+  "base_projection": {
+    "schema_version": "1.0.0",
+    "source_record_id": "NTR-REC-CF-001",
+    "source_record_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "family_id": "CF-FAMILY-001",
+    "leakage_group_id": "LG-CF-001",
+    "split": "train",
+    "training_eligible": true,
+    "evaluation_eligible": false,
+    "synthetic_notice": true,
+    "experimental_unit_count": {
+      "count_id": "CNT-EU-CF-001",
+      "kind": "independent_n",
+      "value": 3,
+      "quantifier": "EXACT",
+      "scope": {
+        "unit_type": "CellCulture",
+        "factor_id": "treatment",
+        "contrast_id": "drug_vs_vehicle",
+        "group_or_level": "all_groups",
+        "endpoint_id": "intensity",
+        "timepoint": "T1",
+        "lifecycle": "analysed",
+        "population": "independently_allocated_cultures",
+        "condition": "operational_independence_confirmed",
+        "unknown_reasons": {}
+      },
+      "evidence_ids": ["EV-ALLOC"],
+      "rule_trace_ids": ["EU-ALLOC-001"],
+      "diagnostic_only": false,
+      "provenance": {
+        "origin": "derived",
+        "evidence_ids": ["EV-ALLOC"],
+        "derivation": "Count of independently allocated cultures for the contrast."
+      }
+    },
+    "biological_source_count": {
+      "count_id": "CNT-SOURCE-CF-001",
+      "kind": "biological_source_count",
+      "value": 1,
+      "quantifier": "EXACT",
+      "scope": {
+        "unit_type": "HumanDonor",
+        "factor_id": "treatment",
+        "contrast_id": "drug_vs_vehicle",
+        "group_or_level": "all_groups",
+        "endpoint_id": "intensity",
+        "timepoint": "T1",
+        "lifecycle": "observed",
+        "population": "donor_sources",
+        "condition": "source_identity_confirmed",
+        "unknown_reasons": {}
+      },
+      "evidence_ids": ["EV-SOURCE"],
+      "rule_trace_ids": ["SOURCE-COUNT-001"],
+      "diagnostic_only": false,
+      "provenance": {
+        "origin": "derived",
+        "evidence_ids": ["EV-SOURCE"],
+        "derivation": "Count of distinct biological donors."
+      }
+    },
+    "inference_scope": {
+      "field_id": "FIELD-INFERENCE-CF-001",
+      "dimension": "inference_scope",
+      "status": "LIMITED",
+      "statement": "The treatment contrast is estimable across cultures; donor-level generalization is limited to one donor.",
+      "evidence_ids": ["EV-SOURCE"]
+    },
+    "validity_of_allocation": {
+      "field_id": "FIELD-ALLOCATION-CF-001",
+      "dimension": "allocation_validity",
+      "status": "SUPPORTED",
+      "statement": "Three cultures were initiated and allocated independently before treatment.",
+      "evidence_ids": ["EV-ALLOC"]
+    },
+    "determinability": "DETERMINATE",
+    "decisive_evidence_types": ["STRUCTURAL_FACT", "SAMPLE_METADATA"]
+  },
+  "projection_counterfactuals": [
+    {
+      "case_id": "equal_numeric_counts_keep_distinct_semantics",
+      "patch": {
+        "biological_source_count.value": 3
+      },
+      "expected_valid": true
+    },
+    {
+      "case_id": "test_cannot_train",
+      "patch": {
+        "split": "test",
+        "training_eligible": true,
+        "evaluation_eligible": true
+      },
+      "expected_valid": false,
+      "error": "training_eligible=false"
+    },
+    {
+      "case_id": "train_cannot_be_evaluation_only",
+      "patch": {
+        "training_eligible": false,
+        "evaluation_eligible": true
+      },
+      "expected_valid": false,
+      "error": "evaluation_only=false"
+    },
+    {
+      "case_id": "count_roles_cannot_be_aliased",
+      "patch": {
+        "experimental_unit_count.kind": "biological_source_count"
+      },
+      "expected_valid": false,
+      "error": "experimental_unit_count richiede kind=independent_n"
+    },
+    {
+      "case_id": "inference_scope_is_not_allocation_validity",
+      "patch": {
+        "inference_scope.dimension": "allocation_validity"
+      },
+      "expected_valid": false,
+      "error": "inference_scope richiede dimension=inference_scope"
+    },
+    {
+      "case_id": "author_assertion_cannot_close_determinability",
+      "patch": {
+        "decisive_evidence_types": ["AUTHOR_ASSERTION"]
+      },
+      "expected_valid": false,
+      "error": "AUTHOR_ASSERTION da sola non chiude determinability"
+    }
+  ],
+  "dataset_split_counterfactuals": {
+    "positive": [
+      {"record_id": "REC-A", "split": "train", "leakage_group_id": "LG-SHARED"},
+      {"record_id": "REC-B", "split": "train", "leakage_group_id": "LG-SHARED"}
+    ],
+    "record_cross_split": [
+      {"record_id": "REC-A", "split": "train", "leakage_group_id": "LG-A"},
+      {"record_id": "REC-A", "split": "test", "leakage_group_id": "LG-B"}
+    ],
+    "leakage_group_cross_split": [
+      {"record_id": "REC-A", "split": "train", "leakage_group_id": "LG-SHARED"},
+      {"record_id": "REC-B", "split": "test", "leakage_group_id": "LG-SHARED"}
+    ]
+  }
+}

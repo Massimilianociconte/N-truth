@@ -1,0 +1,242 @@
+{
+  "default_model_id": "ibm-granite/granite-4.1-3b",
+  "default_provider": "granite",
+  "legacy_disabled": {
+    "qwen3-4b-instruct-2507": {
+      "former_profile": "models/configs/legacy/qwen3-4b-instruct-2507-mlx-qlora.json",
+      "reason": "Replaced by IBM Granite 4.1 3B Instruct as provisional primary",
+      "status": "disabled_default"
+    }
+  },
+  "models": {
+    "ibm-granite/granite-4.1-3b": {
+      "acquired_at": "2026-08-02T00:18:43.990462Z",
+      "backend": {
+        "linux": "llama.cpp|transformers|vllm-server",
+        "macos": "mlx-lm-community-or-llama-cpp-metal",
+        "windows": "llama.cpp-gguf-cpu-cuda-vulkan"
+      },
+      "chat_template": "granite_role_tags",
+      "chat_template_hash": "fed2756d2d24e127b951dcf139d0b03ab7db8ef23a456128ebc9c2db4901d476",
+      "checksum": "cff9d052cc3c68ea66b3d364788eb96fca2be82868d9ad92bd968e73b125194d",
+      "configured_maximum_context_tokens": 131072,
+      "context_window_status": "configured_from_model_card_not_host_validated",
+      "context_window_tokens": 131072,
+      "dtype": "bf16",
+      "gguf_repository": "ibm-granite/granite-4.1-3b-GGUF",
+      "license": "Apache-2.0",
+      "local_path": "models/local/granite-4.1-3b-4bit",
+      "migration_status": "ARCHITECTURE_MIGRATED",
+      "mlx_kind": "community_conversion_via_mlx_lm",
+      "mlx_official_ibm": false,
+      "mlx_repository": "mlx-community/granite-4.1-3b-4bit",
+      "mlx_revision": "b1b476b5a17c46b7d6cd663b4a8ed44b66720aef",
+      "mlx_weight_bytes": 2127162429,
+      "mlx_weight_file": "model.safetensors",
+      "mlx_weight_sha256": "cff9d052cc3c68ea66b3d364788eb96fca2be82868d9ad92bd968e73b125194d",
+      "model_card_url": "https://huggingface.co/ibm-granite/granite-4.1-3b",
+      "model_id": "ibm-granite/granite-4.1-3b",
+      "notes": [
+        "IBM Granite 4.1 3B Instruct is the provisional primary Train A model.",
+        "ARCHITECTURE_MIGRATED does not imply runtime or scientific qualification.",
+        "Qualification is bound to exact artifact fingerprints, not to the model name alone."
+      ],
+      "parameter_count": 3402836480,
+      "profile_path": "models/configs/granite-4.1-3b-mlx-qlora.json",
+      "provider": "granite",
+      "qualified_artifact": {
+        "adapter_sha256": null,
+        "backend": "mlx-lm",
+        "backend_version": "0.31.3",
+        "canonical_fingerprint_sha256": "6ad3457ada70cc957e339af73847dfe0b72168c728185dbd7b8e71c4845ac3d2",
+        "canonical_model_revision": "c0650403e44e78ec0262dab1c90914c65b196c4e",
+        "chat_template_hash": "fed2756d2d24e127b951dcf139d0b03ab7db8ef23a456128ebc9c2db4901d476",
+        "domain_profile": "runtime_smoke_only",
+        "local_path": "models/local/granite-4.1-3b-4bit",
+        "mlx_kind": "community_conversion_not_official_ibm",
+        "mlx_repository": "mlx-community/granite-4.1-3b-4bit",
+        "model_id": "ibm-granite/granite-4.1-3b",
+        "model_revision": "b1b476b5a17c46b7d6cd663b4a8ed44b66720aef",
+        "quantization": "4bit_mlx_community",
+        "schema_version": "candidate_graph_set_1.0.0",
+        "task_profile": "parser_candidate_graph_v6",
+        "tokenizer_revision": "b1b476b5a17c46b7d6cd663b4a8ed44b66720aef",
+        "weight_bytes": 2127162429,
+        "weights_sha256": "cff9d052cc3c68ea66b3d364788eb96fca2be82868d9ad92bd968e73b125194d"
+      },
+      "quantization": {
+        "canonical": "bf16_safetensors",
+        "gguf_recommended": [
+          "Q4_K_M",
+          "Q5_K_M"
+        ],
+        "mlx_default": "4bit_community_conversion"
+      },
+      "revision": "c0650403e44e78ec0262dab1c90914c65b196c4e",
+      "role": "provisional_primary_train_a",
+      "runtime_qualification_status": "PARTIALLY_VERIFIED",
+      "scientific_validation_status": "NOT_STARTED",
+      "scientifically_selected": false,
+      "tokenizer_id": "ibm-granite/granite-4.1-3b",
+      "verification_status": "PARTIALLY_VERIFIED"
+    },
+    "ibm-granite/granite-4.1-3b-base": {
+      "license": "Apache-2.0",
+      "migration_status": "ARCHITECTURE_MIGRATED",
+      "model_id": "ibm-granite/granite-4.1-3b-base",
+      "notes": [
+        "Base variant reserved for experimental ablation only; not default."
+      ],
+      "provider": "granite",
+      "role": "ablation_base_only",
+      "runtime_qualification_status": "UNVERIFIED",
+      "scientific_validation_status": "NOT_STARTED",
+      "scientifically_selected": false,
+      "verification_status": "UNVERIFIED"
+    }
+  },
+  "qualification": {
+    "claim_gates": {
+      "PARTIALLY_VERIFIED": [
+        "internal_pilot",
+        "calibration_study"
+      ],
+      "UNVERIFIED": [
+        "development",
+        "smoke_test",
+        "exploratory_benchmark"
+      ],
+      "VERIFIED": [
+        "external_validation"
+      ],
+      "VERIFIED_PLUS_EXTERNAL_VALIDATED": [
+        "scientifically_supported_release_in_declared_domain"
+      ]
+    },
+    "invalidation_triggers": [
+      "weights_or_adapter_change",
+      "quantization_change",
+      "tokenizer_or_chat_template_change",
+      "output_schema_change",
+      "supported_tasks_change",
+      "evaluation_dataset_or_protocol_change",
+      "ruleset_change_affecting_scored_outputs",
+      "material_runtime_backend_change"
+    ],
+    "migration_status": "ARCHITECTURE_MIGRATED",
+    "next_activities_order": [
+      "download_and_verify_canonical_weights",
+      "real_inference_transformers_backend",
+      "verify_chat_template_stop_tokens_structured_output",
+      "benchmark_macbook_pro_m5_24gb",
+      "compare_mlx_and_gguf_on_same_small_set",
+      "activate_ci_windows_and_linux",
+      "few_shot_baseline_on_ntruth_cases",
+      "prepare_lora_qlora_and_b5_b6_comparison",
+      "validate_on_real_gold",
+      "external_challenge_before_any_scientific_claim"
+    ],
+    "notes": [
+      "migration_status reflects code/config/default backend only.",
+      "runtime/scientific statuses are artifact-bound; never inferred from migration_status.",
+      "A BF16/Transformers qualification does not transfer to GGUF Q4, adapters, or template changes.",
+      "runtime: UNVERIFIED|PARTIALLY_VERIFIED|VERIFIED|FAILED|STALE",
+      "scientific: NOT_STARTED|PILOT_VALIDATED|EXTERNAL_VALIDATED|FAILED|INVALIDATED",
+      "STALE/INVALIDATED when fingerprint diverges from qualified_artifact.",
+      "claim gates return reason codes; exploratory work remains allowed under UNVERIFIED."
+    ],
+    "partially_verified_requirements": [
+      "download_and_verify_real_weights",
+      "end_to_end_inference_success",
+      "chat_template_and_stop_conditions_checked",
+      "structured_output_conforming",
+      "candidate_only_smoke_tests_passed",
+      "initial_benchmark_mac_m5_24gb",
+      "no_critical_load_unload_resource_manager_errors",
+      "artifact_fingerprint_registered"
+    ],
+    "qualified_artifact": {
+      "adapter_sha256": null,
+      "backend": "mlx-lm",
+      "backend_version": "0.31.3",
+      "canonical_fingerprint_sha256": "6ad3457ada70cc957e339af73847dfe0b72168c728185dbd7b8e71c4845ac3d2",
+      "canonical_model_revision": "c0650403e44e78ec0262dab1c90914c65b196c4e",
+      "chat_template_hash": "fed2756d2d24e127b951dcf139d0b03ab7db8ef23a456128ebc9c2db4901d476",
+      "domain_profile": "runtime_smoke_only",
+      "local_path": "models/local/granite-4.1-3b-4bit",
+      "mlx_kind": "community_conversion_not_official_ibm",
+      "mlx_repository": "mlx-community/granite-4.1-3b-4bit",
+      "model_id": "ibm-granite/granite-4.1-3b",
+      "model_revision": "b1b476b5a17c46b7d6cd663b4a8ed44b66720aef",
+      "quantization": "4bit_mlx_community",
+      "schema_version": "candidate_graph_set_1.0.0",
+      "task_profile": "parser_candidate_graph_v6",
+      "tokenizer_revision": "b1b476b5a17c46b7d6cd663b4a8ed44b66720aef",
+      "weight_bytes": 2127162429,
+      "weights_sha256": "cff9d052cc3c68ea66b3d364788eb96fca2be82868d9ad92bd968e73b125194d"
+    },
+    "runtime_qualification_status": "PARTIALLY_VERIFIED",
+    "scientific_validation_status": "NOT_STARTED",
+    "summary": "Il codice è migrato a Granite. Il runtime Granite è PARTIALLY_VERIFIED solo per l'artefatto MLX community 4-bit con fingerprint registrato; il modello non è ancora scientificamente validato come modello definitivo di N-Truth (scientific_validation_status=NOT_STARTED).",
+    "transition_log": [
+      {
+        "actor": "ntruth-maintainers",
+        "dimension": "migration_status",
+        "evidence_relative_path": "sha256/c3/c34c4c8b687597b036ff161f1f0279edcffe811949e8a5528df6c97a94f144d3",
+        "evidence_sha256": "c34c4c8b687597b036ff161f1f0279edcffe811949e8a5528df6c97a94f144d3",
+        "from_status": "NONE",
+        "previous_transition_hash": null,
+        "rationale": "Architectural migration to IBM Granite 4.1 3B as provisional Train A default.",
+        "registry_id": "default",
+        "sequence": 1,
+        "timestamp": "2026-08-02T00:00:00Z",
+        "to_status": "ARCHITECTURE_MIGRATED",
+        "transition_hash": "46ab71d338ca814142efa882027ba1318e19133b1e57ffd8e5a39e69807444b8"
+      },
+      {
+        "actor": "ntruth-maintainers",
+        "dimension": "runtime_qualification_status",
+        "evidence_relative_path": "sha256/f7/f7bfbdf7c9594d548fa71920a6d17dbbfd1b1e2601ef769f979984786a49af41",
+        "evidence_sha256": "f7bfbdf7c9594d548fa71920a6d17dbbfd1b1e2601ef769f979984786a49af41",
+        "from_status": "NONE",
+        "previous_transition_hash": "46ab71d338ca814142efa882027ba1318e19133b1e57ffd8e5a39e69807444b8",
+        "rationale": "Initial state: no host/backend qualification yet; exploratory work only.",
+        "registry_id": "default",
+        "sequence": 2,
+        "timestamp": "2026-08-02T00:00:01Z",
+        "to_status": "UNVERIFIED",
+        "transition_hash": "976cb93510550893bc8be158a9360d6147f495a27fd019dd5d5f873c4e83ae6f"
+      },
+      {
+        "actor": "ntruth-maintainers",
+        "dimension": "scientific_validation_status",
+        "evidence_relative_path": "sha256/f7/f7bfbdf7c9594d548fa71920a6d17dbbfd1b1e2601ef769f979984786a49af41",
+        "evidence_sha256": "f7bfbdf7c9594d548fa71920a6d17dbbfd1b1e2601ef769f979984786a49af41",
+        "from_status": "NONE",
+        "previous_transition_hash": "976cb93510550893bc8be158a9360d6147f495a27fd019dd5d5f873c4e83ae6f",
+        "rationale": "Scientific validation not started; gold and external challenge pending.",
+        "registry_id": "default",
+        "sequence": 3,
+        "timestamp": "2026-08-02T00:00:02Z",
+        "to_status": "NOT_STARTED",
+        "transition_hash": "5d2241ab63db68a4c81ff2123523207914c8b42e158ea4faf86205ce06560fdd"
+      },
+      {
+        "actor": "ntruth-runtime-qualification",
+        "dimension": "runtime_qualification_status",
+        "evidence_relative_path": "sha256/3e/3e6282cef06b5557f97958697eed578b210bfcc1bd01e9d5c43bc6633ef23ceb",
+        "evidence_sha256": "3e6282cef06b5557f97958697eed578b210bfcc1bd01e9d5c43bc6633ef23ceb",
+        "from_status": "UNVERIFIED",
+        "previous_transition_hash": "5d2241ab63db68a4c81ff2123523207914c8b42e158ea4faf86205ce06560fdd",
+        "rationale": "Granite MLX 4-bit community weights verified; E2E inference, chat template, stop tokens, candidate-only schema path, load/unload, and initial M5 micro-benchmark recorded for this exact artifact fingerprint. Scientific validation remains NOT_STARTED.",
+        "registry_id": "default",
+        "sequence": 4,
+        "timestamp": "2026-08-02T00:18:57.302394Z",
+        "to_status": "PARTIALLY_VERIFIED",
+        "transition_hash": "6f7c60af0d8e62dfb1b1b5968a7572831deefbca718166e9cc6928115adaefe1"
+      }
+    ]
+  },
+  "schema_version": "1.3.0",
+  "updated_at": "2026-08-02"
+}

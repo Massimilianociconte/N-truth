@@ -14,6 +14,7 @@ from ntruth.schemas.core import Confidence, Provenance, ProvenanceKind, stable_i
 from ntruth.schemas.experiment import (
     ConditionalScenario,
     Contrast,
+    CountQuantifier,
     DataSufficiency,
     Endpoint,
     Factor,
@@ -25,6 +26,7 @@ from ntruth.schemas.experiment import (
     Question,
     RiskLabel,
     StatisticalModelFact,
+    TriState,
     UnitAssessment,
 )
 from ntruth.schemas.graph import (
@@ -191,7 +193,10 @@ def _assess(
     biological_unit = _biological_unit(index)
     observational_unit = _observational_unit(index, endpoint)
     analytical_unit, analytical_note = _analytical_unit(index, build, observational_unit)
-    experimental_unit, exp_note = _experimental_unit(index, build, factor)
+    allocation_unit_candidate, exp_note = _experimental_unit(index, build, factor)
+    experimental_unit = (
+        allocation_unit_candidate if factor.independently_assigned is TriState.TRUE else None
+    )
 
     n_observational = (
         index.derived_count_for_scope(
@@ -213,48 +218,79 @@ def _assess(
             and group is None
         ),
     )
+    lifecycle_fallback = (
+        contrast is not None
+        and len(build.contrasts) <= 1
+        and len(build.endpoints) <= 1
+        and group is None
+    )
+
+    def lifecycle_value(kind: NKind) -> int | None:
+        value, _ = _declared_n(
+            tuple(statement for statement in build.n_statements if statement.kind is kind),
+            scope,
+            analytical_unit,
+            allow_scope_fallback=lifecycle_fallback,
+        )
+        return value
+
+    n_planned = lifecycle_value(NKind.PLANNED)
+    n_allocated_declared = lifecycle_value(NKind.ALLOCATED)
+    n_treated = lifecycle_value(NKind.TREATED)
+    n_observed = lifecycle_value(NKind.OBSERVED)
+    n_excluded = lifecycle_value(NKind.EXCLUDED)
     if (
         declared_statement is not None
         and declared_statement.node_type is observational_unit
-        and declared_statement.kind
-        in {NKind.ANALYZED, NKind.OBSERVATIONAL, NKind.INDEPENDENT, NKind.DECLARED}
+        and declared_statement.kind in {NKind.OBSERVATIONAL, NKind.INDEPENDENT, NKind.DECLARED}
     ):
         n_observational = declared_statement.value
 
     n_allocated: int | None = None
     n_independent: int | None = None
     independent_entity: str | None = None
-    if experimental_unit is not None:
+    if allocation_unit_candidate is not None:
         n_allocated = index.derived_count_for_scope(
-            experimental_unit,
+            allocation_unit_candidate,
             factor_name=factor.name,
             group=group,
         )
+        if n_allocated_declared is not None:
+            n_allocated = n_allocated_declared
+            n_independent = n_allocated_declared
         n_independent = n_allocated
         if (
             declared_statement is not None
-            and declared_statement.node_type is experimental_unit
+            and declared_statement.node_type is allocation_unit_candidate
             and declared_statement.kind is NKind.ALLOCATED
         ):
             n_allocated = declared_statement.value
             n_independent = declared_statement.value
         elif (
             declared_statement is not None
-            and declared_statement.node_type is experimental_unit
+            and declared_statement.node_type is allocation_unit_candidate
             and declared_statement.kind in {NKind.INDEPENDENT, NKind.DECLARED}
         ):
             n_independent = declared_statement.value
         elif (
             declared_statement is not None
-            and declared_statement.node_type is experimental_unit
-            and analytical_unit is experimental_unit
+            and declared_statement.node_type is allocation_unit_candidate
+            and analytical_unit is allocation_unit_candidate
             and declared_statement.kind is NKind.ANALYZED
         ):
             # Un'esclusione della stessa unita allocata riduce anche il numero
             # di unita indipendenti analizzate; non vale invece per aggregati
             # analitici distinti (per esempio pool di animali).
             n_independent = declared_statement.value
-        independent_entity = str(experimental_unit)
+        independent_entity = str(allocation_unit_candidate)
+
+    # PRD v6: allocation e un prerequisito, non una prova di indipendenza.
+    # Il conteggio allocato resta disponibile, ma il valore scalare indipendente
+    # e autorizzato soltanto da un tri-state TRUE con meccanismo esplicito.
+    n_candidate = n_independent
+    if factor.independently_assigned is not TriState.TRUE:
+        n_independent = None
+        independent_entity = None
 
     n_analyzed = (
         index.derived_count_for_scope(
@@ -265,6 +301,9 @@ def _assess(
         if analytical_unit is not None
         else None
     )
+    n_analysed_declared = lifecycle_value(NKind.ANALYSED)
+    if n_analysed_declared is not None:
+        n_analyzed = n_analysed_declared
     if (
         declared_statement is not None
         and declared_statement.node_type is analytical_unit
@@ -272,18 +311,17 @@ def _assess(
     ):
         n_analyzed = declared_statement.value
 
-    clusters = _clusters(index, build, experimental_unit)
-    sufficiency = _sufficiency(index, build, factor, experimental_unit)
+    clusters = _clusters(index, build, allocation_unit_candidate)
+    sufficiency = _sufficiency(index, build, factor, allocation_unit_candidate)
     conditional_scenarios, independence_question = _conditional_independence_scenarios(
         block_id=block_id,
         index=index,
         factor=factor,
         scope=scope,
-        experimental_unit=experimental_unit,
-        n_candidate=n_independent,
+        experimental_unit=allocation_unit_candidate,
+        n_candidate=n_candidate,
         group=group,
         clusters=clusters,
-        source_independence=sufficiency.source_independence,
     )
     if independence_question is not None:
         questions.append(independence_question)
@@ -301,6 +339,7 @@ def _assess(
     # di n indipendente vivono esclusivamente nello scenario condizionale.
     if (
         conditional_scenarios
+        or factor.independently_assigned is not TriState.TRUE
         or sufficiency.source_independence is not Confidence.HIGH
         or inferability is Inferability.NOT_INFERABLE
     ):
@@ -314,24 +353,41 @@ def _assess(
         n_independent=n_independent,
         n_observational=n_observational,
         clusters=clusters,
-        extra_notes=[note for note in (exp_note, analytical_note) if note],
+        extra_notes=[
+            note
+            for note in (
+                (
+                    f"{exp_note}; livello di allocation ancora candidato"
+                    if exp_note and experimental_unit is None
+                    else exp_note
+                ),
+                analytical_note,
+            )
+            if note
+        ],
     )
 
     if (
-        experimental_unit is not None
+        allocation_unit_candidate is not None
         and n_independent is None
         and n_allocated is None
         and not conditional_scenarios
     ):
         questions.append(
             Question(
-                id=stable_id("qst", block_id, "count", str(experimental_unit), scope.describe()),
+                id=stable_id(
+                    "qst",
+                    block_id,
+                    "count",
+                    str(allocation_unit_candidate),
+                    scope.describe(),
+                ),
                 text=(
-                    f"Quante unita indipendenti di tipo {experimental_unit} sono state usate "
+                    f"Quante unita indipendenti di tipo {allocation_unit_candidate} sono state usate "
                     f"per il confronto {contrast.label if contrast else factor.name}?"
                 ),
                 reason="livello di intervento identificato ma conteggio assente",
-                missing_field=f"count[{experimental_unit}]",
+                missing_field=f"count[{allocation_unit_candidate}]",
                 scope=scope,
                 priority=95,
                 decisive=True,
@@ -339,12 +395,14 @@ def _assess(
             )
         )
 
-    experimental_node = index.node(experimental_unit) if experimental_unit else None
+    experimental_node = index.node(allocation_unit_candidate) if allocation_unit_candidate else None
     observational_node = index.node(observational_unit) if observational_unit else None
     evidence_ids = tuple(
         dict.fromkeys(
             [
                 *factor.evidence_ids,
+                *factor.allocation_evidence_ids,
+                *factor.independence_evidence_ids,
                 *(endpoint.evidence_ids if endpoint else ()),
                 *(experimental_node.evidence_ids if experimental_node else ()),
                 *(observational_node.evidence_ids if observational_node else ()),
@@ -357,14 +415,29 @@ def _assess(
         id=stable_id("uas", block_id, scope.key()),
         scope=scope,
         biological_unit=biological_unit,
+        allocation_unit_candidate=allocation_unit_candidate,
         experimental_unit=experimental_unit,
         observational_unit=observational_unit,
         analytical_unit=analytical_unit,
+        n_planned=n_planned,
         n_declared=n_declared,
         n_allocated=n_allocated,
-        n_analyzed=n_analyzed,
+        n_treated=n_treated,
+        n_observed=n_observed,
+        n_excluded=n_excluded,
+        n_analysed=n_analyzed,
         n_observational=n_observational,
+        n_analytical=n_analyzed,
         n_independent=n_independent,
+        biological_source_count=(
+            index.derived_count_for_scope(
+                biological_unit,
+                factor_name=factor.name,
+                group=group,
+            )
+            if biological_unit is not None
+            else None
+        ),
         independent_entity_type=independent_entity if n_independent is not None else None,
         cluster_types=clusters,
         inferability=inferability,
@@ -537,20 +610,17 @@ def _conditional_independence_scenarios(
     n_candidate: int | None,
     group: str | None,
     clusters: tuple[NodeType, ...],
-    source_independence: Confidence,
 ) -> tuple[tuple[ConditionalScenario, ...], Question | None]:
     """Espone alternative numeriche solo quando entrambe derivano dal grafo."""
 
-    if experimental_unit is None or n_candidate is None:
+    if experimental_unit is None:
         return (), None
     # Solo una conferma forte dell'indipendenza chiude il bivio. ``MEDIUM``
     # significa che il grafo contiene struttura utile ma non sufficiente e deve
     # quindi produrre uno scenario, quando entrambi i conteggi sono disponibili.
-    if source_independence is Confidence.HIGH:
+    if factor.independently_assigned is TriState.TRUE:
         return (), None
     node = index.node(experimental_unit)
-    if _confirmed_source_independence(node):
-        return (), None
     question_text = (
         f"Le unita di tipo {experimental_unit} allocate al fattore '{factor.name}' provengono "
         "da sorgenti biologiche indipendenti, oppure condividono la stessa sorgente?"
@@ -558,13 +628,27 @@ def _conditional_independence_scenarios(
     question = Question(
         id=stable_id("qst", block_id, "source-independence", scope.key()),
         text=question_text,
-        reason="la relazione di indipendenza tra le sorgenti non e determinabile dal grafo",
-        missing_field="source_independence",
+        reason=(
+            "le unita allocate sono dichiarate non indipendenti ma manca l'unita indipendente"
+            if factor.independently_assigned is TriState.FALSE
+            else "la relazione di indipendenza tra le sorgenti non e determinabile dal grafo"
+        ),
+        missing_field=(
+            "independent_entity_type"
+            if factor.independently_assigned is TriState.FALSE
+            else "factor.independently_assigned"
+        ),
         scope=scope,
         priority=100,
         decisive=True,
         impact="La risposta cambia n indipendente per questo gruppo e contrasto.",
     )
+
+    if factor.independently_assigned is TriState.FALSE:
+        return (), question
+
+    if n_candidate is None:
+        return (), question
 
     alternative: tuple[NodeType, int] | None = None
     for cluster_type in clusters:
@@ -616,7 +700,13 @@ def _declared_n(
     allow_scope_fallback: bool,
 ) -> tuple[int | None, NStatement | None]:
     """n dichiarato pertinente allo scope, senza forzare corrispondenze."""
-    candidates = [s for s in statements if s.value is not None]
+    candidates = [
+        s
+        for s in statements
+        if s.kind is not NKind.EFFECTIVE
+        and s.value is not None
+        and s.quantifier is CountQuantifier.EXACT
+    ]
     if not candidates:
         return None, None
 
@@ -680,11 +770,17 @@ def _declared_n(
             pool = exact_group_statements
 
     kind_priority = {
-        NKind.ANALYZED: 0,
+        NKind.ANALYSED: 0,
         NKind.INDEPENDENT: 1,
         NKind.DECLARED: 2,
         NKind.OBSERVATIONAL: 3,
-        NKind.ALLOCATED: 4,
+        NKind.ANALYTICAL: 4,
+        NKind.ALLOCATED: 5,
+        NKind.PLANNED: 6,
+        NKind.TREATED: 7,
+        NKind.OBSERVED: 8,
+        NKind.EXCLUDED: 9,
+        NKind.BIOLOGICAL_SOURCE: 10,
     }
 
     def score(statement: NStatement) -> tuple[int, int, int]:
@@ -692,7 +788,7 @@ def _declared_n(
         specificity_penalty = -sum(value is not None for value in statement.scope.key())
         return (
             unit_penalty,
-            kind_priority[statement.kind],
+            kind_priority.get(statement.kind, 99),
             specificity_penalty,
         )
 
@@ -733,6 +829,9 @@ def _sufficiency(
             source_independence = (
                 Confidence.MEDIUM if index.count(NodeType.POOL) is not None else Confidence.LOW
             )
+        elif factor.independently_assigned in {TriState.TRUE, TriState.FALSE}:
+            # Confidence descrive qui la completezza del fatto, non il suo valore.
+            source_independence = Confidence.HIGH
         elif _confirmed_source_independence(node):
             # La stringa dell'autore "independent experiments/replicates" e una
             # AUTHOR_ASSERTION, non una prova. Il flag diventa conclusivo solo
@@ -782,10 +881,14 @@ def _inferability(
     sufficiency: DataSufficiency,
     conditional_scenarios: tuple[ConditionalScenario, ...],
 ) -> Inferability:
-    if experimental_unit is None or n_independent is None:
-        return Inferability.NOT_INFERABLE
     if conditional_scenarios:
         return Inferability.CONDITIONAL
+    if factor.independently_assigned is TriState.UNKNOWN:
+        return Inferability.REQUIRES_CONFIRMATION
+    if factor.independently_assigned is TriState.FALSE:
+        return Inferability.NOT_INFERABLE
+    if experimental_unit is None or n_independent is None:
+        return Inferability.NOT_INFERABLE
     if sufficiency.source_independence is not Confidence.HIGH:
         return Inferability.REQUIRES_CONFIRMATION
     if factor.allocation_confidence < 0.8:

@@ -73,6 +73,7 @@ def _record(
     corresponding_author_id: str | None = None,
     status: AnnotationStatus = AnnotationStatus.DOUBLE_REVIEWED,
     eligible: bool = True,
+    evaluation_eligible: bool = False,
     requested_split: CorpusSplit | None = None,
     synthetic: bool = False,
 ) -> SupervisedRecord:
@@ -80,6 +81,9 @@ def _record(
     adjudication_id = (
         f"adjudication-{record_id}" if status is AnnotationStatus.ADJUDICATED else None
     )
+    if requested_split in {CorpusSplit.TEST, CorpusSplit.EXTERNAL_CHALLENGE}:
+        eligible = False
+        evaluation_eligible = True
     return SupervisedRecord(
         record_id=record_id,
         task="experimental_design",
@@ -99,6 +103,7 @@ def _record(
         ),
         annotation_status=status,
         training_eligible=eligible,
+        evaluation_eligible=evaluation_eligible,
         requested_split=requested_split,
     )
 
@@ -253,16 +258,20 @@ def test_split_components_are_transitive_and_respect_fixed_and_synthetic_sets() 
         "b",
         publication_id="publication-1",
         project_id="project-2",
+        eligible=False,
+        evaluation_eligible=True,
     )
     project_link = _record(
         "c",
         publication_id="publication-2",
         project_id="project-2",
+        eligible=False,
+        evaluation_eligible=True,
     )
     source_anchor = _record("d", source_id="shared-source")
     source_link = _record("e", source_id="shared-source")
     synthetic = _record("synthetic", synthetic=True)
-    external = _record("external", requested_split=CorpusSplit.EXTERNAL)
+    external = _record("external", requested_split=CorpusSplit.EXTERNAL_CHALLENGE)
     laboratory_anchor = _record("lab-a", laboratory_id="laboratory-1")
     laboratory_link = _record(
         "lab-b",
@@ -289,7 +298,7 @@ def test_split_components_are_transitive_and_respect_fixed_and_synthetic_sets() 
     assert by_id["d"].split is by_id["e"].split
     assert by_id["d"].leakage_group_id == by_id["e"].leakage_group_id
     assert by_id["synthetic"].split is CorpusSplit.TRAIN
-    assert by_id["external"].split is CorpusSplit.EXTERNAL
+    assert by_id["external"].split is CorpusSplit.EXTERNAL_CHALLENGE
     assert by_id["lab-a"].split is by_id["lab-b"].split
     assert by_id["lab-a"].leakage_group_id == by_id["lab-b"].leakage_group_id
     assert dataset.report.leakage_group_count == 5
@@ -309,14 +318,16 @@ def test_conflicting_fixed_splits_are_rejected_without_creating_leakage() -> Non
 
     with pytest.raises(DatasetValidationError) as captured:
         prepare_dataset((train, test))
-    assert {issue.code for issue in captured.value.issues} == {"conflicting_requested_splits"}
+    assert {issue.code for issue in captured.value.issues} == {
+        "conflicting_requested_splits",
+        "training_eligible_group_in_evaluation_split",
+    }
 
-    diagnostic = prepare_dataset(
-        (train, test),
-        config=PreparationConfig(fail_on_error=False),
-    )
-    assert len({record.split for record in diagnostic.records}) == 1
-    assert {record.split for record in diagnostic.records} == {CorpusSplit.TEST}
+    with pytest.raises(DatasetValidationError):
+        prepare_dataset(
+            (train, test),
+            config=PreparationConfig(fail_on_error=False),
+        )
 
 
 def test_different_row_ids_from_the_same_source_asset_cannot_cross_splits() -> None:
@@ -356,7 +367,9 @@ def test_output_is_input_order_independent_and_manifest_is_content_addressed() -
     assert forward == reverse
     assert forward.manifest.dataset_id.startswith("dataset-")
     assert sum(forward.report.split_counts.values()) == 12
-    assert all(forward.report.split_counts[name] > 0 for name in ("train", "validation", "test"))
+    assert forward.report.split_counts["train"] == 12
+    assert forward.report.split_counts["validation"] == 0
+    assert forward.report.split_counts["test"] == 0
 
     tampered = forward.manifest.model_dump(mode="json")
     tampered["dataset_id"] = "dataset-00000000000000000000"
@@ -392,7 +405,7 @@ def test_ineligible_records_are_excluded_and_reported_by_default() -> None:
     assert dataset.report.eligible_count == 1
     assert dataset.report.excluded_count == 1
     assert [record.record.record_id for record in dataset.records] == ["eligible"]
-    assert {issue.code for issue in dataset.report.issues} == {"training_ineligible_excluded"}
+    assert {issue.code for issue in dataset.report.issues} == {"use_ineligible_excluded"}
 
 
 def test_duplicate_record_ids_are_always_structural_errors() -> None:

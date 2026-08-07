@@ -18,6 +18,7 @@ import pytest
 from ntruth.ingest.project import Project
 from ntruth.pipeline import AnalysisResult, analyze_project
 from ntruth.rules.loader import load_ruleset
+from ntruth.schemas.manifest import ReleaseProfile
 from ntruth.schemas.rules import Ruleset
 
 FIXTURES_DIR = Path(__file__).parent / "scientific_fixtures"
@@ -79,7 +80,10 @@ def make_project(tmp_path: Path) -> ProjectFactory:
     """Crea un progetto con file scritti al volo."""
 
     def _make(
-        files: dict[str, str], name: str = "test", project_name: str | None = None
+        files: dict[str, str],
+        name: str = "test",
+        project_name: str | None = None,
+        release_profile: ReleaseProfile = ReleaseProfile.D0_CORE,
     ) -> Project:
         """`name` isola le cartelle, `project_name` e il nome logico del progetto.
 
@@ -90,7 +94,12 @@ def make_project(tmp_path: Path) -> ProjectFactory:
         source.mkdir(parents=True, exist_ok=True)
         for filename, content in files.items():
             (source / filename).write_text(content, encoding="utf-8")
-        project = Project.create(tmp_path / f"prj-{name}", name=project_name or name, language="en")
+        project = Project.create(
+            tmp_path / f"prj-{name}",
+            name=project_name or name,
+            language="en",
+            release_profile=release_profile,
+        )
         project.add(source)
         return project
 

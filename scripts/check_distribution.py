@@ -92,7 +92,7 @@ def check_wheel(path: Path) -> None:
         names,
         exact=(
             "ntruth/_ui/index.html",
-            "ntruth/_bundled/models/qwen3-4b-instruct-2507-mlx-qlora.json",
+            "ntruth/_bundled/models/granite-4.1-3b-mlx-qlora.json",
         ),
         prefixes=(
             "ntruth/_ui/assets/",

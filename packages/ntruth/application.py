@@ -25,6 +25,7 @@ from ntruth.governance import (
     scan_text,
 )
 from ntruth.ingest.project import IngestResult, Project
+from ntruth.ingest.safety import SafetyError
 from ntruth.pipeline import AnalysisResult, analyze_project
 from ntruth.reporting import PrivacyAudit, ShareReadiness, write_all
 from ntruth.reporting.privacy import build_privacy_audit, build_share_readiness
@@ -34,7 +35,7 @@ from ntruth.rules.loader import (
     load_ruleset,
 )
 from ntruth.schemas.core import NTruthModel
-from ntruth.schemas.manifest import LicenseManifest
+from ntruth.schemas.manifest import LicenseManifest, ReleaseProfile
 from ntruth.schemas.report import DomainTransparency
 from ntruth.transparency import assess_domain
 
@@ -273,6 +274,7 @@ def execute_analysis(
     domain: str = "quantitative_microscopy",
     ruleset_id: str = DEFAULT_RULESET_ID,
     ruleset_version: str = DEFAULT_RULESET_VERSION,
+    release_profile: ReleaseProfile = ReleaseProfile.D0_CORE,
     on_preflight: Callable[[DomainTransparency], None] | None = None,
     require_domain_acknowledgement: bool = False,
     acknowledged_unvalidated_domain: bool = False,
@@ -288,8 +290,20 @@ def execute_analysis(
         raise FileNotFoundError(f"Percorso inesistente: {source}")
 
     output_root = out.expanduser().resolve()
-    run_id, run_dir = unique_run_path(output_root)
     explicit_workspace = project_dir.expanduser().resolve() if project_dir is not None else None
+    if source.is_dir():
+        source_root = source.resolve()
+        nested_targets = [output_root]
+        if explicit_workspace is not None:
+            nested_targets.append(explicit_workspace)
+        for target in nested_targets:
+            if target == source_root or source_root in target.parents:
+                raise SafetyError(
+                    "la directory di output/workspace non puo essere interna alla "
+                    "directory sorgente: spostarla fuori dal perimetro di ingestione"
+                )
+
+    run_id, run_dir = unique_run_path(output_root)
 
     with staged_directory(run_dir) as staging:
         # Senza --project ogni run possiede manifest e fonti propri. Un workspace
@@ -302,6 +316,7 @@ def execute_analysis(
             language="it" if language == "it" else "en",
             ruleset_id=ruleset_id,
             ruleset_version=ruleset_version,
+            release_profile=release_profile,
         )
         transparency = assess_domain(project.manifest.domain)
         if on_preflight is not None:

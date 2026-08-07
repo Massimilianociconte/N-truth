@@ -5,10 +5,26 @@ from pathlib import Path
 
 import pytest
 
-from ntruth.parser_ai.contract import ParserAIInput, ParserAIOutput
+from ntruth.parser_ai.contract import ParserAIDocumentInput, ParserAIEvidenceSpan, ParserAIInput
+from ntruth.parser_ai.stages import (
+    CandidateExperimentBlock,
+    CandidateFactor,
+    CandidateGraphSet,
+    ChunkCoverageRecord,
+    StageAuthority,
+    StageName,
+    StageProvenance,
+    StageStatus,
+    validate_candidate_graph_pair,
+)
+from ntruth.schemas.core import EvidenceType
 from ntruth.training.calibration import ConfidenceObservation
 from ntruth.training.cli import DEFAULT_PROFILE
-from ntruth.training.metrics import aggregate_scores, confidence_observations, score_output
+from ntruth.training.metrics_v6 import (
+    aggregate_scores,
+    confidence_observations,
+    score_output,
+)
 from ntruth.training.mlx_inference import (
     _verify_calibration_artifact,
     _verify_metrics_artifacts,
@@ -19,37 +35,117 @@ from ntruth.training.mlx_inference import (
 from ntruth.training.mlx_runtime import MLXPipelineError, sha256_file
 
 
-def _parser_output(*, confidence: float = 0.7) -> ParserAIOutput:
-    return ParserAIOutput.model_validate(
-        {
-            "contract_version": "2.0.0",
-            "experiment_blocks": [],
-            "evidence_spans": [],
-            "candidate_nodes": [],
-            "candidate_edges": [],
-            "factors": [],
-            "endpoints": [],
-            "contrasts": [],
-            "candidate_estimands": [],
-            "determinability": {
-                "status": "INDETERMINATE",
-                "rationale": "No decisive evidence.",
-                "confidence": confidence,
-                "evidence_ids": [],
-            },
-            "alternatives": [],
-            "clarification_questions": [],
-            "model_metadata": {
-                "adapter_name": "lineage-test",
-                "model_name": "test",
-                "model_version": "1",
-                "model_checksum": None,
-                "prompt_template_version": "lineage-test",
-                "contract_version": "2.0.0",
-                "local_execution": True,
-            },
-        }
+def _parser_output(*, confidence: float = 0.7) -> CandidateGraphSet:
+    return CandidateGraphSet(
+        result_id="lineage-result",
+        status=StageStatus.COMPLETE,
+        provenance=StageProvenance(
+            stage_run_id="lineage-stage",
+            stage=StageName.CANDIDATE_GRAPH_SET,
+            authority=StageAuthority.MODEL,
+            producer="lineage-test-parser",
+            producer_version="6.0",
+        ),
+        graph_set_id="lineage-graph",
+        evidence_spans=(
+            ParserAIEvidenceSpan(
+                evidence_id="evidence-1",
+                file_id="document-1",
+                evidence_type=EvidenceType.STRUCTURAL_FACT,
+                text="Evidence.",
+                confidence=confidence,
+                start=0,
+                end=9,
+            ),
+        ),
+        chunk_coverage=(
+            ChunkCoverageRecord(
+                file_id="document-1",
+                total_chunks=1,
+                processed_chunks=(0,),
+            ),
+        ),
     )
+
+
+def _evidence_link_output(*, swapped: bool) -> CandidateGraphSet:
+    evidence = (
+        ParserAIEvidenceSpan(
+            evidence_id="evidence-a",
+            file_id="document-1",
+            evidence_type=EvidenceType.STRUCTURAL_FACT,
+            text="Alpha",
+            confidence=0.8,
+            start=0,
+            end=5,
+        ),
+        ParserAIEvidenceSpan(
+            evidence_id="evidence-b",
+            file_id="document-1",
+            evidence_type=EvidenceType.STRUCTURAL_FACT,
+            text="Beta",
+            confidence=0.8,
+            start=6,
+            end=10,
+        ),
+    )
+    links = ("evidence-b", "evidence-a") if swapped else ("evidence-a", "evidence-b")
+    return CandidateGraphSet(
+        result_id="link-result",
+        status=StageStatus.COMPLETE,
+        provenance=StageProvenance(
+            stage_run_id="link-stage",
+            stage=StageName.CANDIDATE_GRAPH_SET,
+            authority=StageAuthority.MODEL,
+            producer="link-test-parser",
+            producer_version="6.0",
+        ),
+        graph_set_id="link-graph",
+        experiment_blocks=(
+            CandidateExperimentBlock(
+                block_id="block-1",
+                title="Experiment",
+                evidence_ids=("evidence-a",),
+                confidence=0.9,
+            ),
+        ),
+        evidence_spans=evidence,
+        factors=(
+            CandidateFactor(
+                factor_id="factor-a",
+                block_id="block-1",
+                name="treatment",
+                levels=("drug", "vehicle"),
+                allocation_level=None,
+                application_level=None,
+                evidence_ids=(links[0],),
+                confidence=0.9,
+            ),
+            CandidateFactor(
+                factor_id="factor-b",
+                block_id="block-1",
+                name="sex",
+                levels=("female", "male"),
+                allocation_level=None,
+                application_level=None,
+                evidence_ids=(links[1],),
+                confidence=0.9,
+            ),
+        ),
+    )
+
+
+def test_metrics_and_calibration_detect_swapped_evidence_links() -> None:
+    gold = _evidence_link_output(swapped=False)
+    predicted = _evidence_link_output(swapped=True)
+
+    score = score_output(predicted, gold)
+    observations = confidence_observations(predicted, gold)
+
+    assert score["categories"]["evidence_spans"]["f1"] == 1.0
+    assert score["categories"]["factors"]["f1"] == 0.0
+    assert score["micro"]["f1"] < 1.0
+    assert sum(not observation.correct for observation in observations) == 2
 
 
 def _evaluation_artifacts(
@@ -58,8 +154,19 @@ def _evaluation_artifacts(
     snapshot_dir = tmp_path / "snapshot"
     snapshot_dir.mkdir()
     evaluation_path = snapshot_dir / "test.jsonl"
-    parser_input = ParserAIInput(metadata={"record": "test-1"}, language="en")
-    gold = _parser_output()
+    parser_input = ParserAIInput(
+        documents=(
+            ParserAIDocumentInput(
+                file_id="document-1",
+                filename="methods.txt",
+                sha256="a" * 64,
+                text="Evidence.",
+            ),
+        ),
+        metadata={"record": "test-1"},
+        language="en",
+    )
+    gold = validate_candidate_graph_pair(parser_input, _parser_output())
     evaluation_row = {
         "record_id": "test-1",
         "messages": [
@@ -70,7 +177,7 @@ def _evaluation_artifacts(
     }
     evaluation_path.write_text(json.dumps(evaluation_row) + "\n", encoding="utf-8")
 
-    predicted = _parser_output()
+    predicted = validate_candidate_graph_pair(parser_input, _parser_output())
     score = score_output(predicted, gold)
     prediction_row = {
         "record_id": "test-1",
@@ -340,7 +447,7 @@ def test_tampered_prediction_is_rejected_after_predictions_hash_is_updated(
 ) -> None:
     metrics_path, predictions_path, _observations = _evaluation_artifacts(tmp_path, monkeypatch)
     row = json.loads(predictions_path.read_text(encoding="utf-8"))
-    row["prediction"]["determinability"]["confidence"] = 0.1
+    row["prediction"]["evidence_spans"][0]["confidence"] = 0.1
     predictions_path.write_text(json.dumps(row) + "\n", encoding="utf-8")
     metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
     metrics["predictions_sha256"] = sha256_file(predictions_path)
@@ -355,7 +462,7 @@ def test_tampered_prediction_gold_is_rejected_against_snapshot(
 ) -> None:
     metrics_path, predictions_path, _observations = _evaluation_artifacts(tmp_path, monkeypatch)
     row = json.loads(predictions_path.read_text(encoding="utf-8"))
-    row["gold"]["determinability"]["rationale"] = "Altered gold."
+    row["gold"]["graph_set_id"] = "altered-gold-graph"
     predictions_path.write_text(json.dumps(row) + "\n", encoding="utf-8")
     metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
     metrics["predictions_sha256"] = sha256_file(predictions_path)

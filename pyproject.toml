@@ -27,6 +27,7 @@ api = ["fastapi>=0.115", "uvicorn>=0.30"]
 ml = [
     "mlx-lm[train]==0.31.3; platform_system == 'Darwin' and platform_machine == 'arm64'",
     "huggingface-hub>=1.0,<2; platform_system == 'Darwin' and platform_machine == 'arm64'",
+    "outlines>=1.0",
 ]
 dev = [
     "pytest>=8.3",
@@ -38,6 +39,7 @@ dev = [
     "types-openpyxl>=3.1",
     "fastapi>=0.115",
     "httpx2>=2.7",
+    "jsonschema>=4.26.0",
 ]
 
 [project.urls]
@@ -62,7 +64,7 @@ packages = ["packages/ntruth"]
 "rulesets" = "ntruth/_bundled/rulesets"
 "ontology" = "ntruth/_bundled/ontology"
 "apps/desktop/dist" = "ntruth/_ui"
-"models/configs/qwen3-4b-instruct-2507-mlx-qlora.json" = "ntruth/_bundled/models/qwen3-4b-instruct-2507-mlx-qlora.json"
+"models/configs/granite-4.1-3b-mlx-qlora.json" = "ntruth/_bundled/models/granite-4.1-3b-mlx-qlora.json"
 
 [tool.hatch.build.targets.sdist.force-include]
 # Il wheel viene ricostruito dalla sdist: gli asset compilati devono attraversare
@@ -102,6 +104,7 @@ markers = [
     "security: input ostile (PRD NFR-13)",
     "regression: bug scientifico congelato (PRD 22.3)",
     "performance: budget locale tempo/memoria (PRD NFR-06/NFR-07)",
+    "invariant: release blocker per split governance e semantica record-to-view v6",
 ]
 
 [tool.ruff]

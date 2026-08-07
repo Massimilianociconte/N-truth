@@ -8,10 +8,14 @@ esportare un adapter. Non esistono ancora un corpus gold N-Truth, un modello N-T
 scientificamente addestrato o metriche su dati reali. Il runtime smoke sintetico verifica
 soltanto che il percorso tecnico funzioni.
 
-La configurazione iniziale è
-`models/configs/qwen3-4b-instruct-2507-mlx-qlora.json`; la guida operativa completa è
-[mlx-training-pipeline.md](mlx-training-pipeline.md). Le fonti pubbliche e le decisioni
-di acquisizione sono riepilogate in [dataset-assessment.md](dataset-assessment.md).
+Il modello primario **provvisorio** Train A è IBM Granite 4.1 3B Instruct
+(`ibm-granite/granite-4.1-3b`); profilo MLX:
+`models/configs/granite-4.1-3b-mlx-qlora.json`. Guida operativa:
+[mlx-training-pipeline.md](mlx-training-pipeline.md), conversione:
+[model-granite-conversion.md](model-granite-conversion.md), ADR-0010.
+Granite non è dichiarato scientificamente selezionato: l'adozione definitiva resta
+subordinata a gold, benchmark decisivi N-Truth, confronto con la cascata B5 e
+validazione su dati reali indipendenti.
 
 ## Layout locale
 
@@ -32,7 +36,7 @@ local-data/
 ├── train/                 # layout legacy; preferire manifest sotto prepared
 ├── validation/
 ├── test/
-├── external/
+├── external-challenge/
 └── quarantine/            # licenza, privacy o integrità non risolte
 ```
 
@@ -62,7 +66,8 @@ review scritta e non entrano automaticamente nel corpus.
 `ntruth.training.SupervisedRecord` è il confine prima della preparazione. Ogni record
 contiene:
 
-- `record_id`, task, lingua, dominio, `ParserAIInput` e target `ParserAIOutput`;
+- `record_id`, task `parser_candidate_graph_v6`, lingua, dominio, `ParserAIInput` e
+  target adjudicato `GoldParserTarget` contenente un `CandidateGraphSet` candidate-only;
 - source/asset ID e SHA-256;
 - governance hash e prova di licenza o autorizzazione;
 - versione della guideline, numero/ruolo dei reviewer e adjudication ID;
@@ -70,9 +75,14 @@ contiene:
 - publication/project/bundle, laboratorio e corresponding-author ID per costruire i
   leakage group.
 
-Un record `candidate` o `single_reviewed` non può essere `training_eligible`. Lo stato
+Un record `candidate` o `single_reviewed` non può essere `training_eligible`. Training,
+evaluation e release eligibility sono gate distinti; `TEST` ed `EXTERNAL_CHALLENGE`
+non possono mai essere training-eligible. Lo stato
 `double_reviewed` richiede almeno due reviewer; `adjudicated` richiede anche un ID di
-adjudication. Il comando `prepare` applica in ordine:
+adjudication. Il task MLX canonico `parser_candidate_graph_v6` è più restrittivo:
+richiede `adjudicated` e riconcilia `record_id`, guideline e `adjudication_id` col
+`GoldParserTarget`; un semplice flag double-reviewed non viene esportato come gold.
+Il comando `prepare` applica in ordine:
 
 1. validazione Pydantic e dei gate di eleggibilità;
 2. normalizzazione Unicode/whitespace e serializzazione canonica del target;
@@ -83,7 +93,7 @@ adjudication. Il comando `prepare` applica in ordine:
 5. errore fatale se input equivalenti hanno label incompatibili;
 6. unione transitiva dei gruppi per pubblicazione, progetto, bundle, sorgente e asset;
 7. split deterministico group-aware con seed registrato;
-8. vincolo synthetic-only-train e rispetto degli split `external` fissati;
+8. vincolo synthetic-only-train e rispetto degli split `external_challenge` fissati;
 9. manifest, report decisionale e snapshot content-addressed.
 
 Esempio:
@@ -112,8 +122,8 @@ group non può attraversare split:
 - DOI/PMCID e tutte le revisioni;
 - preprint e versione pubblicata;
 - supplementi, sample sheet, codice e dataset collegati;
-- laboratorio/corresponding author quando disponibile;
-- template synthetic o trasformazioni dello stesso grafo.
+- laboratorio, facility e corresponding author quando disponibili;
+- template synthetic, synthetic family, counterfactual e trasformazioni dello stesso grafo.
 
 Nel corpus scientifico gli asset synthetic sono ammessi soltanto nel train. La
 validation viene congelata prima dell'ottimizzazione ed è usata per early stopping,
@@ -123,20 +133,26 @@ eccezione isolata 4/2/2 che non appartiene al corpus e vieta metriche scientific
 
 ## Annotazione manuale e condizioni di training
 
-Il percorso umano previsto dal PRD v3 è:
+Il percorso umano previsto dal PRD v6 è:
 
-1. almeno 20 disegni reali rappresentabili senza modifiche sostanziali allo schema;
-2. 30 calibration cases fuori dal test;
+1. 10-20 disegni reali nel micro-dominio D0 rappresentabili senza modifiche sostanziali;
+2. 30-50 calibration cases fuori dal test;
 3. doppia annotazione indipendente wet-lab/biostatistica;
 4. agreement misurato prima dell'adjudication;
 5. protocollo del pilot e split congelati;
-6. feasibility pilot di 150-250 bundle con disagreement log;
+6. feasibility pilot di 100-150 bundle con tutti i campi decisivi doppi;
 7. stima di human ceiling e determinability rate per dominio.
 
-Il fine-tuning scientifico resta bloccato finché regole principali, guideline, licenze,
-privacy, autorizzazioni e separazione anti-leakage non sono approvate. Le correzioni UI
-restano `candidate_annotations` con `training_eligible=false` finché il processo umano
-non le promuove.
+Il Parser Gold (evidence più candidate/gold graph) resta distinto dal Derivation Gold
+(grafo confermato più output attesi del ruleset). Il fine-tuning scientifico resta
+bloccato finché Core Profile, Derivation Gold, baseline, regole principali, guideline,
+licenze, privacy, autorizzazioni e separazione anti-leakage non sono approvati. Le
+correzioni UI restano `candidate_annotations` con `training_eligible=false` finché il
+processo umano non le promuove.
+
+Il corpo, la roadmap e la Definition of Done del PRD v6 specificano 100-150 casi;
+l'Appendice D contiene ancora 150-250. Il piano operativo adotta 100-150 e conserva la
+discordanza come erratum aperto.
 
 ## Training, valutazione e calibrazione
 
@@ -160,10 +176,12 @@ interrompe dopo la patience configurata. `--resume` richiede gli stessi checksum
 profilo, snapshot, lockfile e sorgenti della corsia ML.
 
 La generazione richiede JSON puro, applica limite di token, parsing e validazione
-`ParserAIOutput`; dopo un solo retry controllato, un output ancora invalido viene
-rifiutato e conteggiato come tale. Le metriche includono schema-valid rate, exact
-contract match, determinability accuracy/macro F1, precision/recall/F1 per categoria e
-micro/macro per candidate facts. Temperature scaling, NLL, Brier, ECE e risk-coverage
+`CandidateGraphSet` v1.0.0 con autorità `model`; dopo un solo retry controllato, un
+output ancora invalido viene rifiutato e conteggiato come tale. Le metriche includono
+schema-valid rate, exact contract match, precision/recall/F1 per categoria e
+micro/macro per candidate facts. Determinability e verdict non sono target o metriche
+del parser: vengono derivati e validati contro il Derivation Gold dal compilatore.
+Temperature scaling, NLL, Brier, ECE e risk-coverage
 usano esclusivamente la validation. Prima di calibrazione o export, il verificatore
 ricostruisce gold e prediction dallo snapshot, ricalcola score, aggregati e confidence
 observations e rifiuta anche artefatti alterati con checksum aggiornati.

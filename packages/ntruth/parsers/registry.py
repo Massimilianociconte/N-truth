@@ -10,7 +10,7 @@ from pathlib import Path
 
 from ntruth import PARSER_VERSION
 from ntruth.ingest.project import Project
-from ntruth.ingest.safety import detect_injection
+from ntruth.ingest.safety import detect_injection, extension_allowed
 from ntruth.parsers.base import ParseFailure, Parser, RawBlock, RawDocument, RawTable
 from ntruth.parsers.code import CodeParser
 from ntruth.parsers.docx import DocxParser
@@ -36,7 +36,7 @@ from ntruth.schemas.document import (
     make_section_id,
     make_table_id,
 )
-from ntruth.schemas.manifest import ProjectFile
+from ntruth.schemas.manifest import ProjectFile, ReleaseProfile
 
 PARSERS: tuple[Parser, ...] = (
     CodeParser(),
@@ -49,7 +49,13 @@ PARSERS: tuple[Parser, ...] = (
 )
 
 
-def parser_for(path: Path, media_type: str) -> Parser | None:
+def parser_for(
+    path: Path,
+    media_type: str,
+    release_profile: ReleaseProfile | str = ReleaseProfile.D0_CORE,
+) -> Parser | None:
+    if not extension_allowed(path.suffix, release_profile):
+        return None
     return next((p for p in PARSERS if p.supports(path, media_type)), None)
 
 
@@ -65,7 +71,7 @@ def build_document_ir(project: Project) -> DocumentIR:
     for project_file in project.manifest.files:
         path = project.path_of(project_file)
         source, file_sections, file_paragraphs, file_tables, file_code, text = _process_file(
-            path, project_file
+            path, project_file, project.manifest.release_profile
         )
         files.append(source)
         sections.extend(file_sections)
@@ -88,7 +94,9 @@ def build_document_ir(project: Project) -> DocumentIR:
 
 
 def _process_file(
-    path: Path, project_file: ProjectFile
+    path: Path,
+    project_file: ProjectFile,
+    release_profile: ReleaseProfile,
 ) -> tuple[
     SourceFile,
     list[Section],
@@ -98,7 +106,7 @@ def _process_file(
     str,
 ]:
     file_id = project_file.file_id
-    parser = parser_for(path, project_file.media_type)
+    parser = parser_for(path, project_file.media_type, release_profile)
     warnings: list[str] = []
 
     if parser is None:
@@ -112,7 +120,11 @@ def _process_file(
             parser="none",
             parser_version=PARSER_VERSION,
             status=ParserStatus.IGNORED,
-            ignored_reason="nessun parser disponibile per questo tipo",
+            ignored_reason=(
+                f"formato fuori dal release_profile={release_profile.value}"
+                if not extension_allowed(path.suffix, release_profile)
+                else "nessun parser disponibile per questo tipo"
+            ),
         )
         return source, [], [], [], [], ""
 

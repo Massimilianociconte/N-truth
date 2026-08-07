@@ -165,7 +165,8 @@ def test_author_independent_experiments_assertion_does_not_prove_independence(
     assert assessment.n_independent is None
     assert result.abstention.abstained is True
     assert any(
-        question.missing_field == "source_independence" for question in result.block.questions
+        question.missing_field == "factor.independently_assigned"
+        for question in result.block.questions
     )
 
 

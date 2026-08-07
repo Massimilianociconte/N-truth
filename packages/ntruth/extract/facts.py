@@ -11,7 +11,7 @@ from typing import Literal
 
 from ntruth.schemas.core import CellRef, EvidenceSpan, EvidenceType, ProvenanceKind, stable_id
 from ntruth.schemas.coreference import CoreferenceLink, Mention
-from ntruth.schemas.experiment import NKind
+from ntruth.schemas.experiment import CountQuantifier, NKind, TriState
 from ntruth.schemas.graph import NodeType, RelationType
 
 FactorKind = Literal["treatment", "genotype", "dose", "time", "diet", "other"]
@@ -132,6 +132,9 @@ class NFact:
     node_type: NodeType | None
     kind: NKind
     raw_text: str
+    quantifier: CountQuantifier = CountQuantifier.EXACT
+    lower_bound: int | None = None
+    upper_bound: int | None = None
     qualifiers: tuple[str, ...] = ()
     evidence: EvidenceSpan | None = None
     origin: ProvenanceKind = ProvenanceKind.EXPLICIT
@@ -162,6 +165,14 @@ class FactorFact:
     application_confidence: float = 0.0
     allocation_evidence: EvidenceSpan | None = None
     application_evidence: EvidenceSpan | None = None
+    independence_evidence: EvidenceSpan | None = None
+    independently_assigned: TriState = TriState.UNKNOWN
+    independence_mechanism: str | None = None
+    source_biological_preparation: str | None = None
+    allocation_event_id: str | None = None
+    allocation_timing: str | None = None
+    shared_environment: tuple[str, ...] = ()
+    confounded_with: tuple[str, ...] = ()
     # Deprecated compatibility aliases.
     assignment_level: NodeType | None = None
     assignment_confidence: float = 0.0

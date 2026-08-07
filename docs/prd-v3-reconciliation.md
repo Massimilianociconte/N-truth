@@ -1,5 +1,8 @@
 # Riconciliazione PRD v1 → PRD v3
 
+> **Documento storico, superato per le decisioni correnti.** Per lo sviluppo e i gate
+> attuali usare la [riconciliazione PRD v6](prd-v6-reconciliation.md).
+
 **Data del checkpoint:** 1 agosto 2026<br>
 **Fonte del checkpoint:** PRD v3 privato dell'autore, non distribuito nel repository<br>
 **Specifica pubblica normativa:** [N-Truth Public Specification v0.1](public-specification-v0.1.md)<br>

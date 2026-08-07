@@ -6,6 +6,7 @@ licenza esplicita, snapshot, checksum, attribuzione e revisione (PRD 14).
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from enum import StrEnum
 
 from pydantic import Field, model_validator
@@ -28,6 +29,13 @@ _USE_ALIASES = {
     "share": frozenset({"share", "sharing"}),
     "redistribute": frozenset({"redistribute", "redistribution"}),
 }
+
+# I manifest precedenti al PRD v6 non registravano un release profile. Un
+# workspace che contiene gia uno di questi formati non puo essere reinterpretato
+# come D0 senza rendere invisibili fonti storicamente ingerite.
+_LEGACY_EXTENDED_SUFFIXES = frozenset(
+    {".docx", ".xml", ".nxml", ".jats", ".pdf", ".tsv", ".xlsx", ".r", ".py", ".rmd"}
+)
 
 
 class LicenseTier(StrEnum):
@@ -58,6 +66,17 @@ class BundleFileRole(StrEnum):
     SUPPLEMENT = "supplement"
     EXPERT_ANSWER = "expert_answer"
     OTHER = "other"
+
+
+class ReleaseProfile(StrEnum):
+    """Perimetro degli input supportati da una release PRD v6.
+
+    D0 e il percorso ufficiale e stabile. I parser complessi restano disponibili
+    soltanto con opt-in esplicito, senza essere presentati come baseline validata.
+    """
+
+    D0_CORE = "d0_core"
+    EXTENDED_EXPERIMENTAL = "extended_experimental"
 
 
 class BundleFileReference(NTruthModel):
@@ -224,12 +243,46 @@ class ProjectManifest(NTruthModel):
     language: str = "en"
     created_at: str | None = None
     schema_version: str
+    # Il default rende leggibili i manifest legacy e li colloca nel profilo
+    # conservativo, senza promuovere implicitamente parser sperimentali.
+    release_profile: ReleaseProfile = ReleaseProfile.D0_CORE
     files: tuple[ProjectFile, ...] = ()
     experiment_bundles: tuple[ExperimentBundleManifest, ...] = ()
     ruleset_id: str = "ntruth-core"
-    ruleset_version: str = "0.1.0"
+    ruleset_version: str = "0.2.0"
     notes: str = ""
     integrity: dict[str, str] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate_legacy_release_profile(cls, data: object) -> object:
+        """Inferisce il solo profilo necessario a preservare file gia registrati.
+
+        Un manifest senza file complessi resta nel profilo conservativo D0. La
+        presenza di un formato storicamente supportato ma oggi esteso produce
+        invece ``extended_experimental``; non e una promozione scientifica, ma
+        una migrazione lossless del workspace.
+        """
+
+        if not isinstance(data, Mapping) or "release_profile" in data:
+            return data
+        payload = dict(data)
+        filenames: list[str] = []
+        for raw_file in payload.get("files") or ():
+            if isinstance(raw_file, Mapping):
+                name = raw_file.get("filename") or raw_file.get("relative_path")
+            else:
+                name = getattr(raw_file, "filename", None) or getattr(
+                    raw_file, "relative_path", None
+                )
+            if isinstance(name, str):
+                filenames.append(name.casefold())
+        payload["release_profile"] = (
+            ReleaseProfile.EXTENDED_EXPERIMENTAL
+            if any(name.endswith(tuple(_LEGACY_EXTENDED_SUFFIXES)) for name in filenames)
+            else ReleaseProfile.D0_CORE
+        )
+        return payload
 
     @model_validator(mode="after")
     def _unique_files(self) -> ProjectManifest:
@@ -250,13 +303,18 @@ class ProjectManifest(NTruthModel):
         return self
 
     def checksum(self) -> str:
+        """Copre l'intero payload canonico, escluso il checksum auto-riferito."""
+
+        return content_checksum(self.model_dump(mode="json", exclude={"integrity"}))
+
+    def legacy_checksum_v5(self) -> str:
+        """Riconosce soltanto l'algoritmo pre-v6 per una migrazione esplicita."""
+
         return content_checksum(
             {
                 "project_id": self.project_id,
-                # Licenza e governance sono parte dell'identita del progetto:
-                # una variazione di consenso non puo lasciare invariato il checksum.
                 "files": sorted(
-                    (f.model_dump(mode="json") for f in self.files),
+                    (file.model_dump(mode="json") for file in self.files),
                     key=lambda item: str(item["file_id"]),
                 ),
                 "experiment_bundles": sorted(

@@ -1,10 +1,16 @@
 """Contratti dati di N-Truth. Tutto il resto del sistema dipende solo da qui."""
 
+from __future__ import annotations
+
+from importlib import import_module
+from typing import TYPE_CHECKING, Any
+
 from ntruth.schemas.core import (
     AlertClass,
     CellRef,
     Confidence,
     Determinability,
+    DeterminabilityState,
     EvidenceSpan,
     EvidenceType,
     FrozenModel,
@@ -36,22 +42,34 @@ from ntruth.schemas.experiment import (
     Contrast,
     Correction,
     CorrectionReason,
+    CountKind,
+    CountQuantifier,
+    CountRecord,
+    CountScope,
     DataSufficiency,
     Endpoint,
     Estimand,
+    ExclusionPhase,
+    ExclusionRecord,
     ExperimentBlock,
     Factor,
+    GraphAlternativeConsequence,
+    GraphStatus,
     Hierarchy,
     Inferability,
     InferenceTarget,
     InferenceTargetStatus,
+    LifecycleStatus,
     NKind,
     NScope,
     NStatement,
+    PlausibleGraphAlternative,
+    PlausibleGraphSet,
     ProcessFact,
     Question,
     RiskLabel,
     StatisticalModelFact,
+    TriState,
     UnitAssessment,
     Versions,
 )
@@ -79,14 +97,10 @@ from ntruth.schemas.manifest import (
     LicenseTier,
     ProjectFile,
     ProjectManifest,
-)
-from ntruth.schemas.report import (
-    BlockSummary,
-    DomainTransparency,
-    DomainValidationStatus,
-    Report,
+    ReleaseProfile,
 )
 from ntruth.schemas.rules import (
+    PremiseTrace,
     Rule,
     RuleEvaluation,
     RuleFixture,
@@ -95,6 +109,35 @@ from ntruth.schemas.rules import (
     Ruleset,
     normalize_predicate,
 )
+
+if TYPE_CHECKING:
+    from ntruth.schemas.report import (
+        BlockSummary,
+        DomainTransparency,
+        DomainValidationStatus,
+        Report,
+    )
+
+_LAZY_REPORT_EXPORTS = frozenset(
+    {"BlockSummary", "DomainTransparency", "DomainValidationStatus", "Report"}
+)
+
+
+def __getattr__(name: str) -> Any:
+    """Carica i contratti di report senza creare il ciclo design -> schemas.
+
+    Importare una sottoclasse come ``ntruth.schemas.core`` esegue prima questo
+    package. Il report dipende dal compilatore di design, che a sua volta usa i
+    contratti core: un import eager renderebbe quindi ``ntruth.reporting`` non
+    importabile in un processo pulito.
+    """
+
+    if name not in _LAZY_REPORT_EXPORTS:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    value = getattr(import_module("ntruth.schemas.report"), name)
+    globals()[name] = value
+    return value
+
 
 __all__ = [
     "BIOLOGICAL_SOURCE_TYPES",
@@ -115,8 +158,13 @@ __all__ = [
     "Contrast",
     "Correction",
     "CorrectionReason",
+    "CountKind",
+    "CountQuantifier",
+    "CountRecord",
+    "CountScope",
     "DataSufficiency",
     "Determinability",
+    "DeterminabilityState",
     "DocumentIR",
     "DomainTransparency",
     "DomainValidationStatus",
@@ -125,13 +173,17 @@ __all__ = [
     "EvidenceSpan",
     "EvidenceTier",
     "EvidenceType",
+    "ExclusionPhase",
+    "ExclusionRecord",
     "ExperimentBlock",
     "ExperimentBundleManifest",
     "Factor",
     "FileToSampleMapping",
     "FrozenModel",
+    "GraphAlternativeConsequence",
     "GraphNode",
     "GraphRelation",
+    "GraphStatus",
     "GraphViolation",
     "Hierarchy",
     "Inferability",
@@ -139,6 +191,7 @@ __all__ = [
     "InferenceTargetStatus",
     "LicenseManifest",
     "LicenseTier",
+    "LifecycleStatus",
     "NKind",
     "NScope",
     "NStatement",
@@ -146,6 +199,9 @@ __all__ = [
     "NodeType",
     "Paragraph",
     "ParserStatus",
+    "PlausibleGraphAlternative",
+    "PlausibleGraphSet",
+    "PremiseTrace",
     "ProcessFact",
     "ProjectFile",
     "ProjectManifest",
@@ -153,6 +209,7 @@ __all__ = [
     "ProvenanceKind",
     "Question",
     "RelationType",
+    "ReleaseProfile",
     "Report",
     "RiskLabel",
     "Rule",
@@ -170,6 +227,7 @@ __all__ = [
     "StatisticalCodeLanguage",
     "StatisticalModelFact",
     "Table",
+    "TriState",
     "UnitAssessment",
     "Versions",
     "content_checksum",

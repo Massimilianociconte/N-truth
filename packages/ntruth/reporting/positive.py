@@ -1,4 +1,4 @@
-"""Output positivo prudente del compilatore di disegni (PRD v3, sez. 20).
+"""Output positivo prudente del compilatore di disegni (PRD v6, sez. 20).
 
 Il modulo non sceglie un test, non costruisce formule e non certifica il
 disegno. Trasforma soltanto fatti e inferenze gia presenti nel report in una
@@ -11,8 +11,20 @@ from collections.abc import Iterable
 from typing import Any
 
 from ntruth.design.schema import DesignCompilation
-from ntruth.schemas.core import Severity, stable_id
-from ntruth.schemas.experiment import ExperimentBlock, Inferability, UnitAssessment
+from ntruth.schemas.core import (
+    Determinability,
+    EvidenceType,
+    ProvenanceKind,
+    Severity,
+    stable_id,
+)
+from ntruth.schemas.experiment import (
+    CountKind,
+    CountRecord,
+    ExperimentBlock,
+    Inferability,
+    UnitAssessment,
+)
 from ntruth.schemas.report import (
     BlockPositiveOutput,
     ChecklistStatus,
@@ -23,6 +35,7 @@ from ntruth.schemas.report import (
     ReportStatement,
     StatementLayer,
 )
+from ntruth.verifier.output_policy import apply_output_policy
 
 DRIVER_BASE = "https://nc3rs.org.uk/3rs-resources/driver-recommendations"
 
@@ -53,10 +66,12 @@ def build_positive_output(
 ) -> BlockPositiveOutput:
     """Costruisce una vista utile senza oltrepassare l'evidenza del blocco."""
 
+    block = apply_output_policy(block)
     path_status, status_reason = _path_status(block, language, compilation=compilation)
     n_table = tuple(_n_row(assessment) for assessment in block.unit_assessments)
     statements = _statements(block, limits=limits, language=language)
     methods = _methods_statement(block, path_status=path_status, language=language)
+    published_counts, diagnostic_counts, suppressed_count_ids = _published_count_records(block)
     compiler_questions = compilation.elicitation.questions if compilation is not None else ()
     questions_by_id = {
         question.id: question for question in (*block.questions, *compiler_questions)
@@ -69,12 +84,37 @@ def build_positive_output(
             question.id,
         ),
     )
+    plausible_graph_set = (
+        block.plausible_graph_set
+        if block.determinability is Determinability.MULTIPLE_PLAUSIBLE_GRAPHS
+        else None
+    )
+    discriminating_question = (
+        next(
+            (
+                question
+                for question in block.questions
+                if question.id == plausible_graph_set.discriminating_question_id
+            ),
+            None,
+        )
+        if plausible_graph_set is not None
+        else None
+    )
     return BlockPositiveOutput(
         block_id=block.id,
+        determinability=block.determinability,
         path_status=path_status,
         status_reason=status_reason,
         methods_statement=methods,
         n_table=n_table,
+        count_records=published_counts,
+        diagnostic_count_records=diagnostic_counts,
+        suppressed_count_record_ids=suppressed_count_ids,
+        exclusion_records=block.exclusion_records,
+        contradictions=block.contradictions,
+        plausible_graph_set=plausible_graph_set,
+        discriminating_question=discriminating_question,
         driver_checklist=_driver_checklist(block, language=language),
         statements=statements,
         candidate_analysis_strategies=_candidate_strategies(block, language=language),
@@ -84,12 +124,61 @@ def build_positive_output(
     )
 
 
+def _published_count_records(
+    block: ExperimentBlock,
+) -> tuple[tuple[CountRecord, ...], tuple[CountRecord, ...], tuple[str, ...]]:
+    """Filtra la vista positiva senza cancellare i fatti dal blocco sorgente."""
+
+    published: list[CountRecord] = []
+    diagnostic: list[CountRecord] = []
+    suppressed: list[str] = []
+    for count in block.count_records:
+        if count.diagnostic_only or count.kind is CountKind.EFFECTIVE_N:
+            diagnostic.append(count)
+            continue
+        numeric = any(
+            value is not None for value in (count.value, count.lower_bound, count.upper_bound)
+        )
+        if (
+            block.determinability is not Determinability.DETERMINATE
+            and count.kind is CountKind.INDEPENDENT_N
+            and numeric
+        ):
+            suppressed.append(count.count_id)
+        else:
+            published.append(count)
+    return tuple(published), tuple(diagnostic), tuple(suppressed)
+
+
 def _path_status(
     block: ExperimentBlock,
     language: str,
     *,
     compilation: DesignCompilation | None,
 ) -> tuple[PositivePathStatus, str]:
+    if block.determinability is Determinability.MULTIPLE_PLAUSIBLE_GRAPHS:
+        return (
+            PositivePathStatus.INCOMPLETE,
+            (
+                "Sono conservati piu grafi compatibili con le evidenze: nessuna alternativa e selezionata automaticamente."
+                if language == "it"
+                else "Multiple graphs remain compatible with the evidence: no alternative is selected automatically."
+            ),
+        )
+    if block.determinability is not Determinability.DETERMINATE:
+        state_label = block.determinability.value
+        return (
+            (
+                PositivePathStatus.CONDITIONAL
+                if block.determinability is Determinability.CONDITIONALLY_DETERMINATE
+                else PositivePathStatus.INCOMPLETE
+            ),
+            (
+                f"Stato {state_label}: unita sperimentale e n singoli non sono pubblicabili."
+                if language == "it"
+                else (f"State {state_label}: a single experimental unit and n cannot be published.")
+            ),
+        )
     if compilation is not None and compilation.abstained:
         return (
             PositivePathStatus.INCOMPLETE,
@@ -154,11 +243,22 @@ def _n_row(assessment: UnitAssessment) -> NTableRow:
         experimental_unit=_enum_text(assessment.experimental_unit),
         observational_unit=_enum_text(assessment.observational_unit),
         analytical_unit=_enum_text(assessment.analytical_unit),
+        n_planned=assessment.n_planned,
         n_declared=assessment.n_declared,
         n_observational=assessment.n_observational,
+        n_analytical=assessment.n_analytical,
         n_independent=assessment.n_independent,
-        n_allocated=getattr(assessment, "n_allocated", None),
-        n_analyzed=getattr(assessment, "n_analyzed", None),
+        n_allocated=assessment.n_allocated,
+        n_treated=assessment.n_treated,
+        n_observed=assessment.n_observed,
+        n_excluded=assessment.n_excluded,
+        n_analysed=assessment.n_analysed,
+        n_analyzed=assessment.n_analysed,
+        biological_source_count=assessment.biological_source_count,
+        # La tabella primaria dei conteggi non pubblica effective_n: il valore
+        # diagnostico, se presente, vive esclusivamente nei count_records con
+        # diagnostic_only=true e non puo "sanare" la replicazione.
+        effective_n=None,
         inferability=assessment.inferability.value,
         conditional_scenarios=tuple(scenarios),
         evidence_ids=assessment.evidence_ids,
@@ -255,7 +355,12 @@ def _statements(
     language: str,
 ) -> tuple[ReportStatement, ...]:
     result: list[ReportStatement] = []
+    evidence_by_id = {evidence.id: evidence for evidence in block.evidence}
     for statement in block.n_statements:
+        layer, source = _n_statement_classification(
+            statement,
+            evidence_by_id=evidence_by_id,
+        )
         text = statement.raw_text.strip() or (
             f"n dichiarato: {statement.value} {statement.entity_type}"
             if language == "it"
@@ -263,11 +368,11 @@ def _statements(
         )
         result.append(
             ReportStatement(
-                id=stable_id("rst", block.id, "fact", statement.id),
-                layer=StatementLayer.FACT,
+                id=stable_id("rst", block.id, layer.value, statement.id),
+                layer=layer,
                 text=text,
                 evidence_ids=statement.evidence_ids,
-                source="source_material",
+                source=source,
             )
         )
     for assessment in block.unit_assessments:
@@ -301,6 +406,58 @@ def _statements(
             )
         )
     return tuple(result)
+
+
+def _n_statement_classification(
+    statement: Any,
+    *,
+    evidence_by_id: dict[str, Any],
+) -> tuple[StatementLayer, str]:
+    """Classifica un count senza trasformare un'autovalutazione in fatto.
+
+    ``AUTHOR_ASSERTION`` ha precedenza anche in presenza di evidenze miste. In
+    assenza di un tipo osservazionale esplicito il fallback e prudente: una
+    frase estratta dalla fonte resta un'asserzione, non una verita biologica.
+    """
+
+    evidence_types = {
+        evidence.evidence_type
+        for evidence_id in statement.evidence_ids
+        if (evidence := evidence_by_id.get(evidence_id)) is not None
+        and evidence.evidence_type is not None
+    }
+    if EvidenceType.CONFLICTING_EVIDENCE in evidence_types:
+        return StatementLayer.ASSERTION, "conflicting_evidence"
+    if EvidenceType.USER_CONFIRMATION in evidence_types:
+        return StatementLayer.ASSERTION, "user_confirmation"
+    if EvidenceType.REVIEW_COMMENT in evidence_types:
+        return StatementLayer.ASSERTION, "review_comment"
+    if EvidenceType.AUTHOR_ASSERTION in evidence_types:
+        return StatementLayer.ASSERTION, "author_assertion"
+    if evidence_types & {EvidenceType.MODEL_INFERENCE}:
+        return StatementLayer.HYPOTHESIS, "model_inference"
+    if evidence_types & {EvidenceType.DERIVED_FACT}:
+        return StatementLayer.INFERENCE, "derived_fact"
+    if evidence_types and evidence_types <= {
+        EvidenceType.STRUCTURAL_FACT,
+        EvidenceType.PROCEDURAL_EVENT,
+        EvidenceType.SAMPLE_METADATA,
+        EvidenceType.IMAGE_METADATA,
+        EvidenceType.STATISTICAL_CODE,
+    }:
+        source = "+".join(sorted(item.value.casefold() for item in evidence_types))
+        return StatementLayer.FACT, source
+
+    origin = statement.provenance.origin
+    if origin is ProvenanceKind.MODEL:
+        return StatementLayer.HYPOTHESIS, "model_inference"
+    if origin in {ProvenanceKind.DERIVED, ProvenanceKind.RULE}:
+        return StatementLayer.INFERENCE, "deterministic_derivation"
+    if origin is ProvenanceKind.USER:
+        return StatementLayer.ASSERTION, "user_confirmation"
+    if origin is ProvenanceKind.ADJUDICATION:
+        return StatementLayer.ASSERTION, "adjudication"
+    return StatementLayer.ASSERTION, "untyped_source_assertion"
 
 
 def _driver_checklist(block: ExperimentBlock, *, language: str) -> tuple[DriverChecklistItem, ...]:

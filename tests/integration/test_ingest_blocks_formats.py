@@ -7,6 +7,7 @@ calling parser helpers with synthetic RawDocument objects.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -15,17 +16,33 @@ from openpyxl import Workbook
 from pypdf import PdfWriter
 from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
+from ntruth.corrections import CorrectionLedger, recalculate_corrected_block
 from ntruth.graph.index import GraphIndex
 from ntruth.ingest.project import Project
 from ntruth.ingest.safety import SafetyError
 from ntruth.parsers.registry import build_document_ir
-from ntruth.pipeline import analyze_project
+from ntruth.pipeline import analyze_project, replace_block_analysis
+from ntruth.rules.loader import load_ruleset
 from ntruth.schemas.document import ParserStatus, SectionRole
+from ntruth.schemas.experiment import Correction, CorrectionReason, GraphStatus
 from ntruth.schemas.graph import NodeType, RelationType
+from ntruth.schemas.manifest import ReleaseProfile
 
 
-def _ingest(source: Path, workspace: Path, *, domain: str = "quantitative_microscopy") -> Project:
-    project = Project.create(workspace, name=source.stem, domain=domain, language="en")
+def _ingest(
+    source: Path,
+    workspace: Path,
+    *,
+    domain: str = "quantitative_microscopy",
+    release_profile: ReleaseProfile = ReleaseProfile.D0_CORE,
+) -> Project:
+    project = Project.create(
+        workspace,
+        name=source.stem,
+        domain=domain,
+        language="en",
+        release_profile=release_profile,
+    )
     result = project.add(source)
     assert result.accepted, result.summary()
     return project
@@ -84,6 +101,47 @@ vehicle at the level of the culture. n = 200 cells.
         {200},
     ]
     assert all(not block.contradictions for block in result.report.blocks)
+
+
+def test_block_specific_limits_do_not_leak_into_other_positive_outputs(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "two-limit-scopes.md"
+    source.write_text(
+        """# Experiment 1
+
+## Materials and Methods
+
+Three cultures received drug or vehicle; n = 3 cultures.
+
+# Experiment 2
+
+## Materials and Methods
+
+Five cultures received drug or vehicle; n = 5 cultures.
+""",
+        encoding="utf-8",
+    )
+    result = analyze_project(_ingest(source, tmp_path / "project-limits"))
+    first, second = result.block_analyses
+    marker = "LIMIT_ONLY_FOR_EXPERIMENT_1"
+
+    updated = replace_block_analysis(
+        result,
+        replace(first, rule_warnings=(*first.rule_warnings, marker)),
+    )
+
+    first_output = updated.report.positive_outputs[first.block.id]
+    second_output = updated.report.positive_outputs[second.block.id]
+    first_limits = {
+        item.text for item in first_output.statements if item.layer.value == "limitation"
+    }
+    second_limits = {
+        item.text for item in second_output.statements if item.layer.value == "limitation"
+    }
+    assert marker in first_limits
+    assert marker not in second_limits
+    assert any(marker in limit and first.block.id in limit for limit in updated.report.limits)
 
 
 def test_plain_text_experiment_headings_are_structural(tmp_path: Path) -> None:
@@ -187,7 +245,13 @@ def test_xlsx_formulas_are_preserved_as_inert_text_and_flagged(tmp_path: Path) -
     sheet.append(["S1", "D1", "=1+1"])
     workbook.save(source)
 
-    ir = build_document_ir(_ingest(source, tmp_path / "project"))
+    ir = build_document_ir(
+        _ingest(
+            source,
+            tmp_path / "project",
+            release_profile=ReleaseProfile.EXTENDED_EXPERIMENTAL,
+        )
+    )
 
     assert ir.tables[0].cell(0, "computed") == "'=1+1"
     assert "formula" in " ".join(ir.files[0].warnings)
@@ -202,7 +266,13 @@ def test_xlsx_formula_headers_are_inert_and_flagged(tmp_path: Path) -> None:
     sheet.append(["payload", "D1"])
     workbook.save(source)
 
-    ir = build_document_ir(_ingest(source, tmp_path / "project"))
+    ir = build_document_ir(
+        _ingest(
+            source,
+            tmp_path / "project",
+            release_profile=ReleaseProfile.EXTENDED_EXPERIMENTAL,
+        )
+    )
 
     assert ir.tables[0].columns[0].startswith("'=")
     assert "formula" in " ".join(ir.files[0].warnings)
@@ -215,7 +285,11 @@ def test_real_docx_reaches_document_ir_and_analysis(tmp_path: Path) -> None:
     document.add_paragraph("Cells were quantified in three wells; n = 3 wells.")
     document.save(str(source))
 
-    project = _ingest(source, tmp_path / "project")
+    project = _ingest(
+        source,
+        tmp_path / "project",
+        release_profile=ReleaseProfile.EXTENDED_EXPERIMENTAL,
+    )
     result = analyze_project(project)
 
     assert result.document.files[0].parser == "docx"
@@ -238,7 +312,13 @@ def test_real_xlsx_multiple_sheets_reach_document_ir_and_analysis(tmp_path: Path
     second.append(["2", "D4", "W4", "vehicle"])
     workbook.save(source)
 
-    result = analyze_project(_ingest(source, tmp_path / "project"))
+    result = analyze_project(
+        _ingest(
+            source,
+            tmp_path / "project",
+            release_profile=ReleaseProfile.EXTENDED_EXPERIMENTAL,
+        )
+    )
 
     assert result.document.files[0].parser == "xlsx"
     assert {table.sheet for table in result.document.tables} == {"Experiment 1", "Experiment 2"}
@@ -293,7 +373,13 @@ def test_single_sample_sheet_is_split_by_explicit_experiment_id(tmp_path: Path) 
     sheet.append(["2", "D4", "vehicle"])
     workbook.save(source)
 
-    result = analyze_project(_ingest(source, tmp_path / "project"))
+    result = analyze_project(
+        _ingest(
+            source,
+            tmp_path / "project",
+            release_profile=ReleaseProfile.EXTENDED_EXPERIMENTAL,
+        )
+    )
 
     assert [block.title for block in result.report.blocks] == ["Experiment 1", "Experiment 2"]
     rows_by_block = [analysis.document.tables[0].rows for analysis in result.block_analyses]
@@ -308,7 +394,11 @@ def test_real_text_pdf_reaches_document_ir_with_quality_status(tmp_path: Path) -
     sentence = "Methods. Cells were quantified in three wells; n = 3 wells. "
     _write_text_pdf(source, sentence * 5)
 
-    project = _ingest(source, tmp_path / "project")
+    project = _ingest(
+        source,
+        tmp_path / "project",
+        release_profile=ReleaseProfile.EXTENDED_EXPERIMENTAL,
+    )
     result = analyze_project(project)
 
     assert result.document.files[0].parser == "pdf"
@@ -330,7 +420,13 @@ def test_real_jats_preserves_legend_table_and_n_statement(tmp_path: Path) -> Non
         encoding="utf-8",
     )
 
-    result = analyze_project(_ingest(source, tmp_path / "project"))
+    result = analyze_project(
+        _ingest(
+            source,
+            tmp_path / "project",
+            release_profile=ReleaseProfile.EXTENDED_EXPERIMENTAL,
+        )
+    )
 
     assert result.document.files[0].parser == "jats"
     assert result.document.tables and result.document.tables[0].caption
@@ -342,7 +438,13 @@ def test_low_density_pdf_challenge_is_degraded_and_forces_abstention(tmp_path: P
     source = tmp_path / "ocr-like.pdf"
     _write_text_pdf(source, "n = 3 wells")
 
-    result = analyze_project(_ingest(source, tmp_path / "project"))
+    result = analyze_project(
+        _ingest(
+            source,
+            tmp_path / "project",
+            release_profile=ReleaseProfile.EXTENDED_EXPERIMENTAL,
+        )
+    )
 
     assert result.document.files[0].status is ParserStatus.DEGRADED
     assert result.abstention.abstained
@@ -368,3 +470,32 @@ def test_sample_sheet_missing_ids_challenge_is_visible(tmp_path: Path) -> None:
     result = analyze_project(_ingest(source, tmp_path / "project"))
 
     assert any("valori mancanti" in limit.lower() for limit in result.report.limits)
+
+
+def test_first_row_missing_cell_does_not_poison_unrelated_correction(tmp_path: Path) -> None:
+    source = tmp_path / "samples.csv"
+    source.write_text(
+        "sample_id,donor,well,treatment\nS1,,W1,drug\nS2,D2,W2,vehicle\n",
+        encoding="utf-8",
+    )
+    project = _ingest(source, tmp_path / "project")
+    result = analyze_project(project)
+    analysis = result.block_analyses[0]
+    ledger = CorrectionLedger.start(analysis.block).apply(
+        Correction(
+            id="rename-block-with-missing-first-cell",
+            sequence=0,
+            reason=CorrectionReason.OTHER,
+            rationale="Titolo reso esplicito senza alterare i locator sorgente.",
+            patch=({"op": "replace", "path": "/title", "value": "Sample sheet"},),
+        )
+    )
+    ruleset = load_ruleset(project.manifest.ruleset_id, project.manifest.ruleset_version)
+
+    recalculated = recalculate_corrected_block(analysis, ledger, ruleset)
+
+    assert recalculated.analysis.block.graph_status is not GraphStatus.INVALID
+    assert not {item.code for item in recalculated.analysis.verification.violations} & {
+        "evidence_empty_text",
+        "evidence_cell_mismatch",
+    }

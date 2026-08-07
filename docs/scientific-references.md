@@ -1,6 +1,6 @@
 # Scientific references for the deterministic ruleset
 
-The 32 rules in `rulesets/ntruth-core-0.1.0.json` cite stable identifiers `R01` through
+The 32 current rules in `rulesets/ntruth-core-0.2.0.json` cite stable identifiers `R01` through
 `R06`. Their complete, machine-readable records live in
 `rulesets/scientific-references-0.1.0.json`; tests fail if a rule cites an unknown ID.
 
@@ -40,7 +40,7 @@ inspect it with:
 
 ```bash
 uv run ntruth rules show MIC-004
-uv run python -c 'import json; p=json.load(open("rulesets/ntruth-core-0.1.0.json")); print({r["rule_id"]: r["references"] for r in p["rules"]})'
+uv run python -c 'import json; p=json.load(open("rulesets/ntruth-core-0.2.0.json")); print({r["rule_id"]: r["references"] for r in p["rules"]})'
 ```
 
 Any new reference requires a versioned registry entry with responsible entity, stable

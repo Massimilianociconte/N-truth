@@ -11,6 +11,7 @@ from ntruth.ingest.project import Project
 from ntruth.parsers.registry import build_document_ir
 from ntruth.parsers.sections import classify_heading
 from ntruth.schemas.document import ParserStatus, SectionRole
+from ntruth.schemas.manifest import ReleaseProfile
 
 
 @pytest.mark.parametrize(
@@ -104,7 +105,10 @@ def test_jats_sections_and_legends(make_project: ProjectFactory) -> None:
         "<sec><title>Statistical analysis</title><p>n = 6 donors.</p></sec></sec>"
         "</body></article>"
     )
-    project = make_project({"a.xml": xml})
+    project = make_project(
+        {"a.xml": xml},
+        release_profile=ReleaseProfile.EXTENDED_EXPERIMENTAL,
+    )
     ir = build_document_ir(project)
     roles = {s.role for s in ir.sections}
     assert SectionRole.METHODS in roles

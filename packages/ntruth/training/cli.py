@@ -29,20 +29,9 @@ from ntruth.training.mlx_runtime import (
 
 
 def _default_profile() -> Path:
-    checkout = (
-        Path(__file__).resolve().parents[3]
-        / "models"
-        / "configs"
-        / "qwen3-4b-instruct-2507-mlx-qlora.json"
-    )
-    if checkout.is_file():
-        return checkout
-    return (
-        Path(__file__).resolve().parents[1]
-        / "_bundled"
-        / "models"
-        / "qwen3-4b-instruct-2507-mlx-qlora.json"
-    )
+    from ntruth.model_backends.registry import default_profile_path
+
+    return default_profile_path()
 
 
 DEFAULT_PROFILE = _default_profile()
@@ -210,6 +199,86 @@ def train(
     _emit(result)
 
 
+@app.command("benchmark-resources")
+def benchmark_resources(
+    out: Path = typer.Option(
+        Path("benchmarks/runtime"),
+        "--out",
+        help="Directory dove scrivere budget misurato e protocol report.",
+    ),
+    model: Path | None = typer.Option(
+        None,
+        "--model",
+        help="Snapshot MLX locale (default: local_path del profilo).",
+    ),
+    profile: Path = typer.Option(DEFAULT_PROFILE, "--profile"),
+    repo: Path = typer.Option(Path("."), "--repo"),
+    include_cpu_stages: bool = typer.Option(
+        True,
+        "--include-cpu-stages/--mlx-only",
+        help="Include rules/hard/semantic stages oltre a mlx_generate.",
+    ),
+    quick: bool = typer.Option(
+        False,
+        "--quick",
+        help="Una sola replica e workload ridotto (smoke). Non usare per release.",
+    ),
+) -> None:
+    """Misura peak RAM/swap/latency reali e scrive RuntimeResourceBudget.
+
+    Esegue load+warmup+generate sul modello locale e (opzionale) stage
+    deterministici. Non inventa picchi: senza misure complete fallisce.
+    """
+
+    from ntruth.training.mlx_runtime import load_profile
+    from ntruth.training.runtime_benchmark import (
+        DEFAULT_WORKLOADS,
+        ProfileWorkload,
+        run_full_runtime_benchmark,
+    )
+    from ntruth.runtime_resources.schema import RuntimeProfileName
+
+    try:
+        loaded = load_profile(profile.resolve())
+        model_path = (
+            Path(model).resolve()
+            if model is not None
+            else (repo.resolve() / loaded["model"]["local_path"]).resolve()
+        )
+        if quick:
+            workloads = (
+                ProfileWorkload(
+                    RuntimeProfileName.LOW_MEMORY,
+                    prompt_chars=800,
+                    max_new_tokens=32,
+                    replicates=1,
+                ),
+                ProfileWorkload(
+                    RuntimeProfileName.BALANCED,
+                    prompt_chars=1_600,
+                    max_new_tokens=48,
+                    replicates=1,
+                ),
+                ProfileWorkload(
+                    RuntimeProfileName.QUALITY,
+                    prompt_chars=2_400,
+                    max_new_tokens=64,
+                    replicates=1,
+                ),
+            )
+        else:
+            workloads = DEFAULT_WORKLOADS
+        result = run_full_runtime_benchmark(
+            model_path=model_path,
+            output_dir=out.resolve(),
+            workloads=workloads,
+            include_cpu_stages=include_cpu_stages,
+        )
+    except (MLXPipelineError, OSError, ValueError, KeyError) as exc:
+        _fail(exc)
+    _emit(result)
+
+
 @app.command()
 def predict(
     evaluation: Path = typer.Argument(..., help="JSONL locale con messages e gold assistant."),
@@ -217,6 +286,16 @@ def predict(
     out: Path = typer.Option(..., "--out"),
     split: Literal["validation", "test", "external"] = typer.Option(..., "--split"),
     retry_invalid_once: bool = typer.Option(True, "--retry-invalid-once/--no-retry"),
+    resource_budget: Path | None = typer.Option(
+        None,
+        "--resource-budget",
+        help="Budget RuntimeResource misurato (JSON). Opzionale; senza path resta il percorso legacy.",
+    ),
+    resource_profile: str = typer.Option(
+        "BALANCED",
+        "--resource-profile",
+        help="Profilo operativo LOW_MEMORY|BALANCED|QUALITY del budget misurato.",
+    ),
     profile: Path = typer.Option(DEFAULT_PROFILE, "--profile"),
     repo: Path = typer.Option(Path("."), "--repo"),
 ) -> None:
@@ -231,6 +310,8 @@ def predict(
             out.resolve(),
             declared_split=split,
             retry_invalid_once=retry_invalid_once,
+            resource_budget_path=resource_budget.resolve() if resource_budget else None,
+            resource_profile=resource_profile,
         )
     except (MLXPipelineError, OSError, ValueError) as exc:
         _fail(exc)

@@ -3,6 +3,7 @@ __pycache__/
 .venv/
 venv/
 .uv/
+.worktrees/
 dist/
 build/
 *.egg-info/
@@ -21,6 +22,7 @@ htmlcov/
 .DS_Store
 .idea/
 .vscode/
+.qoder/
 .env
 .env.*
 !.env.example
@@ -32,6 +34,13 @@ tmp/
 playwright-report/
 test-results/
 *.tsbuildinfo
+
+# Il PRD sorgente e materiale istruttorio locale. Nel repository pubblico resta
+# soltanto il record di provenienza/checksum in prd/README.md.
+prd/*.pdf
+prd/*.docx
+prd/*.odt
+prd/*.source.md
 
 # Workspace utente: contiene dati potenzialmente non pubblici (PRD 21.1)
 workspace/
@@ -47,6 +56,9 @@ models/local/
 models/cache/
 models/adapters/
 models/exports/
+models/registry/qualification_ledger.sqlite3
+models/registry/qualification_ledger.sqlite3-*
+models/registry/qualification_evidence/
 *.ckpt
 *.safetensors
 

@@ -3,7 +3,8 @@
   "description": "Stesso animale a quattro tempi: unita = animale, il tempo e una misura ripetuta.",
   "factor": "treatment",
   "expect": {
-    "experimental_unit": "Animal",
+    "allocation_unit_candidate": "Animal",
+    "experimental_unit": null,
     "observational_unit": "Animal",
     "analytical_unit": "Animal",
     "n_declared": 48,
@@ -13,6 +14,7 @@
     "inferability": "requires_confirmation",
     "risk": "insufficient_information",
     "alerts_include": [
+      "GEN-002",
       "ANI-004",
       "GEN-003",
       "GEN-010"

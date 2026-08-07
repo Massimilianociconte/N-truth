@@ -57,6 +57,7 @@ class AnalysisSession:
     id: str
     execution: AnalysisExecution
     ledgers: dict[str, CorrectionLedger] = field(default_factory=dict)
+    base_analyses: dict[str, BlockAnalysis] = field(default_factory=dict)
     candidate_artifacts: dict[str, Path] = field(default_factory=dict)
     _lock: RLock = field(default_factory=RLock, init=False, repr=False)
 
@@ -81,7 +82,9 @@ class AnalysisSession:
         existing = self.ledgers.get(block_id)
         if existing is not None:
             return existing
-        ledger = CorrectionLedger.start(self._block_analysis(block_id).block)
+        baseline = self._block_analysis(block_id)
+        ledger = CorrectionLedger.start(baseline.block)
+        self.base_analyses[block_id] = baseline
         self.ledgers[block_id] = ledger
         return ledger
 
@@ -98,13 +101,19 @@ class AnalysisSession:
             ledger = self._ledger(block_id)
             return self._commit(block_id, ledger.apply(factory(ledger)))
 
-    def undo(self, block_id: str) -> SessionUpdate:
+    def undo(self, block_id: str, *, actor_role: str = "reviewer") -> SessionUpdate:
         with self._lock:
-            return self._commit(block_id, self._ledger(block_id).undo())
+            return self._commit(
+                block_id,
+                self._ledger(block_id).undo(actor_role=actor_role),
+            )
 
-    def redo(self, block_id: str) -> SessionUpdate:
+    def redo(self, block_id: str, *, actor_role: str = "reviewer") -> SessionUpdate:
         with self._lock:
-            return self._commit(block_id, self._ledger(block_id).redo())
+            return self._commit(
+                block_id,
+                self._ledger(block_id).redo(actor_role=actor_role),
+            )
 
     def artifact(self, name: str) -> Path:
         with self._lock:
@@ -117,7 +126,13 @@ class AnalysisSession:
     def _commit(self, block_id: str, ledger: CorrectionLedger) -> SessionUpdate:
         """Pubblica una revisione completa prima di rendere visibile il nuovo head."""
 
-        original = self._block_analysis(block_id)
+        # Il ricalcolo riparte sempre dai candidate facts immutabili del parser.
+        # Usare la head precedente impedirebbe a un undo di rigenerare una
+        # builder question chiusa dalla correzione appena annullata.
+        original = self.base_analyses.get(block_id)
+        if original is None:
+            original = self._block_analysis(block_id)
+            self.base_analyses[block_id] = original
         ruleset = load_ruleset(
             self.execution.result.report.versions.ruleset_id,
             self.execution.result.report.versions.ruleset_version,

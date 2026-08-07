@@ -9,10 +9,11 @@ intero non riceve mai una singola label (PRD 12.1).
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import datetime
 from enum import StrEnum
 from typing import Literal, Self
 
-from pydantic import Field, model_validator
+from pydantic import Field, StrictFloat, StrictInt, field_validator, model_validator
 
 from ntruth.schemas.core import (
     AlertClass,
@@ -23,6 +24,7 @@ from ntruth.schemas.core import (
     Provenance,
     ProvenanceKind,
     Severity,
+    content_checksum,
     stable_id,
 )
 from ntruth.schemas.coreference import CoreferenceLink, Mention
@@ -37,13 +39,103 @@ from ntruth.schemas.graph import (
 
 
 class NKind(StrEnum):
-    """Tipo di n (PRD 7 e 15.4 layer H)."""
+    """Tipo semantico/lifecycle di count previsto dal PRD v6."""
 
+    PLANNED = "planned"
     DECLARED = "declared"
     OBSERVATIONAL = "observational"
+    ANALYTICAL = "analytical"
     INDEPENDENT = "independent"
+    BIOLOGICAL_SOURCE = "biological_source"
+    EFFECTIVE = "effective"
     ALLOCATED = "allocated"
-    ANALYZED = "analyzed"
+    TREATED = "treated"
+    OBSERVED = "observed"
+    EXCLUDED = "excluded"
+    ANALYSED = "analysed"
+
+    # Alias sorgente v3; il valore serializzato e il British English normativo.
+    ANALYZED = "analysed"
+
+    @classmethod
+    def _missing_(cls, value: object) -> NKind | None:
+        if value == "analyzed":
+            return cls.ANALYSED
+        return None
+
+
+class TriState(StrEnum):
+    """Valore esplicito: l'assenza di evidenza non diventa ``False``."""
+
+    TRUE = "TRUE"
+    FALSE = "FALSE"
+    UNKNOWN = "UNKNOWN"
+
+
+class LifecycleStatus(StrEnum):
+    """Fase fisica/analitica a cui un count o un campione si riferisce."""
+
+    PLANNED = "planned"
+    ALLOCATED = "allocated"
+    TREATED = "treated"
+    OBSERVED = "observed"
+    EXCLUDED = "excluded"
+    ANALYSED = "analysed"
+
+    @classmethod
+    def _missing_(cls, value: object) -> LifecycleStatus | None:
+        if value == "analyzed":
+            return cls.ANALYSED
+        return None
+
+
+class CountQuantifier(StrEnum):
+    """Semantica della quantita; silenzio e zero non sono intercambiabili."""
+
+    EXACT = "EXACT"
+    LOWER_BOUND = "LOWER_BOUND"
+    UPPER_BOUND = "UPPER_BOUND"
+    APPROXIMATE = "APPROXIMATE"
+    RANGE = "RANGE"
+    UNKNOWN = "UNKNOWN"
+    NOT_REPORTED = "NOT_REPORTED"
+
+
+class CountKind(StrEnum):
+    """Nomi non ambigui dei count canonici v6."""
+
+    PLANNED_N = "planned_n"
+    ALLOCATED_N = "allocated_n"
+    TREATED_N = "treated_n"
+    OBSERVED_N = "observed_n"
+    EXCLUDED_N = "excluded_n"
+    ANALYSED_N = "analysed_n"
+    DECLARED_N = "declared_n"
+    OBSERVATIONAL_N = "observational_n"
+    ANALYTICAL_N = "analytical_n"
+    INDEPENDENT_N = "independent_n"
+    BIOLOGICAL_SOURCE_COUNT = "biological_source_count"
+    EFFECTIVE_N = "effective_n"
+
+
+class ExclusionPhase(StrEnum):
+    """Quando e avvenuta un'esclusione rispetto a trattamento e outcome."""
+
+    PRE_ALLOCATION = "pre_allocation"
+    POST_ALLOCATION = "post_allocation"
+    POST_TREATMENT = "post_treatment"
+    POST_MEASUREMENT = "post_measurement"
+    POST_OUTCOME = "post_outcome"
+    UNKNOWN = "unknown"
+
+
+class GraphStatus(StrEnum):
+    """Autorita del grafo su cui opera il compilatore deterministico."""
+
+    CANDIDATE = "candidate"
+    HUMAN_CONFIRMED = "human_confirmed"
+    CONDITIONAL = "conditional"
+    INVALID = "invalid"
 
 
 class Inferability(StrEnum):
@@ -89,8 +181,8 @@ class ConditionalScenario(NTruthModel):
     """
 
     conditional_on: str
-    if_confirmed: dict[str, int]
-    if_rejected: dict[str, int]
+    if_confirmed: dict[str, int | None]
+    if_rejected: dict[str, int | None]
     question: str
     rule_id: str
     evidence_ids: tuple[str, ...] = ()
@@ -105,7 +197,11 @@ class ConditionalScenario(NTruthModel):
             raise ValueError("scenario condizionale senza rule_id")
         if not self.if_confirmed or not self.if_rejected:
             raise ValueError("scenario condizionale senza entrambi gli esiti")
-        if any(value < 0 for value in (*self.if_confirmed.values(), *self.if_rejected.values())):
+        if any(
+            value < 0
+            for value in (*self.if_confirmed.values(), *self.if_rejected.values())
+            if value is not None
+        ):
             raise ValueError("scenario condizionale con n negativo")
         if len(self.evidence_ids) != len(set(self.evidence_ids)):
             raise ValueError("scenario condizionale con evidence_ids duplicati")
@@ -124,6 +220,10 @@ class NScope(NTruthModel):
     group: str | None = None
     timepoint: str | None = None
     inference_target_id: str | None = None
+    unit_type: NodeType | None = None
+    lifecycle: LifecycleStatus | None = None
+    population: str | None = None
+    condition: str | None = None
     is_global: bool = False
 
     @model_validator(mode="after")
@@ -136,6 +236,10 @@ class NScope(NTruthModel):
                 self.group,
                 self.timepoint,
                 self.inference_target_id,
+                self.unit_type,
+                self.lifecycle,
+                self.population,
+                self.condition,
             )
         )
         if not specified and not self.is_global:
@@ -152,10 +256,21 @@ class NScope(NTruthModel):
             self.group,
             self.timepoint,
         )
-        if self.inference_target_id is None:
+        extension_key = (
+            str(self.unit_type) if self.unit_type is not None else None,
+            str(self.lifecycle) if self.lifecycle is not None else None,
+            self.population,
+            self.condition,
+        )
+        if self.inference_target_id is None and not any(extension_key):
             # Preserva gli ID content-addressed prodotti dalle versioni precedenti.
             return legacy_key
-        return (*legacy_key, self.inference_target_id)
+        if not any(extension_key):
+            # Anche l'estensione v3 con il solo inference target conserva la
+            # propria chiave a sei elementi. I campi lifecycle v6 vengono
+            # aggiunti soltanto quando sono realmente valorizzati.
+            return (*legacy_key, self.inference_target_id)
+        return (*legacy_key, self.inference_target_id, *extension_key)
 
     def describe(self) -> str:
         if self.is_global and not any(self.key()):
@@ -167,24 +282,370 @@ class NScope(NTruthModel):
             f"gruppo={self.group}" if self.group else None,
             f"tempo={self.timepoint}" if self.timepoint else None,
             f"target={self.inference_target_id}" if self.inference_target_id else None,
+            f"unita={self.unit_type}" if self.unit_type else None,
+            f"lifecycle={self.lifecycle}" if self.lifecycle else None,
+            f"popolazione={self.population}" if self.population else None,
+            f"condizione={self.condition}" if self.condition else None,
         ]
         return ", ".join(p for p in parts if p)
 
 
 class NStatement(NTruthModel):
-    """Una menzione di n nel materiale, con entita, scope ed evidenza (PRD 12.3)."""
+    """``CountRecord`` scope-aware, con alias storico ``NStatement``.
+
+    ``effective`` e un diagnostico separato: non puo essere promosso a count
+    indipendente dal rules engine. I bounds non vengono trasformati in valori
+    esatti e ``NOT_REPORTED`` resta distinto da zero.
+    """
 
     id: str
-    value: int | None = Field(default=None, ge=0)
+    value: StrictInt | None = Field(default=None, ge=0)
     entity_type: str
     node_type: NodeType | None = None
     scope: NScope
     kind: NKind
+    quantifier: CountQuantifier = CountQuantifier.EXACT
+    lower_bound: StrictInt | None = Field(default=None, ge=0)
+    upper_bound: StrictInt | None = Field(default=None, ge=0)
     qualifiers: tuple[str, ...] = ()
     raw_text: str = ""
     evidence_ids: tuple[str, ...] = ()
     provenance: Provenance
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
+    rule_trace_ids: tuple[str, ...] = ()
+
+    @model_validator(mode="before")
+    @classmethod
+    def _infer_legacy_quantifier(cls, data: object) -> object:
+        if not isinstance(data, Mapping):
+            return data
+        payload = dict(data)
+        if "quantifier" not in payload:
+            payload["quantifier"] = (
+                CountQuantifier.EXACT
+                if payload.get("value") is not None
+                else CountQuantifier.UNKNOWN
+            )
+        return payload
+
+    @model_validator(mode="after")
+    def _quantifier_is_coherent(self) -> Self:
+        if self.quantifier in {CountQuantifier.EXACT, CountQuantifier.APPROXIMATE}:
+            if self.value is None:
+                raise ValueError(f"{self.quantifier} richiede value")
+            if self.lower_bound is not None or self.upper_bound is not None:
+                raise ValueError(f"{self.quantifier} non ammette bounds")
+        elif self.quantifier in {CountQuantifier.LOWER_BOUND, CountQuantifier.UPPER_BOUND}:
+            if self.value is None:
+                raise ValueError(f"{self.quantifier} richiede il limite in value")
+        elif self.quantifier is CountQuantifier.RANGE:
+            if self.value is not None:
+                raise ValueError("RANGE non ammette un singolo value")
+            if self.lower_bound is None or self.upper_bound is None:
+                raise ValueError("RANGE richiede lower_bound e upper_bound")
+            if self.upper_bound < self.lower_bound:
+                raise ValueError("RANGE con upper_bound < lower_bound")
+        elif self.value is not None or self.lower_bound is not None or self.upper_bound is not None:
+            raise ValueError(f"{self.quantifier} non ammette valori numerici")
+        if len(self.rule_trace_ids) != len(set(self.rule_trace_ids)):
+            raise ValueError("rule_trace_ids duplicati")
+        return self
+
+
+class CountScope(NTruthModel):
+    """Scope esplicito del count; i ``null`` hanno sempre un reason code."""
+
+    unit_type: NodeType | None
+    factor_id: str | None
+    contrast_id: str | None
+    group_or_level: str | None
+    endpoint_id: str | None
+    timepoint: str | None
+    lifecycle: LifecycleStatus | None
+    population: str | None
+    condition: str | None
+    unknown_reasons: dict[str, str] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _nulls_are_explained(self) -> Self:
+        decisive = {
+            "unit_type": self.unit_type,
+            "factor_id": self.factor_id,
+            "contrast_id": self.contrast_id,
+            "group_or_level": self.group_or_level,
+            "endpoint_id": self.endpoint_id,
+            "timepoint": self.timepoint,
+            "lifecycle": self.lifecycle,
+        }
+        unexplained = [
+            field_name
+            for field_name, value in decisive.items()
+            if value is None and not self.unknown_reasons.get(field_name, "").strip()
+        ]
+        if unexplained:
+            raise ValueError(f"count scope null senza reason code: {sorted(unexplained)}")
+        unknown_fields = set(self.unknown_reasons) - decisive.keys()
+        if unknown_fields:
+            raise ValueError(
+                f"unknown_reasons contiene campi non ammessi: {sorted(unknown_fields)}"
+            )
+        return self
+
+    @classmethod
+    def from_legacy(cls, statement: NStatement) -> CountScope:
+        lifecycle_by_kind = {
+            NKind.PLANNED: LifecycleStatus.PLANNED,
+            NKind.ALLOCATED: LifecycleStatus.ALLOCATED,
+            NKind.TREATED: LifecycleStatus.TREATED,
+            NKind.OBSERVED: LifecycleStatus.OBSERVED,
+            NKind.EXCLUDED: LifecycleStatus.EXCLUDED,
+            NKind.ANALYSED: LifecycleStatus.ANALYSED,
+        }
+        lifecycle = statement.scope.lifecycle or lifecycle_by_kind.get(statement.kind)
+        values = {
+            "unit_type": statement.scope.unit_type or statement.node_type,
+            "factor_id": statement.scope.factor_id,
+            "contrast_id": statement.scope.contrast_id,
+            "group_or_level": statement.scope.group,
+            "endpoint_id": statement.scope.endpoint_id,
+            "timepoint": statement.scope.timepoint,
+            "lifecycle": lifecycle,
+        }
+        reasons = {
+            field_name: "not reported in legacy source"
+            for field_name, value in values.items()
+            if value is None
+        }
+        return cls(
+            unit_type=statement.scope.unit_type or statement.node_type,
+            factor_id=statement.scope.factor_id,
+            contrast_id=statement.scope.contrast_id,
+            group_or_level=statement.scope.group,
+            endpoint_id=statement.scope.endpoint_id,
+            timepoint=statement.scope.timepoint,
+            lifecycle=lifecycle,
+            population=statement.scope.population,
+            condition=statement.scope.condition,
+            unknown_reasons=reasons,
+        )
+
+
+class CountRecord(NTruthModel):
+    """Wire contract canonico per ogni significato di ``n`` del PRD v6."""
+
+    count_id: str
+    kind: CountKind
+    value: StrictInt | StrictFloat | None = Field(default=None, ge=0)
+    quantifier: CountQuantifier
+    lower_bound: StrictInt | StrictFloat | None = Field(default=None, ge=0)
+    upper_bound: StrictInt | StrictFloat | None = Field(default=None, ge=0)
+    scope: CountScope
+    evidence_ids: tuple[str, ...] = ()
+    rule_trace_ids: tuple[str, ...] = ()
+    diagnostic_only: bool = False
+    provenance: Provenance
+
+    @model_validator(mode="after")
+    def _coherent(self) -> Self:
+        if self.quantifier in {CountQuantifier.EXACT, CountQuantifier.APPROXIMATE}:
+            if self.value is None or self.lower_bound is not None or self.upper_bound is not None:
+                raise ValueError(f"{self.quantifier} richiede solo value")
+        elif self.quantifier in {CountQuantifier.LOWER_BOUND, CountQuantifier.UPPER_BOUND}:
+            if self.value is None or self.lower_bound is not None or self.upper_bound is not None:
+                raise ValueError(f"{self.quantifier} usa soltanto value come limite")
+        elif self.quantifier is CountQuantifier.RANGE:
+            if self.value is not None or self.lower_bound is None or self.upper_bound is None:
+                raise ValueError("RANGE richiede soltanto lower_bound e upper_bound")
+            if self.upper_bound < self.lower_bound:
+                raise ValueError("RANGE con upper_bound < lower_bound")
+        elif self.value is not None or self.lower_bound is not None or self.upper_bound is not None:
+            raise ValueError(f"{self.quantifier} non ammette valori numerici")
+        if self.kind is CountKind.EFFECTIVE_N and not self.diagnostic_only:
+            raise ValueError("effective_n deve essere diagnostic_only=true")
+        if self.kind is not CountKind.EFFECTIVE_N and self.diagnostic_only:
+            raise ValueError("diagnostic_only e riservato a effective_n")
+        numeric_values = tuple(
+            value for value in (self.value, self.lower_bound, self.upper_bound) if value is not None
+        )
+        if self.kind is not CountKind.EFFECTIVE_N and any(
+            isinstance(value, bool) or not float(value).is_integer() for value in numeric_values
+        ):
+            raise ValueError("i count fisici non possono contenere valori frazionari")
+        for field_name, values in (
+            ("evidence_ids", self.evidence_ids),
+            ("rule_trace_ids", self.rule_trace_ids),
+        ):
+            if len(values) != len(set(values)):
+                raise ValueError(f"{field_name} duplicati")
+        if self.provenance.origin not in {ProvenanceKind.USER, ProvenanceKind.ADJUDICATION}:
+            if not (
+                self.evidence_ids
+                or self.rule_trace_ids
+                or (self.provenance.derivation and self.provenance.derivation.strip())
+            ):
+                raise ValueError("count estratto/derivato senza evidence_ids o rule_trace_ids")
+            if not set(self.evidence_ids).issubset(self.provenance.evidence_ids):
+                raise ValueError("count evidence_ids assenti dalla provenance")
+        return self
+
+    @classmethod
+    def from_legacy(cls, statement: NStatement) -> CountRecord:
+        kind_map = {
+            NKind.PLANNED: CountKind.PLANNED_N,
+            NKind.ALLOCATED: CountKind.ALLOCATED_N,
+            NKind.TREATED: CountKind.TREATED_N,
+            NKind.OBSERVED: CountKind.OBSERVED_N,
+            NKind.EXCLUDED: CountKind.EXCLUDED_N,
+            NKind.ANALYSED: CountKind.ANALYSED_N,
+            NKind.DECLARED: CountKind.DECLARED_N,
+            NKind.OBSERVATIONAL: CountKind.OBSERVATIONAL_N,
+            NKind.ANALYTICAL: CountKind.ANALYTICAL_N,
+            NKind.INDEPENDENT: CountKind.INDEPENDENT_N,
+            NKind.BIOLOGICAL_SOURCE: CountKind.BIOLOGICAL_SOURCE_COUNT,
+            NKind.EFFECTIVE: CountKind.EFFECTIVE_N,
+        }
+        return cls(
+            count_id=statement.id,
+            kind=kind_map[statement.kind],
+            value=statement.value,
+            quantifier=statement.quantifier,
+            lower_bound=statement.lower_bound,
+            upper_bound=statement.upper_bound,
+            scope=CountScope.from_legacy(statement),
+            evidence_ids=statement.evidence_ids,
+            rule_trace_ids=statement.rule_trace_ids,
+            diagnostic_only=statement.kind is NKind.EFFECTIVE,
+            provenance=statement.provenance,
+        )
+
+    def to_legacy(self) -> NStatement | None:
+        """Proietta un count fisico v6 sul resolver legacy, senza effective_n.
+
+        ``CountRecord`` resta il contratto autorevole. L'adapter esiste soltanto
+        finche il resolver deterministico legge ``NStatement``; il diagnostico
+        effective_n non vi entra, cosi non puo influenzare regole o derivazione
+        dell'unita sperimentale.
+        """
+
+        if self.kind is CountKind.EFFECTIVE_N:
+            return None
+        kind_map = {
+            CountKind.PLANNED_N: NKind.PLANNED,
+            CountKind.ALLOCATED_N: NKind.ALLOCATED,
+            CountKind.TREATED_N: NKind.TREATED,
+            CountKind.OBSERVED_N: NKind.OBSERVED,
+            CountKind.EXCLUDED_N: NKind.EXCLUDED,
+            CountKind.ANALYSED_N: NKind.ANALYSED,
+            CountKind.DECLARED_N: NKind.DECLARED,
+            CountKind.OBSERVATIONAL_N: NKind.OBSERVATIONAL,
+            CountKind.ANALYTICAL_N: NKind.ANALYTICAL,
+            CountKind.INDEPENDENT_N: NKind.INDEPENDENT,
+            CountKind.BIOLOGICAL_SOURCE_COUNT: NKind.BIOLOGICAL_SOURCE,
+        }
+
+        def physical_int(value: int | float | None) -> int | None:
+            if value is None:
+                return None
+            return int(value)
+
+        legacy_scope_values = (
+            self.scope.factor_id,
+            self.scope.contrast_id,
+            self.scope.endpoint_id,
+            self.scope.group_or_level,
+            self.scope.timepoint,
+            self.scope.unit_type,
+            self.scope.lifecycle,
+            self.scope.population,
+            self.scope.condition,
+        )
+        if not any(value is not None for value in legacy_scope_values):
+            # CountScope sa rappresentare un'origine ignota con reason code;
+            # NScope legacy no. Non trasformiamo l'assenza in scope globale.
+            return None
+
+        return NStatement(
+            id=self.count_id,
+            value=physical_int(self.value),
+            entity_type=(
+                self.scope.unit_type.value
+                if self.scope.unit_type is not None
+                else "unspecified_count_unit"
+            ),
+            node_type=self.scope.unit_type,
+            scope=NScope(
+                factor_id=self.scope.factor_id,
+                contrast_id=self.scope.contrast_id,
+                endpoint_id=self.scope.endpoint_id,
+                group=self.scope.group_or_level,
+                timepoint=self.scope.timepoint,
+                unit_type=self.scope.unit_type,
+                lifecycle=self.scope.lifecycle,
+                population=self.scope.population,
+                condition=self.scope.condition,
+            ),
+            kind=kind_map[self.kind],
+            quantifier=self.quantifier,
+            lower_bound=physical_int(self.lower_bound),
+            upper_bound=physical_int(self.upper_bound),
+            evidence_ids=self.evidence_ids,
+            provenance=self.provenance,
+            rule_trace_ids=self.rule_trace_ids,
+        )
+
+
+class ExclusionRecord(NTruthModel):
+    """Attrition endpoint-specific e auditabile lungo il lifecycle."""
+
+    id: str
+    unit_id: str | None = None
+    unit_type: NodeType
+    phase: ExclusionPhase = ExclusionPhase.UNKNOWN
+    prespecified: TriState = TriState.UNKNOWN
+    endpoint_id: str | None = None
+    factor_id: str | None = None
+    contrast_id: str | None = None
+    group: str | None = None
+    author_role: str | None = None
+    reason: str | None = None
+    evidence_ids: tuple[str, ...] = ()
+    impact: str | None = None
+    unknown_reasons: dict[str, str] = Field(default_factory=dict)
+    provenance: Provenance
+
+    @model_validator(mode="after")
+    def _traceable_and_unique(self) -> Self:
+        if len(self.evidence_ids) != len(set(self.evidence_ids)):
+            raise ValueError("exclusion evidence_ids duplicati")
+        if self.provenance.origin not in {ProvenanceKind.USER, ProvenanceKind.ADJUDICATION}:
+            if not self.evidence_ids:
+                raise ValueError("exclusion estratta/derivata senza evidence_ids")
+            if not set(self.evidence_ids).issubset(self.provenance.evidence_ids):
+                raise ValueError("exclusion evidence_ids assenti dalla provenance")
+        auditable_fields: dict[str, object | None] = {
+            "phase": None if self.phase is ExclusionPhase.UNKNOWN else self.phase,
+            "prespecified": None if self.prespecified is TriState.UNKNOWN else self.prespecified,
+            "endpoint_id": self.endpoint_id,
+            "group": self.group,
+            "author_role": self.author_role,
+            "reason": self.reason,
+            "evidence_ids": self.evidence_ids or None,
+            "impact": self.impact,
+        }
+        missing = [
+            field_name
+            for field_name, value in auditable_fields.items()
+            if (value is None or (isinstance(value, str) and not value.strip()))
+            and not self.unknown_reasons.get(field_name, "").strip()
+        ]
+        if missing:
+            raise ValueError(f"exclusion fields mancanti senza reason code: {sorted(missing)}")
+        unknown_fields = set(self.unknown_reasons) - auditable_fields.keys()
+        if unknown_fields:
+            raise ValueError(
+                f"exclusion unknown_reasons contiene campi non ammessi: {sorted(unknown_fields)}"
+            )
+        return self
 
 
 class DataSufficiency(NTruthModel):
@@ -279,14 +740,24 @@ class UnitAssessment(NTruthModel):
     id: str
     scope: NScope
     biological_unit: NodeType | None = None
+    allocation_unit_candidate: NodeType | None = None
     experimental_unit: NodeType | None = None
     observational_unit: NodeType | None = None
     analytical_unit: NodeType | None = None
-    n_declared: int | None = None
+    n_planned: int | None = Field(default=None, ge=0)
+    n_declared: int | None = Field(default=None, ge=0)
     n_allocated: int | None = Field(default=None, ge=0)
+    n_treated: int | None = Field(default=None, ge=0)
+    n_observed: int | None = Field(default=None, ge=0)
+    n_excluded: int | None = Field(default=None, ge=0)
+    n_analysed: int | None = Field(default=None, ge=0)
+    # Alias di migrazione v3; nuovi consumer devono leggere ``n_analysed``.
     n_analyzed: int | None = Field(default=None, ge=0)
-    n_observational: int | None = None
-    n_independent: int | None = None
+    n_observational: int | None = Field(default=None, ge=0)
+    n_analytical: int | None = Field(default=None, ge=0)
+    n_independent: int | None = Field(default=None, ge=0)
+    biological_source_count: int | None = Field(default=None, ge=0)
+    effective_n: float | None = Field(default=None, ge=0.0)
     independent_entity_type: str | None = None
     cluster_types: tuple[NodeType, ...] = ()
     inferability: Inferability = Inferability.NOT_INFERABLE
@@ -304,12 +775,18 @@ class UnitAssessment(NTruthModel):
             payload = dict(data)
             if payload.get("conditional_scenarios") and "inferability" not in payload:
                 payload["inferability"] = Inferability.CONDITIONAL
+            if "n_analysed" in payload:
+                payload["n_analyzed"] = payload["n_analysed"]
+            elif "n_analyzed" in payload:
+                payload["n_analysed"] = payload["n_analyzed"]
             return payload
         return data
 
     @model_validator(mode="after")
     def _no_silent_substitution(self) -> Self:
         """Uno scenario numerico non puo convivere con un n scalare autorevole."""
+        if self.n_analysed != self.n_analyzed:
+            raise ValueError("n_analyzed legacy incoerente con n_analysed")
         if self.inferability is Inferability.NOT_INFERABLE and self.n_independent is not None:
             raise ValueError("n_independent valorizzato ma inferability=not_inferable")
         if self.conditional_scenarios and self.inferability is not Inferability.CONDITIONAL:
@@ -342,7 +819,28 @@ class Contradiction(NTruthModel):
     description: str
     statement_ids: tuple[str, ...] = ()
     evidence_ids: tuple[str, ...] = ()
+    retained_interpretations: tuple[str, ...] = ()
+    provenance: Provenance | None = None
     status: Literal["unresolved", "resolved_by_user", "resolved_by_adjudication"] = "unresolved"
+
+    @model_validator(mode="after")
+    def _unresolved_conflict_is_traceable(self) -> Self:
+        if self.status != "unresolved":
+            return self
+        interpretations = tuple(
+            dict.fromkeys(item.strip() for item in self.retained_interpretations if item.strip())
+        )
+        if len(interpretations) < 2:
+            raise ValueError("contraddizione irrisolta senza almeno due interpretazioni trattenute")
+        if interpretations != self.retained_interpretations:
+            raise ValueError("retained_interpretations vuote o duplicate")
+        human_record = self.provenance is not None and self.provenance.origin in {
+            ProvenanceKind.USER,
+            ProvenanceKind.ADJUDICATION,
+        }
+        if not (self.statement_ids or self.evidence_ids or human_record):
+            raise ValueError("contraddizione irrisolta senza statement/evidence o provenance umana")
+        return self
 
 
 class Alert(NTruthModel):
@@ -412,8 +910,26 @@ class Correction(NTruthModel):
     rationale: str = ""
     patch: tuple[dict[str, object], ...] = ()  # JSON Patch (RFC 6902)
     evidence_ids: tuple[str, ...] = ()
-    reviewer_role: str | None = None
+    # Per privacy si conserva il ruolo operativo, non l'identita personale.
+    reviewer_role: str = Field(default="reviewer", min_length=2, max_length=64)
+    # Il ledger assegna l'istante server-side se il client non lo fornisce.
+    recorded_at: datetime | None = None
     verified: bool = False  # correzioni non verificate non entrano nel training pool
+
+    @field_validator("reviewer_role")
+    @classmethod
+    def _reviewer_role_not_blank(cls, value: str) -> str:
+        normalized = value.strip()
+        if len(normalized) < 2:
+            raise ValueError("reviewer_role deve identificare un ruolo non vuoto")
+        return normalized
+
+    @field_validator("recorded_at")
+    @classmethod
+    def _recorded_at_timezone_aware(cls, value: datetime | None) -> datetime | None:
+        if value is not None and (value.tzinfo is None or value.utcoffset() is None):
+            raise ValueError("recorded_at deve includere il fuso orario")
+        return value
 
 
 class Factor(NTruthModel):
@@ -427,13 +943,22 @@ class Factor(NTruthModel):
     id: str
     name: str
     levels: tuple[str, ...] = ()
-    kind: Literal["treatment", "genotype", "dose", "time", "diet", "other"] = "other"
+    kind: Literal["treatment", "genotype", "dose", "time", "diet", "other", "unknown"] = "other"
     allocation_level: NodeType | None = None
     application_level: NodeType | None = None
     allocation_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     application_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     allocation_evidence_ids: tuple[str, ...] = ()
     application_evidence_ids: tuple[str, ...] = ()
+    independence_evidence_ids: tuple[str, ...] = ()
+    independently_assigned: TriState = TriState.UNKNOWN
+    randomization_unit: NodeType | None = None
+    independence_mechanism: str | None = None
+    shared_environment: tuple[str, ...] = ()
+    confounded_with: tuple[str, ...] = ()
+    source_biological_preparation: str | None = None
+    allocation_event_id: str | None = None
+    allocation_timing: str | None = None
     randomized: bool | None = None
     # UK spelling retained for the PRD example and serialized compatibility.
     randomised: bool | None = None
@@ -480,6 +1005,7 @@ class Factor(NTruthModel):
         for field_name, level in (
             ("allocation_level", self.allocation_level),
             ("application_level", self.application_level),
+            ("randomization_unit", self.randomization_unit),
         ):
             if level is not None and level not in ALLOCATABLE_NODE_TYPES:
                 raise ValueError(f"{field_name} non e un NodeType allocabile: {level}")
@@ -488,9 +1014,26 @@ class Factor(NTruthModel):
             ("evidence_ids", self.evidence_ids),
             ("allocation_evidence_ids", self.allocation_evidence_ids),
             ("application_evidence_ids", self.application_evidence_ids),
+            ("independence_evidence_ids", self.independence_evidence_ids),
+            ("shared_environment", self.shared_environment),
+            ("confounded_with", self.confounded_with),
         ):
             if len(values) != len(set(values)):
                 raise ValueError(f"{field_name} contiene riferimenti duplicati")
+        if self.independently_assigned is TriState.TRUE and not (
+            self.independence_mechanism and self.independence_mechanism.strip()
+        ):
+            raise ValueError(
+                "independently_assigned=TRUE richiede independence_mechanism esplicito"
+            )
+        for field_name, value in (
+            ("independence_mechanism", self.independence_mechanism),
+            ("source_biological_preparation", self.source_biological_preparation),
+            ("allocation_event_id", self.allocation_event_id),
+            ("allocation_timing", self.allocation_timing),
+        ):
+            if value is not None and not value.strip():
+                raise ValueError(f"{field_name} non puo essere vuoto")
         return self
 
 
@@ -824,6 +1367,159 @@ class Hierarchy(NTruthModel):
         return [r for r in self.relations if r.type is rel_type]
 
 
+class GraphAlternativeConsequence(NTruthModel):
+    """Conseguenza scope-aware di un singolo grafo plausibile.
+
+    Il testo esplicita l'effetto scientifico dell'alternativa; i campi
+    strutturati rendono pubblicabili EU e ``n`` soltanto *dentro* quel ramo,
+    mai come risposta unica del blocco.
+    """
+
+    id: str
+    scope: NScope
+    description: str
+    experimental_unit: NodeType | None = None
+    n_independent: StrictInt | None = Field(default=None, ge=0)
+    n_independent_by_group: dict[str, StrictInt] = Field(default_factory=dict)
+    evidence_ids: tuple[str, ...] = Field(min_length=1)
+    provenance: Provenance
+
+    @model_validator(mode="after")
+    def _is_materialized_and_traceable(self) -> Self:
+        if not self.id.strip():
+            raise ValueError("conseguenza di grafo alternativo senza id")
+        if not self.description.strip():
+            raise ValueError("conseguenza di grafo alternativo senza descrizione")
+        if len(self.evidence_ids) != len(set(self.evidence_ids)):
+            raise ValueError("conseguenza di grafo alternativo con evidence_ids duplicati")
+        if not set(self.evidence_ids).issubset(self.provenance.evidence_ids):
+            raise ValueError("evidence_ids della conseguenza assenti dalla provenance")
+        if self.provenance.origin is ProvenanceKind.MODEL:
+            raise ValueError("una conseguenza core non puo avere autorita model")
+        if any(not group.strip() for group in self.n_independent_by_group):
+            raise ValueError("n_independent_by_group contiene un gruppo vuoto")
+        if any(value < 0 for value in self.n_independent_by_group.values()):
+            raise ValueError("n_independent_by_group contiene un valore negativo")
+        if (
+            self.n_independent is not None or self.n_independent_by_group
+        ) and self.experimental_unit is None:
+            raise ValueError("un n alternativo richiede experimental_unit nel medesimo ramo")
+        return self
+
+    def scientific_signature(self) -> str:
+        """Firma strutturata, priva di ID, narrativa e lineage non scientifica."""
+
+        return content_checksum(
+            {
+                "scope": self.scope.model_dump(mode="json"),
+                "experimental_unit": (
+                    self.experimental_unit.value if self.experimental_unit is not None else None
+                ),
+                "n_independent": self.n_independent,
+                "n_independent_by_group": self.n_independent_by_group,
+            }
+        )
+
+
+class PlausibleGraphAlternative(NTruthModel):
+    """Un grafo completo mantenuto come alternativa, senza ranking o scelta."""
+
+    id: str
+    label: str
+    hierarchy: Hierarchy
+    consequences: tuple[GraphAlternativeConsequence, ...] = Field(min_length=1)
+    evidence_ids: tuple[str, ...] = Field(min_length=1)
+    provenance: Provenance
+
+    @model_validator(mode="after")
+    def _is_distinct_and_traceable(self) -> Self:
+        if not self.id.strip():
+            raise ValueError("grafo alternativo senza id")
+        if not self.label.strip():
+            raise ValueError("grafo alternativo senza label")
+        if not self.hierarchy.nodes:
+            raise ValueError("grafo alternativo senza nodi")
+        consequence_ids = [item.id for item in self.consequences]
+        if len(consequence_ids) != len(set(consequence_ids)):
+            raise ValueError("grafo alternativo con consequence id duplicati")
+        if len(self.evidence_ids) != len(set(self.evidence_ids)):
+            raise ValueError("grafo alternativo con evidence_ids duplicati")
+        if not set(self.evidence_ids).issubset(self.provenance.evidence_ids):
+            raise ValueError("evidence_ids del grafo alternativo assenti dalla provenance")
+        if self.provenance.origin is ProvenanceKind.MODEL:
+            raise ValueError("un grafo alternativo core non puo avere autorita model")
+        return self
+
+    def scientific_signature(self) -> str:
+        """Firma topologica e delle conseguenze, esclusi ID, confidence e lineage."""
+
+        node_payload_by_id = {
+            node.id: {
+                "type": node.type.value,
+                "label": " ".join(node.label.casefold().split()),
+                "count": node.count,
+                "attributes": node.attributes,
+            }
+            for node in self.hierarchy.nodes
+        }
+        node_signatures = {
+            node_id: content_checksum(payload) for node_id, payload in node_payload_by_id.items()
+        }
+        relation_payloads = [
+            {
+                "type": relation.type.value,
+                "source": node_signatures.get(relation.source, f"missing:{relation.source}"),
+                "target": node_signatures.get(relation.target, f"missing:{relation.target}"),
+                "attributes": relation.attributes,
+            }
+            for relation in self.hierarchy.relations
+        ]
+        return content_checksum(
+            {
+                "nodes": sorted(
+                    node_payload_by_id.values(),
+                    key=content_checksum,
+                ),
+                "relations": sorted(relation_payloads, key=content_checksum),
+                "consequences": sorted(item.scientific_signature() for item in self.consequences),
+            }
+        )
+
+
+class PlausibleGraphSet(NTruthModel):
+    """Almeno due grafi scientificamente distinti compatibili con l'evidenza.
+
+    La domanda e un riferimento a ``ExperimentBlock.questions``: in questo modo
+    resta un solo oggetto correggibile e auditabile, marcato ``decisive``.
+    """
+
+    id: str
+    alternatives: tuple[PlausibleGraphAlternative, ...] = Field(min_length=2)
+    discriminating_question_id: str
+    evidence_ids: tuple[str, ...] = Field(min_length=1)
+    provenance: Provenance
+
+    @model_validator(mode="after")
+    def _contains_real_alternatives(self) -> Self:
+        if not self.id.strip():
+            raise ValueError("plausible graph set senza id")
+        if not self.discriminating_question_id.strip():
+            raise ValueError("plausible graph set senza domanda discriminante")
+        alternative_ids = [item.id for item in self.alternatives]
+        if len(alternative_ids) != len(set(alternative_ids)):
+            raise ValueError("plausible graph set con alternative id duplicate")
+        signatures = [item.scientific_signature() for item in self.alternatives]
+        if len(signatures) != len(set(signatures)):
+            raise ValueError("plausible graph set con alternative scientificamente duplicate")
+        if len(self.evidence_ids) != len(set(self.evidence_ids)):
+            raise ValueError("plausible graph set con evidence_ids duplicati")
+        if not set(self.evidence_ids).issubset(self.provenance.evidence_ids):
+            raise ValueError("evidence_ids del plausible graph set assenti dalla provenance")
+        if self.provenance.origin is ProvenanceKind.MODEL:
+            raise ValueError("un plausible graph set core non puo avere autorita model")
+        return self
+
+
 class Versions(NTruthModel):
     """Versioni riportate in ogni report (PRD FR-034)."""
 
@@ -850,8 +1546,15 @@ class ExperimentBlock(NTruthModel):
     estimands: tuple[Estimand, ...] = ()
     models: tuple[StatisticalModelFact, ...] = ()
     processes: tuple[ProcessFact, ...] = ()
+    graph_status: GraphStatus = GraphStatus.CANDIDATE
     hierarchy: Hierarchy = Field(default_factory=Hierarchy)
+    plausible_graph_set: PlausibleGraphSet | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+    )
     n_statements: tuple[NStatement, ...] = ()
+    count_records: tuple[CountRecord, ...] = ()
+    exclusion_records: tuple[ExclusionRecord, ...] = ()
     unit_assessments: tuple[UnitAssessment, ...] = ()
     alerts: tuple[Alert, ...] = ()
     questions: tuple[Question, ...] = ()
@@ -860,9 +1563,27 @@ class ExperimentBlock(NTruthModel):
     evidence: tuple[EvidenceSpan, ...] = ()
     mentions: tuple[Mention, ...] = ()
     coreference_links: tuple[CoreferenceLink, ...] = ()
-    determinability: Determinability = Determinability.INDETERMINATE
+    determinability: Determinability = Determinability.INSUFFICIENT_INFORMATION
     versions: Versions
     corrections: tuple[Correction, ...] = ()
+
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate_legacy_counts(cls, data: object) -> object:
+        if not isinstance(data, Mapping):
+            return data
+        payload = dict(data)
+        # Un payload realmente legacy non contiene il campo canonico. Quando
+        # entrambi sono espliciti, CountRecord e autorevole: puo essere corretto
+        # e il ricalcolo rigenera l'adapter NStatement senza sovrascriverlo nel
+        # model validator.
+        if payload.get("n_statements") and "count_records" not in payload:
+            legacy = tuple(
+                item if isinstance(item, NStatement) else NStatement.model_validate(item)
+                for item in payload["n_statements"]
+            )
+            payload["count_records"] = tuple(CountRecord.from_legacy(item) for item in legacy)
+        return payload
 
     @model_validator(mode="after")
     def _validate_local_references(self) -> Self:
@@ -877,6 +1598,91 @@ class ExperimentBlock(NTruthModel):
         endpoint_ids = {endpoint.id for endpoint in self.endpoints}
         estimand_ids = {estimand.id for estimand in self.estimands}
         evidence_ids = {evidence.id for evidence in self.evidence}
+        question_ids = {question.id for question in self.questions}
+
+        if self.plausible_graph_set is not None:
+            graph_set = self.plausible_graph_set
+            if self.graph_status is not GraphStatus.CONDITIONAL:
+                raise ValueError("plausible_graph_set richiede graph_status=conditional")
+            if graph_set.discriminating_question_id not in question_ids:
+                raise ValueError(
+                    "plausible_graph_set riferisce una domanda discriminante sconosciuta"
+                )
+            discriminating_question = next(
+                question
+                for question in self.questions
+                if question.id == graph_set.discriminating_question_id
+            )
+            if not discriminating_question.decisive:
+                raise ValueError("la domanda discriminante deve avere decisive=true")
+
+            traceable_objects = [
+                ("plausible graph set", graph_set.id, graph_set.evidence_ids, graph_set.provenance),
+                *(
+                    (
+                        "grafo alternativo",
+                        alternative.id,
+                        alternative.evidence_ids,
+                        alternative.provenance,
+                    )
+                    for alternative in graph_set.alternatives
+                ),
+                *(
+                    (
+                        "conseguenza di grafo alternativo",
+                        consequence.id,
+                        consequence.evidence_ids,
+                        consequence.provenance,
+                    )
+                    for alternative in graph_set.alternatives
+                    for consequence in alternative.consequences
+                ),
+                *(
+                    ("nodo di grafo alternativo", node.id, node.evidence_ids, node.provenance)
+                    for alternative in graph_set.alternatives
+                    for node in alternative.hierarchy.nodes
+                ),
+                *(
+                    (
+                        "relazione di grafo alternativo",
+                        relation.id,
+                        relation.evidence_ids,
+                        relation.provenance,
+                    )
+                    for alternative in graph_set.alternatives
+                    for relation in alternative.hierarchy.relations
+                ),
+            ]
+            for kind, owner_id, direct_evidence, provenance in traceable_objects:
+                unknown_evidence = (
+                    set(direct_evidence) | set(provenance.evidence_ids)
+                ) - evidence_ids
+                if unknown_evidence:
+                    raise ValueError(
+                        f"{kind} {owner_id}: evidence refs sconosciuti {unknown_evidence}"
+                    )
+
+        count_ids = {record.count_id for record in self.count_records}
+        if len(count_ids) != len(self.count_records):
+            raise ValueError("count_records contiene count_id duplicati")
+        for count in self.count_records:
+            unknown_evidence = set(count.evidence_ids) - evidence_ids
+            if unknown_evidence:
+                raise ValueError(
+                    f"count {count.count_id}: evidence refs sconosciuti {unknown_evidence}"
+                )
+            if count.scope.factor_id is not None and count.scope.factor_id not in factor_ids:
+                raise ValueError(
+                    f"count {count.count_id}: factor ref sconosciuto {count.scope.factor_id}"
+                )
+            if count.scope.contrast_id is not None and count.scope.contrast_id not in contrast_ids:
+                raise ValueError(
+                    f"count {count.count_id}: contrast ref sconosciuto {count.scope.contrast_id}"
+                )
+            if count.scope.endpoint_id is not None and count.scope.endpoint_id not in endpoint_ids:
+                raise ValueError(
+                    f"count {count.count_id}: endpoint ref sconosciuto {count.scope.endpoint_id}"
+                )
 
         if len(estimand_ids) != len(self.estimands):
             raise ValueError("estimands contiene ID duplicati")
@@ -906,6 +1712,28 @@ class ExperimentBlock(NTruthModel):
                     raise ValueError(
                         f"{label} {fact.id}: evidence refs sconosciuti {unknown_evidence}"
                     )
+
+        exclusion_ids = {record.id for record in self.exclusion_records}
+        if len(exclusion_ids) != len(self.exclusion_records):
+            raise ValueError("exclusion_records contiene ID duplicati")
+        for exclusion in self.exclusion_records:
+            unknown_evidence = set(exclusion.evidence_ids) - evidence_ids
+            if unknown_evidence:
+                raise ValueError(
+                    f"exclusion {exclusion.id}: evidence refs sconosciuti {unknown_evidence}"
+                )
+            if exclusion.factor_id is not None and exclusion.factor_id not in factor_ids:
+                raise ValueError(
+                    f"exclusion {exclusion.id}: factor ref sconosciuto {exclusion.factor_id}"
+                )
+            if exclusion.contrast_id is not None and exclusion.contrast_id not in contrast_ids:
+                raise ValueError(
+                    f"exclusion {exclusion.id}: contrast ref sconosciuto {exclusion.contrast_id}"
+                )
+            if exclusion.endpoint_id is not None and exclusion.endpoint_id not in endpoint_ids:
+                raise ValueError(
+                    f"exclusion {exclusion.id}: endpoint ref sconosciuto {exclusion.endpoint_id}"
+                )
 
         for target in self.inference_targets:
             unknown_factors = set(target.factor_ids) - factor_ids
@@ -953,6 +1781,15 @@ class ExperimentBlock(NTruthModel):
             *((item.id, item.scope) for item in self.unit_assessments),
             *((item.id, item.scope) for item in self.alerts),
             *((item.id, item.scope) for item in self.questions),
+            *(
+                (item.id, item.scope)
+                for alternative in (
+                    self.plausible_graph_set.alternatives
+                    if self.plausible_graph_set is not None
+                    else ()
+                )
+                for item in alternative.consequences
+            ),
         ]
         for item_id, scope in scoped_references:
             scoped_target_id = scope.inference_target_id if scope is not None else None

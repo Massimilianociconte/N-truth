@@ -144,10 +144,24 @@ class Ruleset(NTruthModel):
         return [r for r in self.rules if r.enabled and (not wanted or r.domain in wanted)]
 
 
+class PremiseTrace(NTruthModel):
+    """Legame machine-readable tra una premessa, i fatti e le evidenze usate."""
+
+    expression: str
+    result: bool | None
+    fact_ids: tuple[str, ...] = ()
+    evidence_ids: tuple[str, ...] = ()
+    provenance_origins: tuple[str, ...] = ()
+
+
 class RuleEvaluation(NTruthModel):
     """Traccia della valutazione, anche quando la regola non scatta (auditabilita)."""
 
     rule_id: str
+    rule_version: str = ""
+    ruleset_id: str = ""
+    ruleset_version: str = ""
+    ruleset_checksum: str = ""
     outcome: RuleOutcome
     matched: tuple[str, ...] = ()
     failed: tuple[str, ...] = ()
@@ -155,6 +169,9 @@ class RuleEvaluation(NTruthModel):
     triggered_abstention: str | None = None
     unknown_predicates: tuple[str, ...] = Field(default=())
     scope_label: str = ""
+    premise_trace: tuple[PremiseTrace, ...] = ()
+    evidence_gap: tuple[str, ...] = ()
+    output_ids: tuple[str, ...] = ()
 
 
 def normalize_predicate(expr: str) -> str:

@@ -3,7 +3,8 @@
   "description": "Trattamento alla madre e outcome sui cuccioli: unita = madre/cucciolata, cuccioli annidati.",
   "factor": "treatment",
   "expect": {
-    "experimental_unit": "Dam",
+    "allocation_unit_candidate": "Dam",
+    "experimental_unit": null,
     "observational_unit": "Animal",
     "analytical_unit": "Animal",
     "n_declared": 48,
@@ -11,10 +12,10 @@
     "n_allocated": 8,
     "n_independent": null,
     "inferability": "requires_confirmation",
-    "risk": "likely_pseudoreplication",
+    "risk": "insufficient_information",
     "alerts_include": [
-      "ANI-001",
       "GEN-002",
+      "GEN-004",
       "GEN-010"
     ],
     "alerts_exclude": [],

@@ -117,6 +117,14 @@ ul.plain { padding-left:1.1rem; }
 
 {% for block in report.blocks %}
 <h2>Blocco: {{ block.title }}</h2>
+{% set positive = report.positive_outputs.get(block.id) %}
+{% set verifier = report.verifier_results.get(block.id) %}
+<div class="card">
+  <span class="badge">graph_status={{ block.graph_status.value }}</span>
+  <span class="badge">determinability={{ positive.determinability.value if positive else block.determinability.value }}</span>
+  <span class="badge">verifier={{ verifier.status if verifier else "not_available" }}</span>
+  <p class="sub">Il graph status distingue candidate, conferma umana, alternativa condizionale e grafo invalido; non e una certificazione scientifica.</p>
+</div>
 
 <h3>Fattori, allocazione e applicazione</h3>
 {% if block.factors %}
@@ -190,7 +198,6 @@ ul.plain { padding-left:1.1rem; }
 <p class="sub">Esito del design compiler non disponibile in questo report legacy.</p>
 {% endif %}
 
-{% set positive = report.positive_outputs.get(block.id) %}
 {% if positive %}
 <h3>Percorso positivo e bozza Methods</h3>
 <div class="card">
@@ -208,6 +215,54 @@ ul.plain { padding-left:1.1rem; }
   {% endif %}
 </div>
 
+{% if positive.plausible_graph_set %}
+<details open class="conditional-branches plausible-graphs">
+  <summary>Grafi alternativi plausibili ({{ positive.plausible_graph_set.alternatives | length }})</summary>
+  <p class="sub">Nessuna alternativa e selezionata automaticamente.</p>
+  <div class="card">
+    <p><strong>Domanda discriminante:</strong> {{ positive.discriminating_question.text }}</p>
+    <p class="sub">{{ positive.discriminating_question.reason }}</p>
+    <dl class="kv">
+      <dt>Graph set</dt><dd class="mono">{{ positive.plausible_graph_set.id }}</dd>
+      <dt>Evidenze</dt><dd class="mono">{{ positive.plausible_graph_set.evidence_ids | join(", ") }}</dd>
+      <dt>Provenance</dt><dd>{{ positive.plausible_graph_set.provenance.origin.value }}</dd>
+    </dl>
+  </div>
+  {% for alternative in positive.plausible_graph_set.alternatives %}
+  <div class="card alternative-graph">
+    <h3>{{ alternative.label }}</h3>
+    <p class="sub">Alternativa <span class="mono">{{ alternative.id }}</span> ·
+      {{ alternative.hierarchy.nodes | length }} nodi ·
+      {{ alternative.hierarchy.relations | length }} relazioni ·
+      provenance {{ alternative.provenance.origin.value }}</p>
+    <div class="scroll"><table>
+      <tr><th>Nodo</th><th>Tipo</th><th>Conteggio</th></tr>
+      {% for node in alternative.hierarchy.nodes %}
+      <tr><td>{{ node.label }}</td><td>{{ node.type.value }}</td>
+        <td>{{ node.count if node.count is not none else "non riportato" }}</td></tr>
+      {% endfor %}
+    </table></div>
+    <h3>Conseguenze del ramo</h3>
+    {% for consequence in alternative.consequences %}
+    <div class="layer">
+      <p>{{ consequence.description }}</p>
+      <dl class="kv">
+        <dt>Scope</dt><dd>{{ consequence.scope.describe() }}</dd>
+        <dt>Unita sperimentale</dt><dd>{{ consequence.experimental_unit.value if consequence.experimental_unit else "non determinata" }}</dd>
+        <dt>n indipendente</dt><dd>{{ consequence.n_independent if consequence.n_independent is not none else "non unico" }}</dd>
+        <dt>n per gruppo</dt>
+        <dd>{% if consequence.n_independent_by_group %}{% for group, value in consequence.n_independent_by_group | dictsort %}{{ group }}={{ value }}{% if not loop.last %}; {% endif %}{% endfor %}{% else %}non specificato{% endif %}</dd>
+        <dt>Evidenze</dt><dd class="mono">{{ consequence.evidence_ids | join(", ") }}</dd>
+        <dt>Provenance</dt><dd>{{ consequence.provenance.origin.value }}</dd>
+      </dl>
+    </div>
+    {% endfor %}
+    <p class="sub">Evidenze del grafo: <span class="mono">{{ alternative.evidence_ids | join(", ") }}</span></p>
+  </div>
+  {% endfor %}
+</details>
+{% endif %}
+
 <details>
   <summary>Checklist DRIVER informativa (non certificante)</summary>
   <div class="scroll"><table>
@@ -220,11 +275,76 @@ ul.plain { padding-left:1.1rem; }
 </details>
 
 <details>
-  <summary>Fatti, inferenze, ipotesi e limiti</summary>
+  <summary>Fatti, asserzioni, inferenze, ipotesi e limiti</summary>
   {% for statement in positive.statements %}
   <div class="layer"><span class="badge">{{ statement.layer.value }}</span> {{ statement.text }}</div>
   {% endfor %}
 </details>
+
+{% set scenario_count = namespace(value=0) %}
+{% for row in positive.n_table %}
+  {% set scenario_count.value = scenario_count.value + (row.conditional_scenarios | length) %}
+{% endfor %}
+{% if scenario_count.value %}
+<details open class="conditional-branches">
+  <summary>Scenari condizionali if/then ({{ scenario_count.value }})</summary>
+  <p class="sub">Ogni ramo resta alternativo finche la domanda decisiva non riceve conferma auditabile.</p>
+  {% for row in positive.n_table %}
+  {% for scenario in row.conditional_scenarios %}
+  <div class="card">
+    <p><strong>Condizione:</strong> <span class="mono">{{ scenario.conditional_on }}</span></p>
+    <p><strong>Domanda decisiva:</strong> {{ scenario.question }}</p>
+    <dl class="kv">
+      <dt>Se confermata</dt>
+      <dd>{% for label, value in scenario.if_confirmed | dictsort %}{{ label }}={{ value }}{% if not loop.last %}; {% endif %}{% endfor %}</dd>
+      <dt>Se rifiutata</dt>
+      <dd>{% for label, value in scenario.if_rejected | dictsort %}{{ label }}={{ value }}{% if not loop.last %}; {% endif %}{% endfor %}</dd>
+      <dt>Regola</dt><dd><span class="mono">{{ scenario.rule_id }}</span></dd>
+      <dt>Evidenze</dt><dd>{{ scenario.evidence_ids | join(", ") if scenario.evidence_ids else "nessuna evidenza conclusiva" }}</dd>
+    </dl>
+  </div>
+  {% endfor %}
+  {% endfor %}
+</details>
+{% endif %}
+{% endif %}
+
+{% if positive %}
+{% if positive.count_records %}
+<details>
+  <summary>Registro canonico dei conteggi fisici ({{ positive.count_records | length }})</summary>
+  <div class="scroll"><table>
+    <tr><th>Tipo</th><th>Quantificatore</th><th>Valore</th><th>Scope</th><th>Evidenze</th></tr>
+    {% for count in positive.count_records %}
+    <tr>
+      <td>{{ count.kind.value }}</td>
+      <td>{{ count.quantifier.value }}</td>
+      <td>{% if count.value is not none %}{{ count.value }}{% elif count.lower_bound is not none or count.upper_bound is not none %}{{ count.lower_bound if count.lower_bound is not none else "—" }} - {{ count.upper_bound if count.upper_bound is not none else "—" }}{% else %}non riportato{% endif %}</td>
+      <td>{{ count.scope.unit_type.value if count.scope.unit_type else "unita non risolta" }} · {{ count.scope.group_or_level or "gruppo non risolto" }} · {{ count.scope.lifecycle.value if count.scope.lifecycle else "fase non risolta" }}</td>
+      <td class="mono">{{ count.evidence_ids | join(", ") }}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+</details>
+{% endif %}
+
+{% if positive.diagnostic_count_records %}
+<details open class="diagnostic-counts">
+  <summary>Diagnostica statistica separata — non replication ({{ positive.diagnostic_count_records | length }})</summary>
+  <p class="sub">Questi valori, incluso effective_n, non sono conteggi fisici e non possono aumentare il numero di unita sperimentali indipendenti.</p>
+  <div class="scroll"><table>
+    <tr><th>Diagnostica</th><th>Valore</th><th>Scope</th><th>Evidenze</th></tr>
+    {% for count in positive.diagnostic_count_records %}
+    <tr>
+      <td>{{ count.kind.value }}</td>
+      <td>{{ count.value if count.value is not none else "non riportato" }}</td>
+      <td>{{ count.scope.unit_type.value if count.scope.unit_type else "unita non risolta" }} · {{ count.scope.group_or_level or "gruppo non risolto" }}</td>
+      <td class="mono">{{ count.evidence_ids | join(", ") }}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+</details>
+{% endif %}
 {% endif %}
 
 <h3>Unita e n per scope</h3>
@@ -294,6 +414,25 @@ ul.plain { padding-left:1.1rem; }
 <p class="sub">Nessun alert generato dal ruleset attivo.</p>
 {% endif %}
 
+{% set evaluations = report.rule_evaluations.get(block.id, ()) %}
+<h3>Traccia completa delle regole</h3>
+{% if evaluations %}
+<div class="scroll"><table>
+  <tr><th>Regola</th><th>Outcome</th><th>Scope</th><th>Premesse</th><th>Gap / astensione</th></tr>
+  {% for evaluation in evaluations %}
+  <tr>
+    <td class="mono">{{ evaluation.rule_id }}@{{ evaluation.rule_version }}</td>
+    <td>{{ evaluation.outcome.value }}</td>
+    <td>{{ evaluation.scope_label or "scope non specificato" }}</td>
+    <td>{% for premise in evaluation.premise_trace %}<code>{{ premise.expression }}={{ premise.result }}</code>{% if not loop.last %}<br>{% endif %}{% endfor %}</td>
+    <td>{{ evaluation.triggered_abstention or evaluation.triggered_exception or (evaluation.evidence_gap | join("; ")) or "—" }}</td>
+  </tr>
+  {% endfor %}
+</table></div>
+{% else %}
+<p class="sub">Nessuna valutazione di regola disponibile (report legacy o verificatore bloccante).</p>
+{% endif %}
+
 <h3>Gerarchia ricostruita</h3>
 <div class="scroll">
 <table>
@@ -304,6 +443,19 @@ ul.plain { padding-left:1.1rem; }
 {% endfor %}
 </table>
 </div>
+
+<details>
+  <summary>Grafo con layer, provenance ed evidenze</summary>
+  <div class="scroll"><table>
+    <tr><th>Elemento</th><th>Tipo</th><th>Da / a</th><th>Layer provenance</th><th>Evidenze</th><th>Derivazione</th></tr>
+    {% for node in block.hierarchy.nodes %}
+    <tr><td>{{ node.label }}<br><span class="mono">{{ node.id }}</span></td><td>{{ node.type.value }}</td><td>—</td><td>{{ node.provenance.origin.value }}</td><td class="mono">{{ node.evidence_ids | join(", ") if node.evidence_ids else "—" }}</td><td>{{ node.provenance.derivation or "—" }}</td></tr>
+    {% endfor %}
+    {% for relation in block.hierarchy.relations %}
+    <tr><td class="mono">{{ relation.id }}</td><td>{{ relation.type.value }}</td><td class="mono">{{ relation.source }} → {{ relation.target }}</td><td>{{ relation.provenance.origin.value }}</td><td class="mono">{{ relation.evidence_ids | join(", ") if relation.evidence_ids else "—" }}</td><td>{{ relation.provenance.derivation or "—" }}</td></tr>
+    {% endfor %}
+  </table></div>
+</details>
 
 {% if block.n_statements %}
 <h3>Menzioni di n nel materiale</h3>
@@ -325,11 +477,21 @@ ul.plain { padding-left:1.1rem; }
 
 {% if block.contradictions %}
 <h3>Contraddizioni</h3>
-<ul class="plain">
+<div class="conditional-branches">
 {% for c in block.contradictions %}
-<li>{{ c.description }} <span class="sub">({{ c.status }})</span></li>
+<div class="card">
+  <p><strong>{{ c.description }}</strong> <span class="badge">{{ c.status }}</span></p>
+  <p><strong>Interpretazioni trattenute:</strong></p>
+  <ul class="plain">
+  {% for interpretation in c.retained_interpretations %}<li>{{ interpretation }}</li>{% endfor %}
+  </ul>
+  <dl class="kv">
+    <dt>Statement ID</dt><dd>{{ c.statement_ids | join(", ") if c.statement_ids else "—" }}</dd>
+    <dt>Evidenze</dt><dd class="mono">{{ locator_of(block, c.evidence_ids) if c.evidence_ids else "record umano auditabile" }}</dd>
+  </dl>
+</div>
 {% endfor %}
-</ul>
+</div>
 {% endif %}
 
 {% if block.questions %}

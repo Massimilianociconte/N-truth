@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import pytest
 
 from ntruth.graph.validation import (
@@ -11,7 +13,7 @@ from ntruth.graph.validation import (
     validate_experiment_block,
     validate_hierarchy,
 )
-from ntruth.schemas.core import Provenance, ProvenanceKind
+from ntruth.schemas.core import EvidenceSpan, Provenance, ProvenanceKind
 from ntruth.schemas.experiment import (
     Contrast,
     ExperimentBlock,
@@ -25,7 +27,10 @@ from ntruth.schemas.graph import GraphNode, GraphRelation, NodeType, RelationTyp
 
 
 def _provenance() -> Provenance:
-    return Provenance(origin=ProvenanceKind.EXPLICIT)
+    return Provenance(
+        origin=ProvenanceKind.DERIVED,
+        derivation="synthetic structural-validation fixture",
+    )
 
 
 def _node(node_id: str, node_type: NodeType) -> GraphNode:
@@ -187,3 +192,83 @@ def test_missing_evidence_references_are_rejected() -> None:
         versions=_versions(),
     )
     assert "dangling_evidence" in {item.code for item in validate_experiment_block(block)}
+
+
+def test_graph_provenance_matrix_fails_closed_for_untraceable_origins() -> None:
+    explicit = GraphNode(
+        id="explicit-without-source",
+        type=NodeType.ANIMAL,
+        label="animal",
+        provenance=Provenance(origin=ProvenanceKind.EXPLICIT),
+    )
+    derived = GraphNode(
+        id="derived-without-derivation",
+        type=NodeType.CELL,
+        label="cell",
+        provenance=Provenance(origin=ProvenanceKind.DERIVED),
+    )
+    incomplete_correction = GraphNode(
+        id="human-without-timestamp",
+        type=NodeType.WELL,
+        label="well",
+        provenance=Provenance(
+            origin=ProvenanceKind.USER,
+            actor_role="wet_lab_reviewer",
+            correction_id="correction-1",
+        ),
+    )
+    block = ExperimentBlock(
+        id="block-provenance-invalid",
+        document_id="document-provenance-invalid",
+        hierarchy=Hierarchy(nodes=(explicit, derived, incomplete_correction)),
+        versions=_versions(),
+    )
+
+    codes = {item.code for item in validate_experiment_block(block)}
+
+    assert {
+        "source_graph_element_without_evidence",
+        "derived_graph_element_without_derivation",
+        "human_graph_element_without_audit",
+    } <= codes
+
+
+def test_initial_human_graph_confirmation_with_local_evidence_is_traceable() -> None:
+    evidence = EvidenceSpan(id="ev-human", file_id="file-1", text="Reviewer source")
+    node = GraphNode(
+        id="human-confirmed",
+        type=NodeType.ANIMAL,
+        label="animal",
+        evidence_ids=(evidence.id,),
+        provenance=Provenance(
+            origin=ProvenanceKind.USER,
+            evidence_ids=(evidence.id,),
+            actor_role="wet_lab_reviewer",
+        ),
+    )
+    corrected = node.model_copy(
+        update={
+            "id": "human-corrected",
+            "provenance": node.provenance.model_copy(
+                update={
+                    "correction_id": "correction-2",
+                    "correction_role": "wet_lab_reviewer",
+                    "timestamp": datetime(2026, 8, 1, tzinfo=UTC),
+                }
+            ),
+        }
+    )
+    block = ExperimentBlock(
+        id="block-provenance-valid",
+        document_id="document-provenance-valid",
+        evidence=(evidence,),
+        hierarchy=Hierarchy(nodes=(node, corrected)),
+        versions=_versions(),
+    )
+
+    provenance_codes = {
+        item.code
+        for item in validate_experiment_block(block)
+        if "provenance" in item.code or "audit" in item.code or "trace" in item.code
+    }
+    assert provenance_codes == set()

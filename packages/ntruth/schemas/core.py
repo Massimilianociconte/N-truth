@@ -38,7 +38,7 @@ class ProvenanceKind(StrEnum):
 
 
 class EvidenceType(StrEnum):
-    """Classificazione dell'evidenza prevista dal PRD v3, sezione 9.1.
+    """Classificazione dell'evidenza prevista dal PRD v6, sezione 9.
 
     I valori restano maiuscoli per coincidere con il contratto di scambio del
     parser AI e con i template di annotazione. ``None`` sui modelli che usano
@@ -47,9 +47,12 @@ class EvidenceType(StrEnum):
     """
 
     STRUCTURAL_FACT = "STRUCTURAL_FACT"
+    PROCEDURAL_EVENT = "PROCEDURAL_EVENT"
     AUTHOR_ASSERTION = "AUTHOR_ASSERTION"
     SAMPLE_METADATA = "SAMPLE_METADATA"
+    IMAGE_METADATA = "IMAGE_METADATA"
     STATISTICAL_CODE = "STATISTICAL_CODE"
+    REVIEW_COMMENT = "REVIEW_COMMENT"
     USER_CONFIRMATION = "USER_CONFIRMATION"
     MODEL_INFERENCE = "MODEL_INFERENCE"
     DERIVED_FACT = "DERIVED_FACT"
@@ -65,12 +68,37 @@ class AlertClass(StrEnum):
 
 
 class Determinability(StrEnum):
-    """Stato della ricostruzione del disegno, distinto dalla confidence."""
+    """Tabella normativa ``DeterminabilityState`` del PRD v6.
+
+    Lo stato e derivato dai fatti confermati e dagli invarianti, mai scelto dal
+    parser o usato come proxy della confidence. ``INDETERMINATE`` resta soltanto
+    un alias Python di migrazione: serializzazione ed export usano sempre
+    ``INSUFFICIENT_INFORMATION``.
+    """
 
     DETERMINATE = "DETERMINATE"
+    CONDITIONALLY_DETERMINATE = "CONDITIONALLY_DETERMINATE"
     MULTIPLE_PLAUSIBLE_GRAPHS = "MULTIPLE_PLAUSIBLE_GRAPHS"
-    INDETERMINATE = "INDETERMINATE"
+    INSUFFICIENT_INFORMATION = "INSUFFICIENT_INFORMATION"
     CONFLICTING_INFORMATION = "CONFLICTING_INFORMATION"
+    INVALID_GRAPH = "INVALID_GRAPH"
+    OUT_OF_SCOPE = "OUT_OF_SCOPE"
+
+    # Compatibilita sorgente con il contratto v3. Essendo un alias dello stesso
+    # valore, non puo comparire come ottavo stato in uno schema o in un export.
+    INDETERMINATE = "INSUFFICIENT_INFORMATION"
+
+    @classmethod
+    def _missing_(cls, value: object) -> Determinability | None:
+        """Legge payload v3 senza perpetuare il valore legacy negli output."""
+
+        if value == "INDETERMINATE":
+            return cls.INSUFFICIENT_INFORMATION
+        return None
+
+
+# Nome esplicito usato dal PRD v6; l'alias evita due enum quasi uguali.
+DeterminabilityState = Determinability
 
 
 class Confidence(StrEnum):
@@ -156,6 +184,10 @@ class Provenance(FrozenModel):
     derivation: str | None = None  # spiegazione breve del passaggio deterministico
     actor_role: str | None = None  # ruolo, mai identita personale (PRD 12.4)
     correction_role: str | None = None
+    correction_id: str | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+    )
 
     @property
     def is_candidate(self) -> bool:

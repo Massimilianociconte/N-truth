@@ -28,8 +28,18 @@ def _record(
     source_key: str | None = None,
     requested_split: CorpusSplit | None = None,
     laboratory_id: str | None = None,
+    training_eligible: bool | None = None,
+    evaluation_eligible: bool | None = None,
 ) -> SupervisedRecord:
     source = source_key or record_id
+    protected_split = requested_split in {
+        CorpusSplit.TEST,
+        CorpusSplit.EXTERNAL_CHALLENGE,
+    }
+    if training_eligible is None:
+        training_eligible = not protected_split
+    if evaluation_eligible is None:
+        evaluation_eligible = protected_split
     return SupervisedRecord(
         record_id=record_id,
         task="parser_ai_v2",
@@ -49,7 +59,8 @@ def _record(
             reviewer_roles=("wet-lab", "biostatistics"),
         ),
         annotation_status=AnnotationStatus.DOUBLE_REVIEWED,
-        training_eligible=True,
+        training_eligible=training_eligible,
+        evaluation_eligible=evaluation_eligible,
         requested_split=requested_split,
     )
 
@@ -94,7 +105,7 @@ def test_near_duplicates_with_incompatible_requested_splits_fail_before_selectio
             "z-external",
             "one two three four five six seven eight nine eleven",
             target=target,
-            requested_split=CorpusSplit.EXTERNAL,
+            requested_split=CorpusSplit.EXTERNAL_CHALLENGE,
         ),
     )
     config = PreparationConfig(shingle_size=2, near_duplicate_threshold=0.8)
@@ -148,6 +159,8 @@ def test_near_duplicate_inputs_with_different_targets_are_kept_in_one_leakage_gr
         "z-cage",
         "one two three four five six seven eight nine eleven",
         target={"independent_unit": "cage"},
+        training_eligible=False,
+        evaluation_eligible=True,
     )
     config = PreparationConfig(shingle_size=1, near_duplicate_threshold=0.8)
 
@@ -191,6 +204,8 @@ def test_exact_duplicate_propagates_test_constraint_and_removed_source_identity(
             duplicate_text,
             target=duplicate_target,
             source_key="canonical-source",
+            training_eligible=False,
+            evaluation_eligible=True,
         ),
         _record(
             "z-duplicate-test",
@@ -204,6 +219,8 @@ def test_exact_duplicate_propagates_test_constraint_and_removed_source_identity(
             "A second endpoint was measured on those same four cages.",
             target={"endpoint": "secondary"},
             source_key="restricted-source",
+            training_eligible=False,
+            evaluation_eligible=True,
         ),
     )
 
@@ -225,13 +242,15 @@ def test_near_duplicate_propagates_external_constraint_through_laboratory_identi
             "one two three four five six seven eight nine ten",
             target=target,
             source_key="canonical-source",
+            training_eligible=False,
+            evaluation_eligible=True,
         ),
         _record(
             "z-duplicate-external",
             "one two three four five six seven eight nine eleven",
             target=target,
             source_key="external-source",
-            requested_split=CorpusSplit.EXTERNAL,
+            requested_split=CorpusSplit.EXTERNAL_CHALLENGE,
             laboratory_id="laboratory-unseen-01",
         ),
         _record(
@@ -240,6 +259,8 @@ def test_near_duplicate_propagates_external_constraint_through_laboratory_identi
             target={"endpoint": "orthogonal-assay"},
             source_key="other-external-source",
             laboratory_id="laboratory-unseen-01",
+            training_eligible=False,
+            evaluation_eligible=True,
         ),
     )
     config = PreparationConfig(shingle_size=2, near_duplicate_threshold=0.8)
@@ -248,7 +269,7 @@ def test_near_duplicate_propagates_external_constraint_through_laboratory_identi
     prepared = {item.record.record_id: item for item in dataset.records}
 
     assert set(prepared) == {"a-canonical", "m-same-laboratory"}
-    assert {item.split for item in prepared.values()} == {CorpusSplit.EXTERNAL}
+    assert {item.split for item in prepared.values()} == {CorpusSplit.EXTERNAL_CHALLENGE}
     assert len({item.leakage_group_id for item in prepared.values()}) == 1
     assert dataset.report.near_duplicate_count == 1
     assert dataset.report.duplicate_decisions[0].duplicate_record_id == "z-duplicate-external"

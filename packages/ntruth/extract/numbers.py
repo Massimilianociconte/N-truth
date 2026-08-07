@@ -10,6 +10,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from ntruth.schemas.experiment import CountQuantifier
+
 NUMBER_WORDS: dict[str, int] = {
     "one": 1,
     "two": 2,
@@ -42,10 +44,10 @@ _NUMBER_WORD_ALT = "|".join(sorted(NUMBER_WORDS, key=len, reverse=True))
 
 #: "n = 120", "N=3", "n = 5 mice", "at least n = 3"
 N_EQUALS = re.compile(
-    r"(?P<qualifier>\b(?:at least|almeno|minimo|up to|fino a)\s+)?"
+    r"(?P<qualifier>\b(?:at least|almeno|minimo|up to|fino a|about|approximately|circa)\s+)?"
     r"\bn\s*(?:=|:|\sof\s|\spari a\s)\s*"
     r"(?P<value>\d{1,7}(?:[.,]\d{3})*|" + _NUMBER_WORD_ALT + r")"
-    r"(?P<tail>\s*(?:-|–)\s*\d{1,7})?"
+    r"(?P<tail>\s*(?:-|–)\s*(?P<upper>\d{1,7}))?"
     r"(?P<entity>\s+[a-z][a-z\s\-]{0,30})?",
     re.IGNORECASE,
 )
@@ -85,7 +87,9 @@ class NumberMention:
     end: int
     qualifiers: tuple[str, ...] = ()
     style: str = "count_phrase"  # n_equals | count_phrase
-    is_range: bool = False
+    quantifier: CountQuantifier = CountQuantifier.EXACT
+    lower_bound: int | None = None
+    upper_bound: int | None = None
 
 
 def parse_number(token: str) -> int | None:
@@ -112,6 +116,21 @@ def find_n_mentions(text: str, offset: int = 0) -> list[NumberMention]:
         qualifiers: list[str] = []
         if match.group("qualifier"):
             qualifiers.append(match.group("qualifier").strip().lower())
+        qualifier_text = (match.group("qualifier") or "").strip().casefold()
+        quantifier = CountQuantifier.EXACT
+        lower_bound: int | None = None
+        upper_bound: int | None = None
+        if match.group("tail"):
+            quantifier = CountQuantifier.RANGE
+            lower_bound = value
+            upper_bound = parse_number(match.group("upper"))
+            value = None
+        elif qualifier_text in {"at least", "almeno", "minimo"}:
+            quantifier = CountQuantifier.LOWER_BOUND
+        elif qualifier_text in {"up to", "fino a"}:
+            quantifier = CountQuantifier.UPPER_BOUND
+        elif qualifier_text in {"about", "approximately", "circa"}:
+            quantifier = CountQuantifier.APPROXIMATE
         window = text[match.start() : min(len(text), match.end() + 60)]
         qualifiers.extend(_context_qualifiers(window))
         entity = (match.group("entity") or "").strip()
@@ -124,7 +143,9 @@ def find_n_mentions(text: str, offset: int = 0) -> list[NumberMention]:
                 end=offset + match.end(),
                 qualifiers=tuple(dict.fromkeys(qualifiers)),
                 style="n_equals",
-                is_range=bool(match.group("tail")),
+                quantifier=quantifier,
+                lower_bound=lower_bound,
+                upper_bound=upper_bound,
             )
         )
     return mentions

@@ -6,13 +6,15 @@ import json
 import math
 import re
 import shutil
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from ntruth.parser_ai.contract import ParserAIInput, ParserAIOutput, validate_contract_pair
+from ntruth.governance.lineage import CorpusSplit
+from ntruth.parser_ai.contract import ParserAIInput
+from ntruth.parser_ai.stages import CandidateGraphSet, validate_candidate_graph_pair
 from ntruth.training.calibration import ConfidenceObservation, calibration_report
-from ntruth.training.metrics import (
+from ntruth.training.metrics_v6 import (
     aggregate_scores,
     confidence_observations,
     parse_prediction_text,
@@ -30,6 +32,14 @@ from ntruth.training.mlx_runtime import (
     validate_snapshot_integrity,
     verify_model,
 )
+from ntruth.training.records import (
+    DatasetManifest,
+    ManifestRecord,
+    PreparedRecord,
+    jaccard_similarity,
+    normalize_text,
+    token_shingles,
+)
 
 EVALUATION_LINEAGE_SCHEMA_VERSION = "1.0.0"
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -45,6 +55,8 @@ _SNAPSHOT_COUNT_NAMES = {
 }
 _EXPORTABLE_RUN_STATUSES = {"completed_maximum_phases", "early_stopped"}
 _EVALUABLE_RUN_STATUSES = {*_EXPORTABLE_RUN_STATUSES, "stopped_memory_ceiling"}
+_EXTERNAL_NEAR_DUPLICATE_THRESHOLD = 0.92
+_EXTERNAL_SHINGLE_SIZE = 5
 
 
 def _read_json_object(path: Path, *, label: str) -> dict[str, Any]:
@@ -160,6 +172,11 @@ def _verify_best_run(
     smoke_test = state.get("smoke_test")
     if not isinstance(smoke_test, bool):
         raise MLXPipelineError("smoke_test non booleano nel run-state")
+    dataset_snapshot_path = state.get("dataset_snapshot_path")
+    if dataset_snapshot_path is not None and (
+        not isinstance(dataset_snapshot_path, str) or not dataset_snapshot_path.strip()
+    ):
+        raise MLXPipelineError("dataset_snapshot_path non valido nel run-state")
 
     return {
         "schema_version": EVALUATION_LINEAGE_SCHEMA_VERSION,
@@ -174,12 +191,181 @@ def _verify_best_run(
         "run_dataset_snapshot_id": dataset_snapshot_id,
         "run_dataset_snapshot_sha256": dataset_snapshot_sha256,
         "run_dataset_manifest_sha256": dataset_manifest_sha256,
+        "run_dataset_snapshot_path": dataset_snapshot_path,
         "smoke_test": smoke_test,
         "best_phase": best_phase,
         "adapter_path": str(expected_adapter_dir),
         "adapter_sha256": adapter_sha256,
         "adapter_config_sha256": adapter_config_sha256,
     }
+
+
+def _source_manifest(snapshot: Mapping[str, Any], *, label: str) -> DatasetManifest:
+    raw = snapshot.get("source_manifest")
+    if not isinstance(raw, dict):
+        raise MLXPipelineError(f"{label} privo del manifest sorgente governato")
+    try:
+        return DatasetManifest.model_validate(raw)
+    except ValueError as exc:
+        raise MLXPipelineError(f"manifest sorgente {label} non valido: {exc}") from exc
+
+
+def _manifest_record_tokens(record: ManifestRecord) -> frozenset[str]:
+    """Identita conservative condivise con la separazione group-aware."""
+
+    values: list[tuple[str, str | None]] = [
+        ("record_id", record.record_id),
+        ("record_checksum", record.record_checksum),
+        ("exact_fingerprint", record.exact_fingerprint),
+        ("near_fingerprint", record.near_fingerprint),
+        ("leakage_group", record.leakage_group_id),
+        ("source", record.source_id),
+        ("source_asset", record.source_asset_id),
+        ("source_sha256", record.source_sha256),
+        ("publication", record.publication_id),
+        ("supplement", record.supplement_id),
+        ("preprint", record.preprint_id),
+        ("dataset", record.dataset_id),
+        ("project", record.project_id),
+        ("bundle", record.bundle_id),
+        ("laboratory", record.laboratory_id),
+        ("facility", record.facility_id),
+        ("corresponding_author", record.corresponding_author_id),
+        ("synthetic_family", record.synthetic_family_id),
+        ("counterfactual_family", record.counterfactual_family_id),
+    ]
+    return frozenset(
+        f"{label}:{normalize_text(value)}" for label, value in values if value is not None
+    )
+
+
+def _prepared_records(snapshot: Mapping[str, Any], *, label: str) -> tuple[PreparedRecord, ...]:
+    root = snapshot.get("path")
+    if not isinstance(root, str) or not root:
+        raise MLXPipelineError(f"path dello snapshot {label} assente")
+    path = Path(root) / "prepared-records.jsonl"
+    records: list[PreparedRecord] = []
+    for row in iter_jsonl(path):
+        try:
+            records.append(PreparedRecord.model_validate(row))
+        except ValueError as exc:
+            raise MLXPipelineError(
+                f"prepared record dello snapshot {label} non valido: {exc}"
+            ) from exc
+    return tuple(records)
+
+
+def _assert_external_snapshot_disjoint(
+    training_snapshot: Mapping[str, Any],
+    external_snapshot: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Rifiuta overlap di identita, provenance, contenuto o near-duplicate."""
+
+    training_source = _source_manifest(training_snapshot, label="training")
+    external_source = _source_manifest(external_snapshot, label="external")
+    external_records = tuple(
+        record
+        for record in external_source.records
+        if record.split is CorpusSplit.EXTERNAL_CHALLENGE and record.evaluation_eligible
+    )
+    if not external_records:
+        raise MLXPipelineError("snapshot external privo di record external evaluation-eligible")
+
+    training_tokens = {
+        record.record_id: _manifest_record_tokens(record) for record in training_source.records
+    }
+    token_collisions: list[str] = []
+    for external_record in external_records:
+        external_tokens = _manifest_record_tokens(external_record)
+        for training_record_id, tokens in training_tokens.items():
+            overlap = sorted(external_tokens & tokens)
+            if overlap:
+                token_collisions.append(
+                    f"{external_record.record_id}<->{training_record_id}:" + ",".join(overlap)
+                )
+    if token_collisions:
+        raise MLXPipelineError(
+            "contaminazione train/external rilevata nel manifest: "
+            + "; ".join(token_collisions[:5])
+        )
+
+    training_prepared = _prepared_records(training_snapshot, label="training")
+    external_ids = {record.record_id for record in external_records}
+    external_prepared = tuple(
+        record
+        for record in _prepared_records(external_snapshot, label="external")
+        if record.record.record_id in external_ids
+    )
+    training_shingles = {
+        prepared.record.record_id: token_shingles(
+            prepared.normalized_input,
+            _EXTERNAL_SHINGLE_SIZE,
+        )
+        for prepared in training_prepared
+    }
+    near_collisions: list[str] = []
+    comparisons = 0
+    for external_prepared_record in external_prepared:
+        external_shingles = token_shingles(
+            external_prepared_record.normalized_input,
+            _EXTERNAL_SHINGLE_SIZE,
+        )
+        for training_record_id, shingles in training_shingles.items():
+            comparisons += 1
+            similarity = jaccard_similarity(external_shingles, shingles)
+            if similarity >= _EXTERNAL_NEAR_DUPLICATE_THRESHOLD:
+                near_collisions.append(
+                    f"{external_prepared_record.record.record_id}<->{training_record_id}:"
+                    f"{similarity:.6f}"
+                )
+    if near_collisions:
+        raise MLXPipelineError(
+            "contaminazione train/external near-duplicate rilevata: "
+            + "; ".join(near_collisions[:5])
+        )
+    return {
+        "status": "passed",
+        "training_snapshot_id": training_snapshot["snapshot_id"],
+        "external_snapshot_id": external_snapshot["snapshot_id"],
+        "training_records_checked": len(training_source.records),
+        "external_records_checked": len(external_records),
+        "near_duplicate_comparisons": comparisons,
+        "near_duplicate_threshold": _EXTERNAL_NEAR_DUPLICATE_THRESHOLD,
+        "shingle_size": _EXTERNAL_SHINGLE_SIZE,
+    }
+
+
+def _verified_training_snapshot_for_external(
+    run_lineage: Mapping[str, Any],
+) -> dict[str, Any]:
+    if run_lineage.get("smoke_test") is True:
+        raise MLXPipelineError("evaluation external non ammessa per un run runtime smoke")
+    path = run_lineage.get("run_dataset_snapshot_path")
+    if not isinstance(path, str) or not path:
+        raise MLXPipelineError(
+            "run-state privo di dataset_snapshot_path: impossibile provare "
+            "l'indipendenza dello snapshot external"
+        )
+    snapshot = validate_snapshot_integrity(Path(path))
+    for actual, expected, label in (
+        (
+            snapshot["snapshot_id"],
+            run_lineage.get("run_dataset_snapshot_id"),
+            "snapshot training rispetto al run",
+        ),
+        (
+            snapshot["snapshot_sha256"],
+            run_lineage.get("run_dataset_snapshot_sha256"),
+            "checksum snapshot training rispetto al run",
+        ),
+        (
+            snapshot["manifest_sha256"],
+            run_lineage.get("run_dataset_manifest_sha256"),
+            "manifest snapshot training rispetto al run",
+        ),
+    ):
+        _require_equal(actual, expected, label=label)
+    return snapshot
 
 
 def _verify_evaluation_snapshot(
@@ -228,6 +414,19 @@ def _verify_evaluation_snapshot(
             run_lineage.get("run_dataset_manifest_sha256"),
             label=f"manifest snapshot {declared_split} rispetto al run",
         )
+    else:
+        training_snapshot = _verified_training_snapshot_for_external(run_lineage)
+        if snapshot["snapshot_id"] == training_snapshot["snapshot_id"]:
+            raise MLXPipelineError(
+                "lo snapshot external deve essere indipendente dallo snapshot del run"
+            )
+        snapshot = {
+            **snapshot,
+            "external_disjointness": _assert_external_snapshot_disjoint(
+                training_snapshot,
+                snapshot,
+            ),
+        }
     return expected_path, snapshot
 
 
@@ -238,7 +437,7 @@ def _evaluation_lineage(
     declared_split: str,
 ) -> dict[str, Any]:
     filename = _EVALUATION_SPLIT_FILES[declared_split]
-    return {
+    lineage = {
         **dict(run_lineage),
         "declared_split": declared_split,
         "evaluation_dataset_path": str(evaluation_path.parent),
@@ -249,6 +448,9 @@ def _evaluation_lineage(
         "evaluation_manifest_sha256": snapshot["manifest_sha256"],
         "evaluation_runtime_smoke_only": snapshot["runtime_smoke_only"],
     }
+    if declared_split == "external":
+        lineage["external_disjointness"] = snapshot.get("external_disjointness")
+    return lineage
 
 
 def _percentile(values: list[int], fraction: float) -> float:
@@ -300,19 +502,11 @@ def tokenize_report(
             messages = record.get("messages")
             if not isinstance(messages, list):
                 raise MLXPipelineError(f"record {split} senza messages")
-            try:
-                rendered = tokenizer.apply_chat_template(
-                    messages,
-                    tokenize=False,
-                    add_generation_prompt=False,
-                    enable_thinking=False,
-                )
-            except TypeError:
-                rendered = tokenizer.apply_chat_template(
-                    messages,
-                    tokenize=False,
-                    add_generation_prompt=False,
-                )
+            rendered = tokenizer.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=False,
+            )
             tokens = tokenizer.encode(str(rendered), add_special_tokens=False)
             lengths.append(len(tokens))
         if not lengths:
@@ -338,28 +532,20 @@ def tokenize_report(
 
 
 def _chat_prompt(tokenizer: Any, messages: list[dict[str, Any]]) -> str:
-    try:
-        return str(
-            tokenizer.apply_chat_template(
-                messages,
-                tokenize=False,
-                add_generation_prompt=True,
-                enable_thinking=False,
-            )
+    """Chat template provider-agnostic (Granite; no Qwen enable_thinking)."""
+
+    return str(
+        tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True,
         )
-    except TypeError:
-        return str(
-            tokenizer.apply_chat_template(
-                messages,
-                tokenize=False,
-                add_generation_prompt=True,
-            )
-        )
+    )
 
 
 def _gold_and_prompt(
     record: dict[str, Any],
-) -> tuple[str, list[dict[str, Any]], ParserAIInput, ParserAIOutput]:
+) -> tuple[str, list[dict[str, Any]], ParserAIInput, CandidateGraphSet]:
     record_id = str(record.get("record_id") or record.get("sample_id") or "")
     if not record_id:
         raise MLXPipelineError("record di evaluation senza record_id/sample_id")
@@ -378,10 +564,132 @@ def _gold_and_prompt(
         raise MLXPipelineError(f"record {record_id}: ParserAIInput user assente")
     try:
         parser_input = ParserAIInput.model_validate_json(user_messages[-1]["content"])
-        gold = validate_contract_pair(parser_input, parse_prediction_text(content))
+        gold = validate_candidate_graph_pair(parser_input, parse_prediction_text(content))
     except (ValueError, TypeError) as exc:
         raise MLXPipelineError(f"record {record_id}: coppia input/gold non valida: {exc}") from exc
     return record_id, prompt_messages, parser_input, gold
+
+
+def _retry_validation_message(validation_error: str) -> dict[str, str]:
+    return {
+        "role": "user",
+        "content": (
+            "The previous response failed JSON/schema validation. Return exactly "
+            "one JSON object matching CandidateGraphSet v1.0.0 with "
+            "authority=model; never emit determinability or a verdict; do not "
+            "add facts, prose or Markdown. Validation error: "
+            + str(validation_error)[:500]
+        ),
+    }
+
+
+def _attempt_messages(
+    prompt_messages: list[dict[str, Any]],
+    *,
+    attempt: int,
+    validation_error: str | None,
+) -> list[dict[str, Any]]:
+    messages = list(prompt_messages)
+    if attempt:
+        messages.append(_retry_validation_message(str(validation_error or "")))
+    return messages
+
+
+def _prediction_payload(
+    *,
+    record_id: str,
+    gold: CandidateGraphSet,
+    raw_outputs: list[str],
+    predicted: CandidateGraphSet | None,
+    validation_error: str | None,
+) -> tuple[dict[str, Any], dict[str, Any], tuple[ConfidenceObservation, ...]]:
+    if predicted is None:
+        score = score_invalid_output(gold, validation_error or "output non valido")
+        payload = {
+            "record_id": record_id,
+            "schema_valid": False,
+            "error": validation_error,
+            "attempts": len(raw_outputs),
+            "raw_outputs": raw_outputs,
+            "gold": gold.model_dump(mode="json"),
+            "prediction": None,
+            "score": score,
+        }
+        return payload, score, ()
+    score = score_output(predicted, gold)
+    observations = tuple(confidence_observations(predicted, gold))
+    payload = {
+        "record_id": record_id,
+        "schema_valid": True,
+        "error": None,
+        "attempts": len(raw_outputs),
+        "raw_outputs": raw_outputs,
+        "gold": gold.model_dump(mode="json"),
+        "prediction": predicted.model_dump(mode="json"),
+        "score": score,
+    }
+    return payload, score, observations
+
+
+def _generate_raw_legacy(
+    *,
+    model: Any,
+    tokenizer: Any,
+    sampler: Any,
+    messages: list[dict[str, Any]],
+    maximum_tokens: int,
+) -> str:
+    from mlx_lm import generate
+
+    prompt = _chat_prompt(tokenizer, messages)
+    return str(
+        generate(
+            model,
+            tokenizer,
+            prompt=prompt,
+            max_tokens=maximum_tokens,
+            sampler=sampler,
+            verbose=False,
+        )
+    )
+
+
+def _generate_raw_batch_with_resources(
+    *,
+    message_batches: Sequence[list[dict[str, Any]]],
+    model_path: Path,
+    adapter_path: Path,
+    maximum_tokens: int,
+    resource_budget_path: Path,
+    resource_profile: str,
+    component_fingerprint: str,
+    bundle_id: str,
+) -> tuple[list[str], dict[str, Any]]:
+    from ntruth.training.mlx_resource_bridge import (
+        DEFAULT_STAGE_ID,
+        dump_bundle_runtime_metrics,
+        run_predict_bundle,
+    )
+
+    requests = [{"messages": messages} for messages in message_batches]
+    execution = run_predict_bundle(
+        requests=requests,
+        resource_budget_path=resource_budget_path,
+        resource_profile=resource_profile,
+        model_path=model_path,
+        adapter_path=adapter_path,
+        max_tokens=maximum_tokens,
+        component_fingerprint=component_fingerprint,
+        bundle_id=bundle_id,
+    )
+    if execution is None:
+        raise MLXPipelineError("resource bridge ha restituito None con budget impostato")
+    outputs = execution.outputs.get(DEFAULT_STAGE_ID)
+    if outputs is None or len(outputs) != len(message_batches):
+        raise MLXPipelineError(
+            f"output stage {DEFAULT_STAGE_ID!r} assenti o non allineati alle request"
+        )
+    return [str(item) for item in outputs], dump_bundle_runtime_metrics(execution.metrics)
 
 
 def predict_and_score(
@@ -393,8 +701,21 @@ def predict_and_score(
     *,
     declared_split: str,
     retry_invalid_once: bool = True,
+    resource_budget_path: Path | None = None,
+    resource_profile: str = "BALANCED",
+    require_resource_budget: bool = False,
 ) -> dict[str, Any]:
-    """Genera JSON locale, valida lo schema e calcola metriche candidate-fact."""
+    """Genera JSON locale, valida lo schema e calcola metriche candidate-fact.
+
+    Con ``resource_budget_path`` la generazione passa dal RuntimeResourceManager.
+    Senza path e con ``require_resource_budget=False`` il comportamento resta
+    quello legacy (necessario per la CI senza budget misurato).
+    """
+
+    if require_resource_budget and resource_budget_path is None:
+        raise MLXPipelineError(
+            "resource_budget_path obbligatorio quando require_resource_budget=True"
+        )
 
     profile = load_profile(profile_path)
     model_path = _model_path(repo_root, profile)
@@ -419,84 +740,153 @@ def predict_and_score(
     if output_dir.exists() and any(output_dir.iterdir()):
         raise MLXPipelineError("directory predictions non vuota")
     output_dir.mkdir(parents=True, exist_ok=True)
-    try:
-        from mlx_lm import generate, load
-        from mlx_lm.sample_utils import make_sampler
-    except ImportError as exc:
-        raise MLXPipelineError("mlx-lm non installato; usare uv sync --extra ml") from exc
 
-    loaded = load(str(model_path), adapter_path=str(adapter_path))
-    model, tokenizer = loaded[0], loaded[1]
-    sampler = make_sampler(temp=0.0)
     maximum_tokens = int(profile["data"].get("generation_max_tokens", 1024))
     prediction_path = output_dir / "predictions.jsonl"
     scores: list[dict[str, Any]] = []
     observations: list[ConfidenceObservation] = []
     rows = list(iter_jsonl(evaluation_path))
-    with prediction_path.open("w", encoding="utf-8") as handle:
-        for record in rows:
-            record_id, prompt_messages, parser_input, gold = _gold_and_prompt(record)
-            raw_outputs: list[str] = []
-            validation_error: str | None = None
-            predicted: ParserAIOutput | None = None
-            attempts = 2 if retry_invalid_once else 1
-            for attempt in range(attempts):
-                messages = list(prompt_messages)
-                if attempt:
-                    messages.append(
-                        {
-                            "role": "user",
-                            "content": (
-                                "The previous response failed JSON/schema validation. Return exactly "
-                                "one JSON object matching ParserAIOutput v2.0.0; do not add facts, prose "
-                                "or Markdown. Validation error: " + str(validation_error)[:500]
-                            ),
-                        }
-                    )
-                prompt = _chat_prompt(tokenizer, messages)
-                raw = generate(
-                    model,
-                    tokenizer,
-                    prompt=prompt,
-                    max_tokens=maximum_tokens,
-                    sampler=sampler,
-                    verbose=False,
+    prepared = [_gold_and_prompt(record) for record in rows]
+    runtime_resource_metrics: dict[str, Any] | None = None
+
+    if resource_budget_path is not None:
+        resource_budget_path = resource_budget_path.resolve()
+        fingerprint = str(run_lineage["adapter_sha256"])
+        first_messages = [
+            _attempt_messages(prompt_messages, attempt=0, validation_error=None)
+            for _record_id, prompt_messages, _parser_input, _gold in prepared
+        ]
+        first_raws, first_metrics = _generate_raw_batch_with_resources(
+            message_batches=first_messages,
+            model_path=model_path,
+            adapter_path=adapter_path,
+            maximum_tokens=maximum_tokens,
+            resource_budget_path=resource_budget_path,
+            resource_profile=resource_profile,
+            component_fingerprint=fingerprint,
+            bundle_id="mlx-predict-attempt-1",
+        )
+        bundle_metrics: list[dict[str, Any]] = [first_metrics]
+        raw_outputs_by_index: list[list[str]] = [[raw] for raw in first_raws]
+        predicted_by_index: list[CandidateGraphSet | None] = []
+        error_by_index: list[str | None] = []
+        retry_indices: list[int] = []
+        retry_messages: list[list[dict[str, Any]]] = []
+        for index, (record_id, prompt_messages, parser_input, gold) in enumerate(prepared):
+            del record_id, gold
+            raw = first_raws[index]
+            try:
+                predicted = validate_candidate_graph_pair(
+                    parser_input,
+                    parse_prediction_text(raw),
                 )
-                raw_outputs.append(raw)
+                predicted_by_index.append(predicted)
+                error_by_index.append(None)
+            except (ValueError, TypeError) as exc:
+                predicted_by_index.append(None)
+                error_by_index.append(str(exc))
+                if retry_invalid_once:
+                    retry_indices.append(index)
+                    retry_messages.append(
+                        _attempt_messages(
+                            prompt_messages,
+                            attempt=1,
+                            validation_error=str(exc),
+                        )
+                    )
+        if retry_messages:
+            retry_raws, retry_metrics = _generate_raw_batch_with_resources(
+                message_batches=retry_messages,
+                model_path=model_path,
+                adapter_path=adapter_path,
+                maximum_tokens=maximum_tokens,
+                resource_budget_path=resource_budget_path,
+                resource_profile=resource_profile,
+                component_fingerprint=fingerprint,
+                bundle_id="mlx-predict-retry",
+            )
+            bundle_metrics.append(retry_metrics)
+            for retry_pos, index in enumerate(retry_indices):
+                raw = retry_raws[retry_pos]
+                raw_outputs_by_index[index].append(raw)
+                parser_input = prepared[index][2]
                 try:
-                    predicted = validate_contract_pair(parser_input, parse_prediction_text(raw))
-                    validation_error = None
-                    break
+                    predicted_by_index[index] = validate_candidate_graph_pair(
+                        parser_input,
+                        parse_prediction_text(raw),
+                    )
+                    error_by_index[index] = None
                 except (ValueError, TypeError) as exc:
-                    validation_error = str(exc)
-            if predicted is None:
-                score = score_invalid_output(gold, validation_error or "output non valido")
-                payload = {
-                    "record_id": record_id,
-                    "schema_valid": False,
-                    "error": validation_error,
-                    "attempts": len(raw_outputs),
-                    "raw_outputs": raw_outputs,
-                    "gold": gold.model_dump(mode="json"),
-                    "prediction": None,
-                    "score": score,
-                }
-            else:
-                score = score_output(predicted, gold)
-                observations.extend(confidence_observations(predicted, gold))
-                payload = {
-                    "record_id": record_id,
-                    "schema_valid": True,
-                    "error": None,
-                    "attempts": len(raw_outputs),
-                    "raw_outputs": raw_outputs,
-                    "gold": gold.model_dump(mode="json"),
-                    "prediction": predicted.model_dump(mode="json"),
-                    "score": score,
-                }
-            scores.append(score)
-            handle.write(json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n")
-            handle.flush()
+                    predicted_by_index[index] = None
+                    error_by_index[index] = str(exc)
+        runtime_resource_metrics = {
+            "resource_profile": resource_profile,
+            "resource_budget_path": str(resource_budget_path),
+            "bundles": bundle_metrics,
+        }
+        with prediction_path.open("w", encoding="utf-8") as handle:
+            for index, (record_id, _messages, _parser_input, gold) in enumerate(prepared):
+                payload, score, record_observations = _prediction_payload(
+                    record_id=record_id,
+                    gold=gold,
+                    raw_outputs=raw_outputs_by_index[index],
+                    predicted=predicted_by_index[index],
+                    validation_error=error_by_index[index],
+                )
+                scores.append(score)
+                observations.extend(record_observations)
+                handle.write(json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n")
+                handle.flush()
+    else:
+        try:
+            from mlx_lm import load
+            from mlx_lm.sample_utils import make_sampler
+        except ImportError as exc:
+            raise MLXPipelineError("mlx-lm non installato; usare uv sync --extra ml") from exc
+
+        loaded = load(str(model_path), adapter_path=str(adapter_path))
+        model, tokenizer = loaded[0], loaded[1]
+        sampler = make_sampler(temp=0.0)
+        with prediction_path.open("w", encoding="utf-8") as handle:
+            for record_id, prompt_messages, parser_input, gold in prepared:
+                raw_outputs: list[str] = []
+                validation_error: str | None = None
+                predicted: CandidateGraphSet | None = None
+                attempts = 2 if retry_invalid_once else 1
+                for attempt in range(attempts):
+                    messages = _attempt_messages(
+                        prompt_messages,
+                        attempt=attempt,
+                        validation_error=validation_error,
+                    )
+                    raw = _generate_raw_legacy(
+                        model=model,
+                        tokenizer=tokenizer,
+                        sampler=sampler,
+                        messages=messages,
+                        maximum_tokens=maximum_tokens,
+                    )
+                    raw_outputs.append(raw)
+                    try:
+                        predicted = validate_candidate_graph_pair(
+                            parser_input,
+                            parse_prediction_text(raw),
+                        )
+                        validation_error = None
+                        break
+                    except (ValueError, TypeError) as exc:
+                        validation_error = str(exc)
+                payload, score, record_observations = _prediction_payload(
+                    record_id=record_id,
+                    gold=gold,
+                    raw_outputs=raw_outputs,
+                    predicted=predicted,
+                    validation_error=validation_error,
+                )
+                scores.append(score)
+                observations.extend(record_observations)
+                handle.write(json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n")
+                handle.flush()
 
     report = aggregate_scores(scores)
     report.update(
@@ -513,6 +903,8 @@ def predict_and_score(
             "lineage": lineage,
         }
     )
+    if runtime_resource_metrics is not None:
+        report["runtime_resource_metrics"] = runtime_resource_metrics
     observations_path = output_dir / "confidence-observations.jsonl"
     with observations_path.open("w", encoding="utf-8") as handle:
         for observation in observations:
@@ -550,8 +942,8 @@ _PREDICTION_ROW_KEYS = frozenset(
 )
 
 
-def _parse_generated_output(parser_input: ParserAIInput, raw: str) -> ParserAIOutput:
-    return validate_contract_pair(parser_input, parse_prediction_text(raw))
+def _parse_generated_output(parser_input: ParserAIInput, raw: str) -> CandidateGraphSet:
+    return validate_candidate_graph_pair(parser_input, parse_prediction_text(raw))
 
 
 def _reconstruct_evaluation(
@@ -613,7 +1005,7 @@ def _reconstruct_evaluation(
                 )
             try:
                 predicted_from_raw = _parse_generated_output(parser_input, raw_outputs[-1])
-                predicted = ParserAIOutput.model_validate(prediction_row.get("prediction"))
+                predicted = CandidateGraphSet.model_validate(prediction_row.get("prediction"))
             except (ValueError, TypeError) as exc:
                 raise MLXPipelineError(
                     f"record prediction {record_id}: prediction dichiarata valida non validabile"
@@ -784,7 +1176,9 @@ def _verify_metrics_artifacts(
         "predictions_sha256",
         "confidence_observations_sha256",
     }
-    if set(metrics) != expected_metric_keys:
+    allowed_optional = {"runtime_resource_metrics"}
+    actual_keys = set(metrics)
+    if not expected_metric_keys <= actual_keys or actual_keys - expected_metric_keys - allowed_optional:
         raise MLXPipelineError("metrics.json contiene campi inattesi o mancanti")
     if not isinstance(metrics.get("created_at"), str) or not metrics["created_at"]:
         raise MLXPipelineError("created_at assente nelle metrics")
@@ -1072,6 +1466,11 @@ def export_adapter_bundle(
             "evaluation_manifest_sha256": metrics_context["snapshot"]["manifest_sha256"],
             "calibration_sha256": calibration_context["sha256"],
             "calibration_source_metrics_sha256": calibration_context["source_metrics"]["sha256"],
+            "external_disjointness": (
+                metrics_context["snapshot"].get("external_disjointness")
+                if metrics_split == "external"
+                else None
+            ),
         },
         "files": files,
     }

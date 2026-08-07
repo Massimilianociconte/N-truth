@@ -124,6 +124,14 @@ def _build_table(
             table.warnings.append(f"righe oltre {MAX_ROWS} ignorate")
             doc.status = ParserStatus.PARTIAL
             break
+        if len(raw) != len(header):
+            message = (
+                f"{name}: riga {index + 2} non rettangolare "
+                f"({len(raw)} celle, attese {len(header)}); output parziale"
+            )
+            table.warnings.append(message)
+            doc.warnings.append(message)
+            doc.status = ParserStatus.PARTIAL
         values = list(raw[: len(header)])
         values.extend([""] * (len(header) - len(values)))
         record: dict[str, str] = {}

@@ -6,6 +6,7 @@ import {
   Check,
   ChevronRight,
   CircleHelp,
+  ClipboardList,
   Database,
   Download,
   FileText,
@@ -48,7 +49,9 @@ import {
   preflight,
   type InferenceTargetDraft,
 } from "./api";
+import { CanonicalCorrectionForm, type CorrectionPatch } from "./CanonicalCorrectionForm";
 import { DEMO_REPORT } from "./data/demo";
+import { ProspectiveD0Workspace } from "./d0/ProspectiveD0Workspace";
 import type {
   Alert,
   AnalysisResponse,
@@ -67,6 +70,7 @@ import type {
 
 type Icon = LucideIcon;
 type View =
+  | "prospective"
   | "project"
   | "documents"
   | "experiments"
@@ -76,6 +80,7 @@ type View =
   | "export";
 
 const NAVIGATION: Array<{ id: View; it: string; en: string; icon: Icon }> = [
+  { id: "prospective", it: "Progettazione D0", en: "D0 design", icon: ClipboardList },
   { id: "project", it: "Progetto", en: "Project", icon: FolderOpen },
   { id: "documents", it: "Documenti", en: "Documents", icon: FileText },
   { id: "experiments", it: "Esperimenti", en: "Experiments", icon: Beaker },
@@ -192,9 +197,16 @@ function evidenceLocator(evidence?: EvidenceSpan): string {
   return section;
 }
 
+function formatAuditTime(value: string | undefined, language: "it" | "en"): string {
+  if (!value) return language === "it" ? "timestamp legacy non registrato" : "legacy timestamp not recorded";
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toISOString();
+}
+
 function focusId(view: View): string {
   return {
-    project: "workspace",
+    prospective: "d0-panel",
+    project: "blocks-panel",
     documents: "evidence-panel",
     experiments: "blocks-panel",
     graph: "graph-panel",
@@ -207,7 +219,7 @@ function focusId(view: View): string {
 export function App() {
   const [report, setReport] = useState<Report>(DEMO_REPORT);
   const [isDemo, setIsDemo] = useState(true);
-  const [activeView, setActiveView] = useState<View>("project");
+  const [activeView, setActiveView] = useState<View>("prospective");
   const [selectedBlockId, setSelectedBlockId] = useState(DEMO_REPORT.blocks[0].id);
   const [selectedAlertId, setSelectedAlertId] = useState(DEMO_REPORT.blocks[0].alerts[0].id);
   const [selectedEvidenceId, setSelectedEvidenceId] = useState<string>();
@@ -295,6 +307,7 @@ export function App() {
     setDemoFuture([]);
     const sequence = selectedBlock.corrections.length;
     const correctionId = `demo-correction-${sequence + 1}`;
+    const recordedAt = new Date().toISOString();
     const nextBlock: ExperimentBlock = {
       ...selectedBlock,
       n_statements: selectedBlock.n_statements.map((statement, index) =>
@@ -310,6 +323,7 @@ export function App() {
           patch: [{ op: "replace", path: "/n_statements/0/value", value }],
           evidence_ids: evidenceIds,
           reviewer_role: "reviewer",
+          recorded_at: recordedAt,
           verified: false,
         },
       ],
@@ -324,6 +338,8 @@ export function App() {
           sequence,
           action: "apply",
           correction_id: correctionId,
+          actor_role: "reviewer",
+          recorded_at: recordedAt,
         },
       ],
     }));
@@ -372,6 +388,8 @@ export function App() {
               sequence: current[selectedBlock.id]?.length ?? 0,
               action: "undo",
               correction_id: correctionId,
+              actor_role: "researcher",
+              recorded_at: new Date().toISOString(),
             },
           ],
         }));
@@ -428,6 +446,8 @@ export function App() {
               sequence: current[selectedBlock.id]?.length ?? 0,
               action: "redo",
               correction_id: correctionId,
+              actor_role: "researcher",
+              recorded_at: new Date().toISOString(),
             },
           ],
         }));
@@ -508,6 +528,7 @@ export function App() {
         return { estimand, existingEstimand, existingEstimandIndex };
       });
       const correctionId = `${selectedBlock.id}-target-correction-${selectedBlock.corrections.length + 1}`;
+      const recordedAt = new Date().toISOString();
       const nextBlock: ExperimentBlock = {
         ...selectedBlock,
         inference_targets:
@@ -538,6 +559,7 @@ export function App() {
             ],
             evidence_ids: draft.evidence_ids,
             reviewer_role: draft.reviewer_role,
+            recorded_at: recordedAt,
             verified: false,
           },
         ],
@@ -601,6 +623,8 @@ export function App() {
             sequence: selectedBlock.corrections.length,
             action: "apply",
             correction_id: correctionId,
+            actor_role: draft.reviewer_role,
+            recorded_at: recordedAt,
           },
         ],
       }));
@@ -648,6 +672,7 @@ export function App() {
       setDemoFuture([]);
       const sequence = selectedBlock.corrections.length;
       const correctionId = `${selectedBlock.id}-graph-correction-${sequence + 1}`;
+      const recordedAt = new Date().toISOString();
       const corrected: ExperimentBlock = {
         ...nextBlock,
         corrections: [
@@ -660,6 +685,7 @@ export function App() {
             patch,
             evidence_ids: selectedEvidence ? [selectedEvidence.id] : [],
             reviewer_role: "researcher",
+            recorded_at: recordedAt,
             verified: false,
           },
         ],
@@ -674,6 +700,8 @@ export function App() {
             sequence,
             action: "apply",
             correction_id: correctionId,
+            actor_role: "researcher",
+            recorded_at: recordedAt,
           },
         ],
       }));
@@ -830,6 +858,8 @@ export function App() {
             <button aria-label={uiLanguage === "it" ? "Chiudi avviso" : "Close notice"} onClick={() => setNotice(undefined)}><X size={16} /></button>
           </div>
         )}
+
+        <ProspectiveD0Workspace active={activeView === "prospective"} language={uiLanguage} />
 
         <section className="workspace-grid">
           <section
@@ -993,11 +1023,18 @@ export function App() {
               canRedo={isDemo ? demoFuture.length > 0 : Boolean(selectedBlock && (correctionState[selectedBlock.id]?.redo.length ?? 0) > 0)}
               onUndo={undo}
               onRedo={redo}
-              onApply={async (value, rationale, reason) => {
+              onApply={async (patch, rationale, reason) => {
                 if (!selectedBlock) return;
                 const evidenceIds = selectedEvidence ? [selectedEvidence.id] : [];
                 if (isDemo) {
-                  applyDemoCorrection(value, rationale, reason, evidenceIds);
+                  const legacyValue = patch.find(
+                    (operation) => operation.path === "/n_statements/0/value",
+                  )?.value;
+                  if (typeof legacyValue !== "number") {
+                    setNotice("La demo sintetica supporta soltanto l'adapter n legacy.");
+                    return;
+                  }
+                  applyDemoCorrection(legacyValue, rationale, reason, evidenceIds);
                   return;
                 }
                 if (!sessionId) {
@@ -1008,7 +1045,7 @@ export function App() {
                   const response = await applyCorrection(sessionId, selectedBlock.id, {
                     reason,
                     rationale,
-                    patch: [{ op: "replace", path: "/n_statements/0/value", value }],
+                    patch,
                     evidence_ids: evidenceIds,
                     reviewer_role: "reviewer",
                     verified: false,
@@ -1139,6 +1176,51 @@ function PositiveOutputPanel({
         <blockquote>{output.methods_statement.text}</blockquote>
         {output.methods_statement.limitations.map((item) => <small key={item}>{item}</small>)}
       </div>
+      {output.plausible_graph_set && (
+        <details className="positive-details" open>
+          <summary>
+            {language === "it" ? "Grafi alternativi non risolti" : "Unresolved alternative graphs"} · {output.plausible_graph_set.alternatives.length}
+          </summary>
+          <p className="muted">
+            {language === "it" ? "Nessuna alternativa viene scelta automaticamente." : "No alternative is selected automatically."}
+          </p>
+          {output.discriminating_question && <blockquote>{output.discriminating_question.text}</blockquote>}
+          <div className="statement-list">
+            {output.plausible_graph_set.alternatives.map((alternative) => (
+              <div className="statement-layer layer-hypothesis" key={alternative.id}>
+                <span>{alternative.label}</span>
+                <div>
+                  {alternative.consequences.map((consequence) => (
+                    <p key={consequence.id}>
+                      {consequence.description} · EU {consequence.experimental_unit ?? "—"} · n {consequence.n_independent ?? "—"}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+      {!!output.count_records?.length && (
+        <details className="positive-details">
+          <summary>{language === "it" ? "Registro canonico dei conteggi" : "Canonical count registry"} · {output.count_records.length}</summary>
+          <ul>
+            {output.count_records.map((record) => <li key={record.count_id}><code>{record.kind}</code> · {record.quantifier} · {record.value ?? (record.lower_bound != null || record.upper_bound != null ? `${record.lower_bound ?? "—"} - ${record.upper_bound ?? "—"}` : "—")} · {record.scope.lifecycle ?? "lifecycle unknown"}</li>)}
+          </ul>
+        </details>
+      )}
+      {!!output.diagnostic_count_records?.length && (
+        <details className="positive-details diagnostic-counts" open>
+          <summary>{language === "it" ? "Diagnostica statistica separata · non replication" : "Separate statistical diagnostics · non replication"}</summary>
+          <ul>{output.diagnostic_count_records.map((record) => <li key={record.count_id}><code>{record.kind}</code> = {record.value ?? "—"}</li>)}</ul>
+        </details>
+      )}
+      {!!output.exclusion_records?.length && (
+        <details className="positive-details">
+          <summary>{language === "it" ? "Registro esclusioni" : "Exclusion registry"} · {output.exclusion_records.length}</summary>
+          <ul>{output.exclusion_records.map((record) => <li key={record.id}>{record.unit_type} · {record.phase} · {record.prespecified} · {record.reason ?? "reason not reported"}</li>)}</ul>
+        </details>
+      )}
       {!!output.candidate_analysis_strategies.length && (
         <details className="positive-details">
           <summary>{language === "it" ? "Strategie candidate" : "Candidate strategies"}</summary>
@@ -1158,7 +1240,7 @@ function PositiveOutputPanel({
         </div>
       </details>
       <details className="positive-details">
-        <summary>{language === "it" ? "Fatti, inferenze, ipotesi e limiti" : "Facts, inferences, hypotheses and limitations"}</summary>
+        <summary>{language === "it" ? "Fatti, asserzioni, inferenze, ipotesi e limiti" : "Facts, assertions, inferences, hypotheses and limitations"}</summary>
         <div className="statement-list">
           {output.statements.map((item) => (
             <div key={item.id} className={`statement-layer layer-${item.layer}`}>
@@ -1580,6 +1662,7 @@ function GraphView({
 }) {
   const [query, setQuery] = useState("");
   const [zoom, setZoom] = useState(1);
+  const [extendedCanvasEnabled, setExtendedCanvasEnabled] = useState(false);
   const [editing, setEditing] = useState(false);
   const [nodeType, setNodeType] = useState("CellCulture");
   const [nodeLabel, setNodeLabel] = useState("");
@@ -1592,6 +1675,11 @@ function GraphView({
     setRelationSource(block.hierarchy.nodes[0]?.id ?? "");
     setRelationTarget(block.hierarchy.nodes[1]?.id ?? "");
   }, [block.id, block.hierarchy.nodes.length]);
+
+  useEffect(() => {
+    setExtendedCanvasEnabled(false);
+    setEditing(false);
+  }, [block.id]);
 
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const nodes = useMemo(
@@ -1764,7 +1852,47 @@ function GraphView({
 
   return (
     <div className="graph-workspace">
-      <div className="graph-toolbar">
+      <div className="graph-feature-gate">
+        <Sparkles size={18} />
+        <div>
+          <strong>
+            {language === "it"
+              ? "Canvas esteso sperimentale · post-v0.1-D"
+              : "Experimental extended canvas · post-v0.1-D"}
+          </strong>
+          <span>
+            {language === "it"
+              ? "Il percorso D0 usa wizard, tabelle e Core Profile. Il canvas libero richiede un opt-in esplicito e non fa parte del profilo validato."
+              : "The D0 path uses the wizard, tables and Core Profile. The free canvas requires explicit opt-in and is not part of the validated profile."}
+          </span>
+        </div>
+        <label>
+          <input
+            type="checkbox"
+            checked={extendedCanvasEnabled}
+            onChange={(event) => {
+              setExtendedCanvasEnabled(event.target.checked);
+              if (!event.target.checked) setEditing(false);
+            }}
+          />
+          {language === "it"
+            ? "Abilita canvas esteso sperimentale"
+            : "Enable experimental extended canvas"}
+        </label>
+      </div>
+      {!extendedCanvasEnabled && (
+        <div className="graph-gated-placeholder">
+          <GitBranch size={27} />
+          <strong>{language === "it" ? "Canvas non attivo" : "Canvas is not active"}</strong>
+          <p>
+            {language === "it"
+              ? "La struttura resta disponibile nel riepilogo e nelle tabelle D0 senza attivare funzioni sperimentali."
+              : "The structure remains available in the D0 summary and tables without enabling experimental features."}
+          </p>
+        </div>
+      )}
+      {extendedCanvasEnabled && <>
+        <div className="graph-toolbar">
         <label>
           <Search size={15} />
           <span className="sr-only">{language === "it" ? "Cerca nodo" : "Search node"}</span>
@@ -1791,8 +1919,8 @@ function GraphView({
           <PencilLine size={15} />
           {language === "it" ? (editing ? "Chiudi editor" : "Modifica grafo") : editing ? "Close editor" : "Edit graph"}
         </button>
-      </div>
-      <div
+        </div>
+        <div
         className="graph-canvas"
         style={{ height: `${canvasHeight + 8}px` }}
         role="group"
@@ -1834,8 +1962,8 @@ function GraphView({
           })}
           {!nodes.length && <EmptyState />}
         </div>
-      </div>
-      {editing && (
+        </div>
+        {editing && (
         <div className="graph-editor" aria-label={language === "it" ? "Editor manuale del grafo" : "Manual graph editor"}>
           <p className="graph-editor-note">
             {language === "it"
@@ -1913,7 +2041,8 @@ function GraphView({
             </div>
           </details>
         </div>
-      )}
+        )}
+      </>}
     </div>
   );
 }
@@ -1964,7 +2093,7 @@ function CorrectionPanel({
   canRedo: boolean;
   onUndo: () => void;
   onRedo: () => void;
-  onApply: (value: number, rationale: string, reason: string) => Promise<void> | void;
+  onApply: (patch: CorrectionPatch, rationale: string, reason: string) => Promise<void> | void;
   onExport: () => void;
   hasCandidate: boolean;
   exportAllowed: boolean;
@@ -1983,7 +2112,11 @@ function CorrectionPanel({
     if (!Number.isInteger(parsed) || parsed < 0 || rationale.trim().length < 8) return;
     setBusy(true);
     try {
-      await onApply(parsed, rationale.trim(), reason);
+      await onApply(
+        [{ op: "replace", path: "/n_statements/0/value", value: parsed }],
+        rationale.trim(),
+        reason,
+      );
       setRationale("");
     } finally {
       setBusy(false);
@@ -2002,7 +2135,15 @@ function CorrectionPanel({
           <button aria-label={language === "it" ? "Ripeti correzione" : "Redo correction"} disabled={!canRedo} onClick={onRedo}><Redo2 size={17} /></button>
         </div>
       </div>
-      {!block?.n_statements.length ? (
+      {block && (block.count_records.length > 0 || block.exclusion_records.length > 0) ? (
+        <CanonicalCorrectionForm
+          block={block}
+          evidence={evidence}
+          language={language}
+          isDemo={isDemo}
+          onApply={onApply}
+        />
+      ) : !block?.n_statements.length ? (
         <p className="muted empty-copy">{language === "it" ? "Nessuna menzione di n modificabile in questo blocco." : "No editable n statement in this block."}</p>
       ) : (
         <form onSubmit={submit} className="correction-form">
@@ -2038,8 +2179,12 @@ function CorrectionPanel({
         <div className="audit-title"><span><History size={16} /> {language === "it" ? "Traccia di audit" : "Audit trail"}</span><button disabled={!hasCandidate || !exportAllowed} onClick={onExport}>{language === "it" ? "Esporta candidate" : "Export candidates"}</button></div>
         {events.length ? events.slice(-3).reverse().map((event) => (
           <div className="audit-entry" key={event.id}>
-            <span className="avatar">R</span>
-            <span><strong>{event.action === "apply" ? (language === "it" ? "Correzione applicata" : "Correction applied") : event.action === "undo" ? (language === "it" ? "Correzione annullata" : "Correction undone") : (language === "it" ? "Correzione ripristinata" : "Correction restored")}</strong><small>{event.correction_id}</small></span>
+            <span className="avatar">{(event.actor_role ?? "R").slice(0, 1).toUpperCase()}</span>
+            <span>
+              <strong>{event.action === "apply" ? (language === "it" ? "Correzione applicata" : "Correction applied") : event.action === "undo" ? (language === "it" ? "Correzione annullata" : "Correction undone") : (language === "it" ? "Correzione ripristinata" : "Correction restored")}</strong>
+              <small>{event.actor_role ?? (language === "it" ? "ruolo legacy non registrato" : "legacy role not recorded")} · {formatAuditTime(event.recorded_at ?? event.at, language)}</small>
+              <small>{event.correction_id}</small>
+            </span>
           </div>
         )) : <p className="muted">{language === "it" ? "Nessuna correzione registrata per questo blocco." : "No correction recorded for this block."}</p>}
       </div>

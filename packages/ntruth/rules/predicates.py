@@ -11,12 +11,12 @@ Un predicato sconosciuto non e mai vero per default: la regola diventa
 from __future__ import annotations
 
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
 from ntruth.graph.builder import BuildResult
 from ntruth.graph.index import GraphIndex
-from ntruth.schemas.core import Confidence
+from ntruth.schemas.core import Confidence, EvidenceSpan
 from ntruth.schemas.experiment import (
     Contrast,
     DataSufficiency,
@@ -24,6 +24,7 @@ from ntruth.schemas.experiment import (
     Factor,
     ProcessFact,
     StatisticalModelFact,
+    TriState,
     UnitAssessment,
 )
 from ntruth.schemas.graph import TECHNICAL_TYPES, NodeType, rank_of
@@ -94,6 +95,7 @@ class RuleContext:
     factor: Factor | None
     contrast: Contrast | None
     endpoint: Endpoint | None
+    evidence_by_id: Mapping[str, EvidenceSpan]
 
     # ---------------------------------------------------------------- helpers
 
@@ -242,7 +244,21 @@ def _assigned_at_or_below(ctx: RuleContext, args: list[str]) -> bool:
 
 @predicate("assignment_unknown")
 def _assignment_unknown(ctx: RuleContext, args: list[str]) -> bool:
-    return ctx.assessment.experimental_unit is None
+    return (
+        ctx.factor is None
+        or ctx.factor.independently_assigned is not TriState.TRUE
+        or ctx.assessment.experimental_unit is None
+    )
+
+
+@predicate("independently_assigned")
+def _independently_assigned(ctx: RuleContext, args: list[str]) -> bool:
+    return bool(
+        ctx.factor is not None
+        and ctx.factor.independently_assigned is TriState.TRUE
+        and ctx.factor.independence_mechanism
+        and ctx.factor.independence_mechanism.strip()
+    )
 
 
 @predicate("analyzed_as")
@@ -280,6 +296,13 @@ def _analysis_finer(ctx: RuleContext, args: list[str]) -> bool:
         and analyzed is not None
         and analyzed <= allocated
     )
+
+
+@predicate("analysis_finer_or_assignment_unknown")
+def _analysis_finer_or_assignment_unknown(ctx: RuleContext, args: list[str]) -> bool:
+    """Rende raggiungibile l'astensione senza confondere un negativo noto."""
+
+    return _assignment_unknown(ctx, []) or _analysis_finer(ctx, [])
 
 
 @predicate("observation_finer_than_assignment")

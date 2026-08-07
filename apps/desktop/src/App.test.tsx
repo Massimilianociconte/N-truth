@@ -12,6 +12,7 @@ describe("N-Truth workspace", () => {
   it("labels synthetic demonstration data and exposes the three synchronized views", () => {
     render(<App />);
     expect(screen.getByText("Dati sintetici dimostrativi")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Progettazione D0" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("heading", { name: "Blocchi sperimentali" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Target inferenziale" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Grafo del disegno sperimentale" })).toBeInTheDocument();
@@ -59,6 +60,7 @@ describe("N-Truth workspace", () => {
   it("switches the interface language independently from the report payload", () => {
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: "Switch interface to English" }));
+    expect(screen.getByRole("heading", { name: "Prospective D0 design" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Experiment blocks" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Experimental design graph" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Human correction" })).toBeInTheDocument();
@@ -67,6 +69,7 @@ describe("N-Truth workspace", () => {
 
   it("edits graph nodes through an append-only candidate correction", () => {
     render(<App />);
+    fireEvent.click(screen.getByRole("checkbox", { name: "Abilita canvas esteso sperimentale" }));
     fireEvent.click(screen.getByRole("button", { name: "Modifica grafo" }));
     fireEvent.change(screen.getByLabelText("Etichetta"), {
       target: { value: "Coltura aggiunta dall'utente" },
@@ -95,6 +98,7 @@ describe("N-Truth workspace", () => {
 
   it("offers only scientifically allocatable node types for factor levels", () => {
     render(<App />);
+    fireEvent.click(screen.getByRole("checkbox", { name: "Abilita canvas esteso sperimentale" }));
     fireEvent.click(screen.getByRole("button", { name: "Modifica grafo" }));
     const allocation = screen.getByLabelText("Allocazione");
     const values = within(allocation)
@@ -105,6 +109,16 @@ describe("N-Truth workspace", () => {
     expect(values).not.toContain("Factor");
     expect(values).not.toContain("Endpoint");
     expect(values).not.toContain("Estimand");
+  });
+
+  it("keeps the post-v0.1 free canvas behind an explicit experimental gate", () => {
+    render(<App />);
+    expect(screen.getByText("Canvas esteso sperimentale · post-v0.1-D")).toBeInTheDocument();
+    expect(screen.getByText("Canvas non attivo")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Modifica grafo" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Abilita canvas esteso sperimentale" }));
+    expect(screen.getByRole("button", { name: "Modifica grafo" })).toBeInTheDocument();
   });
 
   it("selects every target explicitly and renders its own estimand", () => {

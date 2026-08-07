@@ -9,6 +9,7 @@ from ntruth.governance.lineage import (
     ModelRunLineage,
     RunPurpose,
     validate_snapshot_dag,
+    validate_split_eligibility,
 )
 from ntruth.governance.models import (
     AnonymizationStatus,
@@ -60,4 +61,5 @@ __all__ = [
     "make_redacted_copy",
     "scan_text",
     "validate_snapshot_dag",
+    "validate_split_eligibility",
 ]

@@ -6,7 +6,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-RULESET = Path("rulesets/ntruth-core-0.1.0.json")
+RULESET = Path("rulesets/ntruth-core-0.2.0.json")
 FIXTURE_SOURCE = "tests/rule_fixtures/context_factory.py"
 
 

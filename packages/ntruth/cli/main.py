@@ -30,7 +30,9 @@ from ntruth.rules.loader import (
     available_rulesets,
     load_ruleset,
 )
+from ntruth.sample_sheet import generate_sample_sheet, validate_sample_sheet
 from ntruth.schemas.core import Severity
+from ntruth.schemas.manifest import ReleaseProfile
 from ntruth.schemas.report import DomainTransparency
 
 app = typer.Typer(
@@ -39,7 +41,12 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 rules_app = typer.Typer(add_completion=False, help="Ispezione dei ruleset versionati.")
+sample_sheet_app = typer.Typer(
+    add_completion=False,
+    help="Generazione e validazione del SampleSheetSpec v6.",
+)
 app.add_typer(rules_app, name="rules")
+app.add_typer(sample_sheet_app, name="sample-sheet")
 
 _SEVERITY_MARK = {
     Severity.CRITICAL: "CRITICO",
@@ -52,7 +59,10 @@ _SEVERITY_MARK = {
 
 @app.command()
 def analyze(
-    source: Path = typer.Argument(..., help="File o cartella con Methods, legend e sample sheet."),
+    source: Path = typer.Argument(
+        ...,
+        help="File/cartella locale; D0 accetta TXT/MD e CSV semplice.",
+    ),
     out: Path = typer.Option(Path("./ntruth-out"), "--out", "-o", help="Cartella di output."),
     project_dir: Path | None = typer.Option(
         None,
@@ -78,6 +88,14 @@ def analyze(
     ruleset_version: str = typer.Option(
         DEFAULT_RULESET_VERSION, "--ruleset-version", help="Versione del ruleset."
     ),
+    release_profile: ReleaseProfile = typer.Option(
+        ReleaseProfile.D0_CORE,
+        "--release-profile",
+        help=(
+            "d0_core oppure extended_experimental per abilitare esplicitamente "
+            "DOCX/XLSX/PDF/JATS e codice read-only."
+        ),
+    ),
     quiet: bool = typer.Option(False, "--quiet", "-q", help="Stampa solo i percorsi di output."),
 ) -> None:
     """Analizza documenti locali e produce report JSON, HTML e graph.json."""
@@ -99,6 +117,7 @@ def analyze(
             domain=domain,
             ruleset_id=ruleset_id,
             ruleset_version=ruleset_version,
+            release_profile=release_profile,
             on_preflight=show_preflight,
             require_domain_acknowledgement=True,
             acknowledged_unvalidated_domain=acknowledge_unvalidated_domain,
@@ -111,7 +130,7 @@ def analyze(
             err=True,
         )
         raise typer.Exit(code=2) from exc
-    except NoUsableFilesError as exc:
+    except (NoUsableFilesError, SafetyError) as exc:
         typer.secho(str(exc), fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
 
@@ -267,10 +286,30 @@ def distribution_check(
 @app.command()
 def verify(
     project_dir: Path = typer.Argument(..., help="Cartella del progetto da verificare."),
+    migrate_legacy_manifest: bool = typer.Option(
+        False,
+        "--migrate-legacy-manifest",
+        help=(
+            "Migra esplicitamente un vero manifest pre-v6, soltanto dopo aver "
+            "verificato tutte le copie sorgente."
+        ),
+    ),
+    legacy_manifest_sha256: str | None = typer.Option(
+        None,
+        "--legacy-manifest-sha256",
+        help=(
+            "SHA-256 esatto di manifest.json, obbligatorio per un legacy privo "
+            "del vecchio checksum."
+        ),
+    ),
 ) -> None:
     """Verifica i checksum dei file registrati nel progetto (PRD FR-007)."""
     try:
-        project = Project.open(project_dir.expanduser())
+        project = Project.open(
+            project_dir.expanduser(),
+            migrate_legacy_manifest=migrate_legacy_manifest,
+            legacy_manifest_sha256=legacy_manifest_sha256,
+        )
     except (OSError, ValidationError, SafetyError) as exc:
         typer.secho(f"Workspace non verificabile: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=2) from exc
@@ -282,6 +321,56 @@ def verify(
     typer.secho(
         f"Integrita verificata: {len(project.manifest.files)} file, "
         f"checksum manifest {project.manifest.checksum()[:16]}",
+        fg=typer.colors.GREEN,
+    )
+
+
+@sample_sheet_app.command("init")
+def sample_sheet_init(
+    destination: Path = typer.Argument(..., help="Percorso del nuovo template CSV."),
+    factor: list[str] | None = typer.Option(
+        None,
+        "--factor",
+        "-f",
+        help="Nome di un fattore; ripetere l'opzione per piu fattori.",
+    ),
+    force: bool = typer.Option(False, "--force", help="Sovrascrive soltanto il file indicato."),
+) -> None:
+    """Crea il template canonico; non compila allocation o indipendenza."""
+
+    try:
+        written = generate_sample_sheet(
+            destination.expanduser(),
+            factor_names=tuple(factor or ("treatment",)),
+            overwrite=force,
+        )
+    except (OSError, ValueError) as exc:
+        typer.secho(f"Template non creato: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2) from exc
+    typer.secho(f"Sample sheet v6 creato: {written}", fg=typer.colors.GREEN)
+    typer.echo("Gli identificatori e i livelli dei fattori non provano allocation o indipendenza.")
+
+
+@sample_sheet_app.command("validate")
+def sample_sheet_validate(
+    source: Path = typer.Argument(..., help="Sample sheet CSV da controllare."),
+) -> None:
+    """Valida struttura, lifecycle, identificatori e valori senza modificare il CSV."""
+
+    validation = validate_sample_sheet(source.expanduser())
+    for issue in validation.issues:
+        location = f" riga={issue.row}" if issue.row is not None else ""
+        location += f" colonna={issue.column}" if issue.column is not None else ""
+        message = f"[{issue.severity.value}] {issue.code}{location}: {issue.message}"
+        colour = typer.colors.RED if issue.severity.value == "error" else typer.colors.YELLOW
+        typer.secho(message, fg=colour)
+    if not validation.valid or validation.spec is None:
+        typer.secho("Sample sheet non valido.", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+    typer.secho(
+        f"Sample sheet valido: {len(validation.spec.rows)} righe, "
+        f"{len(validation.spec.factor_columns)} fattori, schema "
+        f"{validation.spec.schema_version}.",
         fg=typer.colors.GREEN,
     )
 

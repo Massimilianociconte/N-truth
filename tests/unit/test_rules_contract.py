@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -14,7 +15,8 @@ from ntruth.schemas.core import AlertClass, Severity
 from ntruth.schemas.rules import Rule, RuleFixture, RuleFixtureKind
 
 RULESET = load_ruleset()
-RULESET_PATH = Path(__file__).resolve().parents[2] / "rulesets" / "ntruth-core-0.1.0.json"
+ROOT = Path(__file__).resolve().parents[2]
+RULESET_PATH = Path(__file__).resolve().parents[2] / "rulesets" / "ntruth-core-0.2.0.json"
 EXPECTED_ALERT_CLASSES = {
     AlertClass.DESIGN_REPLICATION: {
         "GEN-001",
@@ -64,6 +66,24 @@ ALL_EXPRESSIONS = [
 def _predicate_name(expression: str) -> str:
     body = expression.removeprefix("not ").strip()
     return body.split("(", 1)[0]
+
+
+def test_v6_semantic_changes_are_versioned_without_rewriting_historical_rules() -> None:
+    historical_path = ROOT / "rulesets" / "ntruth-core-0.1.0.json"
+    assert hashlib.sha256(historical_path.read_bytes()).hexdigest() == (
+        "4e41caa1023de78659383cdfcdfe86bc01b90c6091e790d09ed6b94d35713e67"
+    )
+    historical = load_ruleset("ntruth-core", "0.1.0")
+    current = load_ruleset("ntruth-core", "0.2.0")
+
+    assert historical.version == "0.1.0"
+    assert current.version == "0.2.0"
+    historical_versions = {rule.rule_id: rule.version for rule in historical.rules}
+    current_versions = {rule.rule_id: rule.version for rule in current.rules}
+    assert historical_versions["GEN-001"] == "1.0.0"
+    assert historical_versions["GEN-002"] == "1.0.0"
+    assert current_versions["GEN-001"] == "1.1.0"
+    assert current_versions["GEN-002"] == "1.1.0"
 
 
 @pytest.mark.parametrize(

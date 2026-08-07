@@ -12,6 +12,7 @@
     "inferability": "not_inferable",
     "risk": "insufficient_information",
     "alerts_include": [
+      "GEN-002",
       "GEN-003",
       "GEN-010"
     ],

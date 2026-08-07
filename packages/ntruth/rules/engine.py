@@ -8,12 +8,21 @@ valutabile viene riportata come tale: non scatta e non viene ignorata.
 from __future__ import annotations
 
 import string
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 from ntruth.graph.builder import BuildResult
 from ntruth.graph.index import GraphIndex
 from ntruth.rules.predicates import RuleContext, UnknownPredicate, evaluate
-from ntruth.schemas.core import AlertClass, Provenance, ProvenanceKind, Severity, stable_id
+from ntruth.schemas.core import (
+    AlertClass,
+    EvidenceSpan,
+    EvidenceType,
+    Provenance,
+    ProvenanceKind,
+    Severity,
+    stable_id,
+)
 from ntruth.schemas.experiment import (
     Alert,
     Factor,
@@ -21,7 +30,7 @@ from ntruth.schemas.experiment import (
     RiskLabel,
     UnitAssessment,
 )
-from ntruth.schemas.rules import Rule, RuleEvaluation, RuleOutcome, Ruleset
+from ntruth.schemas.rules import PremiseTrace, Rule, RuleEvaluation, RuleOutcome, Ruleset
 
 #: Mappa severita -> etichetta di rischio dell'assessment (PRD 15.4 layer I).
 SEVERITY_TO_RISK: dict[Severity, RiskLabel] = {
@@ -83,6 +92,7 @@ def apply_rules(
     ruleset: Ruleset,
     *,
     lang: str = "it",
+    evidence_by_id: Mapping[str, EvidenceSpan] | None = None,
 ) -> RuleRunResult:
     """Applica il ruleset a ogni assessment del blocco."""
     index = GraphIndex(build.hierarchy)
@@ -103,6 +113,7 @@ def apply_rules(
             factor=factor,
             contrast=contrast,
             endpoint=endpoint,
+            evidence_by_id=evidence_by_id or {},
         )
 
         for rule in ruleset.rules:
@@ -156,24 +167,29 @@ def _apply_rule(
     matched: list[str] = []
     failed: list[str] = []
     unknown: list[str] = []
+    trace: list[PremiseTrace] = []
 
     for expression in rule.normalized_preconditions():
         try:
             ok = evaluate(expression, context)
         except UnknownPredicate:
             unknown.append(expression)
+            trace.append(_premise_trace(expression, None, context))
             continue
+        trace.append(_premise_trace(expression, ok, context))
         (matched if ok else failed).append(expression)
 
     if unknown:
         return (
-            RuleEvaluation(
-                rule_id=rule.rule_id,
-                outcome=RuleOutcome.UNEVALUABLE,
+            _evaluation(
+                rule,
+                ruleset,
+                RuleOutcome.UNEVALUABLE,
                 matched=tuple(matched),
                 failed=tuple(failed),
                 unknown_predicates=tuple(unknown),
                 scope_label=scope_label,
+                premise_trace=tuple(trace),
             ),
             None,
             [],
@@ -181,12 +197,14 @@ def _apply_rule(
 
     if failed:
         return (
-            RuleEvaluation(
-                rule_id=rule.rule_id,
-                outcome=RuleOutcome.NOT_APPLICABLE,
+            _evaluation(
+                rule,
+                ruleset,
+                RuleOutcome.NOT_APPLICABLE,
                 matched=tuple(matched),
                 failed=tuple(failed),
                 scope_label=scope_label,
+                premise_trace=tuple(trace),
             ),
             None,
             [],
@@ -194,57 +212,201 @@ def _apply_rule(
 
     for expression in rule.normalized_exceptions():
         try:
-            if evaluate(expression, context):
+            result = evaluate(expression, context)
+            trace.append(_premise_trace(expression, result, context))
+            if result:
                 return (
-                    RuleEvaluation(
-                        rule_id=rule.rule_id,
-                        outcome=RuleOutcome.EXCEPTED,
+                    _evaluation(
+                        rule,
+                        ruleset,
+                        RuleOutcome.EXCEPTED,
                         matched=tuple(matched),
                         triggered_exception=expression,
                         scope_label=scope_label,
+                        premise_trace=tuple(trace),
                     ),
                     None,
                     [],
                 )
         except UnknownPredicate:
             unknown.append(expression)
-
-    abstention: str | None = None
-    for expression in rule.normalized_abstentions():
-        try:
-            if evaluate(expression, context):
-                abstention = expression
-                break
-        except UnknownPredicate:
-            unknown.append(expression)
+            trace.append(_premise_trace(expression, None, context))
 
     if unknown:
         return (
-            RuleEvaluation(
-                rule_id=rule.rule_id,
-                outcome=RuleOutcome.UNEVALUABLE,
+            _evaluation(
+                rule,
+                ruleset,
+                RuleOutcome.UNEVALUABLE,
                 matched=tuple(matched),
                 unknown_predicates=tuple(unknown),
                 scope_label=scope_label,
+                premise_trace=tuple(trace),
             ),
             None,
             [],
         )
 
+    abstention: str | None = None
+    for expression in rule.normalized_abstentions():
+        try:
+            result = evaluate(expression, context)
+        except UnknownPredicate:
+            unknown.append(expression)
+            trace.append(_premise_trace(expression, None, context))
+            continue
+        trace.append(_premise_trace(expression, result, context))
+        if result:
+            abstention = expression
+            break
+
+    if unknown:
+        return (
+            _evaluation(
+                rule,
+                ruleset,
+                RuleOutcome.UNEVALUABLE,
+                matched=tuple(matched),
+                unknown_predicates=tuple(unknown),
+                scope_label=scope_label,
+                premise_trace=tuple(trace),
+            ),
+            None,
+            [],
+        )
+
+    if abstention is not None:
+        questions = _questions_for(block_id, rule, context)
+        alert = _alert_for(
+            block_id,
+            rule,
+            ruleset,
+            context,
+            abstention,
+            questions,
+            lang=lang,
+        )
+        return (
+            _evaluation(
+                rule,
+                ruleset,
+                RuleOutcome.ABSTAINED,
+                matched=tuple(matched),
+                scope_label=scope_label,
+                triggered_abstention=abstention,
+                premise_trace=tuple(trace),
+                output_ids=(alert.id,),
+            ),
+            alert,
+            questions,
+        )
+
+    evidence_gaps = _required_evidence_gaps(rule, context)
+    abstention = (
+        "required_evidence_missing(" + ", ".join(evidence_gaps) + ")" if evidence_gaps else None
+    )
     questions = _questions_for(block_id, rule, context)
     alert = _alert_for(block_id, rule, ruleset, context, abstention, questions, lang=lang)
-    outcome = RuleOutcome.ABSTAINED if abstention else RuleOutcome.FIRED
+    outcome = RuleOutcome.ABSTAINED if evidence_gaps else RuleOutcome.FIRED
     return (
-        RuleEvaluation(
-            rule_id=rule.rule_id,
-            outcome=outcome,
+        _evaluation(
+            rule,
+            ruleset,
+            outcome,
             matched=tuple(matched),
             triggered_abstention=abstention,
             scope_label=scope_label,
+            premise_trace=tuple(trace),
+            evidence_gap=evidence_gaps,
+            output_ids=(alert.id,),
         ),
         alert,
         questions,
     )
+
+
+def _evaluation(
+    rule: Rule,
+    ruleset: Ruleset,
+    outcome: RuleOutcome,
+    *,
+    matched: tuple[str, ...] = (),
+    failed: tuple[str, ...] = (),
+    triggered_exception: str | None = None,
+    triggered_abstention: str | None = None,
+    unknown_predicates: tuple[str, ...] = (),
+    scope_label: str = "",
+    premise_trace: tuple[PremiseTrace, ...] = (),
+    evidence_gap: tuple[str, ...] = (),
+    output_ids: tuple[str, ...] = (),
+) -> RuleEvaluation:
+    return RuleEvaluation(
+        rule_id=rule.rule_id,
+        rule_version=rule.version,
+        ruleset_id=ruleset.ruleset_id,
+        ruleset_version=ruleset.version,
+        ruleset_checksum=ruleset.checksum(),
+        outcome=outcome,
+        matched=matched,
+        failed=failed,
+        triggered_exception=triggered_exception,
+        triggered_abstention=triggered_abstention,
+        unknown_predicates=unknown_predicates,
+        scope_label=scope_label,
+        premise_trace=premise_trace,
+        evidence_gap=evidence_gap,
+        output_ids=output_ids,
+    )
+
+
+def _premise_trace(
+    expression: str,
+    result: bool | None,
+    context: RuleContext,
+) -> PremiseTrace:
+    facts = [context.assessment.id]
+    origins = [context.assessment.provenance.origin.value]
+    if context.factor is not None:
+        facts.append(context.factor.id)
+        origins.append(context.factor.provenance.origin.value)
+    if context.contrast is not None:
+        facts.append(context.contrast.id)
+        origins.append(context.contrast.provenance.origin.value)
+    if context.endpoint is not None:
+        facts.append(context.endpoint.id)
+        origins.append(context.endpoint.provenance.origin.value)
+    return PremiseTrace(
+        expression=expression,
+        result=result,
+        fact_ids=tuple(dict.fromkeys(facts)),
+        evidence_ids=tuple(dict.fromkeys(context.assessment.evidence_ids)),
+        provenance_origins=tuple(dict.fromkeys(origins)),
+    )
+
+
+def _required_evidence_gaps(rule: Rule, context: RuleContext) -> tuple[str, ...]:
+    if not rule.requires_evidence:
+        return ()
+    available_ids = tuple(context.assessment.evidence_ids)
+    if not available_ids:
+        return ("ANY",)
+    if not rule.required_evidence:
+        return ()
+    available_types = {
+        span.evidence_type
+        for evidence_id in available_ids
+        if (span := context.evidence_by_id.get(evidence_id)) is not None
+        and span.evidence_type is not None
+    }
+    required: set[EvidenceType] = set()
+    invalid: list[str] = []
+    for value in rule.required_evidence:
+        try:
+            required.add(EvidenceType(value))
+        except ValueError:
+            invalid.append(value)
+    missing = sorted(item.value for item in required - available_types)
+    return tuple(sorted((*invalid, *missing)))
 
 
 def _alert_for(

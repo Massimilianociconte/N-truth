@@ -8,10 +8,10 @@ soggette a errore: non sostituiscono un biostatistico o un esperto di dominio
 __version__ = "0.1.0"
 
 # Versioni dei contratti, riportate in ogni report (PRD FR-034).
-SCHEMA_VERSION = "0.2.0"
-PARSER_VERSION = "0.2.0"
-GRAPH_VERSION = "0.2.0"
-ONTOLOGY_VERSION = "0.1.0"
+SCHEMA_VERSION = "0.3.0"
+PARSER_VERSION = "0.3.0"
+GRAPH_VERSION = "0.3.0"
+ONTOLOGY_VERSION = "0.2.0"
 
 DISCLAIMER = (
     "N-Truth e uno strumento di supporto alla ricostruzione del disegno sperimentale. "

@@ -1,0 +1,150 @@
+{
+  "schema_version": "1.0.0",
+  "status": "implementation_ready_training_blocked_until_gold",
+  "runtime": {
+    "name": "mlx-lm",
+    "version": "0.31.3",
+    "platform": "macOS Apple Silicon",
+    "network_during_training": false
+  },
+  "model": {
+    "provider": "granite",
+    "selection_role": "provisional_primary_train_a",
+    "scientifically_selected": false,
+    "verification_status": "UNVERIFIED",
+    "migration_status": "ARCHITECTURE_MIGRATED",
+    "runtime_qualification_status": "UNVERIFIED",
+    "scientific_validation_status": "NOT_STARTED",
+    "qualified_artifact": null,
+    "canonical_repository": "ibm-granite/granite-4.1-3b",
+    "canonical_revision": "c0650403e44e78ec0262dab1c90914c65b196c4e",
+    "repository": "mlx-community/granite-4.1-3b-4bit",
+    "revision": "b1b476b5a17c46b7d6cd663b4a8ed44b66720aef",
+    "local_path": "models/local/granite-4.1-3b-4bit",
+    "expected_download_bytes": 2130000000,
+    "expected_weight_file": "model.safetensors",
+    "expected_weight_bytes": 2127162429,
+    "expected_weight_sha256": "cff9d052cc3c68ea66b3d364788eb96fca2be82868d9ad92bd968e73b125194d",
+    "quantization_bits": 4,
+    "quantization_group_size": null,
+    "base_repository": "ibm-granite/granite-4.1-3b",
+    "base_revision_observed": "c0650403e44e78ec0262dab1c90914c65b196c4e",
+    "base_parameter_count": 3402836480,
+    "configured_maximum_context_tokens": 131072,
+    "context_window_tokens": 131072,
+    "context_window_notes": "Configured maximum from model config.json (131072). Not a validated host capability; hierarchical chunking remains required.",
+    "mlx_distribution": {
+      "kind": "community_conversion",
+      "official_ibm": false,
+      "converter": "mlx-lm",
+      "repository": "mlx-community/granite-4.1-3b-4bit",
+      "revision": "b1b476b5a17c46b7d6cd663b4a8ed44b66720aef",
+      "weight_file": "model.safetensors",
+      "weight_bytes": 2127162429,
+      "weight_sha256": "cff9d052cc3c68ea66b3d364788eb96fca2be82868d9ad92bd968e73b125194d"
+    },
+    "gguf_repository": "ibm-granite/granite-4.1-3b-GGUF",
+    "base_ablation_repository": "ibm-granite/granite-4.1-3b-base",
+    "license": "Apache-2.0",
+    "license_url": "https://www.apache.org/licenses/LICENSE-2.0",
+    "model_card_url": "https://huggingface.co/ibm-granite/granite-4.1-3b",
+    "chat_template": "granite_role_tags",
+    "chat_template_notes": "<|start_of_role|>role<|end_of_role|>content<|end_of_text|>; no vendor thinking flags",
+    "lora_target_modules_source": "verified_on_granite_architecture_and_state_dict_not_inherited_from_prior_qwen_profile",
+    "output_policy": {
+      "candidate_facts_only": true,
+      "forbidden_direct_outputs": [
+        "final_independent_n",
+        "definitive_pseudoreplication_verdict",
+        "experiment_validity_judgement",
+        "statistical_test_choice",
+        "paper_quality_score",
+        "determinability_verdict"
+      ]
+    }
+  },
+  "hardware": {
+    "minimum_unified_memory_gib": 16,
+    "required_free_disk_gib": 40,
+    "maximum_ntruth_workspace_gib": 40,
+    "device": "metal"
+  },
+  "data": {
+    "format": "chat_jsonl",
+    "task": "parser_candidate_graph_v6",
+    "parser_input_contract_version": "2.0.0",
+    "candidate_graph_contract_version": "1.0.0",
+    "gold_target_contract_version": "1.0.0",
+    "max_sequence_length": 1024,
+    "generation_max_tokens": 1024,
+    "split_group_fields": [
+      "publication_family",
+      "leakage_group",
+      "laboratory_group",
+      "source_bundle"
+    ],
+    "synthetic_train_only": true,
+    "curriculum_task_tags": [
+      "TASK_EVIDENCE",
+      "TASK_ENTITY_COUNT",
+      "TASK_PROCEDURAL_EVENTS",
+      "TASK_RELATIONS",
+      "TASK_ALLOCATION",
+      "TASK_CONTRADICTION",
+      "TASK_GRAPH_ASSEMBLY",
+      "TASK_ALTERNATIVES",
+      "TASK_MISSING_FACTS",
+      "TASK_QUESTION_TEMPLATE"
+    ]
+  },
+  "training": {
+    "fine_tune_type": "lora",
+    "quantized_base_means_qlora": true,
+    "num_layers": 8,
+    "batch_size": 1,
+    "gradient_accumulation_steps": 8,
+    "effective_batch_size": 8,
+    "learning_rate": 0.00001,
+    "optimizer": "adamw",
+    "mask_prompt": true,
+    "gradient_checkpointing": true,
+    "iterations_per_phase": 100,
+    "maximum_phases": 20,
+    "validation_batches": -1,
+    "test_batches": -1,
+    "early_stopping_patience": 3,
+    "early_stopping_min_delta": 0.001,
+    "maximum_observed_peak_memory_gib": 18,
+    "keep_checkpoints": 3,
+    "seeds": [13, 37, 101],
+    "lora_parameters": {
+      "keys": [
+        "self_attn.q_proj",
+        "self_attn.k_proj",
+        "self_attn.v_proj",
+        "self_attn.o_proj",
+        "mlp.gate_proj",
+        "mlp.up_proj",
+        "mlp.down_proj"
+      ],
+      "rank": 16,
+      "scale": 32.0,
+      "dropout": 0.05
+    },
+    "training_blocked_until": [
+      "stable_core_profile",
+      "parser_gold",
+      "anti_leakage_splits",
+      "audited_synthetic",
+      "baseline",
+      "evaluation_protocol",
+      "measured_runtime_resource_budget"
+    ]
+  },
+  "calibration": {
+    "method": "temperature_scaling",
+    "fit_split": "validation",
+    "report": ["brier", "ece", "risk_coverage"],
+    "never_fit_on": ["test", "external_challenge"]
+  }
+}

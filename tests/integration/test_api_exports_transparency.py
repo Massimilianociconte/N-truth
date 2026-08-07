@@ -14,6 +14,7 @@ from ntruth.api.sessions import AnalysisSession, SessionRegistry
 from ntruth.application import DomainAcknowledgementRequired, execute_analysis
 from ntruth.corrections import CorrectionLedger
 from ntruth.ingest.project import Project
+from ntruth.ingest.safety import SafetyError
 from ntruth.pipeline import analyze_project
 from ntruth.reporting import read_json, report_to_dict, write_all
 from ntruth.schemas.core import stable_id
@@ -57,7 +58,7 @@ def test_report_records_ontology_and_domain_transparency(
     make_project: ProjectFactory,
 ) -> None:
     result = analyze_project(make_project({"m.md": METHODS}))
-    assert result.report.versions.ontology_version == "0.1.0"
+    assert result.report.versions.ontology_version == "0.2.0"
     assert result.report.domain_transparency.declared_domain == "quantitative_microscopy"
     assert result.report.domain_transparency.warning in result.report.limits
 
@@ -77,7 +78,7 @@ def test_ro_crate_is_json_ld_and_references_every_export(
     expected = {path.name for name, path in written.items() if name != "ro_crate"}
     assert referenced == expected
     assert root["ntruth:rulesetVersion"] == result.report.versions.ruleset_version
-    assert root["ntruth:ontologyVersion"] == "0.1.0"
+    assert root["ntruth:ontologyVersion"] == "0.2.0"
     assert root["ntruth:domainValidationStatus"] == "unvalidated"
     for file_id in referenced:
         assert len(entities[file_id]["sha256"]) == 64
@@ -89,7 +90,74 @@ def test_exported_report_can_be_reopened_with_checksum_validation(
     result = analyze_project(make_project({"m.md": METHODS}))
     written = write_all(result.report, tmp_path / "out")
     reopened = read_json(written["json"])
-    assert report_to_dict(reopened) == report_to_dict(result.report)
+    exported_payload = json.loads(written["json"].read_text(encoding="utf-8"))
+    assert report_to_dict(reopened) == exported_payload
+    assert reopened.report_id == result.report.report_id
+
+
+def test_report_integrity_covers_identity_checksum_presence_and_disclaimer(
+    make_project: ProjectFactory, tmp_path: Path
+) -> None:
+    result = analyze_project(make_project({"m.md": METHODS}))
+    written = write_all(result.report, tmp_path / "integrity-out")
+    report_path = written["json"]
+    canonical = json.loads(report_path.read_text(encoding="utf-8"))
+
+    tampered_identity = {**canonical, "report_id": "rep-tampered"}
+    report_path.write_text(json.dumps(tampered_identity), encoding="utf-8")
+    with pytest.raises(ValueError, match="non corrispondente"):
+        read_json(report_path)
+
+    missing_checksum = dict(canonical)
+    missing_checksum.pop("content_checksum")
+    report_path.write_text(json.dumps(missing_checksum), encoding="utf-8")
+    with pytest.raises(ValueError, match="checksum del report assente"):
+        read_json(report_path)
+
+    tampered_totals = {**canonical, "totals": {**canonical["totals"], "alerts": 99991}}
+    report_path.write_text(json.dumps(tampered_totals), encoding="utf-8")
+    with pytest.raises(ValueError, match=r"totali derivati.*non corrispondenti"):
+        read_json(report_path)
+
+    missing_totals = dict(canonical)
+    missing_totals.pop("totals")
+    report_path.write_text(json.dumps(missing_totals), encoding="utf-8")
+    with pytest.raises(ValueError, match="totali derivati del report assenti"):
+        read_json(report_path)
+
+    noncanonical = result.report.model_copy(update={"disclaimer": "custom disclaimer"})
+    with pytest.raises(ValueError, match="disclaimer del report non canonico"):
+        report_to_dict(noncanonical)
+
+
+def test_report_rejects_cross_block_positive_output_and_compilation_swaps(
+    make_project: ProjectFactory,
+) -> None:
+    result = analyze_project(make_project({"multi.md": MULTI_METHODS}))
+    report = result.report
+    first, second = report.blocks
+
+    swapped_positive = report.model_copy(
+        update={
+            "positive_outputs": {
+                first.id: report.positive_outputs[second.id],
+                second.id: report.positive_outputs[first.id],
+            }
+        }
+    )
+    with pytest.raises(ValueError, match=r"positive output.*block_id incoerente"):
+        report_to_dict(swapped_positive)
+
+    swapped_compilation = report.model_copy(
+        update={
+            "design_compilations": {
+                first.id: report.design_compilations[second.id],
+                second.id: report.design_compilations[first.id],
+            }
+        }
+    )
+    with pytest.raises(ValueError, match=r"design compilation.*altro block"):
+        report_to_dict(swapped_compilation)
 
 
 def test_shared_application_is_the_cli_contract(
@@ -200,6 +268,48 @@ def test_default_runs_are_isolated_and_previous_outputs_are_never_overwritten(
     assert not list((output_root / "runs").glob(".*.tmp"))
 
 
+def test_directory_analysis_rejects_output_or_workspace_inside_the_source(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source-bundle"
+    source.mkdir()
+    (source / "a.md").write_text(METHODS, encoding="utf-8")
+
+    with pytest.raises(SafetyError, match="non puo essere interna"):
+        execute_analysis(source, out=source / "ntruth-out")
+    assert not (source / "ntruth-out").exists()
+
+    with pytest.raises(SafetyError, match="non puo essere interna"):
+        execute_analysis(
+            source,
+            out=tmp_path / "safe-output",
+            project_dir=source / "ntruth-project",
+        )
+    assert not (source / "ntruth-project").exists()
+
+
+def test_repeated_directory_runs_do_not_retain_removed_sources(tmp_path: Path) -> None:
+    source = tmp_path / "changing-source"
+    source.mkdir()
+    first_source = source / "a.md"
+    first_source.write_text(METHODS, encoding="utf-8")
+    output_root = tmp_path / "outside-output"
+
+    first = execute_analysis(source, out=output_root)
+    first_manifest = json.loads(
+        (first.run_dir / "project" / "manifest.json").read_text(encoding="utf-8")
+    )
+    assert [item["filename"] for item in first_manifest["files"]] == ["a.md"]
+
+    first_source.unlink()
+    (source / "b.md").write_text(METHODS.replace("three", "four"), encoding="utf-8")
+    second = execute_analysis(source, out=output_root)
+    second_manifest = json.loads(
+        (second.run_dir / "project" / "manifest.json").read_text(encoding="utf-8")
+    )
+    assert [item["filename"] for item in second_manifest["files"]] == ["b.md"]
+
+
 def test_concurrent_corrections_are_serialized_into_atomic_immutable_revisions(
     tmp_path: Path,
 ) -> None:
@@ -308,6 +418,63 @@ def test_concurrent_corrections_are_serialized_into_atomic_immutable_revisions(
     }
     assert candidate_path.stat().st_mtime_ns <= crate_path.stat().st_mtime_ns
     assert (revisions_dir / "0002" / "ro-crate-metadata.json").read_bytes() == revision_two_crate
+
+
+def test_session_undo_regenerates_builder_questions_from_the_immutable_baseline(
+    tmp_path: Path,
+) -> None:
+    source = Path("tests/scientific_fixtures/uc02_preparations/methods.md")
+    execution = execute_analysis(source, out=tmp_path / "undo-question-out")
+    session = SessionRegistry().create(execution)
+    block = execution.result.report.blocks[0]
+    baseline_question_ids = {
+        item.id
+        for item in block.questions
+        if item.missing_field
+        in {"factor.independently_assigned", "factor[treatment].independently_assigned"}
+    }
+    assert baseline_question_ids
+
+    def confirm_independence(ledger: CorrectionLedger) -> Correction:
+        return Correction(
+            id=stable_id("cor", "confirm-independence", ledger.current_checksum),
+            sequence=ledger.next_sequence,
+            reason=CorrectionReason.DOMAIN_JUDGEMENT,
+            rationale="Conferma operativa usata per verificare il replay undo/redo.",
+            reviewer_role="wet_lab_reviewer",
+            patch=(
+                {
+                    "op": "replace",
+                    "path": "/factors/0/independently_assigned",
+                    "value": "TRUE",
+                },
+                {
+                    "op": "replace",
+                    "path": "/factors/0/independence_mechanism",
+                    "value": "Preparazioni avviate e allocate separatamente prima del trattamento.",
+                },
+            ),
+        )
+
+    applied = session.apply_generated(block.id, confirm_independence)
+    applied_block = applied.execution.result.report.blocks[0]
+    assert baseline_question_ids.isdisjoint(item.id for item in applied_block.questions)
+
+    undone = session.undo(block.id, actor_role="wet_lab_reviewer")
+    undone_report = undone.execution.result.report
+    undone_block = undone_report.blocks[0]
+    assert baseline_question_ids <= {item.id for item in undone_block.questions}
+    assert undone_report.totals()["questions"] == len(undone_block.questions)
+    assert baseline_question_ids <= set(
+        undone_report.positive_outputs[block.id].decisive_question_ids
+    )
+
+    redone = session.redo(block.id, actor_role="wet_lab_reviewer")
+    redone_block = redone.execution.result.report.blocks[0]
+    assert baseline_question_ids.isdisjoint(item.id for item in redone_block.questions)
+    assert baseline_question_ids.isdisjoint(
+        redone.execution.result.report.positive_outputs[block.id].decisive_question_ids
+    )
 
 
 def test_failed_session_revision_is_not_published_or_made_current(
@@ -440,7 +607,11 @@ def test_fastapi_health_acknowledgement_report_and_parity(tmp_path: Path) -> Non
     assert confirmed_block["estimands"][0]["effect_measure"] == "mean difference"
     assert source_question_ids <= {item["id"] for item in confirmed_block["questions"]}
     compilation = confirmed_body["report"]["design_compilations"][block_id]
-    assert compilation["status"] == "ready"
+    assert compilation["status"] == "abstained"
+    assert compilation["abstained"] is True
+    assert "determinability-insufficient_information" in {
+        item["code"] for item in compilation["analysis_handoff"]["unresolved_assumptions"]
+    }
     assert compilation["analysis_handoff"]["prohibited_outputs"] == [
         "statistical_test_selection",
         "model_formula",

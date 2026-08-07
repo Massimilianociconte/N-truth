@@ -3,7 +3,8 @@
   "description": "Dodici animali combinati in quattro pool: n analitico = 4 pool, non 12 animali individuali.",
   "factor": "treatment",
   "expect": {
-    "experimental_unit": "Animal",
+    "allocation_unit_candidate": "Animal",
+    "experimental_unit": null,
     "observational_unit": "Pool",
     "analytical_unit": "Pool",
     "n_declared": 4,
@@ -14,12 +15,11 @@
     "inferability": "conditional",
     "risk": "insufficient_information",
     "alerts_include": [
+      "GEN-002",
       "GEN-008",
       "GEN-010"
     ],
-    "alerts_exclude": [
-      "GEN-002"
-    ],
+    "alerts_exclude": [],
     "abstained": true,
     "unresolved_conflicts": 0
   },

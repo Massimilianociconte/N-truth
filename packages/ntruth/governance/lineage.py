@@ -11,10 +11,44 @@ from ntruth.schemas.core import FrozenModel, content_checksum
 
 
 class CorpusSplit(StrEnum):
+    UNASSIGNED = "unassigned"
     TRAIN = "train"
     VALIDATION = "validation"
     TEST = "test"
-    EXTERNAL = "external"
+    EXTERNAL_CHALLENGE = "external_challenge"
+    # Alias nominale mantenuto per il codice legacy. La serializzazione resta
+    # sempre il valore canonico ``external_challenge``.
+    EXTERNAL = "external_challenge"
+
+    @classmethod
+    def _missing_(cls, value: object) -> CorpusSplit | None:
+        """Accetta il vecchio valore serializzato senza riemetterlo."""
+
+        if value == "external":
+            return cls.EXTERNAL_CHALLENGE
+        return None
+
+
+def validate_split_eligibility(
+    split: CorpusSplit | None,
+    *,
+    training_eligible: bool,
+    evaluation_eligible: bool,
+) -> None:
+    """Applica i gate d'uso senza fondere split ed eligibility.
+
+    ``evaluation_only`` non e un quarto flag persistito: e il profilo derivato
+    ``evaluation_eligible and not training_eligible``. Tale profilo appartiene
+    a validation/test/external, mai a TRAIN. Un record autorizzato esplicitamente
+    a entrambi gli usi non viene invece ridefinito implicitamente come
+    evaluation-only.
+    """
+
+    if split in {CorpusSplit.TEST, CorpusSplit.EXTERNAL_CHALLENGE} and training_eligible:
+        raise ValueError("TEST ed EXTERNAL_CHALLENGE implicano training_eligible=false")
+    evaluation_only = evaluation_eligible and not training_eligible
+    if split is CorpusSplit.TRAIN and evaluation_only:
+        raise ValueError("TRAIN implica evaluation_only=false")
 
 
 class LeakageGroupKind(StrEnum):
@@ -23,6 +57,9 @@ class LeakageGroupKind(StrEnum):
     CORRESPONDING_LAB = "corresponding_lab"
     LINKED_DATASET = "linked_dataset"
     SUPPLEMENT_FAMILY = "supplement_family"
+    FACILITY = "facility"
+    SYNTHETIC_FAMILY = "synthetic_family"
+    COUNTERFACTUAL_FAMILY = "counterfactual_family"
     SYNTHETIC_TEMPLATE = "synthetic_template"
 
 

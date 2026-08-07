@@ -421,6 +421,9 @@ def _extract_n(
                 node_type=node_type,
                 kind=kind,
                 raw_text=mention.raw_text,
+                quantifier=mention.quantifier,
+                lower_bound=mention.lower_bound,
+                upper_bound=mention.upper_bound,
                 qualifiers=mention.qualifiers,
                 evidence=evidence,
                 confidence=0.95 if node_type else 0.6,
@@ -523,8 +526,14 @@ def _classify_kind(text: str, qualifiers: tuple[str, ...], entity_text: str) -> 
     window = f"{entity_text} {' '.join(qualifiers)} {text}".lower()
     if re.search(r"\b(allocat(?:ed|i|o|e)|randomi[sz]ed|assegnat\w+)\b", window):
         return NKind.ALLOCATED
+    # In "analysed n = 4 ... after one animal was excluded", la menzione
+    # `n = 4` descrive il lifecycle analizzato; l'esclusione e una seconda
+    # menzione/process fact. Dare precedenza alla parola "excluded" farebbe
+    # collassare due conteggi semanticamente distinti.
     if re.search(r"\b(analy[sz]ed|included|after exclusions?|analizzat\w+|inclus\w+)\b", window):
         return NKind.ANALYZED
+    if re.search(r"\b(exclud(?:ed|ing|i)|esclus\w+|drop(?:ped|out))\b", window):
+        return NKind.EXCLUDED
     if re.search(r"\b(observations?|measurements?|records?|osservazioni|misure)\b", window):
         return NKind.OBSERVATIONAL
     if TECHNICAL_REPLICATE_HINTS.search(window):
@@ -913,6 +922,9 @@ def _application_level(
 ) -> tuple[NodeType | None, float, EvidenceSpan | None]:
     """Propone l'unita che riceve materialmente l'intervento."""
 
+    # Il soggetto che riceve fisicamente l'intervento e distinto dal livello
+    # esplicito di allocation. In "cells were treated ... at the level of the
+    # culture", Cell resta application level e CellCulture allocation level.
     subject = APPLICATION_SUBJECT.search(sentence)
     if subject:
         node_type = resolve_phrase(subject.group("level"))

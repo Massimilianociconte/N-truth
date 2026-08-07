@@ -105,8 +105,8 @@ def test_application_statement_does_not_silently_determine_allocation(
     assert factor.assignment_level is None
 
 
-def test_sample_sheet_infers_nesting_and_assignment(make_project: ProjectFactory) -> None:
-    """Da una tabella l'annidamento e esatto, non probabilistico (ipotesi H5)."""
+def test_sample_sheet_infers_nesting_but_not_allocation(make_project: ProjectFactory) -> None:
+    """Gli ID provano contenimento, non allocazione o indipendenza (PRD v6)."""
     from ntruth.extract import extract
     from ntruth.parsers.registry import build_document_ir
     from ntruth.schemas.graph import RelationType
@@ -126,7 +126,13 @@ def test_sample_sheet_infers_nesting_and_assignment(make_project: ProjectFactory
     assert (NodeType.WELL, NodeType.CELL_CULTURE) in pairs
     assert (NodeType.CELL_CULTURE, NodeType.HUMAN_DONOR) in pairs
     factor = next(f for f in result.factors if f.name == "treatment")
-    assert factor.assignment_level is NodeType.CELL_CULTURE
+    assert factor.allocation_level is None
+    assert factor.assignment_level is None
+    assert factor.application_level is None
+    assert {item.node_type for item in result.instance_assignments} == {NodeType.CELL_CULTURE}
+    assert any(
+        "non prova allocation, application o indipendenza" in warning for warning in result.warnings
+    )
 
 
 def test_exclusion_counts_do_not_become_entity_totals(make_project: ProjectFactory) -> None:

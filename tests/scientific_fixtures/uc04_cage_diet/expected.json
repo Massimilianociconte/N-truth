@@ -3,7 +3,8 @@
   "description": "Dieta assegnata per gabbia: l'unita per la dieta e la gabbia, non l'animale.",
   "factor": "diet",
   "expect": {
-    "experimental_unit": "Cage",
+    "allocation_unit_candidate": "Cage",
+    "experimental_unit": null,
     "observational_unit": "Animal",
     "analytical_unit": "Animal",
     "n_declared": null,
@@ -13,7 +14,7 @@
     "n_observational": 32,
     "n_independent": null,
     "inferability": "requires_confirmation",
-    "risk": "likely_pseudoreplication",
+    "risk": "insufficient_information",
     "alerts_include": [
       "GEN-002",
       "GEN-010"

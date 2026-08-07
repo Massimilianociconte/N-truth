@@ -166,7 +166,175 @@ export interface Correction {
   patch: Array<Record<string, unknown>>;
   evidence_ids: string[];
   reviewer_role?: string | null;
+  recorded_at?: string | null;
   verified: boolean;
+}
+
+export type CountQuantifier =
+  | "EXACT"
+  | "LOWER_BOUND"
+  | "UPPER_BOUND"
+  | "APPROXIMATE"
+  | "RANGE"
+  | "UNKNOWN"
+  | "NOT_REPORTED";
+
+export interface CountScope {
+  unit_type?: string | null;
+  factor_id?: string | null;
+  contrast_id?: string | null;
+  group_or_level?: string | null;
+  endpoint_id?: string | null;
+  timepoint?: string | null;
+  lifecycle?: "planned" | "allocated" | "treated" | "observed" | "excluded" | "analysed" | null;
+  population?: string | null;
+  condition?: string | null;
+  unknown_reasons: Record<string, string>;
+}
+
+export interface CountRecord {
+  count_id: string;
+  kind:
+    | "planned_n"
+    | "allocated_n"
+    | "treated_n"
+    | "observed_n"
+    | "excluded_n"
+    | "analysed_n"
+    | "declared_n"
+    | "observational_n"
+    | "analytical_n"
+    | "independent_n"
+    | "biological_source_count"
+    | "effective_n";
+  value?: number | null;
+  quantifier: CountQuantifier;
+  lower_bound?: number | null;
+  upper_bound?: number | null;
+  scope: CountScope;
+  evidence_ids: string[];
+  rule_trace_ids: string[];
+  diagnostic_only: boolean;
+  provenance: Provenance;
+}
+
+export interface ExclusionRecord {
+  id: string;
+  unit_id?: string | null;
+  unit_type: string;
+  phase:
+    | "pre_allocation"
+    | "post_allocation"
+    | "post_treatment"
+    | "post_measurement"
+    | "post_outcome"
+    | "unknown";
+  prespecified: "TRUE" | "FALSE" | "UNKNOWN";
+  endpoint_id?: string | null;
+  factor_id?: string | null;
+  contrast_id?: string | null;
+  group?: string | null;
+  author_role?: string | null;
+  reason?: string | null;
+  evidence_ids: string[];
+  impact?: string | null;
+  unknown_reasons: Record<string, string>;
+  provenance: Provenance;
+}
+
+export interface ProcessFact {
+  id: string;
+  kind: string;
+  detail: string;
+  node_type?: string | null;
+  value?: number | null;
+  endpoint_hint?: string | null;
+  group_hint?: string | null;
+  evidence_ids: string[];
+  provenance: Provenance;
+}
+
+export interface PlausibleGraphSet {
+  id: string;
+  discriminating_question_id: string;
+  evidence_ids: string[];
+  provenance: Provenance;
+  alternatives: Array<{
+    id: string;
+    label: string;
+    hierarchy: { nodes: GraphNode[]; relations: GraphRelation[] };
+    evidence_ids: string[];
+    provenance: Provenance;
+    consequences: Array<{
+      id: string;
+      description: string;
+      experimental_unit?: string | null;
+      n_independent?: number | null;
+      n_independent_by_group: Record<string, number>;
+      evidence_ids: string[];
+      provenance: Provenance;
+      scope: Record<string, unknown>;
+    }>;
+  }>;
+}
+
+export interface AssessmentScope {
+  factor_id?: string | null;
+  contrast_id?: string | null;
+  endpoint_id?: string | null;
+  group?: string | null;
+  timepoint?: string | null;
+  inference_target_id?: string | null;
+  unit_type?: string | null;
+  lifecycle?: string | null;
+  population?: string | null;
+  condition?: string | null;
+  is_global: boolean;
+}
+
+export interface ConditionalScenario {
+  conditional_on: string;
+  if_confirmed: Record<string, number | null>;
+  if_rejected: Record<string, number | null>;
+  question: string;
+  rule_id: string;
+  evidence_ids: string[];
+}
+
+export interface UnitAssessment {
+  id: string;
+  scope: AssessmentScope;
+  biological_unit?: string | null;
+  allocation_unit_candidate?: string | null;
+  experimental_unit?: string | null;
+  observational_unit?: string | null;
+  analytical_unit?: string | null;
+  n_planned?: number | null;
+  n_declared?: number | null;
+  n_allocated?: number | null;
+  n_treated?: number | null;
+  n_observed?: number | null;
+  n_excluded?: number | null;
+  n_analysed?: number | null;
+  n_independent?: number | null;
+  biological_source_count?: number | null;
+  effective_n?: number | null;
+  inferability: string;
+  conditional_scenarios: ConditionalScenario[];
+  risk: string;
+  rationale: string;
+  evidence_ids: string[];
+  provenance: Provenance;
+}
+
+export interface Contradiction {
+  id: string;
+  description: string;
+  statement_ids: string[];
+  evidence_ids: string[];
+  retained_interpretations: string[];
+  status: "unresolved" | "resolved_by_user" | "resolved_by_adjudication";
+  provenance?: Provenance | null;
 }
 
 export interface ExperimentBlock {
@@ -181,10 +349,14 @@ export interface ExperimentBlock {
   endpoints: Endpoint[];
   estimands: Estimand[];
   n_statements: NStatement[];
-  unit_assessments: Array<Record<string, unknown>>;
+  count_records: CountRecord[];
+  exclusion_records: ExclusionRecord[];
+  processes: ProcessFact[];
+  plausible_graph_set?: PlausibleGraphSet | null;
+  unit_assessments: UnitAssessment[];
   alerts: Alert[];
   questions: Question[];
-  contradictions: Array<Record<string, unknown>>;
+  contradictions: Contradiction[];
   evidence: EvidenceSpan[];
   corrections: Correction[];
   versions: Record<string, string | null>;
@@ -307,6 +479,12 @@ export interface BlockPositiveOutput {
     conditional_scenarios: Array<Record<string, unknown>>;
     evidence_ids: string[];
   }>;
+  count_records?: CountRecord[];
+  diagnostic_count_records?: CountRecord[];
+  suppressed_count_record_ids?: string[];
+  exclusion_records?: ExclusionRecord[];
+  plausible_graph_set?: PlausibleGraphSet | null;
+  discriminating_question?: Question | null;
   driver_checklist: Array<{
     item_id: string;
     title: string;
@@ -317,7 +495,7 @@ export interface BlockPositiveOutput {
   }>;
   statements: Array<{
     id: string;
-    layer: "fact" | "inference" | "hypothesis" | "limitation";
+    layer: "fact" | "assertion" | "inference" | "hypothesis" | "limitation";
     text: string;
     evidence_ids: string[];
     source: string;
@@ -384,5 +562,8 @@ export interface AuditEntry {
   sequence: number;
   action: "apply" | "undo" | "redo";
   correction_id: string;
+  actor_role?: string;
+  recorded_at?: string;
+  /** Legacy demo field; authoritative API responses use recorded_at. */
   at?: string;
 }

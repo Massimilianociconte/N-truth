@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
@@ -25,22 +26,26 @@ from ntruth.corrections.json_patch import (
 from ntruth.graph.validation import (
     GraphValidationError,
     assert_valid_experiment_block,
+    blocking_violations,
+    validate_experiment_block,
 )
-from ntruth.schemas.core import content_checksum, stable_id
-from ntruth.schemas.experiment import Correction, ExperimentBlock
+from ntruth.schemas.core import Determinability, content_checksum, stable_id
+from ntruth.schemas.experiment import Correction, ExperimentBlock, GraphStatus
+from ntruth.schemas.graph import GraphViolation
 
 _PROTECTED_ROOTS: frozenset[str] = frozenset(
     {
         "id",
         "document_id",
         "source_file_ids",
-        "evidence",
         "versions",
         "corrections",
         "unit_assessments",
         "alerts",
         "questions",
         "data_sufficiency",
+        "determinability",
+        "plausible_graph_set",
     }
 )
 _RULE_INPUT_ROOTS: frozenset[str] = frozenset(
@@ -50,10 +55,15 @@ _RULE_INPUT_ROOTS: frozenset[str] = frozenset(
         "factors",
         "contrasts",
         "endpoints",
+        "estimands",
         "models",
         "n_statements",
+        "count_records",
+        "evidence",
         "processes",
         "contradictions",
+        "exclusion_records",
+        "graph_status",
     }
 )
 
@@ -73,7 +83,7 @@ class CorrectionValidationError(CorrectionEngineError):
 
 
 class ProtectedCorrectionPath(CorrectionEngineError):
-    """La patch tenta di modificare input, versioni, evidenze o audit trail."""
+    """La patch tenta di modificare identita, versioni, output derivati o audit trail."""
 
 
 class DuplicateCorrection(CorrectionEngineError):
@@ -130,6 +140,8 @@ class CorrectionAuditEvent:
     before_checksum: str
     after_checksum: str
     active_correction_ids: tuple[str, ...]
+    actor_role: str
+    recorded_at: datetime
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -140,6 +152,8 @@ class CorrectionAuditEvent:
             "before_checksum": self.before_checksum,
             "after_checksum": self.after_checksum,
             "active_correction_ids": list(self.active_correction_ids),
+            "actor_role": self.actor_role,
+            "recorded_at": self.recorded_at.isoformat(),
         }
 
 
@@ -153,10 +167,17 @@ class CorrectionLedger:
 
     @classmethod
     def start(cls, block: ExperimentBlock) -> CorrectionLedger:
-        """Crea un ledger senza mutare il blocco ricevuto."""
+        """Crea un ledger senza mutare il blocco ricevuto.
+
+        Un blocco esplicitamente marcato ``INVALID_GRAPH`` deve poter entrare
+        nel percorso human-in-the-loop: e proprio l'oggetto da riparare. La
+        deroga riguarda soltanto lo snapshot di base e soltanto le violazioni
+        bloccanti gia presenti; ogni stato prodotto da una patch attiva deve
+        invece superare integralmente la validazione del grafo.
+        """
 
         try:
-            assert_valid_experiment_block(block)
+            _validate_repairable_base(block, allowed_violations=block)
         except GraphValidationError as exc:
             raise CorrectionValidationError(str(exc)) from exc
         return cls(_base_json=_canonical_json(block.model_dump(mode="json")))
@@ -220,6 +241,8 @@ class CorrectionLedger:
         """Applica una patch e accoda record + audit event in una nuova istanza."""
 
         self.assert_integrity()
+        correction_recorded_at = correction.recorded_at or _utc_now()
+        correction = correction.model_copy(update={"recorded_at": correction_recorded_at})
         existing = {item.id for item in self.base_block.corrections}
         existing.update(item.correction.id for item in self.records)
         if correction.id in existing:
@@ -248,6 +271,8 @@ class CorrectionLedger:
         if not isinstance(patched, dict):
             raise CorrectionValidationError("la patch deve produrre un ExperimentBlock JSON")
 
+        _stamp_corrected_graph_provenance(patched, operations, correction)
+
         patched["corrections"] = [
             *(item.model_dump(mode="json") for item in before.corrections),
             correction.model_dump(mode="json"),
@@ -271,6 +296,8 @@ class CorrectionLedger:
             before_checksum=before_checksum,
             after_checksum=after_checksum,
             active_correction_ids=active_after,
+            actor_role=correction.reviewer_role,
+            recorded_at=correction_recorded_at,
         )
         return CorrectionLedger(
             _base_json=self._base_json,
@@ -278,7 +305,12 @@ class CorrectionLedger:
             audit_trail=(*self.audit_trail, event),
         )
 
-    def undo(self) -> CorrectionLedger:
+    def undo(
+        self,
+        *,
+        actor_role: str = "reviewer",
+        recorded_at: datetime | None = None,
+    ) -> CorrectionLedger:
         """Annulla l'ultima patch attiva conservando integralmente la storia."""
 
         self.assert_integrity()
@@ -296,6 +328,8 @@ class CorrectionLedger:
             before_checksum=before_checksum,
             after_checksum=after_checksum,
             active_correction_ids=active_after,
+            actor_role=_normalise_actor_role(actor_role),
+            recorded_at=_normalise_recorded_at(recorded_at),
         )
         return CorrectionLedger(
             _base_json=self._base_json,
@@ -303,7 +337,12 @@ class CorrectionLedger:
             audit_trail=(*self.audit_trail, event),
         )
 
-    def redo(self) -> CorrectionLedger:
+    def redo(
+        self,
+        *,
+        actor_role: str = "reviewer",
+        recorded_at: datetime | None = None,
+    ) -> CorrectionLedger:
         """Riapplica l'ultima patch annullata e accoda un evento di audit."""
 
         self.assert_integrity()
@@ -321,6 +360,8 @@ class CorrectionLedger:
             before_checksum=before_checksum,
             after_checksum=after_checksum,
             active_correction_ids=active_after,
+            actor_role=_normalise_actor_role(actor_role),
+            recorded_at=_normalise_recorded_at(recorded_at),
         )
         return CorrectionLedger(
             _base_json=self._base_json,
@@ -334,7 +375,7 @@ class CorrectionLedger:
         errors: list[str] = []
         try:
             base = self.base_block
-            assert_valid_experiment_block(base)
+            _validate_repairable_base(base, allowed_violations=base)
         except (ValidationError, GraphValidationError, ValueError) as exc:
             return (f"base snapshot non valido: {exc}",)
 
@@ -378,6 +419,10 @@ class CorrectionLedger:
         applied_counts = {correction_id: 0 for correction_id in record_by_correction}
         for index, event in enumerate(self.audit_trail):
             before_active = tuple(active)
+            if not event.actor_role.strip():
+                errors.append(f"actor role assente nell'evento {event.id}")
+            if event.recorded_at.tzinfo is None or event.recorded_at.utcoffset() is None:
+                errors.append(f"timestamp senza fuso nell'evento {event.id}")
             if event.sequence != index:
                 errors.append(
                     f"audit sequence non contigua: attesa {index}, trovata {event.sequence}"
@@ -412,6 +457,8 @@ class CorrectionLedger:
                 before_checksum=event.before_checksum,
                 after_checksum=event.after_checksum,
                 active_correction_ids=event.active_correction_ids,
+                actor_role=event.actor_role,
+                recorded_at=event.recorded_at,
             )
             if event.id != expected_event.id:
                 errors.append(f"audit event id incoerente: {event.id}")
@@ -428,6 +475,11 @@ class CorrectionLedger:
                 errors.append(f"after checksum incoerente nell'evento {event.id}")
             if event.action is CorrectionAction.APPLY:
                 record = record_by_correction[event.correction_id]
+                correction = record.correction
+                if event.actor_role != correction.reviewer_role:
+                    errors.append(f"actor role divergente dal record: {record.id}")
+                if event.recorded_at != correction.recorded_at:
+                    errors.append(f"timestamp divergente dal record: {record.id}")
                 if record.before_checksum != before_checksum:
                     errors.append(f"record before checksum incoerente: {record.id}")
                 if record.after_checksum != after_checksum:
@@ -461,12 +513,23 @@ class CorrectionLedger:
                 ) from exc
             if not isinstance(payload, dict):
                 raise LedgerIntegrityError("il replay non produce un ExperimentBlock JSON")
+            _stamp_corrected_graph_provenance(payload, record.operations, record.correction)
 
         base_corrections = json.loads(self._base_json).get("corrections", [])
         payload["corrections"] = [
             *base_corrections,
             *(item.correction.model_dump(mode="json") for item in self.records),
         ]
+        if not active_ids:
+            try:
+                candidate = ExperimentBlock.model_validate(payload)
+                _validate_repairable_base(
+                    candidate,
+                    allowed_violations=self.base_block,
+                )
+            except (ValidationError, GraphValidationError) as exc:
+                raise CorrectionValidationError(str(exc)) from exc
+            return candidate
         return _validate_candidate(payload)
 
     def _replay_controls(self) -> tuple[list[str], list[str]]:
@@ -497,6 +560,142 @@ class CorrectionLedger:
         return max(sequences, default=-1) + 1
 
 
+def _stamp_corrected_graph_provenance(
+    payload: dict[str, Any],
+    operations: tuple[JsonPatchOperation, ...],
+    correction: Correction,
+) -> None:
+    """Lega ogni oggetto scientifico modificato alla correzione umana."""
+
+    recorded_at = correction.recorded_at
+    if recorded_at is None:
+        raise CorrectionValidationError("correzione senza timestamp server-side")
+    provenance_roots = {
+        "inference_targets",
+        "factors",
+        "contrasts",
+        "endpoints",
+        "estimands",
+        "models",
+        "n_statements",
+        "count_records",
+        "processes",
+        "contradictions",
+        "exclusion_records",
+    }
+    touched: dict[tuple[str, ...], set[int] | None] = {}
+    for operation in operations:
+        if operation.op in {"test", "remove"}:
+            continue
+        tokens = parse_pointer(operation.path)
+        if not tokens:
+            continue
+        location: tuple[str, ...]
+        if tokens[0] == "hierarchy":
+            if len(tokens) == 1:
+                touched[("hierarchy", "nodes")] = None
+                touched[("hierarchy", "relations")] = None
+                continue
+            if tokens[1] not in {"nodes", "relations"}:
+                continue
+            location = ("hierarchy", tokens[1])
+            index_token = tokens[2] if len(tokens) > 2 else None
+        elif tokens[0] in provenance_roots:
+            location = (tokens[0],)
+            index_token = tokens[1] if len(tokens) > 1 else None
+        else:
+            continue
+
+        values = _payload_list_at(payload, location)
+        if not isinstance(values, list) or not values:
+            continue
+        if index_token is None:
+            touched[location] = None
+            continue
+        index = (
+            len(values) - 1
+            if index_token == "-"
+            else int(index_token)
+            if index_token.isdigit()
+            else None
+        )
+        if index is None or index >= len(values):
+            continue
+        # ``dict.get`` non distingue una location assente da una location gia
+        # marcata con ``None`` (tutta la collezione). Gestiamo esplicitamente i
+        # due casi, altrimenti le patch indicizzate non vengono mai timbrate.
+        if location in touched and touched[location] is None:
+            continue
+        touched.setdefault(location, set()).add(index)  # type: ignore[union-attr]
+
+    for location_key, indices in touched.items():
+        values = _payload_list_at(payload, location_key)
+        if not isinstance(values, list):
+            continue
+        selected = range(len(values)) if indices is None else sorted(indices)
+        for index in selected:
+            item = values[index]
+            if not isinstance(item, dict):
+                continue
+            direct_evidence_ids = tuple(
+                dict.fromkeys(
+                    (
+                        *(
+                            value
+                            for value in item.get("evidence_ids", [])
+                            if isinstance(value, str)
+                        ),
+                        *correction.evidence_ids,
+                    )
+                )
+            )
+            provenance_evidence_ids = tuple(
+                dict.fromkeys(
+                    (
+                        *(
+                            value
+                            for key, values_for_key in item.items()
+                            if key == "evidence_ids" or key.endswith("_evidence_ids")
+                            if isinstance(values_for_key, list)
+                            for value in values_for_key
+                            if isinstance(value, str)
+                        ),
+                        *correction.evidence_ids,
+                    )
+                )
+            )
+            # ``evidence_ids`` resta il collegamento diretto dell'oggetto. La
+            # provenienza, invece, deve coprire anche l'evidenza specializzata
+            # (allocation/application/independence) che il builder propaga nei
+            # nodi e nelle relazioni del grafo.
+            item["evidence_ids"] = list(direct_evidence_ids)
+            previous = item.get("provenance")
+            provenance = dict(previous) if isinstance(previous, dict) else {}
+            provenance.update(
+                {
+                    "origin": (
+                        "adjudication" if provenance.get("origin") == "adjudication" else "user"
+                    ),
+                    "evidence_ids": list(provenance_evidence_ids),
+                    "actor_role": correction.reviewer_role,
+                    "correction_role": correction.reviewer_role,
+                    "correction_id": correction.id,
+                    "timestamp": recorded_at.isoformat(),
+                    "derivation": correction.rationale.strip() or "human correction",
+                }
+            )
+            item["provenance"] = provenance
+
+
+def _payload_list_at(payload: dict[str, Any], location: tuple[str, ...]) -> list[Any] | None:
+    current: Any = payload
+    for token in location:
+        if not isinstance(current, dict):
+            return None
+        current = current.get(token)
+    return current if isinstance(current, list) else None
+
+
 def _validate_candidate(payload: dict[str, Any]) -> ExperimentBlock:
     try:
         block = ExperimentBlock.model_validate(payload)
@@ -504,6 +703,47 @@ def _validate_candidate(payload: dict[str, Any]) -> ExperimentBlock:
     except (ValidationError, GraphValidationError) as exc:
         raise CorrectionValidationError(str(exc)) from exc
     return block
+
+
+def _validate_repairable_base(
+    block: ExperimentBlock,
+    *,
+    allowed_violations: ExperimentBlock,
+) -> None:
+    """Accetta un baseline invalido senza trasformarlo in una deroga globale.
+
+    L'insieme delle violazioni bloccanti puo soltanto coincidere con, o essere
+    un sottoinsieme di, quello dello snapshot originale. In questo modo i
+    metadati append-only aggiunti durante undo non possono introdurre nuovi
+    riferimenti corrotti mentre il ledger materializza nuovamente il baseline.
+    """
+
+    current = blocking_violations(validate_experiment_block(block))
+    if not current:
+        return
+    if (
+        block.graph_status is not GraphStatus.INVALID
+        or block.determinability is not Determinability.INVALID_GRAPH
+    ):
+        raise GraphValidationError(current)
+
+    allowed = {
+        _violation_identity(item)
+        for item in blocking_violations(validate_experiment_block(allowed_violations))
+    }
+    unexpected = tuple(item for item in current if _violation_identity(item) not in allowed)
+    if unexpected:
+        raise GraphValidationError(unexpected)
+
+
+def _violation_identity(violation: GraphViolation) -> tuple[object, ...]:
+    return (
+        violation.code,
+        violation.message,
+        violation.node_ids,
+        violation.relation_ids,
+        violation.blocking,
+    )
 
 
 def _validate_correction_paths(operations: tuple[JsonPatchOperation, ...]) -> None:
@@ -534,6 +774,8 @@ def _make_audit_event(
     before_checksum: str,
     after_checksum: str,
     active_correction_ids: tuple[str, ...],
+    actor_role: str,
+    recorded_at: datetime,
 ) -> CorrectionAuditEvent:
     event_id = stable_id(
         "cae",
@@ -543,6 +785,8 @@ def _make_audit_event(
         before_checksum,
         after_checksum,
         active_correction_ids,
+        actor_role,
+        recorded_at.isoformat(),
     )
     return CorrectionAuditEvent(
         id=event_id,
@@ -552,7 +796,27 @@ def _make_audit_event(
         before_checksum=before_checksum,
         after_checksum=after_checksum,
         active_correction_ids=active_correction_ids,
+        actor_role=actor_role,
+        recorded_at=recorded_at,
     )
+
+
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
+def _normalise_actor_role(actor_role: str) -> str:
+    normalized = actor_role.strip()
+    if len(normalized) < 2 or len(normalized) > 64:
+        raise CorrectionValidationError("actor_role deve contenere un ruolo di 2-64 caratteri")
+    return normalized
+
+
+def _normalise_recorded_at(recorded_at: datetime | None) -> datetime:
+    value = recorded_at or _utc_now()
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise CorrectionValidationError("recorded_at deve includere il fuso orario")
+    return value
 
 
 def _canonical_json(payload: Any) -> str:

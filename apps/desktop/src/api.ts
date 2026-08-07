@@ -1,12 +1,25 @@
 import type {
+  PlanExecutionGetResponse,
+  PlanExecutionSubmitPayload,
+  PlanExecutionSubmitResponse,
+} from "./d0/planExecutionTypes";
+import type { DeterminabilityState } from "./d0/types";
+import type {
   AnalysisResponse,
   AuditEntry,
   Correction,
   DomainTransparency,
+  ExperimentBlock,
   PrivacyAudit,
   Report,
   ShareReadiness,
 } from "./types";
+
+export type {
+  PlanExecutionGetResponse,
+  PlanExecutionSubmitPayload,
+  PlanExecutionSubmitResponse,
+} from "./d0/planExecutionTypes";
 
 export class ApiError extends Error {
   constructor(
@@ -94,10 +107,15 @@ export async function navigateCorrection(
   action: "undo" | "redo",
   sessionId: string,
   blockId: string,
+  reviewerRole = "reviewer",
 ): Promise<CorrectionResponse> {
   return request(`/v1/corrections/${action}`, {
     method: "POST",
-    body: JSON.stringify({ session_id: sessionId, block_id: blockId }),
+    body: JSON.stringify({
+      session_id: sessionId,
+      block_id: blockId,
+      reviewer_role: reviewerRole,
+    }),
   });
 }
 
@@ -137,6 +155,183 @@ export async function confirmInferenceTarget(
     method: "POST",
     body: JSON.stringify({ session_id: sessionId, block_id: blockId, target }),
   });
+}
+
+export type ProspectiveD0NodeType = "Well" | "Plate" | "UNKNOWN";
+
+export interface ProspectiveD0CompilePayload {
+  draft: {
+    experimentBlockId: string;
+    title: string;
+    question: string;
+    inferenceTarget: string;
+    factorName: string;
+    factorKind: "treatment" | "genotype" | "dose" | "time" | "diet" | "other" | "unknown";
+    levelA: string;
+    levelB: string;
+    endpointName: string;
+    endpointId: string;
+    measuredOn: ProspectiveD0NodeType;
+    allocationLevel: ProspectiveD0NodeType;
+    applicationLevel: ProspectiveD0NodeType;
+    independentlyAssigned: "TRUE" | "FALSE" | "UNKNOWN";
+    independenceMechanism: string | null;
+    sharedEnvironment: string[];
+    targetBiologicalUnit: Exclude<ProspectiveD0NodeType, "UNKNOWN">;
+    estimand: {
+      effectMeasure: string;
+      targetPopulationOrUnit: string;
+      generalizationLevel: string;
+      timepoint: string | null;
+      condition: string | null;
+    };
+    reviewerRole: string;
+  };
+  rows: Array<{
+    sampleId: string;
+    sourceId: string | null;
+    preparationId: string | null;
+    cultureId: string | null;
+    plateId: string | null;
+    wellId: string | null;
+    factorLevel: string;
+    batchId: string | null;
+    extraFields: {
+      day_id: string | null;
+      operator_id: string | null;
+      incubator_id: string | null;
+    };
+    timepoint: string | null;
+    endpointId: string | null;
+    lifecycleStatus: "planned" | "treated" | "observed" | "excluded" | "analysed";
+    exclusionReason: string | null;
+    exclusionPhase:
+      | "pre_allocation"
+      | "post_allocation"
+      | "post_treatment"
+      | "post_measurement"
+      | "post_outcome"
+      | "unknown"
+      | null;
+    exclusionPrespecified: "TRUE" | "FALSE" | "UNKNOWN";
+    exclusionAuthorRole: string | null;
+    exclusionImpact: string | null;
+    fileRef: string | null;
+  }>;
+  language: "it" | "en";
+  rulesetId: "ntruth-core";
+  rulesetVersion: "0.2.0";
+}
+
+export interface ProspectiveD0CompileResponse {
+  session_id: string;
+  session_persistence: "ephemeral_process_memory";
+  contract_version: "1.0.0";
+  compiler_version: "1.0.0";
+  compilation_id: string;
+  ruleset_checksum: string;
+  block: ExperimentBlock;
+  sample_sheet: Record<string, unknown>;
+  capability: {
+    profile_id: string;
+    profile_version: string;
+    profile_reference: string;
+    status: string;
+    supported: boolean | null;
+    reason_codes: string[];
+    details: string[];
+  };
+  design_compilation: Record<string, unknown>;
+  verification: {
+    schema_version: string;
+    status: string;
+    block_id: string;
+    violations: Array<{
+      code: string;
+      message: string;
+      blocking: boolean;
+      node_ids: string[];
+      relation_ids: string[];
+    }>;
+    warnings: Array<{
+      code: string;
+      message: string;
+      blocking: boolean;
+      node_ids: string[];
+      relation_ids: string[];
+    }>;
+    checked_invariants: string[];
+  };
+  rule_evaluations: Array<{
+    rule_id: string;
+    rule_version: string;
+    ruleset_id: string;
+    ruleset_version: string;
+    ruleset_checksum: string;
+    outcome: "fired" | "not_applicable" | "abstained" | "excepted" | "unevaluable";
+    matched: string[];
+    failed: string[];
+    triggered_exception?: string | null;
+    triggered_abstention?: string | null;
+    unknown_predicates: string[];
+    scope_label: string;
+    premise_trace: Array<{
+      expression: string;
+      result: boolean | null;
+      fact_ids: string[];
+      evidence_ids: string[];
+      provenance_origins: string[];
+    }>;
+    evidence_gap: string[];
+    output_ids: string[];
+  }>;
+  issues: Array<{
+    code: string;
+    message: string;
+    severity: "error" | "warning";
+    row?: number | null;
+    field?: string | null;
+  }>;
+  determinability: DeterminabilityState;
+  ready_for_handoff: boolean;
+  scientific_validation_status: "not_performed";
+  prohibited_outputs: string[];
+  audit_trail: Array<{
+    id: string;
+    action: "compile";
+    actor_role: string;
+    recorded_at: string;
+    input_checksum: string;
+    output_checksum: string;
+  }>;
+}
+
+export async function compileProspectiveD0(
+  payload: ProspectiveD0CompilePayload,
+): Promise<ProspectiveD0CompileResponse> {
+  return request("/v1/prospective/d0/compile", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function submitPlanExecution(
+  payload: PlanExecutionSubmitPayload,
+): Promise<PlanExecutionSubmitResponse> {
+  return request("/v1/prospective/plan-execution", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getPlanExecution(
+  recordId: string,
+  projectDir: string,
+): Promise<PlanExecutionGetResponse> {
+  const params = new URLSearchParams({ project_dir: projectDir });
+  return request(
+    `/v1/prospective/plan-execution/${encodeURIComponent(recordId)}?${params.toString()}`,
+  );
 }
 
 export function downloadJson(filename: string, payload: unknown): void {

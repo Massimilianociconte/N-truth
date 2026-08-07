@@ -16,10 +16,12 @@ from ntruth.schemas.report import Report
 
 
 def report_to_dict(report: Report) -> dict[str, Any]:
+    report = Report.model_validate(report.model_dump(mode="json"))
+    if report.disclaimer != DISCLAIMER:
+        raise ValueError("disclaimer del report non canonico")
     payload = report.model_dump(mode="json")
     payload["content_checksum"] = report.content_checksum()
     payload["totals"] = report.totals()
-    payload["disclaimer"] = DISCLAIMER
     return payload
 
 
@@ -53,10 +55,16 @@ def read_json(path: Path) -> Report:
 
     payload = json.loads(path.read_text(encoding="utf-8"))
     expected_checksum = payload.pop("content_checksum", None)
-    payload.pop("totals", None)
+    if expected_checksum is None:
+        raise ValueError("checksum del report assente")
+    declared_totals = payload.pop("totals", None)
+    if declared_totals is None:
+        raise ValueError("totali derivati del report assenti")
     report = Report.model_validate(payload)
-    if expected_checksum is not None and expected_checksum != report.content_checksum():
+    if expected_checksum != report.content_checksum():
         raise ValueError("checksum del report non corrispondente al contenuto")
+    if declared_totals != report.totals():
+        raise ValueError("totali derivati del report non corrispondenti al contenuto")
     return report
 
 

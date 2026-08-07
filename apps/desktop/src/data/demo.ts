@@ -158,6 +158,10 @@ function block(
         confidence: 0.62,
       },
     ],
+    count_records: [],
+    exclusion_records: [],
+    processes: [],
+    plausible_graph_set: null,
     unit_assessments: [],
     alerts: [
       {
@@ -387,6 +391,10 @@ export const DEMO_REPORT: Report = {
           limitations: ["Questa vista dimostra il contratto UI e non valida il disegno."],
         },
         n_table: [],
+        count_records: [],
+        diagnostic_count_records: [],
+        suppressed_count_record_ids: [],
+        exclusion_records: [],
         driver_checklist: [
           ["DRIVER-1", "Experimental unit", "experimental-unit"],
           ["DRIVER-2", "Risk of bias", "risk-bias"],

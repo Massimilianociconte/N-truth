@@ -1,0 +1,708 @@
+{
+  "benchmark_id": "m5-pro-24g-20260801T222929Z-222008604c",
+  "budget_path": "benchmarks/runtime/m5-pro-24g-20260801T222929Z-222008604c.budget.json",
+  "budget_stage_keys": [
+    "LOW_MEMORY/mlx_generate",
+    "BALANCED/mlx_generate",
+    "QUALITY/mlx_generate",
+    "LOW_MEMORY/rules_engine",
+    "LOW_MEMORY/hard_verifier",
+    "LOW_MEMORY/semantic_verifier",
+    "BALANCED/rules_engine",
+    "BALANCED/hard_verifier",
+    "BALANCED/semantic_verifier",
+    "QUALITY/rules_engine",
+    "QUALITY/hard_verifier",
+    "QUALITY/semantic_verifier"
+  ],
+  "cpu_raw": {
+    "cpu_runs": [
+      {
+        "additional_peak_ram_bytes": 67764224,
+        "latency_ms": 122.471915994538,
+        "observation_id": "obs-low_memory-rules_engine-r1",
+        "profile": "LOW_MEMORY",
+        "replica": 1,
+        "stage_id": "rules_engine",
+        "swap_delta_bytes": 0
+      },
+      {
+        "additional_peak_ram_bytes": 67682304,
+        "latency_ms": 119.22854201111477,
+        "observation_id": "obs-low_memory-rules_engine-r2",
+        "profile": "LOW_MEMORY",
+        "replica": 2,
+        "stage_id": "rules_engine",
+        "swap_delta_bytes": 0
+      },
+      {
+        "additional_peak_ram_bytes": 67682304,
+        "latency_ms": 0.6947499932721257,
+        "observation_id": "obs-low_memory-hard_verifier-r1",
+        "profile": "LOW_MEMORY",
+        "replica": 1,
+        "stage_id": "hard_verifier",
+        "swap_delta_bytes": 0
+      },
+      {
+        "additional_peak_ram_bytes": 67682304,
+        "latency_ms": 0.6389580084942281,
+        "observation_id": "obs-low_memory-hard_verifier-r2",
+        "profile": "LOW_MEMORY",
+        "replica": 2,
+        "stage_id": "hard_verifier",
+        "swap_delta_bytes": 0
+      },
+      {
+        "additional_peak_ram_bytes": 67682304,
+        "latency_ms": 0.2598340070107952,
+        "observation_id": "obs-low_memory-semantic_verifier-r1",
+        "profile": "LOW_MEMORY",
+        "replica": 1,
+        "stage_id": "semantic_verifier",
+        "swap_delta_bytes": 0
+      },
+      {
+        "additional_peak_ram_bytes": 67682304,
+        "latency_ms": 0.24412501079495996,
+        "observation_id": "obs-low_memory-semantic_verifier-r2",
+        "profile": "LOW_MEMORY",
+        "replica": 2,
+        "stage_id": "semantic_verifier",
+        "swap_delta_bytes": 0
+      },
+      {
+        "additional_peak_ram_bytes": 67682304,
+        "latency_ms": 122.18445900361985,
+        "observation_id": "obs-balanced-rules_engine-r1",
+        "profile": "BALANCED",
+        "replica": 1,
+        "stage_id": "rules_engine",
+        "swap_delta_bytes": 0
+      },
+      {
+        "additional_peak_ram_bytes": 67682304,
+        "latency_ms": 124.41466700693127,
+        "observation_id": "obs-balanced-rules_engine-r2",
+        "profile": "BALANCED",
+        "replica": 2,
+        "stage_id": "rules_engine",
+        "swap_delta_bytes": 0
+      },
+      {
+        "additional_peak_ram_bytes": 67682304,
+        "latency_ms": 0.6001659930916503,
+        "observation_id": "obs-balanced-hard_verifier-r1",
+        "profile": "BALANCED",
+        "replica": 1,
+        "stage_id": "hard_verifier",
+        "swap_delta_bytes": 0
+      },
+      {
+        "additional_peak_ram_bytes": 67682304,
+        "latency_ms": 0.606792003964074,
+        "observation_id": "obs-balanced-hard_verifier-r2",
+        "profile": "BALANCED",
+        "replica": 2,
+        "stage_id": "hard_verifier",
+        "swap_delta_bytes": 0
+      },
+      {
+        "additional_peak_ram_bytes": 67682304,
+        "latency_ms": 0.2742919896263629,
+        "observation_id": "obs-balanced-semantic_verifier-r1",
+        "profile": "BALANCED",
+        "replica": 1,
+        "stage_id": "semantic_verifier",
+        "swap_delta_bytes": 0
+      },
+      {
+        "additional_peak_ram_bytes": 67682304,
+        "latency_ms": 0.2739999908953905,
+        "observation_id": "obs-balanced-semantic_verifier-r2",
+        "profile": "BALANCED",
+        "replica": 2,
+        "stage_id": "semantic_verifier",
+        "swap_delta_bytes": 0
+      },
+      {
+        "additional_peak_ram_bytes": 67682304,
+        "latency_ms": 120.44112499279436,
+        "observation_id": "obs-quality-rules_engine-r1",
+        "profile": "QUALITY",
+        "replica": 1,
+        "stage_id": "rules_engine",
+        "swap_delta_bytes": 0
+      },
+      {
+        "additional_peak_ram_bytes": 67682304,
+        "latency_ms": 120.39799999911338,
+        "observation_id": "obs-quality-rules_engine-r2",
+        "profile": "QUALITY",
+        "replica": 2,
+        "stage_id": "rules_engine",
+        "swap_delta_bytes": 0
+      },
+      {
+        "additional_peak_ram_bytes": 67682304,
+        "latency_ms": 0.6459159922087565,
+        "observation_id": "obs-quality-hard_verifier-r1",
+        "profile": "QUALITY",
+        "replica": 1,
+        "stage_id": "hard_verifier",
+        "swap_delta_bytes": 0
+      },
+      {
+        "additional_peak_ram_bytes": 67682304,
+        "latency_ms": 0.6097919977037236,
+        "observation_id": "obs-quality-hard_verifier-r2",
+        "profile": "QUALITY",
+        "replica": 2,
+        "stage_id": "hard_verifier",
+        "swap_delta_bytes": 0
+      },
+      {
+        "additional_peak_ram_bytes": 67682304,
+        "latency_ms": 0.3084579948335886,
+        "observation_id": "obs-quality-semantic_verifier-r1",
+        "profile": "QUALITY",
+        "replica": 1,
+        "stage_id": "semantic_verifier",
+        "swap_delta_bytes": 0
+      },
+      {
+        "additional_peak_ram_bytes": 67682304,
+        "latency_ms": 0.33016699308063835,
+        "observation_id": "obs-quality-semantic_verifier-r2",
+        "profile": "QUALITY",
+        "replica": 2,
+        "stage_id": "semantic_verifier",
+        "swap_delta_bytes": 0
+      }
+    ],
+    "work_root": "/var/folders/rb/gltk48212j39qn2wskhlj3s80000gn/T/ntruth-bench-j0k0l6qz"
+  },
+  "environment_probe": {
+    "machine_model": "Mac17,9",
+    "operating_system": "macOS 26.5.2",
+    "runtime_name": "mlx-lm",
+    "runtime_version": "0.31.3",
+    "unified_memory_bytes": 25769803776
+  },
+  "host": {
+    "machine": "arm64",
+    "platform": "macOS-26.5.2-arm64-arm-64bit",
+    "processor": "arm",
+    "protocol_version": "1.0.0",
+    "python": "3.12.13"
+  },
+  "identity": {
+    "benchmark_id": "m5-pro-24g-20260801T222929Z-222008604c",
+    "machine_model": "Mac17,9",
+    "measured_at": "2026-08-01T22:29:29.701200Z",
+    "operating_system": "macOS 26.5.2",
+    "runtime_name": "mlx-lm",
+    "runtime_version": "0.31.3",
+    "unified_memory_bytes": 25769803776
+  },
+  "measured_at": "2026-08-01T22:29:29.701200Z",
+  "mlx_raw": {
+    "generate_runs": [
+      {
+        "additional_peak_ram_bytes": 2525495296,
+        "baseline_rss_bytes": 2596700160,
+        "end_peak_rss_window_bytes": 2600058880,
+        "end_rss_bytes": 2600058880,
+        "end_ru_maxrss_bytes": 2634432512,
+        "input_tokens": 473,
+        "latency_ms": 557.2579580039019,
+        "max_new_tokens": 64,
+        "observation_id": "obs-low_memory-mlx_generate-r1",
+        "output_chars": 67,
+        "output_tokens": 18,
+        "profile": "LOW_MEMORY",
+        "prompt_chars": 2526,
+        "replica": 1,
+        "swap_delta_bytes": 0
+      },
+      {
+        "additional_peak_ram_bytes": 2525495296,
+        "baseline_rss_bytes": 2600058880,
+        "end_peak_rss_window_bytes": 2599927808,
+        "end_rss_bytes": 2599927808,
+        "end_ru_maxrss_bytes": 2634432512,
+        "input_tokens": 473,
+        "latency_ms": 603.672541998094,
+        "max_new_tokens": 64,
+        "observation_id": "obs-low_memory-mlx_generate-r2",
+        "output_chars": 70,
+        "output_tokens": 21,
+        "profile": "LOW_MEMORY",
+        "prompt_chars": 2526,
+        "replica": 2,
+        "swap_delta_bytes": 0
+      },
+      {
+        "additional_peak_ram_bytes": 2525495296,
+        "baseline_rss_bytes": 2599927808,
+        "end_peak_rss_window_bytes": 2601517056,
+        "end_rss_bytes": 2601517056,
+        "end_ru_maxrss_bytes": 2634432512,
+        "input_tokens": 473,
+        "latency_ms": 554.1329999978188,
+        "max_new_tokens": 64,
+        "observation_id": "obs-low_memory-mlx_generate-r3",
+        "output_chars": 67,
+        "output_tokens": 18,
+        "profile": "LOW_MEMORY",
+        "prompt_chars": 2526,
+        "replica": 3,
+        "swap_delta_bytes": 0
+      },
+      {
+        "additional_peak_ram_bytes": 2525495296,
+        "baseline_rss_bytes": 2600697856,
+        "end_peak_rss_window_bytes": 2602221568,
+        "end_rss_bytes": 2602221568,
+        "end_ru_maxrss_bytes": 2634432512,
+        "input_tokens": 1125,
+        "latency_ms": 2206.110750004882,
+        "max_new_tokens": 128,
+        "observation_id": "obs-balanced-mlx_generate-r1",
+        "output_chars": 128,
+        "output_tokens": 128,
+        "profile": "BALANCED",
+        "prompt_chars": 6024,
+        "replica": 1,
+        "swap_delta_bytes": 0
+      },
+      {
+        "additional_peak_ram_bytes": 2525495296,
+        "baseline_rss_bytes": 2602418176,
+        "end_peak_rss_window_bytes": 2602909696,
+        "end_rss_bytes": 2602909696,
+        "end_ru_maxrss_bytes": 2634432512,
+        "input_tokens": 1125,
+        "latency_ms": 2179.2120419995626,
+        "max_new_tokens": 128,
+        "observation_id": "obs-balanced-mlx_generate-r2",
+        "output_chars": 128,
+        "output_tokens": 128,
+        "profile": "BALANCED",
+        "prompt_chars": 6024,
+        "replica": 2,
+        "swap_delta_bytes": 0
+      },
+      {
+        "additional_peak_ram_bytes": 2525495296,
+        "baseline_rss_bytes": 2602909696,
+        "end_peak_rss_window_bytes": 2603024384,
+        "end_rss_bytes": 2603024384,
+        "end_ru_maxrss_bytes": 2634432512,
+        "input_tokens": 1125,
+        "latency_ms": 2193.34974999947,
+        "max_new_tokens": 128,
+        "observation_id": "obs-balanced-mlx_generate-r3",
+        "output_chars": 128,
+        "output_tokens": 128,
+        "profile": "BALANCED",
+        "prompt_chars": 6024,
+        "replica": 3,
+        "swap_delta_bytes": 0
+      },
+      {
+        "additional_peak_ram_bytes": 2525495296,
+        "baseline_rss_bytes": 2603270144,
+        "end_peak_rss_window_bytes": 2603253760,
+        "end_rss_bytes": 2603253760,
+        "end_ru_maxrss_bytes": 2634432512,
+        "input_tokens": 2244,
+        "latency_ms": 3782.3588339961134,
+        "max_new_tokens": 192,
+        "observation_id": "obs-quality-mlx_generate-r1",
+        "output_chars": 1034,
+        "output_tokens": 193,
+        "profile": "QUALITY",
+        "prompt_chars": 12023,
+        "replica": 1,
+        "swap_delta_bytes": 0
+      },
+      {
+        "additional_peak_ram_bytes": 2525495296,
+        "baseline_rss_bytes": 2603335680,
+        "end_peak_rss_window_bytes": 2603368448,
+        "end_rss_bytes": 2603368448,
+        "end_ru_maxrss_bytes": 2634432512,
+        "input_tokens": 2244,
+        "latency_ms": 1609.8159999964992,
+        "max_new_tokens": 192,
+        "observation_id": "obs-quality-mlx_generate-r2",
+        "output_chars": 141,
+        "output_tokens": 34,
+        "profile": "QUALITY",
+        "prompt_chars": 12023,
+        "replica": 2,
+        "swap_delta_bytes": 0
+      },
+      {
+        "additional_peak_ram_bytes": 2525495296,
+        "baseline_rss_bytes": 2603368448,
+        "end_peak_rss_window_bytes": 2603433984,
+        "end_rss_bytes": 2603433984,
+        "end_ru_maxrss_bytes": 2634432512,
+        "input_tokens": 2244,
+        "latency_ms": 1612.4272089946317,
+        "max_new_tokens": 192,
+        "observation_id": "obs-quality-mlx_generate-r3",
+        "output_chars": 141,
+        "output_tokens": 34,
+        "profile": "QUALITY",
+        "prompt_chars": 12023,
+        "replica": 3,
+        "swap_delta_bytes": 0
+      }
+    ],
+    "load": {
+      "additional_peak_rss_bytes": 2487631872,
+      "after_rss_bytes": 2596536320,
+      "before_rss_bytes": 108937216,
+      "load_and_warmup_latency_ms": 1060.9918749978533,
+      "model_path": "/Users/massimilianociconte/Documents/N-truth/models/local/Qwen3-4B-Instruct-2507-4bit",
+      "peak_rss_window_bytes": 2596569088,
+      "peak_ru_maxrss_bytes": 2634432512,
+      "swap_after_bytes": 433785405,
+      "swap_before_bytes": 433785405,
+      "swap_delta_bytes": 0
+    }
+  },
+  "model_path": "/Users/massimilianociconte/Documents/N-truth/models/local/Qwen3-4B-Instruct-2507-4bit",
+  "observation_count": 27,
+  "observations": [
+    {
+      "additional_peak_ram_bytes": 2525495296,
+      "benchmark_id": "m5-pro-24g-20260801T222929Z-222008604c",
+      "input_tokens": 473,
+      "latency_ms": 557.2579580039019,
+      "observation_id": "obs-low_memory-mlx_generate-r1",
+      "output_tokens": 18,
+      "profile": "LOW_MEMORY",
+      "stage_id": "mlx_generate",
+      "swap_delta_bytes": 0
+    },
+    {
+      "additional_peak_ram_bytes": 2525495296,
+      "benchmark_id": "m5-pro-24g-20260801T222929Z-222008604c",
+      "input_tokens": 473,
+      "latency_ms": 603.672541998094,
+      "observation_id": "obs-low_memory-mlx_generate-r2",
+      "output_tokens": 21,
+      "profile": "LOW_MEMORY",
+      "stage_id": "mlx_generate",
+      "swap_delta_bytes": 0
+    },
+    {
+      "additional_peak_ram_bytes": 2525495296,
+      "benchmark_id": "m5-pro-24g-20260801T222929Z-222008604c",
+      "input_tokens": 473,
+      "latency_ms": 554.1329999978188,
+      "observation_id": "obs-low_memory-mlx_generate-r3",
+      "output_tokens": 18,
+      "profile": "LOW_MEMORY",
+      "stage_id": "mlx_generate",
+      "swap_delta_bytes": 0
+    },
+    {
+      "additional_peak_ram_bytes": 2525495296,
+      "benchmark_id": "m5-pro-24g-20260801T222929Z-222008604c",
+      "input_tokens": 1125,
+      "latency_ms": 2206.110750004882,
+      "observation_id": "obs-balanced-mlx_generate-r1",
+      "output_tokens": 128,
+      "profile": "BALANCED",
+      "stage_id": "mlx_generate",
+      "swap_delta_bytes": 0
+    },
+    {
+      "additional_peak_ram_bytes": 2525495296,
+      "benchmark_id": "m5-pro-24g-20260801T222929Z-222008604c",
+      "input_tokens": 1125,
+      "latency_ms": 2179.2120419995626,
+      "observation_id": "obs-balanced-mlx_generate-r2",
+      "output_tokens": 128,
+      "profile": "BALANCED",
+      "stage_id": "mlx_generate",
+      "swap_delta_bytes": 0
+    },
+    {
+      "additional_peak_ram_bytes": 2525495296,
+      "benchmark_id": "m5-pro-24g-20260801T222929Z-222008604c",
+      "input_tokens": 1125,
+      "latency_ms": 2193.34974999947,
+      "observation_id": "obs-balanced-mlx_generate-r3",
+      "output_tokens": 128,
+      "profile": "BALANCED",
+      "stage_id": "mlx_generate",
+      "swap_delta_bytes": 0
+    },
+    {
+      "additional_peak_ram_bytes": 2525495296,
+      "benchmark_id": "m5-pro-24g-20260801T222929Z-222008604c",
+      "input_tokens": 2244,
+      "latency_ms": 3782.3588339961134,
+      "observation_id": "obs-quality-mlx_generate-r1",
+      "output_tokens": 193,
+      "profile": "QUALITY",
+      "stage_id": "mlx_generate",
+      "swap_delta_bytes": 0
+    },
+    {
+      "additional_peak_ram_bytes": 2525495296,
+      "benchmark_id": "m5-pro-24g-20260801T222929Z-222008604c",
+      "input_tokens": 2244,
+      "latency_ms": 1609.8159999964992,
+      "observation_id": "obs-quality-mlx_generate-r2",
+      "output_tokens": 34,
+      "profile": "QUALITY",
+      "stage_id": "mlx_generate",
+      "swap_delta_bytes": 0
+    },
+    {
+      "additional_peak_ram_bytes": 2525495296,
+      "benchmark_id": "m5-pro-24g-20260801T222929Z-222008604c",
+      "input_tokens": 2244,
+      "latency_ms": 1612.4272089946317,
+      "observation_id": "obs-quality-mlx_generate-r3",
+      "output_tokens": 34,
+      "profile": "QUALITY",
+      "stage_id": "mlx_generate",
+      "swap_delta_bytes": 0
+    },
+    {
+      "additional_peak_ram_bytes": 67764224,
+      "benchmark_id": "m5-pro-24g-20260801T222929Z-222008604c",
+      "input_tokens": 0,
+      "latency_ms": 122.471915994538,
+      "observation_id": "obs-low_memory-rules_engine-r1",
+      "output_tokens": 0,
+      "profile": "LOW_MEMORY",
+      "stage_id": "rules_engine",
+      "swap_delta_bytes": 0
+    },
+    {
+      "additional_peak_ram_bytes": 67682304,
+      "benchmark_id": "m5-pro-24g-20260801T222929Z-222008604c",
+      "input_tokens": 0,
+      "latency_ms": 119.22854201111477,
+      "observation_id": "obs-low_memory-rules_engine-r2",
+      "output_tokens": 0,
+      "profile": "LOW_MEMORY",
+      "stage_id": "rules_engine",
+      "swap_delta_bytes": 0
+    },
+    {
+      "additional_peak_ram_bytes": 67682304,
+      "benchmark_id": "m5-pro-24g-20260801T222929Z-222008604c",
+      "input_tokens": 0,
+      "latency_ms": 0.6947499932721257,
+      "observation_id": "obs-low_memory-hard_verifier-r1",
+      "output_tokens": 0,
+      "profile": "LOW_MEMORY",
+      "stage_id": "hard_verifier",
+      "swap_delta_bytes": 0
+    },
+    {
+      "additional_peak_ram_bytes": 67682304,
+      "benchmark_id": "m5-pro-24g-20260801T222929Z-222008604c",
+      "input_tokens": 0,
+      "latency_ms": 0.6389580084942281,
+      "observation_id": "obs-low_memory-hard_verifier-r2",
+      "output_tokens": 0,
+      "profile": "LOW_MEMORY",
+      "stage_id": "hard_verifier",
+      "swap_delta_bytes": 0
+    },
+    {
+      "additional_peak_ram_bytes": 67682304,
+      "benchmark_id": "m5-pro-24g-20260801T222929Z-222008604c",
+      "input_tokens": 0,
+      "latency_ms": 0.2598340070107952,
+      "observation_id": "obs-low_memory-semantic_verifier-r1",
+      "output_tokens": 0,
+      "profile": "LOW_MEMORY",
+      "stage_id": "semantic_verifier",
+      "swap_delta_bytes": 0
+    },
+    {
+      "additional_peak_ram_bytes": 67682304,
+      "benchmark_id": "m5-pro-24g-20260801T222929Z-222008604c",
+      "input_tokens": 0,
+      "latency_ms": 0.24412501079495996,
+      "observation_id": "obs-low_memory-semantic_verifier-r2",
+      "output_tokens": 0,
+      "profile": "LOW_MEMORY",
+      "stage_id": "semantic_verifier",
+      "swap_delta_bytes": 0
+    },
+    {
+      "additional_peak_ram_bytes": 67682304,
+      "benchmark_id": "m5-pro-24g-20260801T222929Z-222008604c",
+      "input_tokens": 0,
+      "latency_ms": 122.18445900361985,
+      "observation_id": "obs-balanced-rules_engine-r1",
+      "output_tokens": 0,
+      "profile": "BALANCED",
+      "stage_id": "rules_engine",
+      "swap_delta_bytes": 0
+    },
+    {
+      "additional_peak_ram_bytes": 67682304,
+      "benchmark_id": "m5-pro-24g-20260801T222929Z-222008604c",
+      "input_tokens": 0,
+      "latency_ms": 124.41466700693127,
+      "observation_id": "obs-balanced-rules_engine-r2",
+      "output_tokens": 0,
+      "profile": "BALANCED",
+      "stage_id": "rules_engine",
+      "swap_delta_bytes": 0
+    },
+    {
+      "additional_peak_ram_bytes": 67682304,
+      "benchmark_id": "m5-pro-24g-20260801T222929Z-222008604c",
+      "input_tokens": 0,
+      "latency_ms": 0.6001659930916503,
+      "observation_id": "obs-balanced-hard_verifier-r1",
+      "output_tokens": 0,
+      "profile": "BALANCED",
+      "stage_id": "hard_verifier",
+      "swap_delta_bytes": 0
+    },
+    {
+      "additional_peak_ram_bytes": 67682304,
+      "benchmark_id": "m5-pro-24g-20260801T222929Z-222008604c",
+      "input_tokens": 0,
+      "latency_ms": 0.606792003964074,
+      "observation_id": "obs-balanced-hard_verifier-r2",
+      "output_tokens": 0,
+      "profile": "BALANCED",
+      "stage_id": "hard_verifier",
+      "swap_delta_bytes": 0
+    },
+    {
+      "additional_peak_ram_bytes": 67682304,
+      "benchmark_id": "m5-pro-24g-20260801T222929Z-222008604c",
+      "input_tokens": 0,
+      "latency_ms": 0.2742919896263629,
+      "observation_id": "obs-balanced-semantic_verifier-r1",
+      "output_tokens": 0,
+      "profile": "BALANCED",
+      "stage_id": "semantic_verifier",
+      "swap_delta_bytes": 0
+    },
+    {
+      "additional_peak_ram_bytes": 67682304,
+      "benchmark_id": "m5-pro-24g-20260801T222929Z-222008604c",
+      "input_tokens": 0,
+      "latency_ms": 0.2739999908953905,
+      "observation_id": "obs-balanced-semantic_verifier-r2",
+      "output_tokens": 0,
+      "profile": "BALANCED",
+      "stage_id": "semantic_verifier",
+      "swap_delta_bytes": 0
+    },
+    {
+      "additional_peak_ram_bytes": 67682304,
+      "benchmark_id": "m5-pro-24g-20260801T222929Z-222008604c",
+      "input_tokens": 0,
+      "latency_ms": 120.44112499279436,
+      "observation_id": "obs-quality-rules_engine-r1",
+      "output_tokens": 0,
+      "profile": "QUALITY",
+      "stage_id": "rules_engine",
+      "swap_delta_bytes": 0
+    },
+    {
+      "additional_peak_ram_bytes": 67682304,
+      "benchmark_id": "m5-pro-24g-20260801T222929Z-222008604c",
+      "input_tokens": 0,
+      "latency_ms": 120.39799999911338,
+      "observation_id": "obs-quality-rules_engine-r2",
+      "output_tokens": 0,
+      "profile": "QUALITY",
+      "stage_id": "rules_engine",
+      "swap_delta_bytes": 0
+    },
+    {
+      "additional_peak_ram_bytes": 67682304,
+      "benchmark_id": "m5-pro-24g-20260801T222929Z-222008604c",
+      "input_tokens": 0,
+      "latency_ms": 0.6459159922087565,
+      "observation_id": "obs-quality-hard_verifier-r1",
+      "output_tokens": 0,
+      "profile": "QUALITY",
+      "stage_id": "hard_verifier",
+      "swap_delta_bytes": 0
+    },
+    {
+      "additional_peak_ram_bytes": 67682304,
+      "benchmark_id": "m5-pro-24g-20260801T222929Z-222008604c",
+      "input_tokens": 0,
+      "latency_ms": 0.6097919977037236,
+      "observation_id": "obs-quality-hard_verifier-r2",
+      "output_tokens": 0,
+      "profile": "QUALITY",
+      "stage_id": "hard_verifier",
+      "swap_delta_bytes": 0
+    },
+    {
+      "additional_peak_ram_bytes": 67682304,
+      "benchmark_id": "m5-pro-24g-20260801T222929Z-222008604c",
+      "input_tokens": 0,
+      "latency_ms": 0.3084579948335886,
+      "observation_id": "obs-quality-semantic_verifier-r1",
+      "output_tokens": 0,
+      "profile": "QUALITY",
+      "stage_id": "semantic_verifier",
+      "swap_delta_bytes": 0
+    },
+    {
+      "additional_peak_ram_bytes": 67682304,
+      "benchmark_id": "m5-pro-24g-20260801T222929Z-222008604c",
+      "input_tokens": 0,
+      "latency_ms": 0.33016699308063835,
+      "observation_id": "obs-quality-semantic_verifier-r2",
+      "output_tokens": 0,
+      "profile": "QUALITY",
+      "stage_id": "semantic_verifier",
+      "swap_delta_bytes": 0
+    }
+  ],
+  "protocol_version": "1.0.0",
+  "quality_notes": [
+    "Envelope per stage = massimi osservati (derive_stage_budget).",
+    "additional_peak_ram_bytes include footprint modello per fail-closed sequenziale.",
+    "Swap e system-wide (HostResourceProbe); non attribuito al solo processo.",
+    "Questo artifact e misurato; non e validazione scientifica del modello.",
+    "Ripetere il benchmark se cambiano modello, quantizzazione, runtime o OS major."
+  ],
+  "release_claim": "measured_runtime_budget_only",
+  "workloads": [
+    {
+      "max_new_tokens": 64,
+      "profile": "LOW_MEMORY",
+      "prompt_chars": 2500,
+      "replicates": 3
+    },
+    {
+      "max_new_tokens": 128,
+      "profile": "BALANCED",
+      "prompt_chars": 6000,
+      "replicates": 3
+    },
+    {
+      "max_new_tokens": 192,
+      "profile": "QUALITY",
+      "prompt_chars": 12000,
+      "replicates": 3
+    }
+  ]
+}

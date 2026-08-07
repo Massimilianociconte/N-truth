@@ -6,8 +6,9 @@ di N-Truth su Apple Silicon. I comandi sono operativi; **il training scientifico
 dati reali resta bloccato** finché non sono soddisfatti tutti i gate elencati in
 [Gate prima del training reale](#gate-prima-del-training-reale).
 
-Il modello produce soltanto candidate fact conformi al contratto `ParserAIOutput`
-v2.0.0. Non decide il valore di `n`, non seleziona test o formule statistiche, non
+Il modello produce soltanto candidate fact conformi a `CandidateGraphSet` v1.0.0.
+`ParserAIOutput` v2.0.0 rimane un contratto legacy e non è accettato dalla corsia di
+training v6. Il modello non decide il valore di `n`, non seleziona test o formule statistiche, non
 scrive nel grafo confermato e non sostituisce la revisione umana. Le regole
 deterministiche e il workflow di correzione restano l'autorità applicativa.
 
@@ -32,9 +33,16 @@ La corsia ML è separata dal core deterministico. Una normale installazione N-Tr
 la CI Linux non importano MLX. I file locali prodotti dalla pipeline sono ignorati da
 Git e non devono essere pubblicati.
 
-## Hardware e runtime supportati
+## Profilo bootstrap locale, non requisito normativo
 
-| Voce | Requisito fissato |
+I valori seguenti descrivono il runner smoke/QLoRA attualmente versionato. Non sono il
+Runtime Resource Budget della v6.1 e non dimostrano che questa configurazione sia la
+migliore architettura. Prima di un training o di un claim di fattibilita, il
+`RuntimeResourceManager` deve caricare un profilo misurato sul Mac target e produrre
+telemetria per stage secondo
+[runtime-resource-budget-v6.1.md](runtime-resource-budget-v6.1.md).
+
+| Voce | Precondizione del runner bootstrap corrente |
 |---|---|
 | Sistema | macOS su Apple Silicon (`Darwin`, `arm64`) |
 | Acceleratore | GPU Apple tramite Metal, gestita da MLX |
@@ -42,12 +50,13 @@ Git e non devono essere pubblicati.
 | Python | 3.12 o successivo, come dichiarato in `pyproject.toml` |
 | Runtime ML | `mlx-lm[train]==0.31.3` |
 | Gestore ambiente | `uv`, usando il lockfile del repository |
-| Spazio libero | almeno 50 GiB ancora disponibili dopo il download del modello |
-| Tetto pianificato workspace N-Truth | 40 GiB |
-| Soglia di arresto della memoria riportata da MLX-LM | 18 GB |
+| Spazio libero | guardrail bootstrap: 50 GiB dopo il download, da ricalcolare prima del run |
+| Workspace N-Truth | envelope bootstrap storico: 40 GiB, non budget universale |
+| Memoria riportata da MLX-LM | guardrail bootstrap storico: 18 GB, non peak di sistema |
 
-Il profilo iniziale è stato verificato su MacBook Pro con Apple M5 Pro e 24 GB di
-memoria unificata. Il doctor blocca Intel Mac, host non macOS, memoria inferiore,
+Il profilo iniziale e destinato al MacBook Pro Apple M5 Pro con 24 GB di memoria
+unificata; i test software del doctor non equivalgono a un benchmark completo del
+modello su quella macchina. Il doctor blocca Intel Mac, host non macOS, memoria inferiore,
 runtime diverso da quello fissato o spazio insufficiente. Il core N-Truth continua a
 essere utilizzabile sugli altri sistemi, ma questa corsia di training non è supportata
 su CUDA, Linux o Intel.
@@ -59,58 +68,73 @@ Riferimenti ufficiali:
 - [MLX-LM](https://github.com/ml-explore/mlx-lm);
 - [guida LoRA di MLX-LM](https://github.com/ml-explore/mlx-lm/blob/main/mlx_lm/LORA.md).
 
-## Modello di base fissato
+## Modello primario provvisorio (Train A)
 
-Il modello operativo iniziale è `mlx-community/Qwen3-4B-Instruct-2507-4bit`, una
-conversione MLX 4-bit del modello istruito Qwen. È stato preferito a un modello 8B per
-mantenere un margine realistico su 24 GiB durante training, validation, cache e
-generazione strutturata.
+**Stato:** migrazione architetturale/configurativa completata; validazione runtime
+e scientifica **in corso** (vedi [granite-migration-report.md](granite-migration-report.md)).
+
+IBM Granite 4.1 3B Instruct è il modello principale **provvisorio** del Train A.
+La sua adozione definitiva rimane subordinata ai benchmark N-Truth sui task
+decisivi, al confronto con la cascata B5 e alla validazione su dati reali
+indipendenti.
+
+Checkpoint canonico Instruct: [`ibm-granite/granite-4.1-3b`](https://huggingface.co/ibm-granite/granite-4.1-3b)
+(Apache-2.0). Su macOS il bootstrap usa una **conversione MLX della community**
+(non artefatto ufficiale IBM):
+[`mlx-community/granite-4.1-3b-4bit`](https://huggingface.co/mlx-community/granite-4.1-3b-4bit).
 
 | Proprietà | Valore verificabile |
 |---|---|
-| Repository MLX | [`mlx-community/Qwen3-4B-Instruct-2507-4bit`](https://huggingface.co/mlx-community/Qwen3-4B-Instruct-2507-4bit) |
-| Revisione MLX fissata | [`50d427756c6b1b2fe0c0a10f67fbda1fc8e82c1b`](https://huggingface.co/mlx-community/Qwen3-4B-Instruct-2507-4bit/tree/50d427756c6b1b2fe0c0a10f67fbda1fc8e82c1b) |
-| Modello sorgente | [`Qwen/Qwen3-4B-Instruct-2507`](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507) |
-| Revisione sorgente osservata | [`cdbee75f17c01a7cc42f958dc650907174af0554`](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507/tree/cdbee75f17c01a7cc42f958dc650907174af0554) |
-| Parametri sorgente | 4,022,468,096 |
-| Quantizzazione | 4 bit, group size 64 |
-| Download snapshot atteso | 2,278,972,236 byte, circa 2.12 GiB |
-| Pesi `model.safetensors` | 2,263,022,417 byte |
-| SHA-256 dei pesi | `2a73c6c248601ab904e035548abd8e6abb65ea27dcb5f342fb0a8910eb44173f` |
-| Totale locale verificato, inclusa la copia della licenza base | 2,278,983,579 byte |
+| Repository canonico Instruct | [`ibm-granite/granite-4.1-3b`](https://huggingface.co/ibm-granite/granite-4.1-3b) |
+| Revisione canonica osservata | `c0650403e44e78ec0262dab1c90914c65b196c4e` |
+| Repository MLX 4-bit | [`mlx-community/granite-4.1-3b-4bit`](https://huggingface.co/mlx-community/granite-4.1-3b-4bit) (**community conversion**) |
+| Revisione MLX fissata | `b1b476b5a17c46b7d6cd663b4a8ed44b66720aef` |
+| Parametri | 3,402,836,480 (~3.40B) |
+| **Configured maximum context** | **131 072 token** (config modello; non capacità host-validata) |
+| Quantizzazione MLX bootstrap | 4 bit (community) |
+| Pesi `model.safetensors` MLX | 2,127,162,429 byte |
+| SHA-256 pesi MLX | `cff9d052cc3c68ea66b3d364788eb96fca2be82868d9ad92bd968e73b125194d` |
+| GGUF ufficiale | [`ibm-granite/granite-4.1-3b-GGUF`](https://huggingface.co/ibm-granite/granite-4.1-3b-GGUF) |
+| Base (ablation only) | [`ibm-granite/granite-4.1-3b-base`](https://huggingface.co/ibm-granite/granite-4.1-3b-base) |
 | Licenza | Apache-2.0 |
-| Testo licenza fissato | [LICENSE alla revisione sorgente](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507/blob/cdbee75f17c01a7cc42f958dc650907174af0554/LICENSE) |
+| Profilo | [`models/configs/granite-4.1-3b-mlx-qlora.json`](../models/configs/granite-4.1-3b-mlx-qlora.json) |
+| Path locale MLX | `models/local/granite-4.1-3b-4bit/` |
+| Interfaccia | `ntruth.model_backends.GraniteBackend` (`ModelBackend`) |
+| LoRA targets | verificati su architettura/state dict Granite (non ereditati da Qwen) |
 
-La revisione, il path locale e i parametri di training sono definiti in
-[`models/configs/qwen3-4b-instruct-2507-mlx-qlora.json`](../models/configs/qwen3-4b-instruct-2507-mlx-qlora.json).
-La copia locale prevista è `models/local/Qwen3-4B-Instruct-2507-4bit/`.
+Acquisizione:
 
-La licenza Apache-2.0 consente uso e modifica nel rispetto delle sue condizioni, ma
-non concede diritti sui documenti usati per addestramento o validazione. Ogni asset del
-corpus richiede una licenza o autorizzazione propria e registrata.
+```bash
+uv run python scripts/models/acquire_granite.py --confirm-license-and-download
+# oppure
+uv run ntruth-ml download-model --confirm-license-and-download
+```
 
-### Alternative considerate
+### Altri candidati (non default)
 
-| Candidato | Licenza | Snapshot MLX 4-bit | Memoria QLoRA stimata | Decisione |
-|---|---|---:|---:|---|
-| Qwen3 4B Instruct 2507 | Apache-2.0 | 2.279 GB | 7-12 GB | default operativo |
-| [Qwen3 8B MLX 4-bit](https://huggingface.co/Qwen/Qwen3-8B-MLX-4bit) | Apache-2.0 | 4.368 GB | 12-18 GB | challenger futuro, non scaricato |
-| [Ministral 3 8B Instruct](https://huggingface.co/mistralai/Ministral-3-8B-Instruct-2512) | Apache-2.0 | 5.631 GB | 14-20 GB | troppo vicino al margine locale iniziale |
-| [Phi-4 mini instruct](https://huggingface.co/microsoft/Phi-4-mini-instruct) | MIT | 2.180 GB | 7-12 GB | baseline futura, minore priorità multilingue |
+| Candidato | Ruolo |
+|---|---|
+| Granite 4.1 3B Base | ablation experimental only |
+| Cascata encoder + small LLM (B5) | baseline preferita ADR-0002 da confrontare |
+| Qwen3-4B (legacy) | disabilitato; profilo in `models/configs/legacy/` |
 
-Le stime QLoRA sono envelope ingegneristici, non benchmark sul Mac M5 Pro. Il 4B è
-stato scelto perché dimezza circa lo spazio del challenger 8B, non genera modalità
-`<think>` e lascia margine per validation e output strutturati. Il benchmark ufficiale
+Le stime QLoRA sono envelope storici ingegneristici, non benchmark sul Mac M5 Pro e
+non criteri di esclusione per una classe dimensionale. Il 4B e stato configurato come
+smoke candidate riproducibile per collaudare la pipeline; modello, backend,
+quantizzazione e architettura finale restano decisioni ADR aperte. Questo non dimostra
+una qualita migliore. Il benchmark ufficiale
 [MLX-LM](https://github.com/ml-explore/mlx-lm/blob/main/mlx_lm/BENCHMARKS.md) mostra
 anche che la quantizzazione può ridurre qualità: il 4-bit deve quindi essere confrontato
-con baseline e human ceiling sul futuro validation set. L'8B può essere acquisito solo
-dopo un confronto preregistrato che giustifichi costo, memoria e rischio OOM; non è
-stato scaricato in questa fase.
+con baseline e human ceiling sul futuro validation set. Qualunque challenger puo
+essere acquisito solo dopo un confronto preregistrato che giustifichi licenza,
+download, memoria, storage, qualita e rischio OOM; i challenger elencati non sono
+stati scaricati in questa fase.
 
 ## Budget di archiviazione
 
-Il profilo riserva 35.5 GiB simultanei, sotto il tetto locale di 40 GiB. Per mantenere
-anche il pavimento di sicurezza di 50 GiB, il piano completo richiede almeno 85.5 GiB
+Questa stima bootstrap riserva 35.5 GiB simultanei entro il suo envelope storico di
+40 GiB. Non costituisce un budget v6.1 benchmark-derived. Per mantenere il guardrail
+bootstrap di 50 GiB, il piano completo richiede almeno 85.5 GiB
 liberi prima dell'allocazione; il solo gate di download richiede invece circa 52.2 GiB
 liberi. È quindi compatibile con i circa 94-96 GiB osservati su questa macchina, ma non
 con qualsiasi computer che abbia genericamente meno di 100 GiB. Sono stime
@@ -142,9 +166,10 @@ df -h .
 du -sh .venv local-data models/local models/runs models/exports 2>/dev/null
 ```
 
-Il doctor richiede che, sottratto il download atteso, rimangano almeno 50 GiB liberi.
-Non avviare un download se il budget aggiornato supera 40 GiB o se tale pavimento non
-è rispettato.
+Il doctor bootstrap richiede che, sottratto il download atteso, rimangano almeno 50
+GiB liberi. Non avviare un download se l'envelope bootstrap aggiornato supera 40 GiB
+o se tale pavimento non e rispettato. Per training/release questi valori devono essere
+sostituiti da un profilo misurato e versionato del Runtime Resource Manager.
 
 ## Installazione
 
@@ -174,7 +199,7 @@ Per rendere leggibili i comandi successivi, in zsh o bash:
 
 ```bash
 NTRUTH_REPO="$(pwd)"
-NTRUTH_PROFILE="$NTRUTH_REPO/models/configs/qwen3-4b-instruct-2507-mlx-qlora.json"
+NTRUTH_PROFILE="$NTRUTH_REPO/models/configs/granite-4.1-3b-mlx-qlora.json"
 ```
 
 ## Doctor, download e verifica del modello
@@ -214,7 +239,7 @@ uv run ntruth-ml verify-model \
   --repo "$NTRUTH_REPO"
 
 shasum -a 256 \
-  models/local/Qwen3-4B-Instruct-2507-4bit/model.safetensors
+  models/local/granite-4.1-3b-4bit/model.safetensors
 ```
 
 Il primo comando deve restituire `"valid": true` e `"problems": []`; il secondo deve
@@ -231,17 +256,27 @@ L'input di `prepare` è un file JSONL UTF-8 con un oggetto `SupervisedRecord` v1
 per riga. Il contratto completo è in
 [`packages/ntruth/training/records.py`](../packages/ntruth/training/records.py); input e
 output del parser sono in
-[`packages/ntruth/parser_ai/contract.py`](../packages/ntruth/parser_ai/contract.py).
+[`packages/ntruth/parser_ai/contract.py`](../packages/ntruth/parser_ai/contract.py),
+[`packages/ntruth/parser_ai/stages.py`](../packages/ntruth/parser_ai/stages.py) e
+[`packages/ntruth/training/gold.py`](../packages/ntruth/training/gold.py).
 
 Ogni record deve contenere almeno:
 
-- `record_id` univoco, `task="parser_ai_v2"`, lingua e dominio;
+- `record_id` univoco, `task="parser_candidate_graph_v6"`, lingua e dominio;
 - `input_text`, cioè la serializzazione JSON di un `ParserAIInput` v2.0.0;
-- `target`, cioè un `ParserAIOutput` v2.0.0 completo e schema-valid;
+- `target`, cioè un `GoldParserTarget` v1.0.0 completo e schema-valid, con
+  `adjudicated_graph` candidate-only e autorità `adjudication`;
 - checksum e identità della fonte, asset e governance;
 - versione della guideline e ruoli/revisioni umane;
 - licenza o autorizzazione esplicita;
-- stato `double_reviewed` o `adjudicated` e `training_eligible=true`.
+- stato `adjudicated`, `adjudication_id` coerente col target e
+  `training_eligible=true`.
+
+Il profilo MLX dichiara separatamente `task=parser_candidate_graph_v6`,
+`parser_input_contract_version=2.0.0`, `candidate_graph_contract_version=1.0.0` e
+`gold_target_contract_version=1.0.0`. Il vecchio campo generico
+`data.contract_version` è rifiutato perché confonde il contratto di input legacy con
+il target staged v6.
 
 Struttura schematica di una riga:
 
@@ -249,36 +284,69 @@ Struttura schematica di una riga:
 {
   "schema_version": "1.0.0",
   "record_id": "paper-family-001-block-01",
-  "task": "parser_ai_v2",
+  "task": "parser_candidate_graph_v6",
   "language": "it",
   "domain": "experimental_biology",
   "input_text": "{\"contract_version\":\"2.0.0\",\"documents\":[],\"tables\":[],\"metadata\":{},\"statistical_code\":[],\"domain_hint\":\"experimental_biology\",\"language\":\"it\"}",
   "target": {
-    "contract_version": "2.0.0",
-    "experiment_blocks": [],
-    "evidence_spans": [],
-    "candidate_nodes": [],
-    "candidate_edges": [],
-    "factors": [],
-    "endpoints": [],
-    "contrasts": [],
-    "candidate_estimands": [],
-    "determinability": {
-      "status": "INDETERMINATE",
-      "rationale": "Nessuna evidenza decisiva nel blocco.",
-      "confidence": 0.5,
-      "evidence_ids": []
-    },
-    "alternatives": [],
-    "clarification_questions": [],
-    "model_metadata": {
-      "adapter_name": "gold-annotation",
-      "model_name": "human-annotation",
-      "model_version": "1",
-      "model_checksum": null,
-      "prompt_template_version": "parser-ai-v2.0.0",
-      "contract_version": "2.0.0",
-      "local_execution": true
+    "schema_version": "1.0.0",
+    "target_id": "gold-paper-family-001-block-01",
+    "source_record_id": "paper-family-001-block-01",
+    "guideline_version": "6.0",
+    "adjudication_id": "adj-paper-family-001-block-01",
+    "adjudication_rationale": "Le due annotazioni cieche sono state riconciliate.",
+    "adjudicator_roles": ["wet-lab", "biostatistician"],
+    "source_submission_ids": ["submission-a", "submission-b"],
+    "comparisons": [
+      {
+        "submission_id": "submission-a",
+        "reviewer_role": "wet-lab",
+        "changed_paths": [],
+        "summary": "Nessuna differenza residua dopo adjudication."
+      },
+      {
+        "submission_id": "submission-b",
+        "reviewer_role": "biostatistician",
+        "changed_paths": [],
+        "summary": "Nessuna differenza residua dopo adjudication."
+      }
+    ],
+    "adjudicated_graph": {
+      "schema_version": "1.0.0",
+      "result_id": "adj-result-paper-family-001-block-01",
+      "stage": "candidate_graph_set",
+      "status": "complete",
+      "provenance": {
+        "stage_run_id": "adj-stage-paper-family-001-block-01",
+        "stage": "candidate_graph_set",
+        "authority": "adjudication",
+        "producer": "ntruth-human-adjudication",
+        "producer_version": "6.0",
+        "input_artifact_ids": [],
+        "input_checksums": {},
+        "parent_result_ids": [],
+        "actor_role": "wet-lab+biostatistician",
+        "started_at": null,
+        "completed_at": null
+      },
+      "errors": [],
+      "warnings": [],
+      "graph_set_id": "adj-graph-paper-family-001-block-01",
+      "source_result_ids": [],
+      "experiment_blocks": [],
+      "evidence_spans": [],
+      "candidate_nodes": [],
+      "candidate_edges": [],
+      "factors": [],
+      "endpoints": [],
+      "contrasts": [],
+      "candidate_estimands": [],
+      "counts": [],
+      "operational_independence": [],
+      "procedural_events": [],
+      "alternatives": [],
+      "missing_facts": [],
+      "chunk_coverage": []
     }
   },
   "provenance": {
@@ -292,13 +360,13 @@ Struttura schematica di una riga:
     "laboratory_id": "laboratory-001",
     "corresponding_author_id": "author-group-001",
     "license_or_authorization_id": "local-license-record-001",
-    "guideline_version": "0.1",
+    "guideline_version": "6.0",
     "reviewer_count": 2,
     "reviewer_roles": ["wet-lab", "biostatistician"],
-    "adjudication_id": null,
+    "adjudication_id": "adj-paper-family-001-block-01",
     "synthetic": false
   },
-  "annotation_status": "double_reviewed",
+  "annotation_status": "adjudicated",
   "training_eligible": true,
   "requested_split": null,
   "metadata": {}
@@ -306,9 +374,16 @@ Struttura schematica di una riga:
 ```
 
 I placeholder dei checksum nell'esempio devono essere sostituiti con SHA-256 reali.
-Un record `adjudicated` richiede anche `adjudication_id`. I record sintetici possono
-entrare soltanto nel train. Candidate e record con una sola revisione vengono esclusi
-e non possono essere resi eleggibili modificando soltanto un flag.
+Un record `adjudicated` richiede anche `adjudication_id`. Per il task canonico v6,
+`double_reviewed` da solo non basta: le due submission devono essere riconciliate o
+confermate esplicitamente nel `GoldParserTarget`. I record sintetici possono entrare
+soltanto nel train, ma la factory/lineage sintetica v6 non è ancora implementata e non
+va simulata con un falso gold umano. Candidate e record con una sola revisione vengono
+esclusi e non possono essere resi eleggibili modificando soltanto un flag.
+Durante l'export MLX, il wrapper `GoldParserTarget` rimane nel manifest privato e il
+solo `adjudicated_graph` viene proiettato in `CandidateGraphSet` con
+`provenance.authority="model"`: al modello non viene insegnato a dichiararsi reviewer
+o adjudicator. `determinability` e `verdict` sono rifiutati dallo schema.
 
 ## Preparazione, deduplica e split
 
@@ -317,7 +392,7 @@ directory di output:
 
 ```bash
 NTRUTH_SOURCE="$NTRUTH_REPO/local-data/annotations/approved/gold-supervised-v1.jsonl"
-NTRUTH_DATA="$NTRUTH_REPO/local-data/prepared/parser-ai-v2-gold-v1"
+NTRUTH_DATA="$NTRUTH_REPO/local-data/prepared/candidate-graph-v6-gold-v1"
 
 uv run ntruth-ml prepare "$NTRUTH_SOURCE" \
   --out "$NTRUTH_DATA" \
@@ -350,7 +425,7 @@ non possono richiedere split incompatibili.
 La directory risultante contiene:
 
 ```text
-parser-ai-v2-gold-v1/
+candidate-graph-v6-gold-v1/
 ├── train.jsonl
 ├── valid.jsonl
 ├── test.jsonl
@@ -424,7 +499,7 @@ ricontrollare spazio e token e non cambiare parametri durante l'osservazione del
 Avviare un singolo seed in una directory nuova:
 
 ```bash
-NTRUTH_RUN="$NTRUTH_REPO/models/runs/parser-ai-v2-gold-v1-seed13"
+NTRUTH_RUN="$NTRUTH_REPO/models/runs/candidate-graph-v6-gold-v1-seed13"
 
 uv run ntruth-ml train "$NTRUTH_DATA" \
   --out "$NTRUTH_RUN" \
@@ -491,7 +566,7 @@ senza scegliere quello che appare migliore sul test:
 ```bash
 for NTRUTH_SEED in 13 37 101; do
   uv run ntruth-ml train "$NTRUTH_DATA" \
-    --out "$NTRUTH_REPO/models/runs/parser-ai-v2-gold-v1-seed-$NTRUTH_SEED" \
+    --out "$NTRUTH_REPO/models/runs/candidate-graph-v6-gold-v1-seed-$NTRUTH_SEED" \
     --seed "$NTRUTH_SEED" \
     --profile "$NTRUTH_PROFILE" \
     --repo "$NTRUTH_REPO"
@@ -503,7 +578,7 @@ done
 Valutare prima la validation usando l'adapter `best`:
 
 ```bash
-NTRUTH_VALIDATION_EVAL="$NTRUTH_REPO/local-data/evaluation/parser-ai-v2-gold-v1-validation-seed13"
+NTRUTH_VALIDATION_EVAL="$NTRUTH_REPO/local-data/evaluation/candidate-graph-v6-gold-v1-validation-seed13"
 
 uv run ntruth-ml predict "$NTRUTH_DATA/valid.jsonl" \
   --adapter "$NTRUTH_RUN/best" \
@@ -521,24 +596,35 @@ fail-closed:
 
 1. viene accettato soltanto JSON puro o un unico code fence JSON;
 2. testo dopo il payload viene rifiutato;
-3. il payload deve validare integralmente `ParserAIOutput` v2.0.0 con Pydantic;
+3. il payload deve validare integralmente `CandidateGraphSet` v1.0.0 con Pydantic e
+   dichiarare `provenance.authority="model"`;
 4. file, offset, testo, tabelle, celle e code span devono coincidere col
-   `ParserAIInput` tramite `validate_contract_pair()`;
-5. non viene eseguita alcuna riparazione semantica automatica;
+   `ParserAIInput`, e la copertura chunk deve essere esaustiva e file-bound, tramite
+   `validate_candidate_graph_pair()`;
+5. provenance e lineage dichiarate dal modello vengono sostituite dall'host; non viene
+   eseguita alcuna riparazione dei fatti scientifici;
 6. dopo il retry, un output invalido vale zero per precision, recall e F1 ed è contato
    esplicitamente.
 
 L'output locale contiene:
 
 - `predictions.jsonl`: gold, output grezzo, prediction validata, tentativi ed errore;
-- `metrics.json`: schema-valid rate, exact-contract-match rate, accuracy di
-  determinability, determinability macro F1/per-label, metriche per categoria,
+- `metrics.json`: schema-valid rate, exact-contract-match rate, metriche per categoria,
   macro-category F1, micro precision/recall/F1 e conteggio invalidi;
-- `confidence-observations.jsonl`: confidence di candidate fact e determinability con
-  esito rispetto al gold, usate per calibrazione.
+- `confidence-observations.jsonl`: confidence esclusivamente di evidence e candidate
+  fact, con esito rispetto al gold, usate per calibrazione.
 
 Le metriche confrontano fatti strutturati per experiment block, evidence span, nodi,
-edge, fattori, endpoint, contrasti ed estimand. Devono essere riportate per lingua,
+edge, fattori, endpoint, contrasti, estimand, count, indipendenza operativa, eventi,
+alternative, missing fact e copertura chunk. La determinability non è una label né
+una metrica del parser: viene valutata separatamente sul Derivation Gold del motore
+deterministico.
+
+Le firme dei candidate fact includono i link agli evidence span normalizzati: scambiare
+le evidenze tra due fatti lascia corretta l'inventario degli span, ma rende errati i
+fatti collegati e le relative confidence observations.
+
+Le metriche del parser devono essere riportate per lingua,
 dominio e categoria oltre all'aggregato quando il corpus reale lo consente. La loss di
 training non sostituisce queste metriche né la revisione degli esperti. Quando un
 report viene riusato per calibrazione o export, la pipeline rilegge il gold manifestato
@@ -551,7 +637,7 @@ artefatto modificato.
 Calibrare esclusivamente le confidence prodotte sulla validation congelata:
 
 ```bash
-NTRUTH_CALIBRATION="$NTRUTH_REPO/local-data/evaluation/parser-ai-v2-gold-v1-calibration-seed13.json"
+NTRUTH_CALIBRATION="$NTRUTH_REPO/local-data/evaluation/candidate-graph-v6-gold-v1-calibration-seed13.json"
 
 uv run ntruth-ml calibrate \
   "$NTRUTH_VALIDATION_EVAL/confidence-observations.jsonl" \
@@ -582,7 +668,7 @@ Dopo aver congelato adapter, prompt, contratto, temperatura, soglia e protocollo
 aprire il test una sola volta:
 
 ```bash
-NTRUTH_TEST_EVAL="$NTRUTH_REPO/local-data/evaluation/parser-ai-v2-gold-v1-test-seed13"
+NTRUTH_TEST_EVAL="$NTRUTH_REPO/local-data/evaluation/candidate-graph-v6-gold-v1-test-seed13"
 
 uv run ntruth-ml predict "$NTRUTH_DATA/test.jsonl" \
   --adapter "$NTRUTH_RUN/best" \
@@ -601,7 +687,7 @@ durante la validazione indipendente e senza riaprire la model selection.
 Creare un bundle in una directory nuova:
 
 ```bash
-NTRUTH_EXPORT="$NTRUTH_REPO/models/exports/parser-ai-v2-gold-v1-seed13"
+NTRUTH_EXPORT="$NTRUTH_REPO/models/exports/candidate-graph-v6-gold-v1-seed13"
 
 uv run ntruth-ml export-adapter "$NTRUTH_RUN" \
   --dataset-manifest "$NTRUTH_DATA/snapshot-manifest.json" \
@@ -619,6 +705,12 @@ valutato con lo stesso run e adapter; la calibrazione deve provenire dalla valid
 dello snapshot di training. `export-manifest.json` registra byte, SHA-256 e lineage di
 run, adapter, training snapshot, evaluation snapshot e calibrazione, e dichiara
 `contains_base_weights=false` e `contains_training_data=false`.
+Per `external`, il run-state deve ancorare il path dello snapshot di training. Prima
+della valutazione e nuovamente durante la verifica dell'export, la pipeline ricalcola
+l'integrità di entrambi gli snapshot e rifiuta collisioni di record, fingerprint,
+provenance/leakage group e near-duplicate lessicali (Jaccard su 5-shingle, soglia
+conservativa 0,92). Il report di disgiunzione entra nella lineage delle metriche e
+dell'export; un run storico senza path verificabile fallisce in modo chiuso.
 Questo non rende automaticamente pubblicabile il bundle: servono review scientifica,
 Model Card, valutazione delle licenze e autorizzazione di rilascio. Il flusso standard
 non produce né richiede un modello fused.
@@ -633,7 +725,7 @@ Su una directory nuova:
 
 ```bash
 NTRUTH_SMOKE_DATA="$NTRUTH_REPO/local-data/smoke/mlx-runtime-v1"
-NTRUTH_SMOKE_RUN="$NTRUTH_REPO/local-data/smoke/run-qwen3-4b-v1"
+NTRUTH_SMOKE_RUN="$NTRUTH_REPO/local-data/smoke/run-granite-4.1-3b-v1"
 
 uv run ntruth-ml make-smoke-data --out "$NTRUTH_SMOKE_DATA"
 uv run ntruth-ml tokenize "$NTRUTH_SMOKE_DATA" \
@@ -745,8 +837,9 @@ consenso, licenza o privacy review siano sostanzialmente corretti.
   non autorizza il troncamento di evidenze.
 - La deduplica near-duplicate è lessicale e conservativa; non sostituisce una review di
   contaminazione semantica o la ricerca manuale di versioni/mirror.
-- Il tetto di 18 GB usa il picco stampato da MLX-LM, non l'intera memoria osservata da
-  macOS. Durante i primi run reali va affiancato il monitoraggio del sistema.
+- Il guardrail bootstrap di 18 GB usa il picco stampato da MLX-LM, non l'intera
+  memoria osservata da macOS e non e un requisito v6.1. Prima di un run reale va
+  sostituito da un profilo benchmark-derived con memoria, swap e cache per stage.
 - Early stopping usa validation loss. Le metriche strutturate e la valutazione umana
   devono guidare la selezione finale secondo un protocollo congelato.
 - Il phased training riprende i pesi LoRA ma non lo stato dell'optimizer; una futura

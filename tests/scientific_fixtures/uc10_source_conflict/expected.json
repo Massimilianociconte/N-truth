@@ -3,15 +3,17 @@
   "description": "Methods dichiara quattro donatori, il sample sheet ne elenca tre: conflitto non risolto, nessun verdetto definitivo.",
   "factor": "treatment",
   "expect": {
-    "experimental_unit": "HumanDonor",
+    "allocation_unit_candidate": "HumanDonor",
+    "experimental_unit": null,
     "observational_unit": "Cell",
     "analytical_unit": "Cell",
     "n_declared": 400,
     "n_observational": 400,
     "n_independent": null,
-    "inferability": "not_inferable",
-    "risk": "likely_pseudoreplication",
+    "inferability": "requires_confirmation",
+    "risk": "insufficient_information",
     "alerts_include": [
+      "GEN-002",
       "GEN-007",
       "GEN-010"
     ],

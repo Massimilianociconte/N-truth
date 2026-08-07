@@ -8,6 +8,8 @@
     "network_during_training": false
   },
   "model": {
+    "selection_role": "reproducible_bootstrap_candidate",
+    "scientifically_selected": false,
     "repository": "mlx-community/Qwen3-4B-Instruct-2507-4bit",
     "revision": "50d427756c6b1b2fe0c0a10f67fbda1fc8e82c1b",
     "local_path": "models/local/Qwen3-4B-Instruct-2507-4bit",
@@ -31,7 +33,10 @@
   },
   "data": {
     "format": "chat_jsonl",
-    "contract_version": "2.0.0",
+    "task": "parser_candidate_graph_v6",
+    "parser_input_contract_version": "2.0.0",
+    "candidate_graph_contract_version": "1.0.0",
+    "gold_target_contract_version": "1.0.0",
     "max_sequence_length": 1024,
     "generation_max_tokens": 1024,
     "split_group_fields": [

@@ -23,6 +23,7 @@ from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from ntruth.governance.lineage import CorpusSplit
 from ntruth.schemas.core import content_checksum
 from ntruth.training.records import (
     DatasetManifest,
@@ -60,6 +61,7 @@ _SOURCE_SPLIT_NAMES = {
     "train": "train",
     "validation": "valid",
     "test": "test",
+    "external_challenge": "external",
     "external": "external",
 }
 
@@ -192,11 +194,47 @@ def load_profile(path: Path) -> dict[str, Any]:
     if expected <= 0:
         raise MLXPipelineError("expected_download_bytes deve essere positivo")
     if profile["model"].get("quantization_bits") != 4:
-        raise MLXPipelineError("il profilo iniziale supporta soltanto una base MLX 4-bit")
+        raise MLXPipelineError("il profilo MLX bootstrap supporta soltanto una base 4-bit")
     if not re.fullmatch(r"[0-9a-f]{64}", str(profile["model"].get("expected_weight_sha256", ""))):
         raise MLXPipelineError("expected_weight_sha256 mancante o non valido")
     if int(profile["model"].get("expected_weight_bytes", 0)) <= 0:
         raise MLXPipelineError("expected_weight_bytes deve essere positivo")
+    allowed_roles = {
+        "reproducible_bootstrap_candidate",
+        "provisional_primary_train_a",
+    }
+    role = profile["model"].get("selection_role")
+    if role not in allowed_roles:
+        raise MLXPipelineError(
+            "selection_role deve essere provisional_primary_train_a o "
+            "reproducible_bootstrap_candidate (mai scientificamente selezionato a priori)"
+        )
+    if profile["model"].get("scientifically_selected") is not False:
+        raise MLXPipelineError(
+            "il profilo non puo dichiarare una selezione scientifica prima del benchmark gold"
+        )
+    # Blocca profili Qwen sul percorso predefinito se provider=granite.
+    repository = str(profile["model"].get("repository") or "").casefold()
+    provider = str(profile["model"].get("provider") or "granite").casefold()
+    if provider == "granite" and "qwen" in repository:
+        raise MLXPipelineError(
+            "profilo Granite non puo puntare a un repository Qwen; "
+            "usare ibm-granite/granite-4.1-3b o mlx-community/granite-4.1-3b-4bit"
+        )
+    expected_data_contract = {
+        "format": "chat_jsonl",
+        "task": "parser_candidate_graph_v6",
+        "parser_input_contract_version": "2.0.0",
+        "candidate_graph_contract_version": "1.0.0",
+        "gold_target_contract_version": "1.0.0",
+    }
+    for key, expected_value in expected_data_contract.items():
+        if profile["data"].get(key) != expected_value:
+            raise MLXPipelineError(f"profilo MLX non allineato al contratto staged v6: data.{key}")
+    if "contract_version" in profile["data"]:
+        raise MLXPipelineError(
+            "data.contract_version e ambiguo: dichiarare separatamente input, target e gold"
+        )
     return profile
 
 
@@ -650,8 +688,19 @@ def _load_prepared_records(path: Path) -> tuple[PreparedRecord, ...]:
 def _source_manifest_split_ids(source: DatasetManifest) -> dict[str, tuple[str, ...]]:
     grouped: dict[str, list[str]] = {name: [] for name in _SPLIT_FILES}
     for record in source.records:
-        split_name = _SOURCE_SPLIT_NAMES[record.split.value]
-        grouped[split_name].append(record.record_id)
+        if record.split is CorpusSplit.TRAIN and record.training_eligible:
+            grouped["train"].append(record.record_id)
+        elif (
+            record.split
+            in {
+                CorpusSplit.VALIDATION,
+                CorpusSplit.TEST,
+                CorpusSplit.EXTERNAL_CHALLENGE,
+            }
+            and record.evaluation_eligible
+        ):
+            split_name = _SOURCE_SPLIT_NAMES[record.split.value]
+            grouped[split_name].append(record.record_id)
     return {name: tuple(sorted(values)) for name, values in grouped.items()}
 
 
@@ -733,10 +782,8 @@ def _validate_real_snapshot_source(
         raise MLXPipelineError("decisions_checksum non coincide col report preparazione")
 
     expected_report_counts = {
-        "train": counts["train"],
-        "validation": counts["valid"],
-        "test": counts["test"],
-        "external": counts["external"],
+        split.value: sum(record.split is split for record in source.records)
+        for split in CorpusSplit
     }
     if report.split_counts != expected_report_counts:
         raise MLXPipelineError("split_counts del report non coincidono coi file snapshot")
@@ -764,8 +811,19 @@ def _validate_real_snapshot_source(
 
     expected_chat: dict[str, list[dict[str, Any]]] = {name: [] for name in _SPLIT_FILES}
     for prepared in prepared_records:
-        split_name = _SOURCE_SPLIT_NAMES[prepared.split.value]
-        expected_chat[split_name].append(_chat_record(prepared))
+        if prepared.split is CorpusSplit.TRAIN and prepared.record.training_eligible:
+            expected_chat["train"].append(_chat_record(prepared))
+        elif (
+            prepared.split
+            in {
+                CorpusSplit.VALIDATION,
+                CorpusSplit.TEST,
+                CorpusSplit.EXTERNAL_CHALLENGE,
+            }
+            and prepared.record.evaluation_eligible
+        ):
+            split_name = _SOURCE_SPLIT_NAMES[prepared.split.value]
+            expected_chat[split_name].append(_chat_record(prepared))
     for split in _SPLIT_FILES:
         expected_rows = sorted(expected_chat[split], key=lambda row: str(row["record_id"]))
         actual_rows = sorted(split_records[split], key=lambda row: str(row["record_id"]))
@@ -774,9 +832,7 @@ def _validate_real_snapshot_source(
                 f"contenuto chat dello split {split} non coincide coi prepared records"
             )
 
-    derived_approved = bool(source.records) and all(
-        record.training_eligible for record in source.records
-    )
+    derived_approved = bool(source_ids["train"])
     if manifest.get("training_approved") is not derived_approved:
         raise MLXPipelineError(
             "training_approved non coincide con le evidenze del manifest sorgente"
@@ -792,7 +848,13 @@ def _validate_real_snapshot_source(
 def _validate_runtime_smoke_manifest(
     manifest: Mapping[str, Any],
     split_record_ids: Mapping[str, tuple[str, ...]],
+    split_records: Mapping[str, tuple[dict[str, Any], ...]],
 ) -> None:
+    from ntruth.training.mlx_dataset import (
+        PROMPT_TEMPLATE_VERSION,
+        _runtime_smoke_chat_record,
+    )
+
     exact_flags = {
         "dataset_id": "runtime-smoke-only",
         "training_approved": False,
@@ -800,6 +862,9 @@ def _validate_runtime_smoke_manifest(
         "synthetic_only": True,
         "runtime_smoke_only": True,
         "scientific_metrics_allowed": False,
+        "parser_input_contract_version": "2.0.0",
+        "candidate_graph_contract_version": "1.0.0",
+        "prompt_template_version": PROMPT_TEMPLATE_VERSION,
     }
     for key, expected in exact_flags.items():
         if manifest.get(key) != expected or type(manifest.get(key)) is not type(expected):
@@ -814,6 +879,14 @@ def _validate_runtime_smoke_manifest(
     }
     if dict(split_record_ids) != expected_ids:
         raise MLXPipelineError("record_id smoke non coincidono con la fixture runtime isolata")
+    expected_records = {
+        "train": tuple(_runtime_smoke_chat_record(index) for index in range(4)),
+        "valid": tuple(_runtime_smoke_chat_record(index) for index in range(4, 6)),
+        "test": tuple(_runtime_smoke_chat_record(index) for index in range(6, 8)),
+        "external": (),
+    }
+    if dict(split_records) != expected_records:
+        raise MLXPipelineError("contenuto chat smoke non coincide con la fixture canonica v6")
 
 
 def validate_snapshot_integrity(
@@ -871,7 +944,7 @@ def validate_snapshot_integrity(
     source_path: Path | None = None
     source_hash: str | None = None
     if smoke_test:
-        _validate_runtime_smoke_manifest(manifest, split_record_ids)
+        _validate_runtime_smoke_manifest(manifest, split_record_ids, split_records)
     else:
         source, source_path, source_hash = _validate_real_snapshot_source(
             root,
@@ -959,6 +1032,7 @@ def run_training(
         raise MLXPipelineError(f"training bloccato dal doctor: {machine['checks']}")
     model_check = verify_model(profile_path, repo_root)
     dataset = validate_mlx_dataset(data_dir, smoke_test=smoke_test)
+    dataset_snapshot_path = str(Path(str(dataset["path"])).resolve())
     environment_record = runtime_environment(repo_root)
     model_path = _model_path(repo_root, profile)
     training = profile["training"]
@@ -997,6 +1071,17 @@ def run_training(
             raise MLXPipelineError("identita snapshot cambiata: impossibile riprendere il run")
         if state.get("dataset_manifest_sha256") != dataset["manifest_sha256"]:
             raise MLXPipelineError("manifest snapshot cambiato: impossibile riprendere il run")
+        previous_dataset_path = state.get("dataset_snapshot_path")
+        if previous_dataset_path is not None and (
+            not isinstance(previous_dataset_path, str)
+            or Path(previous_dataset_path).resolve() != Path(dataset_snapshot_path)
+        ):
+            raise MLXPipelineError(
+                "path dello snapshot dati cambiato: impossibile riprendere il run"
+            )
+        # I run v2 creati prima del gate external possono essere ripresi soltanto
+        # dopo che il path verificato e stato ancorato allo stato locale.
+        state["dataset_snapshot_path"] = dataset_snapshot_path
         previous_environment = state.get("environment")
         if not isinstance(previous_environment, dict):
             raise MLXPipelineError("record ambiente assente: impossibile riprendere il run")
@@ -1014,6 +1099,7 @@ def run_training(
             "dataset_snapshot_sha256": dataset["snapshot_sha256"],
             "dataset_snapshot_id": dataset["snapshot_id"],
             "dataset_manifest_sha256": dataset["manifest_sha256"],
+            "dataset_snapshot_path": dataset_snapshot_path,
             "model_provenance_sha256": model_check["provenance_sha256"],
             "environment": environment_record,
             "seed": seed,

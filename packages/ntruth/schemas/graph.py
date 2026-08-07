@@ -32,6 +32,9 @@ class NodeType(StrEnum):
     # Disegno
     STUDY = "Study"
     EXPERIMENT_BLOCK = "ExperimentBlock"
+    UNIT_TYPE = "UnitType"
+    UNIT_INSTANCE = "UnitInstance"
+    BIOLOGICAL_SOURCE = "BiologicalSource"
     COHORT = "Cohort"
     GROUP = "Group"
     FACTOR = "Factor"
@@ -47,6 +50,10 @@ class NodeType(StrEnum):
     ANALYSIS = "Analysis"
     BLOCK = "Block"
     RANDOMISATION = "Randomisation"
+    ALLOCATION_EVENT = "AllocationEvent"
+    APPLICATION_EVENT = "ApplicationEvent"
+    SPLIT_EVENT = "SplitEvent"
+    POOL_EVENT = "PoolEvent"
 
     # Biologici
     HUMAN_DONOR = "HumanDonor"
@@ -84,11 +91,16 @@ class NodeType(StrEnum):
     SIGNAL = "Signal"
     TIMEPOINT = "Timepoint"
     ASSAY_RESULT = "AssayResult"
+    OBSERVATION = "Observation"
+    ANALYSIS_AGGREGATE = "AnalysisAggregate"
 
     # Numerici
     N_STATEMENT = "NStatement"
     COUNT = "Count"
+    COUNT_RECORD = "CountRecord"
     EXCLUSION = "Exclusion"
+    EXCLUSION_RECORD = "ExclusionRecord"
+    QUESTION_RECORD = "QuestionRecord"
     AGGREGATION_RULE = "AggregationRule"
     STATISTICAL_MODEL = "StatisticalModel"
 
@@ -133,8 +145,13 @@ class RelationType(StrEnum):
 
     PROCESSED_IN_BATCH = "processed_in_batch"
     ACQUIRED_IN_RUN = "acquired_in_run"
+    ACQUIRED_FROM = "acquired_from"
     AGGREGATED_BY = "aggregated_by"
+    AGGREGATED_TO = "aggregated_to"
     ANALYZED_AS = "analyzed_as"
+    GENERATED_BY = "generated_by"
+    COMPUTED_FROM = "computed_from"
+    SEGMENTED_INTO = "segmented_into"
 
     HAS_FACTOR = "has_factor"
     HAS_LEVEL = "has_level"

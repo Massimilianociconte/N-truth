@@ -38,6 +38,8 @@ jobs:
         run: uv run ruff format --check .
       - name: Type check
         run: uv run mypy packages
+      - name: V6 split and facsimile invariant gate
+        run: uv run pytest -m invariant --disable-warnings
       - name: Tests
         run: uv run pytest --disable-warnings
       - name: Build wheel and source distribution
@@ -64,4 +66,6 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
       - run: uv sync --extra dev --extra api --locked
+      - name: V6 split and facsimile invariant gate
+        run: uv run pytest -m invariant --disable-warnings
       - run: uv run pytest -m "not performance"

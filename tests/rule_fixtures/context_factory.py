@@ -28,6 +28,7 @@ from ntruth.schemas.experiment import (
     NScope,
     NStatement,
     RiskLabel,
+    TriState,
     UnitAssessment,
 )
 from ntruth.schemas.graph import (
@@ -66,6 +67,7 @@ class _Spec:
     global_n: bool = False
     endpoint_count: int = 1
     endpoint_linked: bool = True
+    operational_independence: bool | None = None
     sufficiency: dict[str, Confidence] = field(
         default_factory=lambda: {
             "intervention_level": Confidence.HIGH,
@@ -99,6 +101,11 @@ def _scenario(rule: Rule, scenario: str) -> _Spec:
         spec = _Spec()
         if rule.rule_id == "GEN-010":
             spec.n_independent = 2
+        if rule.rule_id == "GEN-002":
+            spec.experimental_unit = NodeType.CELL
+            spec.operational_independence = True
+            spec.analytical_unit = NodeType.CELL
+            spec.add(NodeType.CELL, 3)
         return spec
 
     spec = _Spec()
@@ -172,7 +179,14 @@ def _set_expression(spec: _Spec, expression: str, desired: bool) -> None:
         return
     if name == "assignment_unknown":
         spec.experimental_unit = None if effective else NodeType.CELL_CULTURE
+        spec.operational_independence = not effective
         if not effective:
+            spec.add(NodeType.CELL_CULTURE, 2)
+        return
+    if name == "independently_assigned":
+        spec.operational_independence = effective
+        if effective and spec.experimental_unit is None:
+            spec.experimental_unit = NodeType.CELL_CULTURE
             spec.add(NodeType.CELL_CULTURE, 2)
         return
     if name in {"analyzed_as", "measured_on"}:
@@ -183,7 +197,11 @@ def _set_expression(spec: _Spec, expression: str, desired: bool) -> None:
         else:
             spec.observational_unit = node_type if effective else None
         return
-    if name in {"analysis_finer_than_assignment", "observation_finer_than_assignment"}:
+    if name in {
+        "analysis_finer_than_assignment",
+        "analysis_finer_or_assignment_unknown",
+        "observation_finer_than_assignment",
+    }:
         if effective:
             spec.experimental_unit = NodeType.CELL_CULTURE
             spec.add(NodeType.CELL_CULTURE, 3)
@@ -324,6 +342,16 @@ def _materialize(spec: _Spec) -> tuple[BuildResult, UnitAssessment]:
         kind=spec.factor_kind,
         assignment_level=spec.experimental_unit,
         assignment_confidence=1.0 if spec.experimental_unit is not None else 0.0,
+        independently_assigned=(
+            TriState.TRUE
+            if (spec.operational_independence is True or spec.experimental_unit is not None)
+            else (TriState.FALSE if spec.operational_independence is False else TriState.UNKNOWN)
+        ),
+        independence_mechanism=(
+            "fixture: distinct allocation events without shared preparation"
+            if (spec.operational_independence is True or spec.experimental_unit is not None)
+            else None
+        ),
         provenance=provenance,
     )
     endpoints = tuple(
@@ -363,6 +391,14 @@ def _materialize(spec: _Spec) -> tuple[BuildResult, UnitAssessment]:
             Contradiction(
                 id="con-fixture",
                 description="fixture con alternative non risolte",
+                retained_interpretations=(
+                    "la prima fonte descrive una struttura",
+                    "la seconda fonte descrive una struttura incompatibile",
+                ),
+                provenance=Provenance(
+                    origin=ProvenanceKind.USER,
+                    actor_role="rule_fixture_author",
+                ),
             ),
         )
         if spec.unresolved_conflict
@@ -397,6 +433,7 @@ def _materialize(spec: _Spec) -> tuple[BuildResult, UnitAssessment]:
     assessment = UnitAssessment(
         id="uas-fixture",
         scope=scope,
+        allocation_unit_candidate=spec.experimental_unit,
         experimental_unit=spec.experimental_unit,
         observational_unit=spec.observational_unit,
         analytical_unit=spec.analytical_unit,
@@ -413,6 +450,7 @@ def _materialize(spec: _Spec) -> tuple[BuildResult, UnitAssessment]:
         ),
         risk=RiskLabel.NO_ISSUE,
         data_sufficiency=sufficiency,
+        evidence_ids=("ev-fixture",),
         provenance=provenance,
     )
     return build, assessment
