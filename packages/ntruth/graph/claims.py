@@ -50,7 +50,10 @@ from ntruth.schemas.experiment import (
     UnitAssessment,
 )
 from ntruth.schemas.kernel import (
+    ESTIMAND_UNSUPPORTED_OR_UNSPECIFIED,
+    ExposureAssessment,
     InferentialQuery,
+    InterferenceStatus,
     KnowledgeState,
     KnowledgeValue,
     ProfileCoverageStatement,
@@ -66,6 +69,16 @@ _CLAIM_TYPE_FAMILIES: dict[ClaimType, tuple[ClauseFamily, ...]] = {
     ClaimType.EXPERIMENTAL_UNIT: (ClauseFamily.ASSIGNMENT_UNIT, ClauseFamily.EXPERIMENTAL_UNIT),
     ClaimType.EXPERIMENTAL_UNIT_COUNT: (ClauseFamily.EXPERIMENTAL_UNIT_COUNT,),
     ClaimType.BIOLOGICAL_SOURCE_COUNT: (ClauseFamily.BIOLOGICAL_SOURCE_COUNT,),
+    # Claim di esposizione/estimand/scope: famiglia E (§7.15 E, Appendice Y).
+    ClaimType.DESIGN_ADEQUACY_FINDING: (ClauseFamily.INTERFERENCE_ESTIMAND_SUPPORT,),
+}
+
+#: Interference -> finding tipizzato sull'asse INTERFERENCE (§10.5).
+_INTERFERENCE_FINDING: dict[InterferenceStatus, str] = {
+    InterferenceStatus.DOCUMENTED: "INTERFERENCE_DOCUMENTED",
+    InterferenceStatus.POSSIBLE: "INTERFERENCE_POSSIBLE",
+    InterferenceStatus.NO_KNOWN_PATH: "INTERFERENCE_NO_KNOWN_PATH",
+    InterferenceStatus.UNKNOWN: "INTERFERENCE_UNKNOWN",
 }
 
 #: Chiave della memo dei predicati: (nome predicato, assessment id).
@@ -168,18 +181,23 @@ def derive_claim_set(
     assessments: Sequence[UnitAssessment] | None = None,
     evaluations: Sequence[RuleEvaluation] = (),
     index: GraphIndex | None = None,
+    exposures: Sequence[ExposureAssessment] = (),
 ) -> ClaimDerivation:
     """Proietta il nucleo di derivazione in claim keyed per query (Appendice N.1).
 
     Riusa ``resolve_units`` come nucleo interno (mai riscritto): se gli
     assessment non sono forniti, vengono risolti dal grafo. L'indice del grafo
     e' accettato pre-costruito e mai ricostruito internamente quando passato.
+    Le valutazioni exposure/interference (Appendice Y) aggiungono solo claim e
+    finding di esposizione/estimand/scope: EU identita' e conteggi restano
+    immutati (Y.1).
     """
     graph_index = index if index is not None else GraphIndex(build.hierarchy)
     if assessments is None:
         assessments, _ = resolve_units(block.id, build)
 
     evidence_by_id = {item.id: item for item in block.evidence}
+    exposures_by_factor = {exposure.factor_id: exposure for exposure in exposures}
     memo = PredicateMemo()
     claim_sets: list[DerivedClaimSet] = []
     all_states: list[Determinability] = []
@@ -200,11 +218,26 @@ def derive_claim_set(
             evaluations=evaluations,
             evidence_by_id=evidence_by_id,
         )
+        exposure = exposures_by_factor.get(assessment.scope.factor_id or "")
+        if exposure is not None:
+            claims.append(
+                _interference_claim(
+                    block=block,
+                    assessment=assessment,
+                    exposure=exposure,
+                    query=query,
+                    theory=theory,
+                    ruleset=ruleset,
+                    evaluations=evaluations,
+                    evidence_by_id=evidence_by_id,
+                )
+            )
         if claims:
             claim_sets.append(DerivedClaimSet(query_id=query.id, claims=tuple(claims)))
             all_states.extend(claim.determinability_state for claim in claims)
 
     findings = _design_adequacy_findings(block, claim_sets, evidence_by_id)
+    findings.extend(_interference_findings(exposures, claim_sets, evidence_by_id))
     coverages = _scenario_coverages(theory, claim_sets, queries)
     profile_coverage = _profile_coverage(theory, claim_sets)
     resolution = (
@@ -614,6 +647,140 @@ def _source_count_claim(
         evaluations=evaluations,
         evidence_by_id=evidence_by_id,
     )
+
+
+# ---------------------------------------------------------------------------
+# Claim di esposizione/estimand/scope (§7.15 E, Appendice Y)
+# ---------------------------------------------------------------------------
+
+
+def derive_estimand_support(exposure: ExposureAssessment) -> KnowledgeValue[str]:
+    """Supporto dell'estimand conseguente all'interference (§7.15 E).
+
+    ``documented`` richiede exposure mapping ed estimand appropriato; in
+    assenza il fallback normativo e' ``UNSUPPORTED_OR_UNSPECIFIED``. Nessun
+    token positivo e' definito dal PRD: ogni altro caso resta UNKNOWN
+    (fail-closed, registro SRR).
+    """
+    if exposure.interference_status is InterferenceStatus.DOCUMENTED:
+        mapping = exposure.exposure_mapping
+        if mapping is None or mapping.knowledge_state is not KnowledgeState.PRESENT:
+            return KnowledgeValue(
+                knowledge_state=KnowledgeState.PRESENT,
+                value=ESTIMAND_UNSUPPORTED_OR_UNSPECIFIED,
+                rationale=(
+                    "interference documented senza exposure mapping/estimand appropriato (§7.15 E)"
+                ),
+                evidence_ids=exposure.evidence_ids,
+            )
+    return KnowledgeValue(
+        knowledge_state=KnowledgeState.UNKNOWN,
+        rationale=(
+            "supporto dell'estimand non determinato dal PRD oltre il fallback "
+            "UNSUPPORTED_OR_UNSPECIFIED (§7.15 E; registro SRR)"
+        ),
+    )
+
+
+def _exposure_field_value(field: KnowledgeValue[Any] | None) -> str:
+    """Valore testuale fail-closed di un campo exposure (Appendice AC)."""
+    if field is None:
+        return KnowledgeState.NOT_REPORTED.value
+    if field.knowledge_state is KnowledgeState.PRESENT and field.value is not None:
+        value = field.value
+        return str(getattr(value, "value", value))
+    return field.knowledge_state.value
+
+
+def _interference_claim(
+    *,
+    block: ExperimentBlock,
+    assessment: UnitAssessment,
+    exposure: ExposureAssessment,
+    query: InferentialQuery,
+    theory: DerivationTheory,
+    ruleset: Ruleset,
+    evaluations: Sequence[RuleEvaluation],
+    evidence_by_id: Mapping[str, EvidenceSpan],
+) -> DerivedClaim:
+    """Claim di esposizione/estimand/scope per l'Appendice Y.
+
+    Le conseguenze dell'interference toccano solo questo claim: l'identita'
+    dell'EU e i suoi conteggi non vengono mai modificati (Y.1).
+    """
+    floor = _floor_state(block)
+    estimand = derive_estimand_support(exposure)
+    value: KnowledgeValue[Any] = KnowledgeValue(
+        knowledge_state=KnowledgeState.PRESENT,
+        value={
+            "interference_status": exposure.interference_status.value,
+            "estimand_support": estimand.value
+            if estimand.value is not None
+            else estimand.knowledge_state.value,
+            "exposure_pathway": _exposure_field_value(exposure.exposure_pathway),
+            "exposure_container": _exposure_field_value(exposure.exposure_container),
+        },
+        rationale=(
+            "conseguenze dell'interference su esposizione/estimand/scope; "
+            "EU e conteggi invariati (Appendice Y.1)"
+        ),
+    )
+    declared = exposure.interference_status is not InterferenceStatus.UNKNOWN and bool(
+        exposure.evidence_ids
+    )
+    state = floor or (
+        Determinability.DETERMINATE if declared else Determinability.INSUFFICIENT_INFORMATION
+    )
+    return _build_claim(
+        claim_type=ClaimType.DESIGN_ADEQUACY_FINDING,
+        query=query,
+        value=value,
+        state=state,
+        assessment=assessment,
+        theory=theory,
+        ruleset=ruleset,
+        evaluations=evaluations,
+        evidence_by_id=evidence_by_id,
+    )
+
+
+def _interference_findings(
+    exposures: Sequence[ExposureAssessment],
+    claim_sets: Sequence[DerivedClaimSet],
+    evidence_by_id: Mapping[str, EvidenceSpan],
+) -> list[DesignAdequacyFinding]:
+    """Finding tipizzati sull'asse INTERFERENCE (§10.5, Appendice Y).
+
+    Emessi solo con evidenza propria presente nel blocco: il silenzio non
+    produce finding (NFR-26). Nessun finding modifica EU o conteggi.
+    """
+    findings: list[DesignAdequacyFinding] = []
+    claim_ids = tuple(claim.claim_id for cs in claim_sets for claim in cs.claims)
+    for exposure in exposures:
+        if exposure.interference_status is InterferenceStatus.UNKNOWN:
+            # Silenzio: nessun finding, ne' INTERFERENCE_UNKNOWN inventato.
+            continue
+        evidence_ids = tuple(
+            evidence_id for evidence_id in exposure.evidence_ids if evidence_id in evidence_by_id
+        )
+        if not evidence_ids:
+            continue
+        estimand = derive_estimand_support(exposure)
+        findings.append(
+            DesignAdequacyFinding(
+                finding=_INTERFERENCE_FINDING[exposure.interference_status],
+                query_id=None,
+                claim_ids=claim_ids,
+                evidence_ids=evidence_ids,
+                rationale=(
+                    f"interference {exposure.interference_status.value} sul factor "
+                    f"{exposure.factor_id}: conseguenze solo su esposizione/estimand/"
+                    "scope; EU e conteggi invariati (Appendice Y.1); "
+                    f"estimand_support={estimand.value or estimand.knowledge_state.value} (§7.15 E)"
+                ),
+            )
+        )
+    return findings
 
 
 # ---------------------------------------------------------------------------

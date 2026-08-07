@@ -656,6 +656,79 @@ class ContaminationAttestation(FrozenModel):
 
 
 # ---------------------------------------------------------------------------
+# Contesto exposure/interference (§2.4/§2.7, §7.15 E, Appendice Y)
+# ---------------------------------------------------------------------------
+
+
+class ExposurePathway(StrEnum):
+    """Come si realizza e si propaga l'esposizione (§2.4, vocabolario verbatim)."""
+
+    DIRECT_DOSING = "direct_dosing"
+    SHARED_MEDIUM = "shared_medium"
+    DIFFUSION = "diffusion"
+    CO_CULTURE = "co_culture"
+
+
+class ExposureContainer(StrEnum):
+    """Contenitore materiale dell'esposizione (§2.4, vocabolario verbatim)."""
+
+    WELL = "well"
+    PLATE = "plate"
+    BATH = "bath"
+    CAGE = "cage"
+    DEVICE = "device"
+
+
+class InterferenceStatus(StrEnum):
+    """Unita altrui possono modificarne l'outcome? (§2.4, Appendice Y).
+
+    Fail-closed (NFR-26): il silenzio e' ``UNKNOWN``, mai ``no_known_path``;
+    l'assenza di interference non si inferisce dal silenzio (§7.15 E).
+    """
+
+    NO_KNOWN_PATH = "no_known_path"
+    POSSIBLE = "possible"
+    DOCUMENTED = "documented"
+    UNKNOWN = "unknown"
+
+
+#: Fallback dell'estimand definito dal PRD (§7.15 E): con interference
+#: documented senza exposure mapping/estimand appropriato. Nessun token
+#: positivo e' definito dal PRD (registro SRR): solo questo viene emesso.
+ESTIMAND_UNSUPPORTED_OR_UNSPECIFIED = "UNSUPPORTED_OR_UNSPECIFIED"
+
+
+class ExposureAssessment(FrozenModel):
+    """Valutazione exposure/interference per factor (§2.4/§2.7, Appendice Y).
+
+    Invariante scientifica: l'interference non modifica mai automaticamente
+    l'unita sperimentale o il suo conteggio; le conseguenze riguardano solo
+    esposizione, estimand e scope inferenziale (Appendice Y.1).
+    """
+
+    factor_id: str
+    exposure_pathway: KnowledgeValue[ExposurePathway] | None = None
+    exposure_container: KnowledgeValue[ExposureContainer] | None = None
+    interference_status: InterferenceStatus = InterferenceStatus.UNKNOWN
+    interference_cluster: KnowledgeValue[str] | None = None
+    effective_exposure_cluster: KnowledgeValue[str] | None = None
+    shared_environment: KnowledgeValue[str] | None = None
+    exposure_mapping: KnowledgeValue[str] | None = None
+    evidence_ids: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def _fail_closed(self) -> Self:
+        if not self.factor_id.strip():
+            raise ValueError("exposure assessment senza factor_id")
+        if self.interference_status is not InterferenceStatus.UNKNOWN and not self.evidence_ids:
+            raise ValueError(
+                "interference dichiarato senza evidenza: l'assenza o la presenza "
+                "di interference non si dichiara dal silenzio (NFR-26, §7.15 E)"
+            )
+        return self
+
+
+# ---------------------------------------------------------------------------
 # ConditionRecord e domanda primaria (§10.12)
 # ---------------------------------------------------------------------------
 

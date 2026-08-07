@@ -54,6 +54,9 @@ class NodeType(StrEnum):
     APPLICATION_EVENT = "ApplicationEvent"
     SPLIT_EVENT = "SplitEvent"
     POOL_EVENT = "PoolEvent"
+    # v8.0 (Appendice Y): evento di esposizione; additivo, mai usato dal
+    # percorso v6 per modificare EU o conteggi.
+    EXPOSURE_EVENT = "ExposureEvent"
 
     # Biologici
     HUMAN_DONOR = "HumanDonor"
