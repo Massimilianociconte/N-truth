@@ -23,6 +23,7 @@ from typing import Any
 from ntruth.derivation_theory.models import ClauseFamily, DerivationTheory
 from ntruth.design.schema import DesignCompilation
 from ntruth.graph.builder import BuildResult
+from ntruth.graph.determinability import claim_value_state
 from ntruth.graph.index import GraphIndex
 from ntruth.graph.units import resolve_units
 from ntruth.rules.predicates import RuleContext, UnknownPredicate, evaluate
@@ -46,7 +47,6 @@ from ntruth.schemas.core import (
 )
 from ntruth.schemas.experiment import (
     ExperimentBlock,
-    Inferability,
     UnitAssessment,
 )
 from ntruth.schemas.kernel import (
@@ -114,6 +114,24 @@ class PredicateMemo:
         clone = PredicateMemo(_values=dict(self._values), evaluations=self.evaluations)
         clone._values[(predicate, assessment_id)] = value
         return clone
+
+
+def unresolved_required_predicates(
+    memo: PredicateMemo, claim: DerivedClaim, assessment_id: str
+) -> tuple[str, ...]:
+    """Predicati richiesti dal claim ancora irrisolti nella memo (§7.16).
+
+    La tabella claim-specific considera solo i predicati richiesti dal claim:
+    una dimensione sconosciuta dichiarata non pertinente (``irrelevant_predicates``)
+    non compare mai qui e non puo' bloccare il claim. ``None``/assente = non
+    risolto (fail-closed), mai vero per default (NFR-26).
+    """
+    unresolved: list[str] = []
+    for predicate in claim.required_predicates:
+        value = memo.get(predicate, assessment_id)
+        if value is _MISSING or value is None or value is False:
+            unresolved.append(predicate)
+    return tuple(unresolved)
 
 
 class _Missing:
@@ -478,7 +496,7 @@ def _experimental_unit_claim(
         value: KnowledgeValue[Any] = KnowledgeValue(
             knowledge_state=KnowledgeState.PRESENT, value={"unit_type": str(unit)}
         )
-        state = floor or _value_state(assessment, has_value=True)
+        state = floor or claim_value_state(assessment, has_value=True)
     else:
         value = KnowledgeValue(
             knowledge_state=KnowledgeState.UNKNOWN,
@@ -487,7 +505,7 @@ def _experimental_unit_claim(
                 "non confermati (§7.15 A/B)"
             ),
         )
-        state = floor or _value_state(assessment, has_value=False)
+        state = floor or claim_value_state(assessment, has_value=False)
     # M.1: un claim DETERMINATE non puo avere valore UNKNOWN.
     if state is Determinability.DETERMINATE and unit is None:
         state = Determinability.INSUFFICIENT_INFORMATION
@@ -522,7 +540,7 @@ def _eu_count_claim(
             knowledge_state=KnowledgeState.PRESENT,
             value={"experimental_unit_count": n, "group": assessment.scope.group},
         )
-        state = floor or _value_state(assessment, has_value=True)
+        state = floor or claim_value_state(assessment, has_value=True)
     elif assessment.conditional_scenarios:
         value = KnowledgeValue(
             knowledge_state=KnowledgeState.UNKNOWN,
@@ -596,17 +614,6 @@ def _source_count_claim(
         evaluations=evaluations,
         evidence_by_id=evidence_by_id,
     )
-
-
-def _value_state(assessment: UnitAssessment, *, has_value: bool) -> Determinability:
-    """Stato claim-specific dal nucleo di derivazione (non un giudizio di qualita')."""
-    if assessment.conditional_scenarios:
-        return Determinability.CONDITIONALLY_DETERMINATE
-    if not has_value:
-        return Determinability.INSUFFICIENT_INFORMATION
-    if assessment.inferability is Inferability.INFERABLE:
-        return Determinability.DETERMINATE
-    return Determinability.INSUFFICIENT_INFORMATION
 
 
 # ---------------------------------------------------------------------------
