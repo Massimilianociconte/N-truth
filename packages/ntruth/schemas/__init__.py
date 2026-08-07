@@ -50,6 +50,7 @@ from ntruth.schemas.document import (
     Table,
 )
 from ntruth.schemas.experiment import (
+    COUNT_KIND_V8_WIRE,
     Alert,
     ConditionalScenario,
     Contradiction,
@@ -188,6 +189,7 @@ __all__ = [
     "BIOLOGICAL_SOURCE_TYPES",
     "CLUSTER_TYPES",
     "CONTAINMENT_RANK",
+    "COUNT_KIND_V8_WIRE",
     "DESIGN_RELEVANT_SECTIONS",
     "TECHNICAL_TYPES",
     "AdequacyAxis",

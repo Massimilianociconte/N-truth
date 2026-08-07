@@ -1,6 +1,6 @@
 {
   "fixture_kind": "deterministic_software_snapshot_not_expert_gold",
-  "content_checksum": "3e093bf202bd0e0b6d903660ed1e8ec32a46ed8c70b35899a9909d816421f90f",
+  "content_checksum": "1959afb5391e169af44e458676d43db2bdb53f19221405a726bae013de15aabe",
   "projection": {
     "report_id": "rep-d3f5de02ebfa",
     "project_id": "prj-84e9c3c9fa6f",
@@ -167,9 +167,9 @@
       ],
       "decisive_question_ids": [
         "qst-0d3705fef718",
+        "qst-138783efd348",
+        "qst-845edcdd8b10",
         "qst-9980f88520bf",
-        "qst-bbc9f57aa3b7",
-        "qst-f554d846dd79",
         "qst-7c84ad5fac45",
         "qst-cebebdc1f595",
         "qst-7459fe6625b5"

@@ -1,0 +1,37 @@
+{
+  "fixture_kind": "deterministic_software_snapshot_v8_form",
+  "lineage": {
+    "v3_snapshot": "report_v3_software_snapshot.json",
+    "v7_report_id": "rep-d3f5de02ebfa",
+    "v7_content_checksum": "1959afb5391e169af44e458676d43db2bdb53f19221405a726bae013de15aabe",
+    "v7_decisive_question_ids": [
+      "qst-0d3705fef718",
+      "qst-138783efd348",
+      "qst-845edcdd8b10",
+      "qst-9980f88520bf",
+      "qst-7c84ad5fac45",
+      "qst-cebebdc1f595",
+      "qst-7459fe6625b5"
+    ]
+  },
+  "projection": {
+    "block_id": "blk-158be3cbe930",
+    "determinability": "INSUFFICIENT_INFORMATION",
+    "published_counts": [
+      {
+        "count_id": "nst-d7ea3c63e3a0",
+        "kind": "declared_n",
+        "knowledge_state": "PRESENT",
+        "value": 120.0,
+        "quantifier": "EXACT",
+        "unit_type": "Cell",
+        "source_evidence": [
+          "ev-8fd101fea8fa"
+        ],
+        "rule_trace": [],
+        "diagnostic_only": false
+      }
+    ],
+    "diagnostic_counts": []
+  }
+}

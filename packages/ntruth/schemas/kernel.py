@@ -17,10 +17,11 @@ import datetime as dt
 from enum import StrEnum
 from typing import Any, Self
 
-from pydantic import AliasChoices, Field, ValidationInfo, model_validator
+from pydantic import AliasChoices, Field, ValidationInfo, field_serializer, model_validator
 
 from ntruth.schemas.core import FrozenModel, stable_id
 from ntruth.schemas.experiment import (
+    COUNT_KIND_V8_WIRE,
     CountKind,
     CountQuantifier,
     InferenceTarget,
@@ -699,7 +700,9 @@ class V8CountRecord(FrozenModel):
 
     Estende il registro v6 (``CountRecord``) con KnowledgeState, query_id,
     group_id e cohort_id come mostrato negli esempi normativi; la logica di
-    risoluzione resta quella v6 fino alla FASE 3.
+    risoluzione resta quella v6 fino alla FASE 3. La serializzazione espone
+    il naming canonico §7.9 (``COUNT_KIND_V8_WIRE``) mentre il registro v6
+    conserva i valori legacy congelati (Appendice AE.1).
     """
 
     count_id: str
@@ -725,6 +728,11 @@ class V8CountRecord(FrozenModel):
     diagnostic_only: bool = False
 
     model_config = FrozenModel.model_config | {"populate_by_name": True}
+
+    @field_serializer("kind")
+    def _serialize_kind_v8_wire(self, value: CountKind) -> str:
+        """Il wire v8 espone la denominazione §7.9, non il valore v6 (AE.1)."""
+        return COUNT_KIND_V8_WIRE[value]
 
     @model_validator(mode="before")
     @classmethod

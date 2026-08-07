@@ -13,7 +13,14 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any, Literal, Self
 
-from pydantic import Field, StrictFloat, StrictInt, field_validator, model_validator
+from pydantic import (
+    Field,
+    StrictFloat,
+    StrictInt,
+    field_validator,
+    model_serializer,
+    model_validator,
+)
 
 from ntruth.schemas.core import (
     AlertClass,
@@ -102,61 +109,85 @@ class CountQuantifier(StrEnum):
 
 
 class CountKind(StrEnum):
-    """Registro canonico dei count: vocabolario v8 (PRD §7.9) + alias (SRR-0006).
+    """Registro canonico dei count: valori v6 congelati + vocabolario v8 (§7.9).
 
-    I membri canonici seguono la denominazione §7.9 (``*_unit_count``).
-    I nomi v6/Appendice P.1 restano alias deprecati sullo stesso valore
-    (pattern ``INDETERMINATE``): il carico accetta entrambi i vocabolari, la
-    serializzazione usa sempre il nome canonico v8.
+    I **valori** serializzati restano quelli v6 (PRD Appendice AE.1: gli output
+    storici sono immutabili e gli stable_id v7-era non devono cambiare): il
+    valore canonico di ogni membro e' la stringa legacy. I nomi §7.9
+    (``*_unit_count``, SRR-0006) sono alias sullo stesso membro: il carico
+    accetta entrambi i vocabolari, la serializzazione legacy non cambia.
+    Il naming canonico v8 e' esposto solo via ``COUNT_KIND_V8_WIRE`` e il
+    wire contract ``V8CountRecord`` (pattern ``INDETERMINATE``).
     """
 
-    DECLARED_N = "declared_n"  # canonico in §7.9 e Appendice P.1.
-    PLANNED_UNIT_COUNT = "planned_unit_count"
-    ALLOCATED_UNIT_COUNT = "allocated_unit_count"
-    TREATED_UNIT_COUNT = "treated_unit_count"
-    OBSERVED_UNIT_COUNT = "observed_unit_count"
-    EXCLUDED_UNIT_COUNT = "excluded_unit_count"
-    ANALYZED_UNIT_COUNT = "analyzed_unit_count"
-    OBSERVATIONAL_MEASUREMENT_COUNT = "observational_measurement_count"
-    ANALYTICAL_ROW_COUNT = "analytical_row_count"
-    EXPERIMENTAL_UNIT_COUNT = "experimental_unit_count"
+    PLANNED_N = "planned_n"
+    ALLOCATED_N = "allocated_n"
+    TREATED_N = "treated_n"
+    OBSERVED_N = "observed_n"
+    EXCLUDED_N = "excluded_n"
+    ANALYSED_N = "analysed_n"
+    # Ortografia §7.9/P.1: stesso membro, valore serializzato congelato.
+    ANALYZED_N = "analysed_n"
+    DECLARED_N = "declared_n"
+    OBSERVATIONAL_N = "observational_n"
+    ANALYTICAL_N = "analytical_n"
+    # ``independent_n`` e' alias di report deprecato (§7.9, P.1) ma resta il
+    # valore congelato del count dell'unita sperimentale.
+    INDEPENDENT_N = "independent_n"
     BIOLOGICAL_SOURCE_COUNT = "biological_source_count"
-    DIAGNOSTIC_EFFECTIVE_N = "diagnostic_effective_n"
+    EFFECTIVE_N = "effective_n"
+    EFFECTIVE_N_DIAGNOSTIC = "effective_n"
 
-    # Alias deprecati v6/Appendice P.1: solo compatibilita di lettura.
-    PLANNED_N = "planned_unit_count"
-    ALLOCATED_N = "allocated_unit_count"
-    TREATED_N = "treated_unit_count"
-    OBSERVED_N = "observed_unit_count"
-    EXCLUDED_N = "excluded_unit_count"
-    ANALYSED_N = "analyzed_unit_count"
-    ANALYZED_N = "analyzed_unit_count"
-    OBSERVATIONAL_N = "observational_measurement_count"
-    ANALYTICAL_N = "analytical_row_count"
-    # ``independent_n`` e' alias di report deprecato (§7.9, P.1).
-    INDEPENDENT_N = "experimental_unit_count"
-    EFFECTIVE_N = "diagnostic_effective_n"
-    EFFECTIVE_N_DIAGNOSTIC = "diagnostic_effective_n"
+    # Alias deprecati con denominazione §7.9: solo compatibilita di lettura;
+    # la serializzazione canonica resta il valore v6 congelato (AE.1).
+    PLANNED_UNIT_COUNT = "planned_n"
+    ALLOCATED_UNIT_COUNT = "allocated_n"
+    TREATED_UNIT_COUNT = "treated_n"
+    OBSERVED_UNIT_COUNT = "observed_n"
+    EXCLUDED_UNIT_COUNT = "excluded_n"
+    ANALYZED_UNIT_COUNT = "analysed_n"
+    OBSERVATIONAL_MEASUREMENT_COUNT = "observational_n"
+    ANALYTICAL_ROW_COUNT = "analytical_n"
+    EXPERIMENTAL_UNIT_COUNT = "independent_n"
+    DIAGNOSTIC_EFFECTIVE_N = "effective_n"
 
     @classmethod
     def _missing_(cls, value: object) -> CountKind | None:
-        """Accetta i nomi deprecati senza perpetuarli nella serializzazione."""
+        """Accetta il vocabolario §7.9 senza cambiare il valore serializzato."""
 
         aliases = {
-            "planned_n": cls.PLANNED_UNIT_COUNT,
-            "allocated_n": cls.ALLOCATED_UNIT_COUNT,
-            "treated_n": cls.TREATED_UNIT_COUNT,
-            "observed_n": cls.OBSERVED_UNIT_COUNT,
-            "excluded_n": cls.EXCLUDED_UNIT_COUNT,
-            "analysed_n": cls.ANALYZED_UNIT_COUNT,
-            "analyzed_n": cls.ANALYZED_UNIT_COUNT,
-            "observational_n": cls.OBSERVATIONAL_MEASUREMENT_COUNT,
-            "analytical_n": cls.ANALYTICAL_ROW_COUNT,
-            "independent_n": cls.EXPERIMENTAL_UNIT_COUNT,
-            "effective_n": cls.DIAGNOSTIC_EFFECTIVE_N,
-            "effective_n_diagnostic": cls.DIAGNOSTIC_EFFECTIVE_N,
+            "analyzed_n": cls.ANALYSED_N,
+            "planned_unit_count": cls.PLANNED_N,
+            "allocated_unit_count": cls.ALLOCATED_N,
+            "treated_unit_count": cls.TREATED_N,
+            "observed_unit_count": cls.OBSERVED_N,
+            "excluded_unit_count": cls.EXCLUDED_N,
+            "analyzed_unit_count": cls.ANALYSED_N,
+            "observational_measurement_count": cls.OBSERVATIONAL_N,
+            "analytical_row_count": cls.ANALYTICAL_N,
+            "experimental_unit_count": cls.INDEPENDENT_N,
+            "diagnostic_effective_n": cls.EFFECTIVE_N,
+            "effective_n_diagnostic": cls.EFFECTIVE_N,
         }
         return aliases.get(value) if isinstance(value, str) else None
+
+
+#: Naming canonico v8 (§7.9) per ogni membro, esposto soltanto dai contratti
+#: v8 (``V8CountRecord``): la serializzazione v6/v7 non lo usa mai (AE.1).
+COUNT_KIND_V8_WIRE: dict[CountKind, str] = {
+    CountKind.PLANNED_N: "planned_unit_count",
+    CountKind.ALLOCATED_N: "allocated_unit_count",
+    CountKind.TREATED_N: "treated_unit_count",
+    CountKind.OBSERVED_N: "observed_unit_count",
+    CountKind.EXCLUDED_N: "excluded_unit_count",
+    CountKind.ANALYSED_N: "analyzed_unit_count",
+    CountKind.DECLARED_N: "declared_n",
+    CountKind.OBSERVATIONAL_N: "observational_measurement_count",
+    CountKind.ANALYTICAL_N: "analytical_row_count",
+    CountKind.INDEPENDENT_N: "experimental_unit_count",
+    CountKind.BIOLOGICAL_SOURCE_COUNT: "biological_source_count",
+    CountKind.EFFECTIVE_N: "diagnostic_effective_n",
+}
 
 
 class ExclusionPhase(StrEnum):
@@ -398,7 +429,8 @@ class CountScope(NTruthModel):
 
     La v8 aggiunge ``query_id`` e ``cohort_id`` (Appendice A/P.1): sono
     opzionali per compatibilita con i payload v6 e non rientrano nell'audit
-    dei null dello scope fisico.
+    dei null dello scope fisico. Finche' restano null la serializzazione non
+    li emette (Appendice AE.1: il wire v7-era e gli stable_id sono congelati).
     """
 
     unit_type: NodeType | None
@@ -438,6 +470,17 @@ class CountScope(NTruthModel):
                 f"unknown_reasons contiene campi non ammessi: {sorted(unknown_fields)}"
             )
         return self
+
+    @model_serializer(mode="wrap")
+    def _freeze_v7_wire(self, handler: Any) -> Any:
+        """AE.1: i campi v8 non impostati non entrano nella serializzazione."""
+        data = handler(self)
+        if isinstance(data, dict):
+            if self.query_id is None:
+                data.pop("query_id", None)
+            if self.cohort_id is None:
+                data.pop("cohort_id", None)
+        return data
 
     @classmethod
     def from_legacy(cls, statement: NStatement) -> CountScope:
@@ -483,7 +526,8 @@ class CountRecord(NTruthModel):
 
     La v8 lega ogni count a ``query_id``/``cohort_id`` (Appendice A/P.1); i
     campi restano opzionali per non alterare i payload v6 e la risoluzione
-    esistente (la proiezione derivazionale arriva in FASE 3).
+    esistente (la proiezione derivazionale arriva in FASE 3). Finche' restano
+    null la serializzazione non li emette (Appendice AE.1).
     """
 
     count_id: str
@@ -542,6 +586,17 @@ class CountRecord(NTruthModel):
             if not set(self.evidence_ids).issubset(self.provenance.evidence_ids):
                 raise ValueError("count evidence_ids assenti dalla provenance")
         return self
+
+    @model_serializer(mode="wrap")
+    def _freeze_v7_wire(self, handler: Any) -> Any:
+        """AE.1: i campi v8 non impostati non entrano nella serializzazione."""
+        data = handler(self)
+        if isinstance(data, dict):
+            if self.query_id is None:
+                data.pop("query_id", None)
+            if self.cohort_id is None:
+                data.pop("cohort_id", None)
+        return data
 
     def scope_key(self) -> tuple[object | None, ...]:
         """Chiave canonica dello scope v8 (Appendice P.1, §7.9).

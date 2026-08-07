@@ -26,15 +26,21 @@ from ntruth.model_backends.registry import (
 from ntruth.training.mlx_runtime import MLXPipelineError, load_profile
 
 # I test marcati con _GRANITE_DEFAULT_XFAIL codificano lo stato target
-# "Granite come default" non ancora implementato nella baseline v7-era:
-# factory.py documenta esplicitamente legacy_qwen come default
-# "pre-migrazione versionato". Restano eseguibili come specifica xfail.
+# "Granite come default" non ancora implementato nella baseline v7-era.
+# Non dipendono dalla disponibilita' dei pesi (GraniteBackend e' lazy e non
+# scarica nulla in costruzione): falliscono perche' factory.resolve_provider
+# usa ancora legacy_qwen come default "pre-migrazione versionato" e il test
+# cluster1 test_default_provider_is_still_qwen_cluster1 congela quello stato.
+# Il flip del default e una decisione di prodotto fuori scope FASE 1;
+# strict=True fa fallire forte se il target venisse implementato.
 _GRANITE_DEFAULT_XFAIL = pytest.mark.xfail(
     reason=(
-        "Specifica target Granite-by-default: la baseline v7-era usa ancora "
-        "legacy_qwen come default versionato (factory.resolve_provider)."
+        "Specifica target Granite-by-default: il default resta legacy_qwen "
+        "versionato pre-migrazione (factory.resolve_provider, budget "
+        "NFR-06/cluster1); nessun download modello richiesto. strict: se il "
+        "default diventa Granite rimuovere il marker e aggiornare cluster1."
     ),
-    strict=False,
+    strict=True,
 )
 
 

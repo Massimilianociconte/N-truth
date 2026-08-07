@@ -33,7 +33,7 @@ from ntruth.schemas.claims import (
     aggregate_report_resolution,
 )
 from ntruth.schemas.core import Determinability
-from ntruth.schemas.experiment import CountKind, CountQuantifier
+from ntruth.schemas.experiment import COUNT_KIND_V8_WIRE, CountKind, CountQuantifier
 from ntruth.schemas.kernel import (
     AuthorityType,
     BlockBoundaryRecord,
@@ -546,6 +546,9 @@ def test_section_15_10_count_record() -> None:
     assert record.quantifier is CountQuantifier.EXACT
     assert record.source_evidence == ("EV-01", "EV-02", "EV-03")
     assert record.rule_trace == ("EU-ALLOC-001", "COUNT-004")
+    # Il wire v8 ri-serializza il naming canonico §7.9 verbatim.
+    dumped = record.model_dump(mode="json")
+    assert dumped["kind"] == payload["kind"] == "experimental_unit_count"
 
 
 def test_appendix_a_counts() -> None:
@@ -595,17 +598,36 @@ def test_count_kind_union_covers_prd_vocabularies() -> None:
         "effective_n_diagnostic",
         "independent_n",
     }
+    # AE.1: i valori serializzati restano quelli v6 congelati.
+    frozen_v6_values = {
+        "planned_n",
+        "allocated_n",
+        "treated_n",
+        "observed_n",
+        "excluded_n",
+        "analysed_n",
+        "declared_n",
+        "observational_n",
+        "analytical_n",
+        "independent_n",
+        "biological_source_count",
+        "effective_n",
+    }
     canonical_values = {member.value for member in CountKind}
-    assert section_7_9 <= canonical_values
-    # Il vocabolario Appendice P.1/v6 resta accettato via alias deprecati.
-    for token in appendix_p_1:
+    assert canonical_values == frozen_v6_values
+    # Entrambi i vocabolari restano caricabili (alias + _missing_).
+    for token in section_7_9 | appendix_p_1:
         assert CountKind(token), token
-    # Alias deprecati: serializzazione canonica v8 (pattern INDETERMINATE).
+    # Alias: stessa identita di membro, valore serializzato congelato.
     assert CountKind("independent_n") is CountKind.EXPERIMENTAL_UNIT_COUNT
+    assert CountKind("experimental_unit_count") is CountKind.INDEPENDENT_N
     assert CountKind("planned_n") is CountKind.PLANNED_UNIT_COUNT
     assert CountKind("effective_n") is CountKind.DIAGNOSTIC_EFFECTIVE_N
     assert CountKind("effective_n_diagnostic") is CountKind.DIAGNOSTIC_EFFECTIVE_N
-    assert CountKind.EXPERIMENTAL_UNIT_COUNT.value == "experimental_unit_count"
+    assert CountKind.EXPERIMENTAL_UNIT_COUNT.value == "independent_n"
+    # Il naming canonico v8 vive solo nella mappa wire usata da V8CountRecord.
+    assert set(COUNT_KIND_V8_WIRE.values()) == section_7_9
+    assert set(COUNT_KIND_V8_WIRE) == set(CountKind)
 
 
 # ---------------------------------------------------------------------------
