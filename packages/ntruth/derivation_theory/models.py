@@ -89,7 +89,11 @@ class TheoryClause(FrozenModel):
     @model_validator(mode="after")
     def _gap_documentation(self) -> TheoryClause:
         #: ogni predicato segnato known_gap deve essere motivato nei known_gaps.
-        gaps = {p.predicate for p in self.required_predicates if p.status is PredicateAvailability.KNOWN_GAP}
+        gaps = {
+            p.predicate
+            for p in self.required_predicates
+            if p.status is PredicateAvailability.KNOWN_GAP
+        }
         if gaps and not self.known_gaps:
             raise ValueError(f"clausola {self.clause_id}: known_gap senza known_gaps documentati")
         return self

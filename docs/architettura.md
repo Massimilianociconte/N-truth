@@ -77,6 +77,7 @@ validata di tutte le fasi.
 | `ntruth.graph` | Costruzione, validazione, unita per scope e determinabilita |
 | `ntruth.verifier` | Verifica hard e matrice normativa degli output |
 | `ntruth.rules` | Ruleset versionati, predicati ed esecuzione con trace |
+| `ntruth.derivation_theory` | Derivation Theory v8 versionata (clausole §7.15 A-G), separata dal Rulebook (PRD §20.3) |
 | `ntruth.design` | Target/estimando, elicitazione e compilation del disegno |
 | `ntruth.corrections` | JSON Patch validate, ledger, undo/redo, audit e ricalcolo |
 | `ntruth.reporting` | Output positivo, JSON/YAML/HTML, graph e metadati di export |
@@ -170,6 +171,11 @@ essere pubblicata su `0.0.0.0`, reverse proxy, LAN o Internet.
 
 ## Limiti correnti
 
+- Ruleset di default della pipeline resta `ntruth-core-0.2.0` (decisione FASE 2,
+  migrazione PRD v8.0): `ntruth-core-0.3.0` collegato alla Derivation Theory
+  `derivation-theory-0.1.0` è selezionabile esplicitamente ma non è default
+  perché la teoria non è revisionata (SRR-0003) e 5 regole senza clausola §7.15
+  difendibile vi restano disabilitate fail-closed (SRR-0012).
 - Nessun modello AI N-Truth addestrato, calibrato o pubblicato e disponibile.
 - Segmentazione, estrazione e coreference rules-only non sono validate su un corpus
   reale rappresentativo.

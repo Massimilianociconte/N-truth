@@ -4,8 +4,8 @@ from ntruth.rules.engine import RuleRunResult, apply_rules
 from ntruth.rules.loader import (
     DEFAULT_RULESET_ID,
     DEFAULT_RULESET_VERSION,
-    RuleTheoryMismatchError,
     RulesetNotFound,
+    RuleTheoryMismatchError,
     available_rulesets,
     declared_theory,
     load_ruleset,

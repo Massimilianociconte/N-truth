@@ -169,10 +169,7 @@ class Ruleset(NTruthModel):
         #: alterano il checksum storico dei ruleset pre-v8; i valori di
         #: collegamento presenti nei ruleset v8 restano invece nel checksum.
         return content_checksum(
-            [
-                r.model_dump(mode="json", exclude={"fixtures"}, exclude_none=True)
-                for r in self.rules
-            ]
+            [r.model_dump(mode="json", exclude={"fixtures"}, exclude_none=True) for r in self.rules]
         )
 
     def rule(self, rule_id: str) -> Rule | None:
