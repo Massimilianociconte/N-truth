@@ -1,0 +1,314 @@
+{
+  "metadata": {
+    "theory_id": "derivation-theory",
+    "version": "0.1.0",
+    "status": "SCIENTIFIC_REVIEW_REQUIRED",
+    "derivation_contract": "D_T(G, P, Q) -> DerivedClaimSet",
+    "prd_document": "prd/N-Truth_PRD_scientifico_completo_v8.0.md",
+    "prd_sections": [
+      "§7.13",
+      "§7.14",
+      "§7.15",
+      "§10.2",
+      "§10.6",
+      "§10.7",
+      "§10.8",
+      "§10.9",
+      "§10.11",
+      "§13.6",
+      "§20.3",
+      "§26.3",
+      "Appendice A",
+      "Appendice M",
+      "Appendice N",
+      "NFR-33"
+    ],
+    "reviewer": "",
+    "review_date": "",
+    "srr_entry": "SRR-0003",
+    "notes": "Artefatto non revisionato (fail-closed). I normative_statement sono il testo verbatim del PRD v8.0 §7.15; i clause_id marcati prd_example_verbatim compaiono negli esempi normativi del PRD; i clause_id marcati migration_derived sono convenzioni di questa migrazione e richiedono revisione scientifica. Nessun contenuto scientifico oltre il testo PRD e' stato inventato."
+  },
+  "clauses": [
+    {
+      "clause_id": "DT-EU-ASSIGNMENT-01",
+      "family": "A",
+      "id_basis": "prd_example_verbatim",
+      "id_provenance": [
+        "PRD v8.0 Appendice A: scenario_set SCEN-01 coverage_basis",
+        "PRD v8.0 Appendice N: derived_claim CLAIM-EU-01 theory_clauses"
+      ],
+      "normative_statement": "È derivabile quando esistono factor/levels, assignment event o meccanismo equivalente, candidate unit e separability support. Keyword come \"independent\" o la presenza di well non sono sufficienti.",
+      "normative_source": "PRD v8.0 §7.15 A (verbatim)",
+      "required_predicates": [
+        {"predicate": "assignment_unit", "status": "known_gap"},
+        {"predicate": "assignment_separability", "status": "known_gap"},
+        {"predicate": "independently_assigned", "status": "implemented"},
+        {"predicate": "assignment_unknown", "status": "implemented"}
+      ],
+      "irrelevant_predicates": [
+        {
+          "predicate": "biological_source_independence",
+          "rationale": "Not required to identify the treatment EU; used for inference scope (PRD v8.0 §10.2, verbatim)."
+        }
+      ],
+      "minimal_counterfactual": "tests/theory_reference/clauses/dt_eu_assignment_01.yaml",
+      "known_gaps": [
+        "I predicati v8 assignment_unit e assignment_separability non esistono nel registro predicates v7 (packages/ntruth/rules/predicates.py).",
+        "Il confine esatto tra questa clausola e DT-EU-01 non e' determinato dal PRD: gli esempi associano entrambi gli ID al claim EXPERIMENTAL_UNIT."
+      ],
+      "evidence_references": [
+        "PRD v8.0 §7.15 A",
+        "PRD v8.0 §10.2",
+        "PRD v8.0 §13.7",
+        "PRD v8.0 Appendice A",
+        "PRD v8.0 Appendice N"
+      ]
+    },
+    {
+      "clause_id": "DT-EU-01",
+      "family": "B",
+      "id_basis": "prd_example_verbatim",
+      "id_provenance": [
+        "PRD v8.0 §10.2: derived_claim CLAIM-EU-001 theory_clauses",
+        "PRD v8.0 §8.7: rule_challenge RC-001 derived_claim_id CLAIM-EU-01"
+      ],
+      "normative_statement": "È derivabile quando il trattamento rilevante è assegnato e realizzato in modo separabile alla candidate unit.",
+      "normative_source": "PRD v8.0 §7.15 B (verbatim, prima parte)",
+      "required_predicates": [
+        {"predicate": "assigned_at", "status": "implemented"},
+        {"predicate": "realized_exposure_separability", "status": "known_gap"}
+      ],
+      "irrelevant_predicates": [
+        {
+          "predicate": "aggregation_present",
+          "rationale": "Analytical dependence generates grouping findings; it does not modify the EU or the source count (PRD v8.0 §7.15 F)."
+        }
+      ],
+      "minimal_counterfactual": "tests/theory_reference/clauses/dt_eu_01.yaml",
+      "known_gaps": [
+        "Il predicato v8 realized_exposure_separability non esiste nel registro predicates v7.",
+        "La ripartizione del testo §7.15 B tra DT-EU-01 e DT-EU-04 e' una interpretazione della migrazione: il PRD mostra gli ID ma non definisce il perimetro singolo di ciascun clause."
+      ],
+      "evidence_references": [
+        "PRD v8.0 §7.15 B",
+        "PRD v8.0 §10.2",
+        "PRD v8.0 §8.7"
+      ]
+    },
+    {
+      "clause_id": "DT-EU-04",
+      "family": "B",
+      "id_basis": "prd_example_verbatim",
+      "id_provenance": [
+        "PRD v8.0 §8.7: rule_challenge RC-001 challenged_clause ('realized-exposure clause')",
+        "PRD v8.0 §10.6: conditional output theory_clause",
+        "PRD v8.0 §10.2: derived_claim CLAIM-EU-001 theory_clauses"
+      ],
+      "normative_statement": "Se application/exposure collassa la separabilità, il sistema eleva l'unità soltanto con evidence sufficiente; altrimenti emette ramo condizionale o informazione insufficiente.",
+      "normative_source": "PRD v8.0 §7.15 B (verbatim, seconda parte)",
+      "required_predicates": [
+        {"predicate": "realized_exposure_separability", "status": "known_gap"},
+        {"predicate": "effective_exposure_cluster", "status": "known_gap"}
+      ],
+      "irrelevant_predicates": [
+        {
+          "predicate": "well_id_present",
+          "rationale": "well ID -> experimental unit e' una riparazione semantica vietata (PRD v8.0 §13.7); la presenza di well non e' sufficiente (PRD v8.0 §7.15 A)."
+        }
+      ],
+      "minimal_counterfactual": "tests/theory_reference/clauses/dt_eu_04.yaml",
+      "known_gaps": [
+        "I predicati v8 realized_exposure_separability e effective_exposure_cluster non esistono nel registro predicates v7."
+      ],
+      "evidence_references": [
+        "PRD v8.0 §7.15 B",
+        "PRD v8.0 §8.7",
+        "PRD v8.0 §10.6"
+      ]
+    },
+    {
+      "clause_id": "DT-EU-EXPOSURE-02",
+      "family": "B",
+      "id_basis": "prd_example_verbatim",
+      "id_provenance": [
+        "PRD v8.0 Appendice A: derived_claim CLAIM-EU-01 theory_clauses"
+      ],
+      "normative_statement": "Effective exposure unit/cluster: quando una esposizione comune documentata impedisce la realizzazione distinta del trattamento, il cluster di esposizione effettiva diventa il livello rilevante per il contrasto di esposizione; il claim EU/count viene ricalcolato o reso condizionale.",
+      "normative_source": "PRD v8.0 §7.14 (elenco DerivedClaimSet) e Appendice N (riga 'documented common exposure prevents distinct treatment realization', parafrasi fedele)",
+      "required_predicates": [
+        {"predicate": "effective_exposure_cluster", "status": "known_gap"},
+        {"predicate": "shared_exposure_documented", "status": "known_gap"}
+      ],
+      "irrelevant_predicates": [
+        {
+          "predicate": "biological_source_independence",
+          "rationale": "Lo stato di source non riduce automaticamente l'EU; blocca o limita soltanto i claim biological-source/generalization (PRD v8.0 Appendice N)."
+        }
+      ],
+      "minimal_counterfactual": "tests/theory_reference/clauses/dt_eu_exposure_02.yaml",
+      "known_gaps": [
+        "I predicati v8 effective_exposure_cluster e shared_exposure_documented non esistono nel registro predicates v7.",
+        "Normative statement parafrasato da Appendice N perche' il PRD non attribuisce un enunciato esplicito a questo ID."
+      ],
+      "evidence_references": [
+        "PRD v8.0 §7.14",
+        "PRD v8.0 §2.7",
+        "PRD v8.0 Appendice A",
+        "PRD v8.0 Appendice N"
+      ]
+    },
+    {
+      "clause_id": "DT-EU-COUNT-01",
+      "family": "C",
+      "id_basis": "migration_derived",
+      "id_provenance": [
+        "PRD v8.0 §7.15 C: nessuna ID mostrata negli esempi; convenzione DT-EU-COUNT-* della migrazione"
+      ],
+      "normative_statement": "È il numero di istanze distinte dell'EU nello scope del contrasto e del lifecycle pertinente, per gruppo o paired set. Repeated measures, cellule, campi e analytical rows non lo moltiplicano.",
+      "normative_source": "PRD v8.0 §7.15 C (verbatim)",
+      "required_predicates": [
+        {"predicate": "declared_n_scope_global", "status": "implemented"},
+        {"predicate": "multiple_scopes", "status": "implemented"},
+        {"predicate": "distinct_eu_instance_count", "status": "known_gap"},
+        {"predicate": "lifecycle_scope", "status": "known_gap"}
+      ],
+      "irrelevant_predicates": [
+        {
+          "predicate": "biological_source_independence",
+          "rationale": "Il source count qualifica inference scope e generalization, non moltiplica ne riduce l'EU count (PRD v8.0 §7.15 D)."
+        }
+      ],
+      "minimal_counterfactual": "tests/theory_reference/clauses/dt_eu_count_01.yaml",
+      "known_gaps": [
+        "Clause ID inventato dalla migrazione: il PRD non mostra alcuna ID per la famiglia C.",
+        "I predicati v8 distinct_eu_instance_count e lifecycle_scope non esistono nel registro predicates v7."
+      ],
+      "evidence_references": [
+        "PRD v8.0 §7.15 C",
+        "PRD v8.0 §7.9",
+        "PRD v8.0 §7.11"
+      ]
+    },
+    {
+      "clause_id": "DT-SOURCE-COUNT-01",
+      "family": "D",
+      "id_basis": "prd_example_verbatim",
+      "id_provenance": [
+        "PRD v8.0 Appendice A: derived_claim CLAIM-SOURCE-01 theory_clauses"
+      ],
+      "normative_statement": "Deriva esclusivamente dalla provenienza confermata. Non modifica automaticamente il count dell'EU, ma qualifica inference scope e source-level generalization.",
+      "normative_source": "PRD v8.0 §7.15 D (verbatim)",
+      "required_predicates": [
+        {"predicate": "source_provenance_confirmed", "status": "known_gap"},
+        {"predicate": "sufficiency_at_least", "status": "implemented"}
+      ],
+      "irrelevant_predicates": [
+        {
+          "predicate": "analytical_row_count",
+          "rationale": "Il source count deriva esclusivamente dalla provenienza confermata: il numero di record o analytical rows non e' provenance (PRD v8.0 §7.15 D)."
+        }
+      ],
+      "minimal_counterfactual": "tests/theory_reference/clauses/dt_source_count_01.yaml",
+      "known_gaps": [
+        "I predicati v8 source_provenance_confirmed e analytical_row_count non esistono nel registro predicates v7."
+      ],
+      "evidence_references": [
+        "PRD v8.0 §7.15 D",
+        "PRD v8.0 §7.5",
+        "PRD v8.0 Appendice A"
+      ]
+    },
+    {
+      "clause_id": "DT-EXP-02",
+      "family": "E",
+      "id_basis": "prd_example_verbatim",
+      "id_provenance": [
+        "PRD v8.0 §10.7: scenario_coverage emitting_clauses"
+      ],
+      "normative_statement": "no_known_path consente soltanto una formulazione prudente: non prova assenza di interference; possible o unknown richiedono caveat, domanda o sensitivity se il claim dipende dalla no-interference assumption; documented richiede exposure mapping ed estimand appropriato; in assenza, estimand_support=UNSUPPORTED_OR_UNSPECIFIED.",
+      "normative_source": "PRD v8.0 §7.15 E (verbatim)",
+      "required_predicates": [
+        {"predicate": "interference_status", "status": "known_gap"},
+        {"predicate": "exposure_mapping", "status": "known_gap"},
+        {"predicate": "estimand_support", "status": "known_gap"}
+      ],
+      "irrelevant_predicates": [
+        {
+          "predicate": "silence_on_interference",
+          "rationale": "Interference absence cannot be inferred from silence (PRD v8.0 NFR-26)."
+        }
+      ],
+      "minimal_counterfactual": "tests/theory_reference/clauses/dt_exp_02.yaml",
+      "known_gaps": [
+        "Nessuna regola del ruleset ntruth-core-0.3.0 implementa questa clausola: dichiarata uncovered con rationale nel ruleset (NFR-33).",
+        "I predicati v8 interference_status, exposure_mapping e estimand_support non esistono nel registro predicates v7."
+      ],
+      "evidence_references": [
+        "PRD v8.0 §7.15 E",
+        "PRD v8.0 §2.7",
+        "PRD v8.0 §10.7",
+        "PRD v8.0 NFR-26"
+      ]
+    },
+    {
+      "clause_id": "DT-ANALYTICAL-01",
+      "family": "F",
+      "id_basis": "migration_derived",
+      "id_provenance": [
+        "PRD v8.0 §7.15 F: nessuna ID mostrata negli esempi; convenzione DT-ANALYTICAL-* della migrazione"
+      ],
+      "normative_statement": "Genera grouping/repeated-measure/measurement findings e statistical handoff. Non modifica l'EU o il source count.",
+      "normative_source": "PRD v8.0 §7.15 F (verbatim)",
+      "required_predicates": [
+        {"predicate": "repeated_measures_present", "status": "implemented"},
+        {"predicate": "pooling_present", "status": "implemented"},
+        {"predicate": "aggregation_present", "status": "implemented"},
+        {"predicate": "model_accounts_for_assignment", "status": "implemented"}
+      ],
+      "irrelevant_predicates": [
+        {
+          "predicate": "independently_assigned",
+          "rationale": "La dipendenza analitica genera grouping findings e statistical handoff; non modifica l'EU o il source count (PRD v8.0 §7.15 F), quindi lo stato di assegnazione non e' un input del finding."
+        }
+      ],
+      "minimal_counterfactual": "tests/theory_reference/clauses/dt_analytical_01.yaml",
+      "known_gaps": [
+        "Clause ID inventato dalla migrazione: il PRD non mostra alcuna ID per la famiglia F."
+      ],
+      "evidence_references": [
+        "PRD v8.0 §7.15 F",
+        "PRD v8.0 §7.6",
+        "PRD v8.0 §11.1"
+      ]
+    },
+    {
+      "clause_id": "DT-SOURCE-SCOPE-02",
+      "family": "G",
+      "id_basis": "prd_example_verbatim",
+      "id_provenance": [
+        "PRD v8.0 Appendice A: scenario_set SCEN-01 coverage_basis"
+      ],
+      "normative_statement": "Deriva da query, source diversity, protocol, external replication, exposure/interference e profile coverage. Non viene inferita dalla sola numerosità.",
+      "normative_source": "PRD v8.0 §7.15 G (verbatim)",
+      "required_predicates": [
+        {"predicate": "source_diversity", "status": "known_gap"},
+        {"predicate": "external_replication", "status": "known_gap"},
+        {"predicate": "profile_coverage", "status": "known_gap"}
+      ],
+      "irrelevant_predicates": [
+        {
+          "predicate": "multiple_instances",
+          "rationale": "L'inference scope non viene inferito dalla sola numerosita' (PRD v8.0 §7.15 G)."
+        }
+      ],
+      "minimal_counterfactual": "tests/theory_reference/clauses/dt_source_scope_02.yaml",
+      "known_gaps": [
+        "I predicati v8 source_diversity, external_replication e profile_coverage non esistono nel registro predicates v7."
+      ],
+      "evidence_references": [
+        "PRD v8.0 §7.15 G",
+        "PRD v8.0 Appendice A"
+      ]
+    }
+  ]
+}
