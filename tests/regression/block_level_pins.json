@@ -1,0 +1,526 @@
+{
+  "UC01": {
+    "determinability": "OUT_OF_SCOPE",
+    "graph_status": "candidate",
+    "unit_assessments": [
+      {
+        "allocation_unit_candidate": "HumanDonor",
+        "analytical_unit": "Cell",
+        "biological_source_count": 5,
+        "biological_unit": "HumanDonor",
+        "cluster_types": [],
+        "conditional_scenarios": [],
+        "effective_n": null,
+        "experimental_unit": null,
+        "independent_entity_type": null,
+        "inferability": "requires_confirmation",
+        "n_allocated": 5,
+        "n_analysed": 10000,
+        "n_analytical": 10000,
+        "n_declared": 10000,
+        "n_excluded": null,
+        "n_independent": null,
+        "n_observational": 10000,
+        "n_observed": null,
+        "n_planned": null,
+        "n_treated": null,
+        "observational_unit": "Cell",
+        "risk": "insufficient_information",
+        "scope": {
+          "contrast_id": "cnt-6d998854bfdc",
+          "endpoint_id": "end-9d0a71642e41",
+          "factor_id": "fac-85af7d828145",
+          "group": null
+        }
+      }
+    ]
+  },
+  "UC02": {
+    "determinability": "INSUFFICIENT_INFORMATION",
+    "graph_status": "candidate",
+    "unit_assessments": [
+      {
+        "allocation_unit_candidate": "CellCulture",
+        "analytical_unit": "Cell",
+        "biological_source_count": null,
+        "biological_unit": null,
+        "cluster_types": [],
+        "conditional_scenarios": [],
+        "effective_n": null,
+        "experimental_unit": null,
+        "independent_entity_type": null,
+        "inferability": "requires_confirmation",
+        "n_allocated": 3,
+        "n_analysed": 120,
+        "n_analytical": 120,
+        "n_declared": 120,
+        "n_excluded": null,
+        "n_independent": null,
+        "n_observational": 120,
+        "n_observed": null,
+        "n_planned": null,
+        "n_treated": null,
+        "observational_unit": "Cell",
+        "risk": "insufficient_information",
+        "scope": {
+          "contrast_id": "cnt-b88e0328d096",
+          "endpoint_id": "end-f2f7b09991b6",
+          "factor_id": "fac-9a5cbf77c550",
+          "group": null
+        }
+      }
+    ]
+  },
+  "UC03": {
+    "determinability": "OUT_OF_SCOPE",
+    "graph_status": "candidate",
+    "unit_assessments": [
+      {
+        "allocation_unit_candidate": "Animal",
+        "analytical_unit": "Cell",
+        "biological_source_count": 6,
+        "biological_unit": "Animal",
+        "cluster_types": [],
+        "conditional_scenarios": [],
+        "effective_n": null,
+        "experimental_unit": null,
+        "independent_entity_type": null,
+        "inferability": "requires_confirmation",
+        "n_allocated": 6,
+        "n_analysed": 300,
+        "n_analytical": 300,
+        "n_declared": 300,
+        "n_excluded": null,
+        "n_independent": null,
+        "n_observational": 300,
+        "n_observed": null,
+        "n_planned": null,
+        "n_treated": null,
+        "observational_unit": "Cell",
+        "risk": "insufficient_information",
+        "scope": {
+          "contrast_id": "cnt-1fd977a519c7",
+          "endpoint_id": "end-6ebaf6468cb7",
+          "factor_id": "fac-cf7b51cfbb50",
+          "group": null
+        }
+      }
+    ]
+  },
+  "UC04": {
+    "determinability": "OUT_OF_SCOPE",
+    "graph_status": "candidate",
+    "unit_assessments": [
+      {
+        "allocation_unit_candidate": "Cage",
+        "analytical_unit": "Animal",
+        "biological_source_count": 32,
+        "biological_unit": "Animal",
+        "cluster_types": [],
+        "conditional_scenarios": [],
+        "effective_n": null,
+        "experimental_unit": null,
+        "independent_entity_type": null,
+        "inferability": "requires_confirmation",
+        "n_allocated": 8,
+        "n_analysed": 32,
+        "n_analytical": 32,
+        "n_declared": null,
+        "n_excluded": null,
+        "n_independent": null,
+        "n_observational": 32,
+        "n_observed": null,
+        "n_planned": null,
+        "n_treated": null,
+        "observational_unit": "Animal",
+        "risk": "insufficient_information",
+        "scope": {
+          "contrast_id": null,
+          "endpoint_id": "end-ca4ce10c9cc2",
+          "factor_id": "fac-157e198aca25",
+          "group": null
+        }
+      }
+    ]
+  },
+  "UC05": {
+    "determinability": "OUT_OF_SCOPE",
+    "graph_status": "candidate",
+    "unit_assessments": [
+      {
+        "allocation_unit_candidate": "Dam",
+        "analytical_unit": "Animal",
+        "biological_source_count": 8,
+        "biological_unit": "Dam",
+        "cluster_types": [],
+        "conditional_scenarios": [],
+        "effective_n": null,
+        "experimental_unit": null,
+        "independent_entity_type": null,
+        "inferability": "requires_confirmation",
+        "n_allocated": 8,
+        "n_analysed": 48,
+        "n_analytical": 48,
+        "n_declared": 48,
+        "n_excluded": null,
+        "n_independent": null,
+        "n_observational": 48,
+        "n_observed": null,
+        "n_planned": null,
+        "n_treated": null,
+        "observational_unit": "Animal",
+        "risk": "insufficient_information",
+        "scope": {
+          "contrast_id": "cnt-0e42e21f834a",
+          "endpoint_id": "end-c2c49eb1ea5e",
+          "factor_id": "fac-d35a9965c86e",
+          "group": null
+        }
+      }
+    ]
+  },
+  "UC06": {
+    "determinability": "OUT_OF_SCOPE",
+    "graph_status": "candidate",
+    "unit_assessments": [
+      {
+        "allocation_unit_candidate": "Animal",
+        "analytical_unit": "Animal",
+        "biological_source_count": 12,
+        "biological_unit": "Animal",
+        "cluster_types": [],
+        "conditional_scenarios": [],
+        "effective_n": null,
+        "experimental_unit": null,
+        "independent_entity_type": null,
+        "inferability": "requires_confirmation",
+        "n_allocated": 12,
+        "n_analysed": 12,
+        "n_analytical": 12,
+        "n_declared": 48,
+        "n_excluded": null,
+        "n_independent": null,
+        "n_observational": 12,
+        "n_observed": null,
+        "n_planned": null,
+        "n_treated": null,
+        "observational_unit": "Animal",
+        "risk": "insufficient_information",
+        "scope": {
+          "contrast_id": "cnt-3cdeb3446a16",
+          "endpoint_id": null,
+          "factor_id": "fac-d994e446f9d0",
+          "group": null
+        }
+      }
+    ]
+  },
+  "UC07": {
+    "determinability": "OUT_OF_SCOPE",
+    "graph_status": "candidate",
+    "unit_assessments": [
+      {
+        "allocation_unit_candidate": "Animal",
+        "analytical_unit": "Pool",
+        "biological_source_count": 12,
+        "biological_unit": "Animal",
+        "cluster_types": [
+          "Pool"
+        ],
+        "conditional_scenarios": [],
+        "effective_n": null,
+        "experimental_unit": null,
+        "independent_entity_type": null,
+        "inferability": "conditional",
+        "n_allocated": 12,
+        "n_analysed": 4,
+        "n_analytical": 4,
+        "n_declared": 4,
+        "n_excluded": null,
+        "n_independent": null,
+        "n_observational": 4,
+        "n_observed": null,
+        "n_planned": null,
+        "n_treated": null,
+        "observational_unit": "Pool",
+        "risk": "insufficient_information",
+        "scope": {
+          "contrast_id": "cnt-657fbdfc3f4c",
+          "endpoint_id": "end-509bb8160417",
+          "factor_id": "fac-0e4e02a5587c",
+          "group": null
+        }
+      }
+    ]
+  },
+  "UC08": {
+    "determinability": "INSUFFICIENT_INFORMATION",
+    "graph_status": "candidate",
+    "unit_assessments": [
+      {
+        "allocation_unit_candidate": null,
+        "analytical_unit": "Cell",
+        "biological_source_count": null,
+        "biological_unit": null,
+        "cluster_types": [],
+        "conditional_scenarios": [],
+        "effective_n": null,
+        "experimental_unit": null,
+        "independent_entity_type": null,
+        "inferability": "not_inferable",
+        "n_allocated": null,
+        "n_analysed": null,
+        "n_analytical": null,
+        "n_declared": null,
+        "n_excluded": null,
+        "n_independent": null,
+        "n_observational": 90,
+        "n_observed": null,
+        "n_planned": null,
+        "n_treated": null,
+        "observational_unit": "Cell",
+        "risk": "insufficient_information",
+        "scope": {
+          "contrast_id": null,
+          "endpoint_id": "end-699e3cf512e2",
+          "factor_id": null,
+          "group": null
+        }
+      }
+    ]
+  },
+  "UC09": {
+    "determinability": "OUT_OF_SCOPE",
+    "graph_status": "candidate",
+    "unit_assessments": [
+      {
+        "allocation_unit_candidate": "Animal",
+        "analytical_unit": "Animal",
+        "biological_source_count": 5,
+        "biological_unit": "Animal",
+        "cluster_types": [],
+        "conditional_scenarios": [],
+        "effective_n": null,
+        "experimental_unit": null,
+        "independent_entity_type": null,
+        "inferability": "requires_confirmation",
+        "n_allocated": 5,
+        "n_analysed": 5,
+        "n_analytical": 5,
+        "n_declared": 5,
+        "n_excluded": null,
+        "n_independent": null,
+        "n_observational": 5,
+        "n_observed": null,
+        "n_planned": null,
+        "n_treated": null,
+        "observational_unit": "Animal",
+        "risk": "insufficient_information",
+        "scope": {
+          "contrast_id": "cnt-796660acd543",
+          "endpoint_id": "end-34288ffb7e0b",
+          "factor_id": "fac-b1e7fa0e7d6c",
+          "group": "drug"
+        }
+      },
+      {
+        "allocation_unit_candidate": "Animal",
+        "analytical_unit": "Animal",
+        "biological_source_count": 5,
+        "biological_unit": "Animal",
+        "cluster_types": [],
+        "conditional_scenarios": [],
+        "effective_n": null,
+        "experimental_unit": null,
+        "independent_entity_type": null,
+        "inferability": "requires_confirmation",
+        "n_allocated": 5,
+        "n_analysed": 4,
+        "n_analytical": 4,
+        "n_declared": 4,
+        "n_excluded": null,
+        "n_independent": null,
+        "n_observational": 5,
+        "n_observed": null,
+        "n_planned": null,
+        "n_treated": null,
+        "observational_unit": "Animal",
+        "risk": "insufficient_information",
+        "scope": {
+          "contrast_id": "cnt-796660acd543",
+          "endpoint_id": "end-34288ffb7e0b",
+          "factor_id": "fac-b1e7fa0e7d6c",
+          "group": "vehicle"
+        }
+      },
+      {
+        "allocation_unit_candidate": "Animal",
+        "analytical_unit": "Animal",
+        "biological_source_count": 5,
+        "biological_unit": "Animal",
+        "cluster_types": [],
+        "conditional_scenarios": [],
+        "effective_n": null,
+        "experimental_unit": null,
+        "independent_entity_type": null,
+        "inferability": "requires_confirmation",
+        "n_allocated": 5,
+        "n_analysed": 4,
+        "n_analytical": 4,
+        "n_declared": 4,
+        "n_excluded": null,
+        "n_independent": null,
+        "n_observational": 5,
+        "n_observed": null,
+        "n_planned": null,
+        "n_treated": null,
+        "observational_unit": "Animal",
+        "risk": "insufficient_information",
+        "scope": {
+          "contrast_id": "cnt-796660acd543",
+          "endpoint_id": "end-d2fc5202b69b",
+          "factor_id": "fac-b1e7fa0e7d6c",
+          "group": "drug"
+        }
+      },
+      {
+        "allocation_unit_candidate": "Animal",
+        "analytical_unit": "Animal",
+        "biological_source_count": 5,
+        "biological_unit": "Animal",
+        "cluster_types": [],
+        "conditional_scenarios": [],
+        "effective_n": null,
+        "experimental_unit": null,
+        "independent_entity_type": null,
+        "inferability": "requires_confirmation",
+        "n_allocated": 5,
+        "n_analysed": 5,
+        "n_analytical": 5,
+        "n_declared": 5,
+        "n_excluded": null,
+        "n_independent": null,
+        "n_observational": 5,
+        "n_observed": null,
+        "n_planned": null,
+        "n_treated": null,
+        "observational_unit": "Animal",
+        "risk": "insufficient_information",
+        "scope": {
+          "contrast_id": "cnt-796660acd543",
+          "endpoint_id": "end-d2fc5202b69b",
+          "factor_id": "fac-b1e7fa0e7d6c",
+          "group": "vehicle"
+        }
+      }
+    ]
+  },
+  "UC10": {
+    "determinability": "OUT_OF_SCOPE",
+    "graph_status": "candidate",
+    "unit_assessments": [
+      {
+        "allocation_unit_candidate": "HumanDonor",
+        "analytical_unit": "Cell",
+        "biological_source_count": null,
+        "biological_unit": "HumanDonor",
+        "cluster_types": [],
+        "conditional_scenarios": [],
+        "effective_n": null,
+        "experimental_unit": null,
+        "independent_entity_type": null,
+        "inferability": "requires_confirmation",
+        "n_allocated": null,
+        "n_analysed": 400,
+        "n_analytical": 400,
+        "n_declared": 400,
+        "n_excluded": null,
+        "n_independent": null,
+        "n_observational": 400,
+        "n_observed": null,
+        "n_planned": null,
+        "n_treated": null,
+        "observational_unit": "Cell",
+        "risk": "insufficient_information",
+        "scope": {
+          "contrast_id": "cnt-4bea318ac8b6",
+          "endpoint_id": null,
+          "factor_id": "fac-4fb6de9d9fd3",
+          "group": null
+        }
+      }
+    ]
+  },
+  "UC11": {
+    "determinability": "INSUFFICIENT_INFORMATION",
+    "graph_status": "candidate",
+    "unit_assessments": [
+      {
+        "allocation_unit_candidate": null,
+        "analytical_unit": "Cell",
+        "biological_source_count": null,
+        "biological_unit": null,
+        "cluster_types": [],
+        "conditional_scenarios": [],
+        "effective_n": null,
+        "experimental_unit": null,
+        "independent_entity_type": null,
+        "inferability": "requires_confirmation",
+        "n_allocated": null,
+        "n_analysed": null,
+        "n_analytical": null,
+        "n_declared": null,
+        "n_excluded": null,
+        "n_independent": null,
+        "n_observational": null,
+        "n_observed": null,
+        "n_planned": null,
+        "n_treated": null,
+        "observational_unit": "Cell",
+        "risk": "insufficient_information",
+        "scope": {
+          "contrast_id": "cnt-85a04d6f0609",
+          "endpoint_id": "end-bef034c7babe",
+          "factor_id": "fac-c13aad9ce00f",
+          "group": null
+        }
+      }
+    ]
+  },
+  "UC12": {
+    "determinability": "OUT_OF_SCOPE",
+    "graph_status": "candidate",
+    "unit_assessments": [
+      {
+        "allocation_unit_candidate": "HumanDonor",
+        "analytical_unit": "Cell",
+        "biological_source_count": 6,
+        "biological_unit": "HumanDonor",
+        "cluster_types": [],
+        "conditional_scenarios": [],
+        "effective_n": null,
+        "experimental_unit": null,
+        "independent_entity_type": null,
+        "inferability": "requires_confirmation",
+        "n_allocated": 6,
+        "n_analysed": 1200,
+        "n_analytical": 1200,
+        "n_declared": 1200,
+        "n_excluded": null,
+        "n_independent": null,
+        "n_observational": 1200,
+        "n_observed": null,
+        "n_planned": null,
+        "n_treated": null,
+        "observational_unit": "Cell",
+        "risk": "insufficient_information",
+        "scope": {
+          "contrast_id": "cnt-2556b367c9f4",
+          "endpoint_id": "end-a634ae904802",
+          "factor_id": "fac-503da93bec64",
+          "group": null
+        }
+      }
+    ]
+  }
+}
