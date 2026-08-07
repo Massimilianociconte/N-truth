@@ -93,9 +93,15 @@ def apply_rules(
     *,
     lang: str = "it",
     evidence_by_id: Mapping[str, EvidenceSpan] | None = None,
+    index: GraphIndex | None = None,
 ) -> RuleRunResult:
-    """Applica il ruleset a ogni assessment del blocco."""
-    index = GraphIndex(build.hierarchy)
+    """Applica il ruleset a ogni assessment del blocco.
+
+    L'indice del grafo e' accettato pre-costruito (NFR-06/NFR-07): quando
+    fornito non viene mai ricostruito; altrimenti il comportamento esistente
+    resta invariato.
+    """
+    graph_index = index if index is not None else GraphIndex(build.hierarchy)
     alerts: dict[str, Alert] = {}
     questions: dict[str, Question] = {}
     evaluations: list[RuleEvaluation] = []
@@ -107,7 +113,7 @@ def apply_rules(
         contrast = next((c for c in build.contrasts if c.id == assessment.scope.contrast_id), None)
         endpoint = next((e for e in build.endpoints if e.id == assessment.scope.endpoint_id), None)
         context = RuleContext(
-            index=index,
+            index=graph_index,
             build=build,
             assessment=assessment,
             factor=factor,
