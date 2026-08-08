@@ -39,6 +39,8 @@ import {
 
 import {
   ApiError,
+  apiErrorCode,
+  apiErrorIssueId,
   analyze,
   applyCorrection,
   confirmInferenceTarget,
@@ -53,7 +55,7 @@ import type {
   Alert,
   AnalysisResponse,
   AuditEntry,
-  BlockPositiveOutput,
+  BlockReviewOutput,
   DesignCompilation,
   EvidenceSpan,
   ExperimentBlock,
@@ -542,13 +544,13 @@ export function App() {
           },
         ],
       };
-      const readyCompilation: DesignCompilation = {
+      const structuralCompilation: DesignCompilation = {
         specification_id: `${selectedBlock.id}-design-confirmed`,
         status: "ready",
         abstained: false,
         elicitation: { questions: [], blocking_question_ids: [], complete: true },
         analysis_handoff: {
-          target_population_support: "supported",
+          target_population_support: "conditional",
           targets: nextBlock.inference_targets.map((item) => ({
             inference_target_id: item.id,
             status: item.status,
@@ -556,7 +558,7 @@ export function App() {
             claim_text: item.claim_text,
             population_of_inference: item.population_of_inference,
             target_biological_unit: item.target_biological_unit,
-            target_population_support: "supported" as const,
+            target_population_support: "conditional" as const,
             estimand_ids: nextBlock.estimands
               .filter(
                 (estimand) =>
@@ -589,7 +591,7 @@ export function App() {
         blocks: current.blocks.map((item) => (item.id === nextBlock.id ? nextBlock : item)),
         design_compilations: {
           ...current.design_compilations,
-          [nextBlock.id]: readyCompilation,
+          [nextBlock.id]: structuralCompilation,
         },
       }));
       setAudit((current) => ({
@@ -611,7 +613,7 @@ export function App() {
         block_id: selectedBlock.id,
         corrections: nextBlock.corrections,
       });
-      setNotice("Target inferenziale confermato nella demo; compilazione strutturale pronta.");
+      setNotice("Target inferenziale confermato nella demo; compilazione strutturale registrata.");
       return;
     }
     if (!sessionId) {
@@ -806,7 +808,7 @@ export function App() {
             <BookOpen size={20} />
             <div>
               <strong>{report.project_name}</strong>
-              {isDemo && <span className="demo-label">{uiLanguage === "it" ? "Dati sintetici dimostrativi" : "Synthetic demonstration data"}</span>}
+              {isDemo && <span className="demo-label">{uiLanguage === "it" ? "Demo storica · dati sintetici" : "Historical demo · synthetic data"}</span>}
             </div>
           </div>
           <div className="topbar-actions">
@@ -1039,9 +1041,9 @@ export function App() {
               hasCandidate={Boolean(selectedCandidateExport)}
               exportAllowed={!privacyExportBlocked}
               />
-            {selectedBlock && report.positive_outputs?.[selectedBlock.id] && (
-              <PositiveOutputPanel
-                output={report.positive_outputs[selectedBlock.id]}
+            {selectedBlock && report.review_outputs?.[selectedBlock.id] && (
+              <ReviewOutputPanel
+                output={report.review_outputs[selectedBlock.id]}
                 language={uiLanguage}
               />
             )}
@@ -1109,43 +1111,65 @@ export function App() {
   );
 }
 
-function PositiveOutputPanel({
+function ReviewOutputPanel({
   output,
   language,
 }: {
-  output: BlockPositiveOutput;
+  output: BlockReviewOutput;
   language: "it" | "en";
 }) {
   const pathLabel = {
-    ready_for_review: language === "it" ? "Pronto per revisione" : "Ready for review",
+    review_required: language === "it" ? "Revisione richiesta" : "Review required",
     conditional: language === "it" ? "Condizionale" : "Conditional",
     incomplete: language === "it" ? "Incompleto" : "Incomplete",
   }[output.path_status];
   return (
-    <section className="panel positive-output-panel" aria-labelledby="positive-output-heading">
+    <section className="panel review-output-panel" aria-labelledby="review-output-heading">
       <div className="panel-heading">
         <div>
           <span className="eyebrow">
-            {language === "it" ? "Output positivo · non certificante" : "Positive output · non-certifying"}
+            {language === "it" ? "Output di revisione · non certificante" : "Review output · non-certifying"}
           </span>
-          <h2 id="positive-output-heading">
+          <h2 id="review-output-heading">
             {language === "it" ? "Methods e percorso di revisione" : "Methods and review path"}
           </h2>
         </div>
-        <span className={`compiler-status positive-${output.path_status}`}>{pathLabel}</span>
+        <span className={`compiler-status review-status-${output.path_status}`}>{pathLabel}</span>
       </div>
-      <div className="positive-methods">
+      <p className="axis-boundary">
+        {language === "it"
+          ? "La determinabilità non è approvazione del disegno."
+          : "Determinability is not design approval."}
+      </p>
+      <div className="scientific-axis-grid">
+        <section className="scientific-axis axis-determinability" data-testid="axis-determinability">
+          <span>{language === "it" ? "Determinabilità" : "Determinability"}</span>
+          <strong>{output.determinability.state}</strong>
+          <small>{output.determinability.rationale}</small>
+        </section>
+        <section className="scientific-axis axis-design-adequacy" data-testid="axis-design-adequacy">
+          <span>{language === "it" ? "Adeguatezza del disegno" : "Design adequacy"}</span>
+          <strong>{output.design_adequacy.finding}</strong>
+          <small>{output.design_adequacy.rationale}</small>
+        </section>
+      </div>
+      <div className="statistical-handoff">
+        <div>
+          <span>{language === "it" ? "Handoff statistico" : "Statistical handoff"}</span>
+          <strong>{output.strategy_module_status}</strong>
+        </div>
+        <small>
+          {language === "it"
+            ? "Solo requisiti strutturali e domande; nessuna strategia di analisi viene suggerita."
+            : "Structural requirements and questions only; no analysis strategy is suggested."}
+        </small>
+      </div>
+      <div className="review-methods">
         <p>{output.status_reason}</p>
         <blockquote>{output.methods_statement.text}</blockquote>
         {output.methods_statement.limitations.map((item) => <small key={item}>{item}</small>)}
       </div>
-      {!!output.candidate_analysis_strategies.length && (
-        <details className="positive-details">
-          <summary>{language === "it" ? "Strategie candidate" : "Candidate strategies"}</summary>
-          <ul>{output.candidate_analysis_strategies.map((item) => <li key={item}>{item}</li>)}</ul>
-        </details>
-      )}
-      <details className="positive-details">
+      <details className="review-details">
         <summary>DRIVER · {language === "it" ? "mappatura informativa" : "informative mapping"}</summary>
         <div className="driver-list">
           {output.driver_checklist.map((item) => (
@@ -1157,7 +1181,7 @@ function PositiveOutputPanel({
           ))}
         </div>
       </details>
-      <details className="positive-details">
+      <details className="review-details">
         <summary>{language === "it" ? "Fatti, inferenze, ipotesi e limiti" : "Facts, inferences, hypotheses and limitations"}</summary>
         <div className="statement-list">
           {output.statements.map((item) => (
@@ -1424,7 +1448,7 @@ export function InferencePanel({
         </div>
         <span className={`compiler-status ${status}`}>
           {status === "ready" ? <Check size={14} /> : <CircleHelp size={14} />}
-          {status === "ready" ? (language === "it" ? "Pronto" : "Ready") : (language === "it" ? "Astensione" : "Abstained")}
+          {status === "ready" ? (language === "it" ? "Struttura completa" : "Structure complete") : (language === "it" ? "Astensione" : "Abstained")}
         </span>
       </div>
       {targets.length > 1 && (
@@ -1450,8 +1474,8 @@ export function InferencePanel({
       )}
       <div className="compiler-summary">
         <span>{language === "it" ? "Popolazione target" : "Target population"}</span>
-        <strong>{support === "supported" ? (language === "it" ? "Supportata dallo scope" : "Supported by scope") : support === "conditional" ? (language === "it" ? "Condizionale" : "Conditional") : (language === "it" ? "Non definita" : "Not defined")}</strong>
-        <small>{language === "it" ? "“Supportata” indica solo completezza strutturale, non validità scientifica." : "Supported means structural completeness only, not scientific validity."}</small>
+        <strong>{support === "supported" ? (language === "it" ? "Scope strutturalmente compilato" : "Scope structurally compiled") : support === "conditional" ? (language === "it" ? "Scope condizionale" : "Conditional scope") : (language === "it" ? "Scope non definito" : "Scope not defined")}</strong>
+        <small>{language === "it" ? "Questo stato descrive soltanto la struttura; non esprime adequacy o validità scientifica." : "This state describes structure only; it does not express adequacy or scientific validity."}</small>
       </div>
       {status === "ready" && target && !editing ? (
         <div className="confirmed-target">
@@ -2086,7 +2110,21 @@ function ImportDialog({
       });
       onAnalysis(result);
     } catch (caught) {
-      if (caught instanceof ApiError && caught.status === 409) {
+      if (
+        caught instanceof ApiError &&
+        caught.status === 409 &&
+        apiErrorCode(caught) === "SCIENTIFIC_REVIEW_REQUIRED"
+      ) {
+        const issue = apiErrorIssueId(caught);
+        const title = uiLanguage === "it"
+          ? "Revisione scientifica richiesta"
+          : "Scientific review required";
+        setError(`${title}${issue ? ` · ${issue}` : ""}. ${caught.message}`);
+      } else if (
+        caught instanceof ApiError &&
+        caught.status === 409 &&
+        apiErrorCode(caught) === "domain_acknowledgement_required"
+      ) {
         setError(uiLanguage === "it" ? "Il dominio richiede una conferma esplicita prima dell’analisi." : "The domain requires explicit acknowledgement before analysis.");
       } else {
         setError(caught instanceof Error ? caught.message : (uiLanguage === "it" ? "Analisi non avviata." : "Analysis was not started."));

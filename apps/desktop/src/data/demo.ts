@@ -292,7 +292,7 @@ export const DEMO_REPORT: Report = {
   design_compilations: Object.fromEntries(
     blocks.map((item, index) => {
       const target = item.inference_targets[0];
-      const ready = index === 0;
+      const structurallyComplete = index === 0;
       const question = target
         ? {
             id: `${item.id}-target-confirmation`,
@@ -310,16 +310,16 @@ export const DEMO_REPORT: Report = {
         item.id,
         {
           specification_id: `${item.id}-design`,
-          status: ready ? "ready" : "abstained",
-          abstained: !ready,
+          status: structurallyComplete ? "ready" : "abstained",
+          abstained: !structurallyComplete,
           elicitation: {
-            questions: ready ? [] : [question],
-            blocking_question_ids: ready ? [] : [question.id],
-            complete: ready,
+            questions: structurallyComplete ? [] : [question],
+            blocking_question_ids: structurallyComplete ? [] : [question.id],
+            complete: structurallyComplete,
           },
           analysis_handoff: {
-            target_population_support: ready
-              ? "supported"
+            target_population_support: structurallyComplete
+              ? "conditional"
               : target
                 ? "conditional"
                 : "unknown",
@@ -332,12 +332,12 @@ export const DEMO_REPORT: Report = {
                     claim_text: target.claim_text,
                     population_of_inference: target.population_of_inference,
                     target_biological_unit: target.target_biological_unit,
-                    target_population_support: ready ? "supported" : "conditional",
-                    estimand_ids: ready ? item.estimands.map((estimand) => estimand.id) : [],
+                    target_population_support: "conditional",
+                    estimand_ids: structurallyComplete ? item.estimands.map((estimand) => estimand.id) : [],
                   },
                 ]
               : [],
-            estimands: ready
+            estimands: structurallyComplete
               ? item.estimands.map((estimand) => ({
                   estimand_id: estimand.id,
                   endpoint_id: estimand.endpoint_id,
@@ -350,7 +350,7 @@ export const DEMO_REPORT: Report = {
                   evidence_ids: estimand.evidence_ids,
                 }))
               : [],
-            unresolved_assumptions: ready
+            unresolved_assumptions: structurallyComplete
               ? []
               : [
                   {
@@ -370,7 +370,7 @@ export const DEMO_REPORT: Report = {
       ];
     }),
   ),
-  positive_outputs: Object.fromEntries(
+  review_outputs: Object.fromEntries(
     blocks.map((item) => [
       item.id,
       {
@@ -411,14 +411,27 @@ export const DEMO_REPORT: Report = {
             source: "demo",
           },
         ],
-        candidate_analysis_strategies: [],
+        determinability: {
+          state: "INSUFFICIENT_INFORMATION" as const,
+          rationale: "Le domande decisive della demo storica non sono state risolte.",
+        },
+        design_adequacy: {
+          knowledge_state: "UNKNOWN" as const,
+          finding: "NOT_ASSESSED",
+          rationale: "La demo sintetica non autorizza una valutazione di adequacy.",
+        },
+        strategy_module_status: "HANDOFF_ONLY" as const,
+        statistical_handoff: {
+          structural_requirements: ["Confermare fattore, assegnazione, outcome e unità."],
+          unresolved_questions: ["Completare le domande decisive prima della review scientifica."],
+        },
         decisive_question_ids: item.questions.filter((question) => question.decisive).map((question) => question.id),
       },
     ]),
   ),
   parser_warnings: [],
   limits: [
-    "Dati sintetici dimostrativi: non sono un risultato scientifico.",
+    "Demo storica con dati sintetici: non è un risultato scientifico né un ReportBundle v8 validato.",
     "Il layer ML e la validazione esterna non sono inclusi in questa dimostrazione.",
   ],
   disclaimer:

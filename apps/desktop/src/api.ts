@@ -18,6 +18,22 @@ export class ApiError extends Error {
   }
 }
 
+function errorDetailField(error: ApiError, field: string): string | undefined {
+  if (!error.detail || typeof error.detail !== "object" || !(field in error.detail)) {
+    return undefined;
+  }
+  const value = (error.detail as Record<string, unknown>)[field];
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+export function apiErrorCode(error: ApiError): string | undefined {
+  return errorDetailField(error, "code");
+}
+
+export function apiErrorIssueId(error: ApiError): string | undefined {
+  return errorDetailField(error, "issue_id");
+}
+
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...init,

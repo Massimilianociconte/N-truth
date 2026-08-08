@@ -271,23 +271,32 @@ export interface Report {
   summaries: BlockSummary[];
   design_compilations: Record<string, DesignCompilation>;
   rule_evaluations?: Record<string, unknown[]>;
-  positive_outputs?: Record<string, BlockPositiveOutput>;
+  review_outputs?: Record<string, BlockReviewOutput>;
   parser_warnings: string[];
   limits: string[];
   content_checksum?: string;
   disclaimer?: string;
 }
 
-export interface BlockPositiveOutput {
+export type DeterminabilityState =
+  | "DETERMINATE"
+  | "CONDITIONALLY_DETERMINATE"
+  | "MULTIPLE_PLAUSIBLE_GRAPHS"
+  | "INSUFFICIENT_INFORMATION"
+  | "CONFLICTING_INFORMATION"
+  | "INVALID_GRAPH"
+  | "OUT_OF_SCOPE";
+
+export interface BlockReviewOutput {
   block_id: string;
-  path_status: "ready_for_review" | "conditional" | "incomplete";
+  path_status: "review_required" | "conditional" | "incomplete";
   status_reason: string;
   non_certifying: boolean;
   methods_statement: {
     text: string;
     language: string;
     evidence_ids: string[];
-    status: "ready_for_review" | "conditional" | "incomplete";
+    status: "review_required" | "conditional" | "incomplete";
     non_certifying: boolean;
     limitations: string[];
   };
@@ -322,7 +331,20 @@ export interface BlockPositiveOutput {
     evidence_ids: string[];
     source: string;
   }>;
-  candidate_analysis_strategies: string[];
+  determinability: {
+    state: DeterminabilityState;
+    rationale: string;
+  };
+  design_adequacy: {
+    knowledge_state: "PRESENT" | "UNKNOWN" | "NOT_APPLICABLE" | "CONFLICTING";
+    finding: string;
+    rationale: string;
+  };
+  strategy_module_status: "HANDOFF_ONLY";
+  statistical_handoff: {
+    structural_requirements: string[];
+    unresolved_questions: string[];
+  };
   decisive_question_ids: string[];
 }
 

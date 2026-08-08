@@ -11,7 +11,7 @@ Element.prototype.scrollIntoView = vi.fn();
 describe("N-Truth workspace", () => {
   it("labels synthetic demonstration data and exposes the three synchronized views", () => {
     render(<App />);
-    expect(screen.getByText("Dati sintetici dimostrativi")).toBeInTheDocument();
+    expect(screen.getByText("Demo storica · dati sintetici")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Blocchi sperimentali" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Target inferenziale" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Grafo del disegno sperimentale" })).toBeInTheDocument();
@@ -48,7 +48,7 @@ describe("N-Truth workspace", () => {
     expect(screen.getByText(/Target inferenziale confermato nella demo/)).toBeInTheDocument();
   });
 
-  it("shows the non-certifying positive output and typed evidence", () => {
+  it("shows the non-certifying review output and typed evidence", () => {
     render(<App />);
     expect(screen.getByRole("heading", { name: "Methods e percorso di revisione" })).toBeInTheDocument();
     expect(screen.getByText(/Tipo AUTHOR_ASSERTION/)).toBeInTheDocument();
