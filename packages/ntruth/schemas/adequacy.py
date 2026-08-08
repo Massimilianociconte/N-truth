@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+from typing import Annotated
+
 from pydantic import Field, JsonValue, model_validator
 
 from ntruth.schemas.claims import IrrelevantPredicate
 from ntruth.schemas.kernel import KernelModel, NonBlankStr
 from ntruth.schemas.knowledge import KnowledgeState, KnowledgeValue
 from ntruth.schemas.support import ScientificReviewRequirement
+
+Sha256 = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
 
 
 class DesignAdequacyEvaluation(KernelModel):
@@ -18,10 +22,17 @@ class DesignAdequacyEvaluation(KernelModel):
     axis: NonBlankStr
     outcome: KnowledgeValue[JsonValue]
     rationale: NonBlankStr
+    theory_id: NonBlankStr
+    theory_version: NonBlankStr
+    theory_checksum: Sha256
     theory_clause_id: NonBlankStr
+    theory_clause_version: NonBlankStr
     rule_id: NonBlankStr
     rule_version: NonBlankStr
-    rule_checksum: str = Field(pattern=r"^[0-9a-f]{64}$")
+    rule_checksum: Sha256
+    implementation_artifact_id: NonBlankStr
+    implementation_artifact_version: NonBlankStr
+    implementation_artifact_checksum: Sha256
     dependency_claim_ids: tuple[NonBlankStr, ...] = Field(min_length=1)
     required_predicates: tuple[NonBlankStr, ...] = Field(min_length=1)
     irrelevant_predicates: tuple[IrrelevantPredicate, ...] = Field(min_length=1)

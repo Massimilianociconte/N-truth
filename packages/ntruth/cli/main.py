@@ -16,7 +16,9 @@ from ntruth.application import (
     DistributionGovernanceBundle,
     DomainAcknowledgementRequired,
     NoUsableFilesError,
+    V8ApplicationInputReviewRequired,
     evaluate_distribution_readiness,
+    execute_analysis,
     execute_analysis_v7_adapter,
 )
 from ntruth.governance import GovernanceDenied, PrivacyBlocked
@@ -57,6 +59,32 @@ _SEVERITY_MARK = {
 
 @app.command()
 def analyze(
+    source: Path = typer.Argument(..., help="File o cartella con input candidato."),
+    out: Path = typer.Option(Path("./ntruth-out"), "--out", "-o", help="Cartella di output."),
+) -> None:
+    """Blocca input grezzi finche il contratto scientifico v8 non e revisionato."""
+
+    try:
+        execute_analysis(source, out=out)
+    except V8ApplicationInputReviewRequired as exc:
+        review = exc.review_requirement
+        typer.secho(
+            f"{review.status.value}: {review.issue_id}",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        typer.secho(
+            f"{review.rationale} Per il contratto storico usare esplicitamente analyze-v7.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=2) from exc
+
+    raise typer.Exit(code=2)  # pragma: no cover - raw Path inputs are blocked by contract
+
+
+@app.command("analyze-v7")
+def analyze_v7(
     source: Path = typer.Argument(..., help="File o cartella con Methods, legend e sample sheet."),
     out: Path = typer.Option(Path("./ntruth-out"), "--out", "-o", help="Cartella di output."),
     project_dir: Path | None = typer.Option(
@@ -85,7 +113,12 @@ def analyze(
     ),
     quiet: bool = typer.Option(False, "--quiet", "-q", help="Stampa solo i percorsi di output."),
 ) -> None:
-    """Analizza documenti locali e produce report JSON, HTML e graph.json."""
+    """Esegue l'adapter scientifico v7 deprecato su documenti locali."""
+    typer.secho(
+        "DEPRECATED_V7_ADAPTER: contratto scientifico v7 esplicitamente selezionato.",
+        fg=typer.colors.YELLOW,
+        err=True,
+    )
     source = source.expanduser()
     if not source.exists():
         typer.secho(f"Percorso inesistente: {source}", fg=typer.colors.RED, err=True)

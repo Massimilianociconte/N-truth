@@ -13,13 +13,33 @@ Sha256 = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
 
 
 class ImplementationRulePin(KernelModel):
+    theory_id: NonBlankStr
+    theory_version: NonBlankStr
+    theory_checksum: Sha256
     rule_id: NonBlankStr
     rule_version: NonBlankStr
     rule_checksum: Sha256
     theory_clause_id: NonBlankStr
     theory_clause_version: NonBlankStr
+    implementation_artifact_id: NonBlankStr
+    implementation_artifact_version: NonBlankStr
+    implementation_artifact_checksum: Sha256
     required_predicate_ids: tuple[NonBlankStr, ...] = Field(min_length=1)
     irrelevant_predicates: tuple[IrrelevantPredicate, ...] = Field(min_length=1)
+
+
+class AdequacyEvaluatorPin(KernelModel):
+    theory_id: NonBlankStr
+    theory_version: NonBlankStr
+    theory_checksum: Sha256
+    theory_clause_id: NonBlankStr
+    theory_clause_version: NonBlankStr
+    rule_id: NonBlankStr
+    rule_version: NonBlankStr
+    rule_checksum: Sha256
+    implementation_artifact_id: NonBlankStr
+    implementation_artifact_version: NonBlankStr
+    implementation_artifact_checksum: Sha256
 
 
 class V8ExecutionManifest(KernelModel):
@@ -40,7 +60,8 @@ class V8ExecutionManifest(KernelModel):
     fixture_set_version: NonBlankStr
     fixture_set_checksum: Sha256
     implementation_rules: tuple[ImplementationRulePin, ...] = Field(min_length=7)
+    adequacy_evaluator: AdequacyEvaluatorPin
     release_blocker_issue_ids: tuple[NonBlankStr, ...]
 
 
-__all__ = ["ImplementationRulePin", "V8ExecutionManifest"]
+__all__ = ["AdequacyEvaluatorPin", "ImplementationRulePin", "V8ExecutionManifest"]

@@ -2,20 +2,28 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from enum import StrEnum
+from typing import Any
 
 from ntruth.derivation_theory.contracts import ConformanceBundle
 from ntruth.derivation_theory.loader import canonical_checksum
 from ntruth.derivation_theory.runtime import (
     V8DerivationInput,
     build_execution_manifest,
+    derive_claim_set,
     verify_runtime_bundle,
 )
 from ntruth.schemas.claims import DerivedClaimSet
-from ntruth.schemas.count_registry import CanonicalCountKind
+from ntruth.schemas.count_registry import (
+    CanonicalCountKind,
+    CanonicalCountRecord,
+    CountQuantifier,
+)
 from ntruth.schemas.execution import V8ExecutionManifest
 from ntruth.schemas.graph_v8 import V8GraphNodeType
 from ntruth.schemas.kernel import KernelModel, NonBlankStr
+from ntruth.schemas.knowledge import KnowledgeState, KnowledgeValue
 
 
 class V8VerificationCode(StrEnum):
@@ -35,6 +43,8 @@ class V8VerificationCode(StrEnum):
     CLAIM_PROOF_MISMATCH = "CLAIM_PROOF_MISMATCH"
     CLAIM_SUPPORT_MISMATCH = "CLAIM_SUPPORT_MISMATCH"
     CLAIM_COVERAGE_MISMATCH = "CLAIM_COVERAGE_MISMATCH"
+    CLAIM_OUTPUT_MISMATCH = "CLAIM_OUTPUT_MISMATCH"
+    BUNDLE_CONFORMANCE_FAILED = "BUNDLE_CONFORMANCE_FAILED"
 
 
 class V8VerificationIssue(KernelModel):
@@ -67,6 +77,91 @@ def _fact_issue(
         theory_clause_id=clause_id,
         predicate_id=predicate_id,
     )
+
+
+def _scientific_value_signature(value: KnowledgeValue[Any]) -> tuple[str, str]:
+    """Compare epistemic state and value while excluding provenance metadata."""
+
+    payload = value.model_dump(mode="json", include={"value", "conflicting_values"})
+    return value.knowledge_state.value, canonical_checksum(payload)
+
+
+def _present_signature(value: object) -> tuple[str, str]:
+    return KnowledgeState.PRESENT.value, canonical_checksum(
+        {"value": value, "conflicting_values": []}
+    )
+
+
+def _count_scope_issues(
+    request: V8DerivationInput,
+    record: CanonicalCountRecord,
+    kind: CanonicalCountKind,
+) -> tuple[str, ...]:
+    """Join all ten count-scope dimensions to independent request facts."""
+
+    unit_predicate = {
+        CanonicalCountKind.EXPERIMENTAL_UNIT_COUNT: "candidate_unit",
+        CanonicalCountKind.BIOLOGICAL_SOURCE_COUNT: "biological_source_unit_type",
+    }[kind]
+    predicate_scope = {
+        "unit_type": unit_predicate,
+        "group_id": "group_or_paired_set",
+        "cohort_id": "count_cohort_id",
+        "lifecycle_phase": "lifecycle_phase",
+        "condition": "count_condition",
+    }
+    expected: dict[str, tuple[str, str] | None] = {
+        field_name: (
+            _scientific_value_signature(request.predicate_values[predicate_id])
+            if predicate_id in request.predicate_values
+            else None
+        )
+        for field_name, predicate_id in predicate_scope.items()
+    }
+    expected.update(
+        {
+            "factor_id": _present_signature(request.query.factor_id),
+            "contrast_id": _present_signature(request.query.contrast_id),
+            "endpoint_id": _present_signature(request.query.endpoint_id),
+            "timepoint_id": _scientific_value_signature(request.query.timepoint_id),
+            "population_scope": _scientific_value_signature(request.query.inference_population),
+        }
+    )
+    errors: list[str] = []
+    for field_name, expected_signature in expected.items():
+        if expected_signature is None:
+            errors.append(f"{field_name} lacks an independent request predicate")
+            continue
+        actual_signature = _scientific_value_signature(getattr(record.scope, field_name))
+        if actual_signature != expected_signature:
+            errors.append(f"{field_name} differs from the request scientific scope")
+
+    instances_predicate = {
+        CanonicalCountKind.EXPERIMENTAL_UNIT_COUNT: "experimental_unit_instances",
+        CanonicalCountKind.BIOLOGICAL_SOURCE_COUNT: "biological_source_instances",
+    }[kind]
+    instances = request.predicate_values.get(instances_predicate)
+    if (
+        record.quantifier is CountQuantifier.EXACT
+        and record.value.knowledge_state is KnowledgeState.PRESENT
+        and isinstance(record.value.value, int)
+    ):
+        if (
+            instances is None
+            or instances.knowledge_state is not KnowledgeState.PRESENT
+            or not isinstance(instances.value, Sequence)
+            or isinstance(instances.value, (str, bytes, bytearray))
+        ):
+            errors.append(f"{instances_predicate} lacks explicit instance identities")
+        else:
+            distinct_instances = {
+                canonical_checksum({"typed_instance_id": item}) for item in instances.value
+            }
+            if len(distinct_instances) != record.value.value:
+                errors.append(
+                    f"{instances_predicate} cardinality differs from the exact count value"
+                )
+    return tuple(errors)
 
 
 def verify_v8_pipeline_request(
@@ -206,6 +301,14 @@ def verify_v8_pipeline_request(
                     f"{count_id} must identify one {kind.value} record in this query scope.",
                 )
             )
+            continue
+        for mismatch in _count_scope_issues(request, record, kind):
+            issues.append(
+                _fact_issue(
+                    V8VerificationCode.COUNT_SCOPE_MISMATCH,
+                    f"{count_id}: {mismatch}.",
+                )
+            )
     return V8VerificationReport(
         passed=not issues,
         highest_completed_stage="FACT_VERIFICATION" if not issues else "NONE",
@@ -238,8 +341,25 @@ def verify_v8_derived_claim_set(
 ) -> V8VerificationReport:
     """Join every claim byte back to request, Theory, Rulebook and execution pins."""
 
-    issues: list[V8VerificationIssue] = []
     conformance = verify_runtime_bundle(conformance_bundle)
+    if not conformance.passed:
+        return V8VerificationReport(
+            passed=False,
+            highest_completed_stage="NONE",
+            failed_stage="BUNDLE_CONFORMANCE",
+            issues=(
+                V8VerificationIssue(
+                    code=V8VerificationCode.BUNDLE_CONFORMANCE_FAILED,
+                    stage="BUNDLE_CONFORMANCE",
+                    message=(
+                        "Standalone claim verification requires a fully conformant, "
+                        "checksum-verified Theory bundle."
+                    ),
+                ),
+            ),
+        )
+
+    issues: list[V8VerificationIssue] = []
     expected_manifest = build_execution_manifest(conformance_bundle, conformance)
     if execution_manifest != expected_manifest:
         issues.append(
@@ -257,6 +377,22 @@ def verify_v8_derived_claim_set(
                 code=V8VerificationCode.CLAIM_SCOPE_MISMATCH,
                 stage="CLAIM_VERIFICATION",
                 message="DerivedClaimSet and request query scopes differ.",
+            )
+        )
+    expected_claim_set = derive_claim_set(
+        request,
+        conformance_bundle=conformance_bundle,
+        execution_manifest=expected_manifest,
+    )
+    if claim_set != expected_claim_set:
+        issues.append(
+            V8VerificationIssue(
+                code=V8VerificationCode.CLAIM_OUTPUT_MISMATCH,
+                stage="CLAIM_VERIFICATION",
+                message=(
+                    "DerivedClaimSet differs from deterministic re-derivation of the full "
+                    "expected claim contract."
+                ),
             )
         )
     for claim in claim_set.claims:

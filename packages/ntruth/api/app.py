@@ -21,7 +21,9 @@ from ntruth.application import (
     DomainAcknowledgementRequired,
     NoUsableFilesError,
     RedactedDerivativeMaterial,
+    V8ApplicationInputReviewRequired,
     evaluate_distribution_readiness,
+    execute_analysis,
     execute_analysis_v7_adapter,
 )
 from ntruth.corrections import CorrectionEngineError, CorrectionLedger
@@ -182,16 +184,26 @@ def create_app() -> Any:
     @api.post("/analyze")
     @api.post("/v1/analyze")
     def analyze(payload: AnalyzeRequest) -> dict[str, Any]:
-        notice = assess_domain(payload.domain)
-        if notice.requires_acknowledgement and not payload.acknowledge_unvalidated_domain:
+        try:
+            execute_analysis(Path(payload.source), out=Path(payload.out))
+        except V8ApplicationInputReviewRequired as exc:
+            review = exc.review_requirement
             raise HTTPException(
                 status_code=409,
                 detail={
-                    "code": "domain_acknowledgement_required",
-                    "message": notice.warning,
-                    "domain_transparency": notice.model_dump(mode="json"),
+                    "code": review.status.value,
+                    "issue_id": review.issue_id,
+                    "message": review.rationale,
                 },
-            )
+            ) from exc
+
+        raise HTTPException(  # pragma: no cover - raw Path inputs are blocked by contract
+            status_code=409,
+            detail={"code": "SCIENTIFIC_REVIEW_REQUIRED", "issue_id": "SRR-V8-008"},
+        )
+
+    @api.post("/v7/analyze")
+    def analyze_v7(payload: AnalyzeRequest) -> dict[str, Any]:
         try:
             execution = execute_analysis_v7_adapter(
                 Path(payload.source),
@@ -227,6 +239,10 @@ def create_app() -> Any:
             "output_dir": str(execution.run_dir),
             "privacy_audit": execution.privacy_audit.model_dump(mode="json"),
             "share_readiness": execution.share_readiness.model_dump(mode="json"),
+            "contract": {
+                "code": "DEPRECATED_V7_ADAPTER",
+                "version": "v7",
+            },
         }
 
     @api.get("/report")

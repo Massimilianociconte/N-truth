@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
+import inspect
+from dataclasses import dataclass
 from pathlib import Path
 
 from pydantic import BaseModel, Field, JsonValue, field_validator, model_validator
@@ -27,6 +30,7 @@ from ntruth.schemas.claims import (
     DerivedClaim,
     DerivedClaimSet,
     DeterminabilityState,
+    InputRecordProofReference,
     PredicateProofReference,
     ProofTraceStep,
 )
@@ -37,8 +41,16 @@ from ntruth.schemas.count_registry import (
     CanonicalCountRegistry,
     CountQuantifier,
 )
-from ntruth.schemas.coverage import ProfileCoverageStatement, ScenarioCoverage
-from ntruth.schemas.execution import ImplementationRulePin, V8ExecutionManifest
+from ntruth.schemas.coverage import (
+    PROFILE_COVERAGE_REVIEW_ISSUE_ID,
+    ProfileCoverageStatement,
+    ScenarioCoverage,
+)
+from ntruth.schemas.execution import (
+    AdequacyEvaluatorPin,
+    ImplementationRulePin,
+    V8ExecutionManifest,
+)
 from ntruth.schemas.graph_v8 import V8ExperimentGraph, V8GraphNodeType
 from ntruth.schemas.kernel import KernelModel, NonBlankStr
 from ntruth.schemas.knowledge import KnowledgeState, KnowledgeValue
@@ -46,6 +58,132 @@ from ntruth.schemas.query import InferentialQuery
 from ntruth.schemas.support import EvidenceBasis, ScientificReviewRequirement, SupportDescriptor
 
 CLAIM_STATE_REVIEW_ISSUE_ID = "SRR-V8-023"
+
+_REVIEWED_THEORY_ID = "ntruth-derivation-theory"
+_REVIEWED_THEORY_VERSION = "0.1.0"
+_REVIEWED_THEORY_CHECKSUM = "aa37639893e2ba7732496f2eb6a121291e0aad2d3bae51501c8f1ea9e9b6464f"
+_REVIEWED_RULEBOOK_ID = "ntruth-v8-core"
+_REVIEWED_RULEBOOK_VERSION = "0.1.0"
+_REVIEWED_RULEBOOK_CHECKSUM = "3eb8de408a8874c099d8a514a9d74ea0534f1ee96f5a71cb5bd3c6896168eca3"
+_REVIEWED_EVALUATOR_VERSION = "0.1.0"
+_REVIEWED_RULE_ID_BY_CLAUSE = {
+    "DT-A-ASSIGNMENT-UNIT": "V8-A-ASSIGNMENT-UNIT",
+    "DT-B-EXPERIMENTAL-UNIT": "V8-B-EXPERIMENTAL-UNIT",
+    "DT-C-EXPERIMENTAL-UNIT-COUNT": "V8-C-EXPERIMENTAL-UNIT-COUNT",
+    "DT-D-BIOLOGICAL-SOURCE-COUNT": "V8-D-BIOLOGICAL-SOURCE-COUNT",
+    "DT-E-INTERFERENCE-ESTIMAND": "V8-E-INTERFERENCE",
+    "DT-F-ANALYTICAL-DEPENDENCE": "V8-F-ANALYTICAL-DEPENDENCE",
+    "DT-G-INFERENCE-SCOPE": "V8-G-INFERENCE-SCOPE",
+}
+_REVIEWED_RULE_CHECKSUM_BY_ID = {
+    "V8-A-ASSIGNMENT-UNIT": "552c9dc9b05dd3a31cbf2d747c45dbe3ef7ce15a14b18df072b4a6bfd2629908",
+    "V8-B-EXPERIMENTAL-UNIT": "4530ea94565420a6c3cf6d648487de3ea2ea028cc3c55008374536970c854e58",
+    "V8-C-EXPERIMENTAL-UNIT-COUNT": (
+        "9adbeda8903c6cc01fab79aca8894392adec19d2c6ee6f326631b4467004bb2f"
+    ),
+    "V8-D-BIOLOGICAL-SOURCE-COUNT": (
+        "afa97c4c6a971e871a0dcabd3c44cacecee18ae63a2874d1a6093a3369c6170f"
+    ),
+    "V8-E-INTERFERENCE": "3494b23193de54df74e4fb990e804727d0f89d4f25feeea34537e84b5638bb93",
+    "V8-F-ANALYTICAL-DEPENDENCE": (
+        "8b27aca224fe346a44da0f6ce348c651712e1ceb6afd7952feb721b3eef4f7c1"
+    ),
+    "V8-G-INFERENCE-SCOPE": "a5d89e9a8a950eb1b1adff970805a656e2e4e722b86ae132e2d80c01cd0d36b8",
+}
+
+
+class V8EvaluatorReviewRequired(ValueError):
+    """No reviewed executable is registered for the supplied scientific contract."""
+
+    def __init__(self, *, clause_id: str | None = None) -> None:
+        self.review_requirement = ScientificReviewRequirement(
+            issue_id="SRR-V8-024",
+            rationale=(
+                "A Theory/Rulebook successor requires an explicitly reviewed evaluator "
+                "artifact before deterministic re-derivation."
+            ),
+        )
+        suffix = f" for {clause_id}" if clause_id is not None else ""
+        super().__init__(f"SCIENTIFIC_REVIEW_REQUIRED: no reviewed v8 evaluator{suffix}")
+
+
+@dataclass(frozen=True)
+class _EvaluatorArtifact:
+    artifact_id: str
+    artifact_version: str
+    artifact_checksum: str
+
+
+def _reviewed_bundle_identity(bundle: ConformanceBundle) -> bool:
+    return (
+        bundle.theory.theory_id == _REVIEWED_THEORY_ID
+        and bundle.theory.theory_version == _REVIEWED_THEORY_VERSION
+        and bundle.theory.declared_checksum == _REVIEWED_THEORY_CHECKSUM
+        and bundle.rulebook.rulebook_id == _REVIEWED_RULEBOOK_ID
+        and bundle.rulebook.rulebook_version == _REVIEWED_RULEBOOK_VERSION
+        and bundle.rulebook.declared_checksum == _REVIEWED_RULEBOOK_CHECKSUM
+    )
+
+
+def _derivation_code_checksum(clause_id: str) -> str:
+    """Hash the executable source transitively used by every clause evaluator."""
+
+    source = "\n".join(
+        inspect.getsource(function)
+        for function in (
+            _selected_count_record,
+            _state_for,
+            _count_payload,
+            _resolved_payload,
+            _derive_clause_claims,
+        )
+    )
+    return canonical_checksum({"clause_id": clause_id, "python_source": source})
+
+
+def _reviewed_derivation_artifact(
+    bundle: ConformanceBundle,
+    clause: TheoryClause,
+    rule: V8ConformanceRule,
+) -> _EvaluatorArtifact:
+    expected_rule_id = _REVIEWED_RULE_ID_BY_CLAUSE.get(clause.clause_id)
+    if (
+        not _reviewed_bundle_identity(bundle)
+        or clause.clause_version != _REVIEWED_THEORY_VERSION
+        or expected_rule_id != rule.rule_id
+        or _REVIEWED_RULE_CHECKSUM_BY_ID.get(rule.rule_id) != rule_content_checksum(rule)
+        or rule.rule_version != _REVIEWED_RULEBOOK_VERSION
+        or rule.theory_clause_id != clause.clause_id
+        or rule.theory_clause_version != clause.clause_version
+    ):
+        raise V8EvaluatorReviewRequired(clause_id=clause.clause_id)
+    return _EvaluatorArtifact(
+        artifact_id=f"ntruth-python-derivation-{clause.clause_id}",
+        artifact_version=_REVIEWED_EVALUATOR_VERSION,
+        artifact_checksum=_derivation_code_checksum(clause.clause_id),
+    )
+
+
+def _reviewed_adequacy_artifact(
+    bundle: ConformanceBundle,
+    clause: TheoryClause,
+    rule: V8ConformanceRule,
+) -> _EvaluatorArtifact:
+    if (
+        not _reviewed_bundle_identity(bundle)
+        or clause.clause_id != "DT-E-INTERFERENCE-ESTIMAND"
+        or clause.clause_version != _REVIEWED_THEORY_VERSION
+        or rule.rule_id != "V8-E-INTERFERENCE"
+        or _REVIEWED_RULE_CHECKSUM_BY_ID.get(rule.rule_id) != rule_content_checksum(rule)
+        or rule.rule_version != _REVIEWED_RULEBOOK_VERSION
+    ):
+        raise V8EvaluatorReviewRequired(clause_id=clause.clause_id)
+    implementation_path = Path(__file__).resolve().parents[1] / "rules" / "v8_engine.py"
+    return _EvaluatorArtifact(
+        artifact_id="ntruth-python-adequacy-interference-v8",
+        artifact_version=_REVIEWED_EVALUATOR_VERSION,
+        artifact_checksum=hashlib.sha256(implementation_path.read_bytes()).hexdigest(),
+    )
 
 
 class V8DerivationInput(KernelModel):
@@ -167,17 +305,55 @@ def verify_runtime_bundle(bundle: ConformanceBundle) -> ConformanceReport:
 
 
 def _rule_pins(bundle: ConformanceBundle) -> tuple[ImplementationRulePin, ...]:
-    return tuple(
-        ImplementationRulePin(
-            rule_id=rule.rule_id,
-            rule_version=rule.rule_version,
-            rule_checksum=rule_content_checksum(rule),
-            theory_clause_id=rule.theory_clause_id,
-            theory_clause_version=rule.theory_clause_version,
-            required_predicate_ids=tuple(item.predicate_id for item in rule.required_predicates),
-            irrelevant_predicates=rule.irrelevant_predicates,
+    clauses = {clause.clause_id: clause for clause in bundle.theory.clauses}
+    pins: list[ImplementationRulePin] = []
+    for rule in bundle.rulebook.rules:
+        clause = clauses[rule.theory_clause_id]
+        artifact = _reviewed_derivation_artifact(bundle, clause, rule)
+        pins.append(
+            ImplementationRulePin(
+                theory_id=bundle.theory.theory_id,
+                theory_version=bundle.theory.theory_version,
+                theory_checksum=bundle.theory.declared_checksum,
+                rule_id=rule.rule_id,
+                rule_version=rule.rule_version,
+                rule_checksum=rule_content_checksum(rule),
+                theory_clause_id=rule.theory_clause_id,
+                theory_clause_version=rule.theory_clause_version,
+                implementation_artifact_id=artifact.artifact_id,
+                implementation_artifact_version=artifact.artifact_version,
+                implementation_artifact_checksum=artifact.artifact_checksum,
+                required_predicate_ids=tuple(
+                    item.predicate_id for item in rule.required_predicates
+                ),
+                irrelevant_predicates=rule.irrelevant_predicates,
+            )
         )
-        for rule in bundle.rulebook.rules
+    return tuple(pins)
+
+
+def _adequacy_pin(bundle: ConformanceBundle) -> AdequacyEvaluatorPin:
+    clause = next(
+        item for item in bundle.theory.clauses if item.clause_id == "DT-E-INTERFERENCE-ESTIMAND"
+    )
+    rule = next(
+        item
+        for item in bundle.rulebook.rules
+        if item.theory_clause_id == "DT-E-INTERFERENCE-ESTIMAND"
+    )
+    artifact = _reviewed_adequacy_artifact(bundle, clause, rule)
+    return AdequacyEvaluatorPin(
+        theory_id=bundle.theory.theory_id,
+        theory_version=bundle.theory.theory_version,
+        theory_checksum=bundle.theory.declared_checksum,
+        theory_clause_id=clause.clause_id,
+        theory_clause_version=clause.clause_version,
+        rule_id=rule.rule_id,
+        rule_version=rule.rule_version,
+        rule_checksum=rule_content_checksum(rule),
+        implementation_artifact_id=artifact.artifact_id,
+        implementation_artifact_version=artifact.artifact_version,
+        implementation_artifact_checksum=artifact.artifact_checksum,
     )
 
 
@@ -188,6 +364,7 @@ def build_execution_manifest(
     """Create the immutable join record for the exact verified execution bytes."""
 
     rule_pins = _rule_pins(bundle)
+    adequacy_pin = _adequacy_pin(bundle)
     manifest_id = stable_id(
         "v8-execution-manifest",
         bundle.theory.declared_checksum,
@@ -196,6 +373,8 @@ def build_execution_manifest(
         bundle.reference_registry.declared_checksum,
         bundle.fixture_set.declared_checksum,
         *(pin.rule_checksum for pin in rule_pins),
+        *(pin.implementation_artifact_checksum for pin in rule_pins),
+        adequacy_pin.implementation_artifact_checksum,
     )
     return V8ExecutionManifest(
         manifest_id=manifest_id,
@@ -215,6 +394,7 @@ def build_execution_manifest(
         fixture_set_version=bundle.fixture_set.fixture_set_version,
         fixture_set_checksum=bundle.fixture_set.declared_checksum,
         implementation_rules=rule_pins,
+        adequacy_evaluator=adequacy_pin,
         release_blocker_issue_ids=conformance.release_blocker_issue_ids,
     )
 
@@ -366,13 +546,20 @@ def _derive_clause_claims(
     claims: list[DerivedClaim] = []
     for claim_type in clause.output_claim_types:
         state = _state_for(required, support)
+        if (
+            state is DeterminabilityState.DETERMINATE
+            and request.profile_coverage.contract_review.issue_id
+            == PROFILE_COVERAGE_REVIEW_ISSUE_ID
+        ):
+            state = DeterminabilityState.INSUFFICIENT_INFORMATION
         payload: JsonValue | None = None
         count_evidence: tuple[str, ...] = ()
         if state is DeterminabilityState.DETERMINATE:
             payload, count_evidence = _resolved_payload(claim_type, request)
         evidence_ids = tuple(dict.fromkeys((*base_evidence, *count_evidence)))
         if payload is None:
-            state = DeterminabilityState.INSUFFICIENT_INFORMATION
+            if state is DeterminabilityState.DETERMINATE:
+                state = DeterminabilityState.INSUFFICIENT_INFORMATION
             value = KnowledgeValue[JsonValue](
                 knowledge_state=KnowledgeState.UNKNOWN,
                 rationale=(
@@ -404,8 +591,40 @@ def _derive_clause_claims(
                 claim_type,
             ),
             predicate_references=tuple(
-                PredicateProofReference(predicate_id=predicate_id, predicate_value=value)
+                PredicateProofReference(
+                    predicate_id=predicate_id,
+                    predicate_value=KnowledgeValue[JsonValue].model_validate(
+                        value.model_dump(mode="json")
+                    ),
+                )
                 for predicate_id, value in required
+            ),
+            input_record_references=(
+                (
+                    InputRecordProofReference(
+                        record_id=record.count_id,
+                        record_kind=record.kind,
+                        record_value=record.value,
+                        record_scope=record.scope,
+                    ),
+                )
+                if claim_type in {"EXPERIMENTAL_UNIT_COUNT", "BIOLOGICAL_SOURCE_COUNT"}
+                and (
+                    record := _selected_count_record(
+                        request,
+                        (
+                            request.experimental_unit_count_record_id
+                            if claim_type == "EXPERIMENTAL_UNIT_COUNT"
+                            else request.biological_source_count_record_id
+                        ),
+                        (
+                            CanonicalCountKind.EXPERIMENTAL_UNIT_COUNT
+                            if claim_type == "EXPERIMENTAL_UNIT_COUNT"
+                            else CanonicalCountKind.BIOLOGICAL_SOURCE_COUNT
+                        ),
+                    )
+                )
+                else ()
             ),
             theory_clause_id=clause.clause_id,
             rule_id=rule.rule_id,
@@ -476,6 +695,7 @@ def derive_claim_set(
 __all__ = [
     "CLAIM_STATE_REVIEW_ISSUE_ID",
     "V8DerivationInput",
+    "V8EvaluatorReviewRequired",
     "build_execution_manifest",
     "derive_claim_set",
     "load_runtime_bundle",

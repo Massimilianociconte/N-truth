@@ -139,6 +139,7 @@ def _predicate_values() -> dict[str, KnowledgeValue[Any]]:
         "factor_levels": _present(("vehicle", "drug")),
         "assignment_event_or_equivalent_mechanism": _present("EVT-ASSIGN-001"),
         "candidate_unit": _present("well"),
+        "biological_source_unit_type": _present("culture_preparation"),
         "assignment_separability_support": _present(True),
         "relevant_treatment_assignment": _present("EVT-ASSIGN-001"),
         "realized_treatment_application_or_exposure": _present("EVT-EXPOSURE-001"),
@@ -149,6 +150,8 @@ def _predicate_values() -> dict[str, KnowledgeValue[Any]]:
         "contrast_scope": _present("CONTRAST-VEHICLE-DRUG"),
         "lifecycle_phase": _present("treated"),
         "group_or_paired_set": _present("drug"),
+        "count_cohort_id": _present("COHORT-RUNTIME-001"),
+        "count_condition": _present("confirmed_units"),
         "confirmed_biological_provenance": _present(True),
         "biological_source_instances": _present(("source-1", "source-2")),
         "interference_status": _present("possible"),
@@ -322,7 +325,9 @@ def test_source_independence_never_promotes_assignment_eu_or_count() -> None:
     assert _claim(result, "EXPERIMENTAL_UNIT").determinability_state.value == (
         "INSUFFICIENT_INFORMATION"
     )
-    assert _claim(result, "BIOLOGICAL_SOURCE_COUNT").determinability_state.value == "DETERMINATE"
+    source_count = _claim(result, "BIOLOGICAL_SOURCE_COUNT")
+    assert source_count.determinability_state.value == "INSUFFICIENT_INFORMATION"
+    assert source_count.state_contract_review.issue_id == "SRR-V8-023"
 
 
 def test_documented_interference_never_auto_replaces_experimental_unit() -> None:
@@ -352,14 +357,23 @@ def test_same_block_query_retains_different_claim_specific_states() -> None:
     """Catches collapsing all query claims into one global determinability state."""
 
     runtime, request = _request(
-        overrides={"source_diversity": _unknown("source diversity cannot be reconstructed")}
+        overrides={
+            "source_diversity": KnowledgeValue[Any](
+                knowledge_state=KnowledgeState.CONFLICTING,
+                conflicting_values=("single_source", "multiple_sources"),
+                evidence_ids=("EV-RUNTIME-001", "EV-RUNTIME-002"),
+                query_scope_id=QUERY_ID,
+            )
+        }
     )
 
     result = runtime.run_v8_pipeline(request, conformance_bundle=CANONICAL_BUNDLE)
 
-    assert _claim(result, "ASSIGNMENT_UNIT").determinability_state.value == "DETERMINATE"
-    assert _claim(result, "INFERENCE_SCOPE").determinability_state.value == (
+    assert _claim(result, "ASSIGNMENT_UNIT").determinability_state.value == (
         "INSUFFICIENT_INFORMATION"
+    )
+    assert _claim(result, "INFERENCE_SCOPE").determinability_state.value == (
+        "CONFLICTING_INFORMATION"
     )
     assert result.report_resolution.state is None
     assert result.report_resolution.review_requirement.issue_id == "SRR-V8-014"
@@ -409,8 +423,12 @@ def test_equal_numeric_eu_and_source_counts_remain_distinct_claims() -> None:
     eu_count = _claim(result, "EXPERIMENTAL_UNIT_COUNT")
     source_count = _claim(result, "BIOLOGICAL_SOURCE_COUNT")
 
-    assert eu_count.value.value["value"]["value"] == 2
-    assert source_count.value.value["value"]["value"] == 2
+    eu_lineage = eu_count.proof_trace[0].input_record_references[0]
+    source_lineage = source_count.proof_trace[0].input_record_references[0]
+    assert eu_lineage.record_value.value == 2
+    assert source_lineage.record_value.value == 2
+    assert eu_lineage.record_kind.value == "experimental_unit_count"
+    assert source_lineage.record_kind.value == "biological_source_count"
     assert eu_count.claim_id != source_count.claim_id
     assert eu_count.required_predicates != source_count.required_predicates
 
@@ -429,8 +447,12 @@ def test_design_adequacy_is_separate_and_cannot_change_claim_determinability() -
     )
     documented = runtime.run_v8_pipeline(documented_request, conformance_bundle=CANONICAL_BUNDLE)
 
-    assert _claim(possible, "EXPERIMENTAL_UNIT").determinability_state.value == "DETERMINATE"
-    assert _claim(documented, "EXPERIMENTAL_UNIT").determinability_state.value == "DETERMINATE"
+    assert _claim(possible, "EXPERIMENTAL_UNIT").determinability_state.value == (
+        "INSUFFICIENT_INFORMATION"
+    )
+    assert _claim(documented, "EXPERIMENTAL_UNIT").determinability_state.value == (
+        "INSUFFICIENT_INFORMATION"
+    )
     assert possible.design_adequacy_findings[0].finding_type == "INTERFERENCE_POSSIBLE"
     assert documented.design_adequacy_findings[0].finding_type == "INTERFERENCE_DOCUMENTED"
 
@@ -548,8 +570,8 @@ def test_partial_graph_scoring_is_a_typed_scientific_review_blocker() -> None:
     assert blocker.issue_id == "SRR-V8-012"
 
 
-def test_rule_challenge_requires_successor_versions_and_full_rederivation() -> None:
-    """Catches replacing a frozen claim instead of re-running reviewed theory."""
+def test_rule_challenge_requires_a_registered_successor_evaluator() -> None:
+    """Catches executing successor Theory bytes without reviewed evaluator registration."""
 
     corrections_v8 = import_module("ntruth.corrections.v8")
     runtime, original_request = _request()
@@ -594,20 +616,18 @@ def test_rule_challenge_requires_successor_versions_and_full_rederivation() -> N
         created_at=created_at + timedelta(minutes=5),
     )
 
-    rederived = corrections_v8.rederive_after_rule_challenge(
-        previous=original,
-        request=successor_request,
-        conformance_bundle=successor_bundle,
-        challenge=challenge,
-        decision=decision,
-    )
+    with pytest.raises(Exception) as error:
+        corrections_v8.rederive_after_rule_challenge(
+            previous=original,
+            request=successor_request,
+            conformance_bundle=successor_bundle,
+            challenge=challenge,
+            decision=decision,
+        )
 
     assert frozen_claim.theory_version == "0.1.0"
-    assert _claim(rederived.result, "EXPERIMENTAL_UNIT").theory_version == "0.1.1"
-    assert rederived.event.rederivation_id == decision.rederivation_record_id
-    assert rederived.event.change_record_id == decision.change_record_id
-    assert rederived.event.previous_claim_set_checksum != rederived.event.new_claim_set_checksum
-    assert rederived.event.outcome_contract_review.issue_id == "SRR-V8-024"
+    assert error.value.__class__.__name__ == "V8EvaluatorReviewRequired"
+    assert error.value.review_requirement.issue_id == "SRR-V8-024"
 
 
 def test_main_deterministic_pipeline_is_v8_and_v7_is_an_explicit_adapter() -> None:

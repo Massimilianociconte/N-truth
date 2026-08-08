@@ -7,6 +7,12 @@ from typing import Self
 
 from pydantic import Field, JsonValue, model_validator
 
+from ntruth.schemas.count_registry import (
+    CanonicalCountKind,
+    CountInterval,
+    CountScope,
+    NonNegativeInt,
+)
 from ntruth.schemas.kernel import KernelModel, NonBlankStr
 from ntruth.schemas.knowledge import KnowledgeState, KnowledgeValue
 from ntruth.schemas.support import ScientificReviewRequirement, SupportGrade
@@ -50,9 +56,19 @@ class PredicateProofReference(KernelModel):
     predicate_value: KnowledgeValue[JsonValue]
 
 
+class InputRecordProofReference(KernelModel):
+    """Pinned non-predicate input consumed by a deterministic claim evaluator."""
+
+    record_id: NonBlankStr
+    record_kind: CanonicalCountKind
+    record_value: KnowledgeValue[NonNegativeInt | CountInterval]
+    record_scope: CountScope
+
+
 class ProofTraceStep(KernelModel):
     step_id: NonBlankStr
     predicate_references: tuple[PredicateProofReference, ...] = Field(min_length=1)
+    input_record_references: tuple[InputRecordProofReference, ...] = ()
     theory_clause_id: NonBlankStr
     rule_id: NonBlankStr
 
@@ -61,6 +77,9 @@ class ProofTraceStep(KernelModel):
         predicate_ids = [reference.predicate_id for reference in self.predicate_references]
         if len(set(predicate_ids)) != len(predicate_ids):
             raise ValueError("proof step contains duplicate predicate references")
+        record_ids = [reference.record_id for reference in self.input_record_references]
+        if len(set(record_ids)) != len(record_ids):
+            raise ValueError("proof step contains duplicate input record references")
         return self
 
 
@@ -185,6 +204,7 @@ __all__ = [
     "DerivedClaim",
     "DerivedClaimSet",
     "DeterminabilityState",
+    "InputRecordProofReference",
     "IrrelevantPredicate",
     "PredicateProofReference",
     "ProfileCoverageReference",
