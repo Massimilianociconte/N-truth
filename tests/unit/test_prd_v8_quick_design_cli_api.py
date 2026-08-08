@@ -11,10 +11,69 @@ from typer.testing import CliRunner
 
 from ntruth.api.app import create_app
 from ntruth.cli.main import app
+from ntruth.schemas.authority import AuthorityType
+from ntruth.schemas.prospective import SupportBindingScope, build_prospective_input_ledger
+from ntruth.schemas.support import EvidenceBasis, EvidenceTypeV8
 
 
-def _submission_payload() -> dict[str, object]:
+def _submission_payload(*, raw_wizard: bool = False) -> dict[str, object]:
     _, submission = quick_design_fixture._submission()
+    if raw_wizard:
+        supports = {
+            clause_id: descriptor.model_copy(
+                update={
+                    "authority_type": AuthorityType.USER_CONFIRMATION,
+                    "evidence_basis": EvidenceBasis.AUTHOR_ASSERTED,
+                    "support_grade": descriptor.support_grade.model_copy(
+                        update={"token": "ASSERTION_ONLY"}
+                    ),
+                }
+            )
+            for clause_id, descriptor in submission.pipeline_request.support_by_clause.items()
+        }
+        request = submission.pipeline_request.model_copy(update={"support_by_clause": supports})
+        default_support = next(iter(supports.values()))
+        bindings = tuple(
+            binding.model_copy(
+                update={
+                    "support": (
+                        supports[binding.scope_id]
+                        if binding.scope_kind is SupportBindingScope.THEORY_CLAUSE
+                        else default_support
+                    )
+                }
+            )
+            for binding in submission.input_ledger.support_bindings
+        )
+        evidence_records = tuple(
+            record.model_copy(update={"evidence_type": EvidenceTypeV8.AUTHOR_ASSERTION})
+            for record in submission.input_ledger.evidence_records
+        )
+        ledger = build_prospective_input_ledger(
+            request=request,
+            sources=submission.input_ledger.sources,
+            evidence_records=evidence_records,
+            confirmation_events=(),
+            artifacts=submission.input_ledger.artifacts,
+            support_bindings=bindings,
+        )
+        handoff = submission.statistical_handoff.model_copy(
+            update={
+                "items": tuple(
+                    item.model_copy(update={"authority": AuthorityType.USER_CONFIRMATION})
+                    for item in submission.statistical_handoff.items
+                )
+            }
+        )
+        submission = submission.model_validate(
+            submission.model_copy(
+                update={
+                    "pipeline_request": request,
+                    "input_ledger": ledger,
+                    "statistical_handoff": handoff,
+                }
+            ).model_dump(mode="python")
+        )
     return submission.model_dump(mode="json")
 
 
@@ -75,7 +134,7 @@ def test_explicit_quick_design_v7_cli_is_visibly_deprecated() -> None:
 def test_v8_quick_design_api_returns_canonical_neutral_report() -> None:
     client = TestClient(create_app())
 
-    response = client.post("/v8/quick-design", json=_submission_payload())
+    response = client.post("/v8/quick-design", json=_submission_payload(raw_wizard=True))
 
     assert response.status_code == 200, response.text
     body = response.json()

@@ -193,9 +193,51 @@ def _execution_evidence() -> tuple[EvidenceRecord, ...]:
         for identifier in (
             "EV-EXEC",
             "EV-EXEC-Q2",
+            "EV-PLAN",
             "EV-TASK6-001",
             "EV-TASK6-COUNT",
         )
+    )
+
+
+def _sample_sheet() -> object:
+    prospective = __import__("ntruth.schemas.prospective", fromlist=["ProspectiveArtifactKind"])
+    return prospective.build_prospective_artifact(
+        kind=prospective.ProspectiveArtifactKind.SAMPLE_SHEET,
+        media_type="text/csv",
+        content="sample_id,status\nwell-1,planned\n",
+    )
+
+
+def _execution_ledger(suffix: str) -> object:
+    prospective = __import__("ntruth.schemas.prospective", fromlist=["ProspectiveArtifactKind"])
+    execution_log = prospective.build_prospective_artifact(
+        kind=prospective.ProspectiveArtifactKind.EXECUTION_LOG,
+        media_type="text/plain",
+        content=f"execution log {suffix}",
+    )
+    planned_evidence = _plan_evidence()
+    planned_evidence_ids = {record.evidence_id for record in planned_evidence}
+    return prospective.build_executed_input_ledger(
+        sources=(_source(SourceContext.PLANNED), _source(SourceContext.EXECUTED)),
+        evidence_records=(
+            *planned_evidence,
+            *(
+                record
+                for record in _execution_evidence()
+                if record.evidence_id not in planned_evidence_ids
+            ),
+        ),
+        confirmation_events=(),
+        artifacts=(_sample_sheet(), execution_log),
+    )
+
+
+def _deviation_absent(*, query_id: str = QUERY_ID) -> KnowledgeValue[object]:
+    return KnowledgeValue(
+        knowledge_state=KnowledgeState.ABSENT_EXPLICIT,
+        evidence_ids=("EV-EXEC",),
+        query_scope_id=query_id,
     )
 
 
@@ -209,7 +251,7 @@ def _plan() -> object:
         confirmation_events=(),
         event_registry=_event_registry(),
         count_records=(_count(CanonicalCountKind.PLANNED_UNIT_COUNT, 4),),
-        sample_sheet_ref="artifact://sample-sheet/planned-v1",
+        sample_sheet_ref=_sample_sheet().artifact_id,
         methods_draft_ref="artifact://methods/planned-v1",
         id_convention_ref="artifact://id-convention/planned-v1",
         user_confirmation_scopes=("assignment_event", "planned_unit_count"),
@@ -256,38 +298,41 @@ def test_planned_design_rejects_global_timing_and_non_planned_counts() -> None:
 def test_two_executions_reconcile_to_same_exact_plan_without_rewriting_it() -> None:
     prospective = __import__("ntruth.schemas.prospective", fromlist=["DeviationRecord"])
     plan = _plan()
+    ledger_a = _execution_ledger("a")
+    ledger_b = _execution_ledger("b")
     execution_a = prospective.build_executed_design(
         planned_design=plan,
-        sources=(_source(SourceContext.EXECUTED),),
-        evidence_records=_execution_evidence(),
-        confirmation_events=(),
-        event_registry=_event_registry(executed=True),
+        executed_input_ledger=ledger_a,
+        event_registry=_event_registry(),
         count_records=(_count(CanonicalCountKind.OBSERVED_UNIT_COUNT, 4),),
-        deviations=(),
-        final_sample_sheet_ref="artifact://sample-sheet/executed-a",
-        execution_log_refs=("artifact://log/a",),
+        deviations=_deviation_absent(),
+        final_sample_sheet_ref=_sample_sheet().artifact_id,
+        execution_log_refs=(ledger_a.artifacts[1].artifact_id,),
     )
     execution_b = prospective.build_executed_design(
         planned_design=plan,
-        sources=(_source(SourceContext.EXECUTED),),
-        evidence_records=_execution_evidence(),
-        confirmation_events=(),
-        event_registry=_event_registry(executed=True),
+        executed_input_ledger=ledger_b,
+        event_registry=_event_registry(),
         count_records=(_count(CanonicalCountKind.OBSERVED_UNIT_COUNT, 3),),
-        deviations=(
-            prospective.DeviationRecord(
-                deviation_id="DEV-LOST-WELL-001",
-                affected_query_ids=(QUERY_ID,),
-                field_path="counts/observed_unit_count",
-                planned_value=_present(4),
-                executed_value=_present(3, "EV-EXEC"),
-                deviation_type=prospective.DeviationType.LOST_SAMPLE,
-                evidence_refs=("EV-EXEC",),
-                rationale="One planned well was lost before observation.",
+        deviations=KnowledgeValue(
+            knowledge_state=KnowledgeState.PRESENT,
+            value=(
+                prospective.DeviationRecord(
+                    deviation_id="DEV-LOST-WELL-001",
+                    affected_query_ids=(QUERY_ID,),
+                    field_path="counts/observed_unit_count",
+                    planned_value=_present(4),
+                    executed_value=_present(3, "EV-EXEC"),
+                    deviation_type=prospective.DeviationType.LOST_SAMPLE,
+                    evidence_refs=("EV-EXEC",),
+                    rationale="One planned well was lost before observation.",
+                ),
             ),
+            evidence_ids=("EV-EXEC",),
+            query_scope_id=QUERY_ID,
         ),
-        final_sample_sheet_ref="artifact://sample-sheet/executed-b",
-        execution_log_refs=("artifact://log/b",),
+        final_sample_sheet_ref=_sample_sheet().artifact_id,
+        execution_log_refs=(ledger_b.artifacts[1].artifact_id,),
     )
 
     assert execution_a.planned_design_id == execution_b.planned_design_id == plan.plan_id
@@ -307,16 +352,15 @@ def test_two_executions_reconcile_to_same_exact_plan_without_rewriting_it() -> N
 def test_reconciliation_rejects_wrong_plan_id_or_checksum() -> None:
     prospective = __import__("ntruth.schemas.prospective", fromlist=["reconcile_plan_execution"])
     plan = _plan()
+    ledger = _execution_ledger("wrong-link")
     execution = prospective.build_executed_design(
         planned_design=plan,
-        sources=(_source(SourceContext.EXECUTED),),
-        evidence_records=_execution_evidence(),
-        confirmation_events=(),
-        event_registry=_event_registry(executed=True),
+        executed_input_ledger=ledger,
+        event_registry=_event_registry(),
         count_records=(_count(CanonicalCountKind.OBSERVED_UNIT_COUNT, 4),),
-        deviations=(),
-        final_sample_sheet_ref="artifact://sample-sheet/executed-a",
-        execution_log_refs=("artifact://log/a",),
+        deviations=_deviation_absent(),
+        final_sample_sheet_ref=_sample_sheet().artifact_id,
+        execution_log_refs=(ledger.artifacts[1].artifact_id,),
     )
 
     wrong_id = execution.model_copy(update={"planned_design_id": "PLAN-WRONG"})
@@ -362,28 +406,31 @@ def test_multi_query_deviations_have_explicit_scopes_without_first_query_default
     )
     execution = prospective.build_executed_design(
         planned_design=plan,
-        sources=(_source(SourceContext.EXECUTED),),
-        evidence_records=_execution_evidence(),
-        confirmation_events=(),
-        event_registry=_event_registry(executed=True),
+        executed_input_ledger=_execution_ledger("multi-query"),
+        event_registry=_event_registry(),
         count_records=(
             _count(CanonicalCountKind.OBSERVED_UNIT_COUNT, 4),
             _count(CanonicalCountKind.OBSERVED_UNIT_COUNT, 5, query_id=second_query),
         ),
-        deviations=(deviation,),
-        final_sample_sheet_ref="artifact://sample-sheet/executed-multi-query",
-        execution_log_refs=("artifact://log/multi-query",),
+        deviations=KnowledgeValue(
+            knowledge_state=KnowledgeState.PRESENT,
+            value=(deviation,),
+            evidence_ids=("EV-EXEC-Q2",),
+            query_scope_id=second_query,
+        ),
+        final_sample_sheet_ref=_sample_sheet().artifact_id,
+        execution_log_refs=(_execution_ledger("multi-query").artifacts[1].artifact_id,),
     )
 
-    assert execution.deviations.query_scope_id is None
+    assert execution.deviations.query_scope_id == second_query
     assert execution.deviations.value[0].affected_query_ids == (second_query,)
 
 
-def test_plan_requires_exactly_one_planned_unit_count_for_each_query() -> None:
+def test_plan_requires_at_least_one_planned_unit_count_for_each_query() -> None:
     prospective = __import__("ntruth.schemas.prospective", fromlist=["build_planned_design"])
     second_query = "IQ-TASK6-002"
 
-    with pytest.raises(ValueError, match="exactly one planned_unit_count"):
+    with pytest.raises(ValueError, match="requires a planned_unit_count"):
         prospective.build_planned_design(
             experiment_block_id=BLOCK_ID,
             inferential_queries=(_query(), _query(second_query)),

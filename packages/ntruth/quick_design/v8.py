@@ -9,15 +9,17 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from pydantic import Field, JsonValue, model_validator
+from pydantic import Field, model_validator
 
 from ntruth.derivation_theory.contracts import ConformanceBundle
+from ntruth.parser_ai.contract import ParserCandidateOutput
 from ntruth.pipeline_v8 import (
     V8PipelineRequest,
     V8PipelineResult,
     V8PipelineVerificationError,
     run_v8_pipeline,
 )
+from ntruth.schemas.authority import AuthorityType
 from ntruth.schemas.count_registry import CanonicalCountKind, CanonicalCountRecord
 from ntruth.schemas.events import EventRegistry
 from ntruth.schemas.kernel import KernelModel, NonBlankStr
@@ -44,9 +46,24 @@ from ntruth.schemas.report_bundle import (
     build_report_bundle,
     build_verified_pipeline_context,
 )
-from ntruth.schemas.support import ConfirmationEvent, SensitivityRecord, SourceContext
+from ntruth.schemas.support import (
+    ConfirmationEvent,
+    EvidenceBasis,
+    EvidenceTypeV8,
+    SensitivityRecord,
+    SourceContext,
+)
 
 QuickDesignScientificReviewRequired = ProspectiveInputScientificReviewRequired
+
+RAW_WIZARD_AUTHORITY = AuthorityType.USER_CONFIRMATION
+RAW_WIZARD_EVIDENCE_BASES = frozenset({EvidenceBasis.SELF_REPORT, EvidenceBasis.AUTHOR_ASSERTED})
+RAW_WIZARD_SUPPORT_GRADES = frozenset(
+    {"SELF_REPORT_ONLY", "ASSERTION_ONLY", "DOCUMENT_ASSERTION_ONLY"}
+)
+RAW_WIZARD_EVIDENCE_TYPES = frozenset(
+    {EvidenceTypeV8.AUTHOR_ASSERTION, EvidenceTypeV8.USER_CONFIRMATION}
+)
 
 
 class QuickDesignV8Submission(KernelModel):
@@ -58,7 +75,7 @@ class QuickDesignV8Submission(KernelModel):
     methods_draft: Annotated[str, Field(min_length=1)]
     id_convention: Annotated[str, Field(min_length=1)]
     user_confirmation_scopes: tuple[NonBlankStr, ...] = Field(min_length=1)
-    ai_candidates: KnowledgeValue[tuple[JsonValue, ...]]
+    ai_candidates: KnowledgeValue[tuple[ParserCandidateOutput, ...]]
     conflicts: KnowledgeValue[tuple[ConflictRecord, ...]]
     sensitivities: KnowledgeValue[tuple[SensitivityRecord, ...]]
     questions: tuple[ReportQuestion, ...] = Field(min_length=1)
@@ -87,8 +104,16 @@ class QuickDesignV8Submission(KernelModel):
             for count in self.planned_unit_counts
         ):
             raise ValueError("planned counts must be query-scoped planned_unit_count records")
-        if len(self.planned_unit_counts) != 1:
-            raise ValueError("Quick Design v8 requires exactly one planned_unit_count per query")
+        planned_scope_identities: set[tuple[object, ...]] = set()
+        for count in self.planned_unit_counts:
+            identity = count.semantic_identity()
+            if identity is None:
+                raise QuickDesignScientificReviewRequired(
+                    "planned_unit_count has an unresolved full semantic scope"
+                )
+            if identity in planned_scope_identities:
+                raise ValueError("duplicate planned_unit_count full semantic scope")
+            planned_scope_identities.add(identity)
         registry_by_id = {
             count.count_id: count for count in self.pipeline_request.count_registry.records
         }
@@ -126,6 +151,41 @@ class QuickDesignV8Result(KernelModel):
     artifacts: tuple[ProspectiveArtifact, ...] = Field(min_length=3)
 
 
+def validate_raw_wizard_submission(submission: QuickDesignV8Submission) -> None:
+    """Reject authority claims that a raw API caller cannot independently establish."""
+
+    submission = QuickDesignV8Submission.model_validate(submission.model_dump(mode="python"))
+    descriptors = (
+        *submission.pipeline_request.support_by_clause.values(),
+        *(binding.support for binding in submission.input_ledger.support_bindings),
+        *(event.support for event in submission.input_ledger.confirmation_events),
+    )
+    if any(
+        descriptor.authority_type is not RAW_WIZARD_AUTHORITY
+        or descriptor.evidence_basis not in RAW_WIZARD_EVIDENCE_BASES
+        or descriptor.support_grade.token not in RAW_WIZARD_SUPPORT_GRADES
+        for descriptor in descriptors
+    ):
+        raise ValueError(
+            "raw Quick Design wizard authority and support grade are limited to user "
+            "self-report/assertion; "
+            "expert, adjudicated and system authority require an independently verified "
+            "append-only authority envelope outside this endpoint"
+        )
+    if any(
+        record.evidence_type not in RAW_WIZARD_EVIDENCE_TYPES
+        for record in submission.input_ledger.evidence_records
+    ):
+        raise ValueError(
+            "raw Quick Design evidence is limited to author assertion/user confirmation; "
+            "expert or adjudicated evidence requires an independently verified envelope"
+        )
+    if any(
+        item.authority is not RAW_WIZARD_AUTHORITY for item in submission.statistical_handoff.items
+    ):
+        raise ValueError("raw Quick Design handoff items must retain user authority")
+
+
 def run_quick_design_v8(
     submission: QuickDesignV8Submission,
     *,
@@ -133,6 +193,7 @@ def run_quick_design_v8(
 ) -> QuickDesignV8Result:
     """Freeze the plan, execute the canonical v8 lane and emit a neutral report."""
 
+    submission = QuickDesignV8Submission.model_validate(submission.model_dump(mode="python"))
     request = submission.pipeline_request
     if not request.scenario_coverages:
         raise ValueError("Quick Design v8 requires explicit ScenarioCoverage")
@@ -208,12 +269,10 @@ def run_quick_design_v8(
             knowledge_state=KnowledgeState.PRESENT,
             value=submission.input_ledger.confirmation_events,
             evidence_ids=tuple(
-                sorted(
-                    {
-                        ref
-                        for event in submission.input_ledger.confirmation_events
-                        for ref in event.evidence_refs
-                    }
+                dict.fromkeys(
+                    ref
+                    for event in submission.input_ledger.confirmation_events
+                    for ref in event.evidence_refs
                 )
             ),
             query_scope_id=query_id,
@@ -258,4 +317,5 @@ __all__ = [
     "V8PipelineVerificationError",
     "build_handoff_item",
     "run_quick_design_v8",
+    "validate_raw_wizard_submission",
 ]

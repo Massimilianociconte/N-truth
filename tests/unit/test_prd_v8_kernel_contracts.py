@@ -333,8 +333,8 @@ def test_sensitivity_rule_challenge_and_ledger_are_append_only() -> None:
         current_support_grade=_section_support(),
         current_value=True,
         counterfactual_value=False,
-        current_output={"experimental_unit_count": 4},
-        counterfactual_output={"experimental_unit_count": 1},
+        current_output={"candidate_state": {"candidate_count": 4}},
+        counterfactual_output={"candidate_state": {"candidate_count": 1}},
         interpretation="The count depends entirely on this confirmation.",
     )
     challenge = support.RuleChallenge(

@@ -20,13 +20,16 @@ from ntruth.schemas.count_registry import (
 )
 from ntruth.schemas.events import EventRegistry
 from ntruth.schemas.kernel import KernelModel, NonBlankStr
-from ntruth.schemas.knowledge import KnowledgeState, KnowledgeValue
+from ntruth.schemas.knowledge import (
+    KnowledgeState,
+    KnowledgeValue,
+    ensure_unambiguous_scientific_payload,
+)
 from ntruth.schemas.query import InferentialQuery
 from ntruth.schemas.support import (
     ConfirmationEvent,
     EvidenceBasis,
     EvidenceRecord,
-    EvidenceTypeV8,
     ScientificReviewRequirement,
     SourceContext,
     SourceRecord,
@@ -51,6 +54,21 @@ class ProspectiveArtifactKind(StrEnum):
 class SupportBindingScope(StrEnum):
     THEORY_CLAUSE = "THEORY_CLAUSE"
     PREDICATE = "PREDICATE"
+    INFERENTIAL_QUERY = "INFERENTIAL_QUERY"
+
+
+class ConfirmationRelationKind(StrEnum):
+    PREDICATE_VALUE = "PREDICATE_VALUE"
+    THEORY_CLAUSE_SUPPORT = "THEORY_CLAUSE_SUPPORT"
+    INFERENTIAL_QUERY = "INFERENTIAL_QUERY"
+
+
+class ConfirmationTarget(KernelModel):
+    """Exact semantic target for a confirmation; no string-scope guessing."""
+
+    relation_kind: ConfirmationRelationKind
+    query_id: NonBlankStr
+    target_id: NonBlankStr
 
 
 class SupportEvidenceBinding(KernelModel):
@@ -62,6 +80,7 @@ class SupportEvidenceBinding(KernelModel):
     source_ids: tuple[NonBlankStr, ...] = Field(min_length=1)
     evidence_record_ids: tuple[NonBlankStr, ...] = Field(min_length=1)
     confirmation_event_ids: tuple[NonBlankStr, ...] = ()
+    confirmation_target: ConfirmationTarget | None = None
 
     @model_validator(mode="after")
     def _unique_refs(self) -> Self:
@@ -72,6 +91,13 @@ class SupportEvidenceBinding(KernelModel):
         ):
             if len(set(values)) != len(values):
                 raise ValueError(f"support binding contains duplicate {label}")
+        if self.confirmation_event_ids and self.confirmation_target is None:
+            raise ValueError(
+                f"{self.scope_kind.value.lower()} confirmation requires a typed scope "
+                "and confirmed value target"
+            )
+        if not self.confirmation_event_ids and self.confirmation_target is not None:
+            raise ValueError("confirmation_target requires confirmation_event_ids")
         return self
 
 
@@ -86,6 +112,7 @@ class ProspectiveArtifact(KernelModel):
 
     @model_validator(mode="after")
     def _addressed_artifact(self) -> Self:
+        ensure_unambiguous_scientific_payload(self.content)
         expected = content_checksum(self.content)
         if self.content_checksum != expected:
             raise ValueError("prospective artifact checksum mismatch")
@@ -148,6 +175,70 @@ class ProspectiveInputLedger(KernelModel):
         return self
 
 
+class ExecutedInputLedger(KernelModel):
+    """Content-addressed executed evidence and artifact envelope."""
+
+    ledger_id: NonBlankStr
+    content_checksum: Sha256
+    sources: tuple[SourceRecord, ...] = Field(min_length=1)
+    evidence_records: tuple[EvidenceRecord, ...] = Field(min_length=1)
+    confirmation_events: tuple[ConfirmationEvent, ...] = ()
+    artifacts: tuple[ProspectiveArtifact, ...] = Field(min_length=2)
+
+    @model_validator(mode="after")
+    def _closed_and_addressed_execution(self) -> Self:
+        source_ids = [source.source_id for source in self.sources]
+        evidence_ids = [record.evidence_id for record in self.evidence_records]
+        confirmation_ids = [event.event_id for event in self.confirmation_events]
+        artifact_ids = [artifact.artifact_id for artifact in self.artifacts]
+        for label, identifiers in (
+            ("source", source_ids),
+            ("evidence", evidence_ids),
+            ("confirmation", confirmation_ids),
+            ("artifact", artifact_ids),
+        ):
+            if len(set(identifiers)) != len(identifiers):
+                raise ValueError(f"executed ledger contains duplicate {label} IDs")
+        allowed_contexts = {SourceContext.PLANNED, SourceContext.EXECUTED}
+        if any(source.source_context not in allowed_contexts for source in self.sources):
+            raise ValueError(
+                "executed ledger accepts only inherited planned or executed source context"
+            )
+        if not any(source.source_context is SourceContext.EXECUTED for source in self.sources):
+            raise ValueError("executed ledger requires at least one executed source record")
+        known_sources = set(source_ids)
+        known_evidence = set(evidence_ids)
+        if any(record.source_id not in known_sources for record in self.evidence_records):
+            raise ValueError("executed evidence references a source outside the ledger")
+        if any(
+            not set(event.evidence_refs).issubset(known_evidence)
+            for event in self.confirmation_events
+        ):
+            raise ValueError("executed confirmation references evidence outside the ledger")
+        sample_sheets = tuple(
+            artifact
+            for artifact in self.artifacts
+            if artifact.kind is ProspectiveArtifactKind.SAMPLE_SHEET
+        )
+        execution_logs = tuple(
+            artifact
+            for artifact in self.artifacts
+            if artifact.kind is ProspectiveArtifactKind.EXECUTION_LOG
+        )
+        if len(sample_sheets) != 1:
+            raise ValueError("executed ledger requires exactly one final sample sheet")
+        if not execution_logs:
+            raise ValueError("executed ledger requires at least one execution log")
+        expected = content_checksum(
+            self.model_dump(mode="json", exclude={"ledger_id", "content_checksum"})
+        )
+        if self.content_checksum != expected:
+            raise ValueError("executed input ledger checksum mismatch")
+        if self.ledger_id != f"EXECUTED-LEDGER-{expected[:20]}":
+            raise ValueError("executed input ledger ID mismatch")
+        return self
+
+
 def build_prospective_artifact(
     *,
     kind: ProspectiveArtifactKind,
@@ -161,6 +252,34 @@ def build_prospective_artifact(
         media_type=media_type,
         content=content,
         content_checksum=checksum,
+    )
+
+
+def build_executed_input_ledger(
+    *,
+    sources: tuple[SourceRecord, ...],
+    evidence_records: tuple[EvidenceRecord, ...],
+    confirmation_events: tuple[ConfirmationEvent, ...],
+    artifacts: tuple[ProspectiveArtifact, ...],
+) -> ExecutedInputLedger:
+    fields: dict[str, Any] = {
+        "sources": sources,
+        "evidence_records": evidence_records,
+        "confirmation_events": confirmation_events,
+        "artifacts": artifacts,
+    }
+    draft = ExecutedInputLedger.model_construct(
+        ledger_id="EXECUTED-LEDGER-PENDING",
+        content_checksum="0" * 64,
+        **fields,
+    )
+    checksum = content_checksum(
+        draft.model_dump(mode="json", exclude={"ledger_id", "content_checksum"})
+    )
+    return ExecutedInputLedger(
+        ledger_id=f"EXECUTED-LEDGER-{checksum[:20]}",
+        content_checksum=checksum,
+        **fields,
     )
 
 
@@ -249,45 +368,11 @@ def _require_ledger_closure(
     source_by_id = {source.source_id: source for source in sources}
     evidence_by_id = {record.evidence_id: record for record in evidence_records}
     confirmation_by_id = {event.event_id: event for event in confirmation_events}
-    allowed_evidence_types = {
-        EvidenceBasis.DIRECT_RECORD: {
-            EvidenceTypeV8.STRUCTURAL_FACT,
-            EvidenceTypeV8.PROCEDURAL_EVENT,
-            EvidenceTypeV8.SAMPLE_METADATA_PLANNED,
-            EvidenceTypeV8.SAMPLE_METADATA_EXECUTED,
-            EvidenceTypeV8.INSTRUMENT_OR_EXECUTION_LOG,
-            EvidenceTypeV8.IMAGE_METADATA,
-            EvidenceTypeV8.STATISTICAL_CODE,
-        },
-        EvidenceBasis.STRUCTURED_DIRECT: {
-            EvidenceTypeV8.STRUCTURAL_FACT,
-            EvidenceTypeV8.PROCEDURAL_EVENT,
-            EvidenceTypeV8.SAMPLE_METADATA_PLANNED,
-            EvidenceTypeV8.SAMPLE_METADATA_EXECUTED,
-            EvidenceTypeV8.INSTRUMENT_OR_EXECUTION_LOG,
-            EvidenceTypeV8.IMAGE_METADATA,
-        },
-        EvidenceBasis.AUTHOR_ASSERTED: {
-            EvidenceTypeV8.AUTHOR_ASSERTION,
-            EvidenceTypeV8.AUTHOR_CLARIFICATION,
-        },
-        EvidenceBasis.SELF_REPORT: {
-            EvidenceTypeV8.USER_CONFIRMATION,
-            EvidenceTypeV8.AUTHOR_CLARIFICATION,
-        },
-        EvidenceBasis.CORROBORATED_CONFIRMATION: {
-            EvidenceTypeV8.USER_CONFIRMATION,
-            EvidenceTypeV8.AUTHOR_CLARIFICATION,
-            EvidenceTypeV8.EXPERT_ADJUDICATION,
-        },
-        EvidenceBasis.INFERRED_CANDIDATE: {EvidenceTypeV8.MODEL_INFERENCE},
-        EvidenceBasis.ADJUDICATED_REFERENCE: {EvidenceTypeV8.EXPERT_ADJUDICATION},
-    }
+    request_supports = tuple(request.support_by_clause.values())
     confirmation_required = {
         EvidenceBasis.SELF_REPORT,
         EvidenceBasis.CORROBORATED_CONFIRMATION,
     }
-    request_supports = tuple(request.support_by_clause.values())
     for binding in support_bindings:
         unknown_sources = set(binding.source_ids) - source_by_id.keys()
         unknown_evidence = set(binding.evidence_record_ids) - evidence_by_id.keys()
@@ -317,16 +402,6 @@ def _require_ledger_closure(
             raise ValueError(
                 f"support binding {binding.scope_id} evidence/source relation is inconsistent"
             )
-        if any(
-            source_by_id[source_id].source_class != binding.support.source_class
-            for source_id in binding.source_ids
-        ):
-            raise ValueError(f"support binding {binding.scope_id} source class is inconsistent")
-        if any(
-            record.evidence_type not in allowed_evidence_types[binding.support.evidence_basis]
-            for record in bound_evidence
-        ):
-            raise ValueError(f"support binding {binding.scope_id} evidence basis is inconsistent")
         bound_confirmations = tuple(
             confirmation_by_id[item] for item in binding.confirmation_event_ids
         )
@@ -345,6 +420,30 @@ def _require_ledger_closure(
             raise ValueError(
                 f"support binding {binding.scope_id} confirmation/evidence relation is inconsistent"
             )
+        if bound_confirmations:
+            target = binding.confirmation_target
+            if target is None:  # defensive: model validation already enforces this
+                raise ValueError("confirmation requires a typed semantic target")
+            if target.query_id != request.query.id:
+                raise ValueError("confirmation target uses a different inferential query")
+            if binding.scope_kind is SupportBindingScope.PREDICATE:
+                if (
+                    target.relation_kind is not ConfirmationRelationKind.PREDICATE_VALUE
+                    or target.target_id != binding.scope_id
+                ):
+                    raise ValueError("predicate confirmation target does not match its scope")
+                expected_value = request.predicate_values[binding.scope_id]
+                if any(
+                    event.scope_id != target.target_id or event.confirmed_value != expected_value
+                    for event in bound_confirmations
+                ):
+                    raise ValueError(
+                        "predicate confirmation scope or confirmed value differs from request"
+                    )
+            else:
+                raise ProspectiveInputScientificReviewRequired(
+                    "theory-clause/query confirmation semantics have no reviewed relation"
+                )
     required_artifact_kinds = {
         ProspectiveArtifactKind.SAMPLE_SHEET,
         ProspectiveArtifactKind.METHODS_DRAFT,
@@ -516,6 +615,7 @@ class PlannedDesignRecord(KernelModel):
             )
         query_ids = set(self.inferential_query_ids)
         counts_by_query = {query_id: 0 for query_id in query_ids}
+        semantic_count_scopes: set[tuple[object, ...]] = set()
         for count in self.count_records:
             if count.kind is not CanonicalCountKind.PLANNED_UNIT_COUNT:
                 raise ValueError("planned design counts must use planned_unit_count")
@@ -528,8 +628,14 @@ class PlannedDesignRecord(KernelModel):
                 or lifecycle.value is not CountLifecyclePhase.PLANNED
             ):
                 raise ValueError("planned_unit_count requires explicit planned lifecycle scope")
-        if any(count != 1 for count in counts_by_query.values()):
-            raise ValueError("each inferential query requires exactly one planned_unit_count")
+            identity = count.semantic_identity()
+            if identity is None:
+                raise ValueError("SCIENTIFIC_REVIEW_REQUIRED: unresolved planned count scope")
+            if identity in semantic_count_scopes:
+                raise ValueError("duplicate planned_unit_count full semantic scope")
+            semantic_count_scopes.add(identity)
+        if any(count < 1 for count in counts_by_query.values()):
+            raise ValueError("each inferential query requires a planned_unit_count")
         expected_checksum = _record_checksum(self)
         if self.content_checksum != expected_checksum:
             raise ValueError("planned design content checksum mismatch")
@@ -545,43 +651,46 @@ class ExecutedDesignRecord(KernelModel):
     planned_design_checksum: Sha256
     experiment_block_id: NonBlankStr
     inferential_query_ids: tuple[NonBlankStr, ...] = Field(min_length=1)
-    sources: tuple[SourceRecord, ...] = Field(min_length=1)
-    evidence_records: tuple[EvidenceRecord, ...] = Field(min_length=1)
-    confirmation_events: tuple[ConfirmationEvent, ...] = ()
+    executed_input_ledger: ExecutedInputLedger
     event_registry: EventRegistry
     count_records: tuple[CanonicalCountRecord, ...] = Field(min_length=1)
     deviations: KnowledgeValue[tuple[DeviationRecord, ...]]
     final_sample_sheet_ref: NonBlankStr
     execution_log_refs: tuple[NonBlankStr, ...] = Field(min_length=1)
 
+    @property
+    def executed_input_ledger_id(self) -> str:
+        return self.executed_input_ledger.ledger_id
+
+    @property
+    def executed_input_ledger_checksum(self) -> str:
+        return self.executed_input_ledger.content_checksum
+
+    @property
+    def sources(self) -> tuple[SourceRecord, ...]:
+        return self.executed_input_ledger.sources
+
+    @property
+    def evidence_records(self) -> tuple[EvidenceRecord, ...]:
+        return self.executed_input_ledger.evidence_records
+
+    @property
+    def confirmation_events(self) -> tuple[ConfirmationEvent, ...]:
+        return self.executed_input_ledger.confirmation_events
+
     @model_validator(mode="after")
     def _execution_contract(self) -> Self:
+        checked_ledger = ExecutedInputLedger.model_validate(
+            self.executed_input_ledger.model_dump(mode="python")
+        )
         if len(set(self.inferential_query_ids)) != len(self.inferential_query_ids):
             raise ValueError("inferential_query_ids contains duplicates")
-        source_identifiers = [source.source_id for source in self.sources]
-        confirmation_identifiers = [event.event_id for event in self.confirmation_events]
-        if len(set(source_identifiers)) != len(source_identifiers):
-            raise ValueError("executed sources contain duplicate IDs")
-        if len(set(confirmation_identifiers)) != len(confirmation_identifiers):
-            raise ValueError("executed confirmations contain duplicate event IDs")
-        if any(source.source_context is not SourceContext.EXECUTED for source in self.sources):
-            raise ValueError("ExecutedDesignRecord accepts only executed source context")
-        source_ids = {source.source_id for source in self.sources}
-        evidence_ids = {record.evidence_id for record in self.evidence_records}
-        if len(evidence_ids) != len(self.evidence_records):
-            raise ValueError("executed evidence records contain duplicate IDs")
-        if any(record.source_id not in source_ids for record in self.evidence_records):
-            raise ValueError("executed evidence references a source outside the execution")
+        evidence_ids = {record.evidence_id for record in checked_ledger.evidence_records}
         referenced = _referenced_evidence_ids(
             (self.event_registry, self.count_records, self.deviations)
         )
         if not referenced.issubset(evidence_ids):
             raise ValueError("executed design has dangling evidence references")
-        if any(
-            not set(event.evidence_refs).issubset(evidence_ids)
-            for event in self.confirmation_events
-        ):
-            raise ValueError("executed confirmation references evidence outside the execution")
         if any(
             event.experiment_block_id != self.experiment_block_id
             for event in self.event_registry.events
@@ -604,6 +713,20 @@ class ExecutedDesignRecord(KernelModel):
             KnowledgeState.UNKNOWN,
         }:
             raise ValueError("execution deviations must be present, explicitly absent or UNKNOWN")
+        sample_sheets = tuple(
+            artifact
+            for artifact in checked_ledger.artifacts
+            if artifact.kind is ProspectiveArtifactKind.SAMPLE_SHEET
+        )
+        execution_logs = tuple(
+            artifact.artifact_id
+            for artifact in checked_ledger.artifacts
+            if artifact.kind is ProspectiveArtifactKind.EXECUTION_LOG
+        )
+        if self.final_sample_sheet_ref != sample_sheets[0].artifact_id:
+            raise ValueError("final sample sheet ref differs from executed ledger")
+        if self.execution_log_refs != execution_logs:
+            raise ValueError("execution log refs differ from executed ledger")
         expected_checksum = _record_checksum(self)
         if self.content_checksum != expected_checksum:
             raise ValueError("executed design content checksum mismatch")
@@ -728,36 +851,46 @@ def build_planned_design(
 def build_executed_design(
     *,
     planned_design: PlannedDesignRecord,
-    sources: tuple[SourceRecord, ...],
-    evidence_records: tuple[EvidenceRecord, ...],
-    confirmation_events: tuple[ConfirmationEvent, ...],
+    executed_input_ledger: ExecutedInputLedger,
     event_registry: EventRegistry,
     count_records: tuple[CanonicalCountRecord, ...],
-    deviations: tuple[DeviationRecord, ...] | KnowledgeValue[tuple[DeviationRecord, ...]],
+    deviations: KnowledgeValue[tuple[DeviationRecord, ...]],
     final_sample_sheet_ref: str,
     execution_log_refs: tuple[str, ...],
 ) -> ExecutedDesignRecord:
     """Create a new execution linked to, but never overwriting, a frozen plan."""
 
     PlannedDesignRecord.model_validate(planned_design.model_dump(mode="python"))
-    deviation_state: KnowledgeValue[tuple[DeviationRecord, ...]]
-    if isinstance(deviations, KnowledgeValue):
-        deviation_state = KnowledgeValue[tuple[DeviationRecord, ...]].model_validate(
-            deviations.model_dump(mode="python")
+    if not isinstance(deviations, KnowledgeValue):
+        raise ValueError(
+            "deviations requires an explicit KnowledgeValue; an empty tuple is ambiguous"
         )
-    elif deviations:
-        deviation_state = KnowledgeValue[tuple[DeviationRecord, ...]](
-            knowledge_state=KnowledgeState.PRESENT,
-            value=deviations,
-            evidence_ids=tuple(
-                sorted({evidence for item in deviations for evidence in item.evidence_refs})
-            ),
-        )
-    else:
-        deviation_state = KnowledgeValue[tuple[DeviationRecord, ...]](
-            knowledge_state=KnowledgeState.ABSENT_EXPLICIT,
-            evidence_ids=tuple(record.evidence_id for record in evidence_records),
-        )
+    checked_ledger = ExecutedInputLedger.model_validate(
+        executed_input_ledger.model_dump(mode="python")
+    )
+    for label, planned_items, executed_items, identifier in (
+        ("source", planned_design.sources, checked_ledger.sources, "source_id"),
+        (
+            "evidence",
+            planned_design.evidence_records,
+            checked_ledger.evidence_records,
+            "evidence_id",
+        ),
+        (
+            "confirmation",
+            planned_design.confirmation_events,
+            checked_ledger.confirmation_events,
+            "event_id",
+        ),
+    ):
+        planned_by_id = {getattr(item, identifier): item for item in planned_items}
+        for item in executed_items:
+            item_id = getattr(item, identifier)
+            if item_id in planned_by_id and item != planned_by_id[item_id]:
+                raise ValueError(f"shared {label} ID has conflicting content: {item_id}")
+    deviation_state = KnowledgeValue[tuple[DeviationRecord, ...]].model_validate(
+        deviations.model_dump(mode="python")
+    )
     return _build_addressed(
         ExecutedDesignRecord,
         id_field="execution_id",
@@ -767,9 +900,7 @@ def build_executed_design(
             "planned_design_checksum": planned_design.content_checksum,
             "experiment_block_id": planned_design.experiment_block_id,
             "inferential_query_ids": planned_design.inferential_query_ids,
-            "sources": sources,
-            "evidence_records": evidence_records,
-            "confirmation_events": confirmation_events,
+            "executed_input_ledger": checked_ledger,
             "event_registry": event_registry,
             "count_records": count_records,
             "deviations": deviation_state,
@@ -905,7 +1036,17 @@ def reconcile_plan_execution(
     ExecutedDesignRecord.model_validate(executed_design.model_dump(mode="python"))
     review_rationale: str | None = None
     differences: tuple[DeviationRecord, ...] = ()
-    if executed_design.deviations.knowledge_state is KnowledgeState.UNKNOWN:
+    if executed_design.event_registry != planned_design.event_registry:
+        review_rationale = (
+            "Executed event registry differs from the frozen plan; event reconciliation "
+            "requires scientific review."
+        )
+    elif executed_design.final_sample_sheet_ref != planned_design.sample_sheet_ref:
+        review_rationale = (
+            "Executed final sample sheet differs from the frozen plan artifact; artifact "
+            "reconciliation requires scientific review."
+        )
+    elif executed_design.deviations.knowledge_state is KnowledgeState.UNKNOWN:
         review_rationale = executed_design.deviations.rationale
     else:
         differences, review_rationale = _derived_count_differences(
@@ -957,9 +1098,12 @@ def reconcile_plan_execution(
 __all__ = [
     "COUNT_RECONCILIATION_REVIEW_ISSUE_ID",
     "INPUT_CLOSURE_REVIEW_ISSUE_ID",
+    "ConfirmationRelationKind",
+    "ConfirmationTarget",
     "DeviationRecord",
     "DeviationType",
     "ExecutedDesignRecord",
+    "ExecutedInputLedger",
     "PlanExecutionReconciliation",
     "PlannedDesignRecord",
     "ProspectiveArtifact",
@@ -970,6 +1114,7 @@ __all__ = [
     "SupportBindingScope",
     "SupportEvidenceBinding",
     "build_executed_design",
+    "build_executed_input_ledger",
     "build_planned_design",
     "build_prospective_artifact",
     "build_prospective_input_ledger",

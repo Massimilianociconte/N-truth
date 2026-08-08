@@ -372,16 +372,15 @@ def test_every_pipeline_query_has_one_complete_unswappable_report_section() -> N
 def test_reconciliation_derives_count_differences_and_unknown_is_not_absence() -> None:
     prospective = __import__("ntruth.schemas.prospective", fromlist=["reconcile_plan_execution"])
     plan = task6_fixture._plan()
+    ledger = task6_fixture._execution_ledger("review-count")
     execution = prospective.build_executed_design(
         planned_design=plan,
-        sources=(task6_fixture._source(SourceContext.EXECUTED),),
-        evidence_records=task6_fixture._execution_evidence(),
-        confirmation_events=(),
-        event_registry=task6_fixture._event_registry(executed=True),
+        executed_input_ledger=ledger,
+        event_registry=task6_fixture._event_registry(),
         count_records=(task6_fixture._count(CanonicalCountKind.OBSERVED_UNIT_COUNT, 3),),
-        deviations=(),
-        final_sample_sheet_ref="artifact://sample-sheet/review-executed",
-        execution_log_refs=("artifact://log/review-executed",),
+        deviations=task6_fixture._deviation_absent(),
+        final_sample_sheet_ref=task6_fixture._sample_sheet().artifact_id,
+        execution_log_refs=(ledger.artifacts[1].artifact_id,),
     )
     reconciliation = prospective.reconcile_plan_execution(plan, execution)
     assert reconciliation.deviations.knowledge_state is KnowledgeState.PRESENT
@@ -395,14 +394,12 @@ def test_reconciliation_derives_count_differences_and_unknown_is_not_absence() -
     )
     ambiguous = prospective.build_executed_design(
         planned_design=plan,
-        sources=(task6_fixture._source(SourceContext.EXECUTED),),
-        evidence_records=task6_fixture._execution_evidence(),
-        confirmation_events=(),
-        event_registry=task6_fixture._event_registry(executed=True),
+        executed_input_ledger=ledger,
+        event_registry=task6_fixture._event_registry(),
         count_records=(task6_fixture._count(CanonicalCountKind.OBSERVED_UNIT_COUNT, 3),),
         deviations=unknown,
-        final_sample_sheet_ref="artifact://sample-sheet/review-executed-unknown",
-        execution_log_refs=("artifact://log/review-executed-unknown",),
+        final_sample_sheet_ref=task6_fixture._sample_sheet().artifact_id,
+        execution_log_refs=(ledger.artifacts[1].artifact_id,),
     )
     reviewed = prospective.reconcile_plan_execution(plan, ambiguous)
     assert reviewed.status.value == "SCIENTIFIC_REVIEW_REQUIRED"
@@ -422,10 +419,10 @@ def test_plan_pins_queries_evidence_confirmations_and_event_referenced_timing() 
     plan = task6_fixture._plan()
     assert plan.event_registry.relative_timings
     assert plan.inferential_queries[0].id == plan.inferential_query_ids[0]
-    assert {
-        "evidence_records",
-        "confirmation_events",
-    } <= prospective.ExecutedDesignRecord.model_fields.keys()
+    assert "executed_input_ledger" in prospective.ExecutedDesignRecord.model_fields
+    assert {"evidence_records", "confirmation_events", "artifacts"} <= (
+        prospective.ExecutedInputLedger.model_fields.keys()
+    )
 
 
 def test_report_design_mode_embeds_and_verifies_actual_addressed_records() -> None:
@@ -484,9 +481,17 @@ def test_html_projects_complete_graph_proof_scope_pins_and_query_sections() -> N
 def test_handoff_items_are_typed_sourced_and_never_generated_recommendations() -> None:
     reporting = __import__("ntruth.schemas.report_bundle", fromlist=["HandoffItem"])
     item_type = _required(reporting, "HandoffItem")
-    assert {"category", "origin", "authority", "evidence_refs", "text"} <= (
-        item_type.model_fields.keys()
-    )
+    assert {
+        "category",
+        "origin",
+        "authority",
+        "evidence_refs",
+        "inferential_query_id",
+        "predicate_ids",
+        "question_ids",
+        "user_note",
+    } <= (item_type.model_fields.keys())
+    assert "text" not in item_type.model_fields
     assert "structural_requirements" not in reporting.StatisticalHandoff.model_fields
     assert "unresolved_questions" not in reporting.StatisticalHandoff.model_fields
 

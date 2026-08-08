@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Annotated, Any, Literal, Self
 
 from pydantic import Field, JsonValue, model_validator
 
+from ntruth.parser_ai.contract import ParserCandidateOutput
 from ntruth.schemas.adequacy import DesignAdequacyEvaluation
 from ntruth.schemas.authority import AuthorityType
 from ntruth.schemas.claims import DerivedClaimSet
@@ -21,7 +22,11 @@ from ntruth.schemas.coverage import ProfileCoverageStatement, ScenarioCoverage
 from ntruth.schemas.execution import V8ExecutionManifest
 from ntruth.schemas.graph_v8 import V8ExperimentGraph
 from ntruth.schemas.kernel import KernelModel, NonBlankStr
-from ntruth.schemas.knowledge import KnowledgeState, KnowledgeValue
+from ntruth.schemas.knowledge import (
+    KnowledgeState,
+    KnowledgeValue,
+    ensure_unambiguous_scientific_payload,
+)
 from ntruth.schemas.prospective import (
     ExecutedDesignRecord,
     PlanExecutionReconciliation,
@@ -88,18 +93,39 @@ class HandoffItem(KernelModel):
     origin: HandoffItemOrigin
     authority: AuthorityType
     evidence_refs: tuple[NonBlankStr, ...] = Field(min_length=1)
-    text: NonBlankStr
-    text_checksum: Sha256
+    inferential_query_id: NonBlankStr
+    predicate_ids: tuple[NonBlankStr, ...] = ()
+    question_ids: tuple[NonBlankStr, ...] = ()
+    user_note: NonBlankStr | None = None
 
     @model_validator(mode="after")
-    def _no_generated_strategy_recommendation(self) -> Self:
-        if self.text_checksum != content_checksum(self.text):
-            raise ValueError("handoff item text checksum mismatch")
-        if self.origin is HandoffItemOrigin.USER_SUPPLIED and self.authority in {
-            AuthorityType.SYSTEM_INFERENCE,
-            AuthorityType.RULE_DERIVATION,
-        }:
-            raise ValueError("user-supplied handoff must retain human authority")
+    def _structured_lineage_only(self) -> Self:
+        if len(set(self.evidence_refs)) != len(self.evidence_refs):
+            raise ValueError("handoff evidence refs contain duplicates")
+        if len(set(self.predicate_ids)) != len(self.predicate_ids):
+            raise ValueError("handoff predicate IDs contain duplicates")
+        if len(set(self.question_ids)) != len(self.question_ids):
+            raise ValueError("handoff question IDs contain duplicates")
+        if self.category is HandoffItemCategory.USER_NOTE:
+            if self.origin is not HandoffItemOrigin.USER_SUPPLIED or self.authority in {
+                AuthorityType.SYSTEM_INFERENCE,
+                AuthorityType.RULE_DERIVATION,
+            }:
+                raise ValueError("USER_NOTE must retain human user-supplied authority")
+            if self.user_note is None or self.predicate_ids or self.question_ids:
+                raise ValueError("USER_NOTE carries only explicitly human-supplied text")
+            return self
+        if self.origin is not HandoffItemOrigin.VERIFIED_RECORD:
+            raise ValueError("structured handoff constraints require VERIFIED_RECORD origin")
+        if self.user_note is not None:
+            raise ValueError("verified handoff items cannot carry free text")
+        if self.category is HandoffItemCategory.STRUCTURAL_CONSTRAINT:
+            if not self.predicate_ids or self.question_ids:
+                raise ValueError("structural handoff requires only verified predicate IDs")
+        elif self.category is HandoffItemCategory.UNRESOLVED_QUESTION and (
+            not self.question_ids or self.predicate_ids
+        ):
+            raise ValueError("unresolved handoff requires only report question IDs")
         return self
 
 
@@ -109,15 +135,20 @@ def build_handoff_item(
     origin: HandoffItemOrigin,
     authority: AuthorityType,
     evidence_refs: tuple[str, ...],
-    text: str,
+    inferential_query_id: str,
+    predicate_ids: tuple[str, ...] = (),
+    question_ids: tuple[str, ...] = (),
+    user_note: str | None = None,
 ) -> HandoffItem:
     return HandoffItem(
         category=category,
         origin=origin,
         authority=authority,
         evidence_refs=evidence_refs,
-        text=text,
-        text_checksum=content_checksum(text),
+        inferential_query_id=inferential_query_id,
+        predicate_ids=predicate_ids,
+        question_ids=question_ids,
+        user_note=user_note,
     )
 
 
@@ -259,6 +290,8 @@ class ConflictRecord(KernelModel):
             raise ValueError("conflict evidence IDs contain duplicates")
         if len({content_checksum(value) for value in self.retained_values}) < 2:
             raise ValueError("conflict requires at least two distinct retained values")
+        for value in self.retained_values:
+            ensure_unambiguous_scientific_payload(value)
         return self
 
 
@@ -325,6 +358,10 @@ class QueryReportSection(KernelModel):
     count_record_ids: tuple[NonBlankStr, ...] = Field(min_length=1)
     scenario_coverages: tuple[ScenarioCoverage, ...] = Field(min_length=1)
     profile_coverage: ProfileCoverageStatement
+    ai_candidates: KnowledgeValue[tuple[ParserCandidateOutput, ...]]
+    human_confirmations: KnowledgeValue[tuple[ConfirmationEvent, ...]]
+    conflicts: KnowledgeValue[tuple[ConflictRecord, ...]]
+    sensitivities: KnowledgeValue[tuple[SensitivityRecord, ...]]
     questions: tuple[ReportQuestion, ...] = Field(min_length=1)
 
     @model_validator(mode="after")
@@ -336,6 +373,16 @@ class QueryReportSection(KernelModel):
             raise ValueError("query section adequacy belongs to another query")
         if any(item.inferential_query_id != query_id for item in self.questions):
             raise ValueError("query section question belongs to another query")
+        if sum(question.primary for question in self.questions) != 1:
+            raise ValueError("each query section requires exactly one primary question")
+        for label, value in (
+            ("AI candidate", self.ai_candidates),
+            ("confirmation", self.human_confirmations),
+            ("conflict", self.conflicts),
+            ("sensitivity", self.sensitivities),
+        ):
+            if value.query_scope_id != query_id:
+                raise ValueError(f"query section {label} scope belongs to another query")
         if self.profile_coverage.profile_id != self.inferential_query.profile_id:
             raise ValueError("query section profile coverage belongs to another profile")
         if any(
@@ -343,6 +390,32 @@ class QueryReportSection(KernelModel):
         ):
             raise ValueError("query section scenario coverage belongs to another profile")
         return self
+
+
+def _empty_or_scoped_knowledge[T](
+    value: KnowledgeValue[tuple[T, ...]],
+    *,
+    query_id: str,
+    selected: tuple[T, ...] | None = None,
+    selected_evidence_ids: tuple[str, ...] | None = None,
+) -> KnowledgeValue[tuple[T, ...]]:
+    """Create an exact query-local projection without inventing missing evidence."""
+
+    if value.knowledge_state is KnowledgeState.PRESENT:
+        items = value.value or () if selected is None else selected
+        if not items:
+            raise ValueError(f"PRESENT report axis has no records for inferential query {query_id}")
+        payload = value.model_dump(mode="python")
+        payload.update(value=items, query_scope_id=query_id, claim_scope_id=None)
+        if selected_evidence_ids is not None:
+            payload["evidence_ids"] = selected_evidence_ids
+        return KnowledgeValue[tuple[T, ...]].model_validate(payload)
+    if value.knowledge_state is KnowledgeState.CONFLICTING:
+        raise ValueError("CONFLICTING aggregate axes require a reviewed query projection")
+    payload = value.model_dump(mode="python")
+    payload["query_scope_id"] = query_id
+    payload["claim_scope_id"] = None
+    return KnowledgeValue[tuple[T, ...]].model_validate(payload)
 
 
 class StatisticalHandoff(KernelModel):
@@ -443,7 +516,7 @@ class ReportBundle(KernelModel):
     prospective_input_ledgers: KnowledgeValue[tuple[ProspectiveInputLedger, ...]]
     source_records: tuple[SourceRecord, ...] = Field(min_length=1)
     evidence_records: tuple[EvidenceRecord, ...] = Field(min_length=1)
-    ai_candidates: KnowledgeValue[tuple[JsonValue, ...]]
+    ai_candidates: KnowledgeValue[tuple[ParserCandidateOutput, ...]]
     human_confirmations: KnowledgeValue[tuple[ConfirmationEvent, ...]]
     conflicts: KnowledgeValue[tuple[ConflictRecord, ...]]
     confirmed_graph: V8ExperimentGraph
@@ -481,7 +554,6 @@ class ReportBundle(KernelModel):
             raise ValueError("ReportBundle contains duplicate evidence records")
         known_sources = set(source_ids)
         known_evidence = set(evidence_ids)
-        evidence_by_id = {record.evidence_id: record for record in self.evidence_records}
         if any(record.source_id not in known_sources for record in self.evidence_records):
             raise ValueError("ReportBundle evidence references an unknown source")
         for label, value in (
@@ -494,6 +566,16 @@ class ReportBundle(KernelModel):
             if not set(value.evidence_ids).issubset(known_evidence):
                 raise ValueError(f"ReportBundle {label} has dangling evidence IDs")
             if not set(value.source_scope_ids).issubset(known_sources):
+                raise ValueError(f"ReportBundle {label} has dangling source-scope IDs")
+        for label, design_value in (
+            ("planned_design_record", self.design_record_context.planned_design_record),
+            ("executed_design_record", self.design_record_context.executed_design_record),
+            ("reconciliation_record", self.design_record_context.reconciliation_record),
+            ("retrospective_source_ids", self.design_record_context.retrospective_source_ids),
+        ):
+            if not set(design_value.evidence_ids).issubset(known_evidence):
+                raise ValueError(f"ReportBundle {label} has dangling evidence IDs")
+            if not set(design_value.source_scope_ids).issubset(known_sources):
                 raise ValueError(f"ReportBundle {label} has dangling source-scope IDs")
         if self.design_record_context.mode is ReportDesignContext.UNVERIFIED_RETROSPECTIVE:
             if self.prospective_input_ledgers.knowledge_state is not KnowledgeState.NOT_APPLICABLE:
@@ -518,17 +600,46 @@ class ReportBundle(KernelModel):
                 identifier="evidence_id",
                 label="evidence",
             )
+            if set(self.prospective_input_ledgers.evidence_ids) != {
+                record.evidence_id for record in ledger_evidence
+            }:
+                raise ValueError("prospective ledger evidence projection is not exact")
             ledger_confirmations = _ordered_addressed_union(
                 tuple(ledger.confirmation_events for ledger in ledgers),
                 identifier="event_id",
                 label="confirmation",
             )
-            if self.source_records != ledger_sources or self.evidence_records != ledger_evidence:
+            execution = self.design_record_context.executed_design_record.value
+            if execution is not None:
+                checked_execution = ExecutedDesignRecord.model_validate(
+                    execution.model_dump(mode="python")
+                )
+                executed_ledger = checked_execution.executed_input_ledger
+                report_sources = _ordered_addressed_union(
+                    (ledger_sources, executed_ledger.sources),
+                    identifier="source_id",
+                    label="source",
+                )
+                report_evidence = _ordered_addressed_union(
+                    (ledger_evidence, executed_ledger.evidence_records),
+                    identifier="evidence_id",
+                    label="evidence",
+                )
+                report_confirmations = _ordered_addressed_union(
+                    (ledger_confirmations, executed_ledger.confirmation_events),
+                    identifier="event_id",
+                    label="confirmation",
+                )
+            else:
+                report_sources = ledger_sources
+                report_evidence = ledger_evidence
+                report_confirmations = ledger_confirmations
+            if self.source_records != report_sources or self.evidence_records != report_evidence:
                 raise ValueError("report source/evidence projection differs from input ledgers")
-            if ledger_confirmations:
+            if report_confirmations:
                 if (
                     self.human_confirmations.knowledge_state is not KnowledgeState.PRESENT
-                    or self.human_confirmations.value != ledger_confirmations
+                    or self.human_confirmations.value != report_confirmations
                 ):
                     raise ValueError("report confirmations differ from input ledgers")
             elif self.human_confirmations.knowledge_state is KnowledgeState.PRESENT:
@@ -568,7 +679,6 @@ class ReportBundle(KernelModel):
                 plan.id_convention_ref,
             }.issubset(artifact_ids):
                 raise ValueError("embedded plan artifact pins differ from input ledgers")
-            execution = self.design_record_context.executed_design_record.value
             if execution is not None:
                 if any(
                     execution.event_registry != context.request.causal_aggregate.event_registry
@@ -580,49 +690,98 @@ class ReportBundle(KernelModel):
                     for record in execution.count_records
                 ):
                     raise ValueError("embedded execution counts differ from verified registry")
-                if not {source.source_id for source in execution.sources}.issubset(
-                    source.source_id for source in ledger_sources
+                if (
+                    execution.sources != execution.executed_input_ledger.sources
+                    or execution.evidence_records
+                    != execution.executed_input_ledger.evidence_records
                 ):
-                    raise ValueError("embedded execution sources differ from input ledgers")
-                if not {record.evidence_id for record in execution.evidence_records}.issubset(
-                    record.evidence_id for record in ledger_evidence
-                ):
-                    raise ValueError("embedded execution evidence differs from input ledgers")
+                    raise ValueError("embedded execution differs from its addressed ledger")
         if self.human_confirmations.knowledge_state is KnowledgeState.PRESENT and any(
             not set(event.evidence_refs).issubset(known_evidence)
             for event in self.human_confirmations.value or ()
         ):
             raise ValueError("ReportBundle confirmation has dangling evidence refs")
+        if self.human_confirmations.knowledge_state is KnowledgeState.PRESENT and (
+            self.human_confirmations.evidence_ids
+            != tuple(
+                dict.fromkeys(
+                    evidence_id
+                    for event in self.human_confirmations.value or ()
+                    for evidence_id in event.evidence_refs
+                )
+            )
+        ):
+            raise ValueError("ReportBundle confirmation evidence projection is not exact")
         if self.conflicts.knowledge_state is KnowledgeState.PRESENT and any(
             not set(conflict.evidence_record_ids).issubset(known_evidence)
             for conflict in self.conflicts.value or ()
         ):
             raise ValueError("ReportBundle conflict has dangling evidence refs")
+        if self.conflicts.knowledge_state is KnowledgeState.PRESENT and (
+            self.conflicts.evidence_ids
+            != tuple(
+                dict.fromkeys(
+                    evidence_id
+                    for conflict in self.conflicts.value or ()
+                    for evidence_id in conflict.evidence_record_ids
+                )
+            )
+        ):
+            raise ValueError("ReportBundle conflict evidence projection is not exact")
         if any(
             not set(item.evidence_refs).issubset(known_evidence)
             for item in self.statistical_handoff.items
         ):
             raise ValueError("ReportBundle handoff item has dangling evidence refs")
-        for item in self.statistical_handoff.items:
-            if item.origin is HandoffItemOrigin.VERIFIED_RECORD and not any(
-                evidence_by_id[evidence_id].original_text == item.text
-                for evidence_id in item.evidence_refs
-            ):
-                raise ValueError(
-                    "verified handoff text must exactly match a referenced EvidenceRecord"
-                )
         query_ids = [claim_set.inferential_query_id for claim_set in self.claim_sets]
         if len(set(query_ids)) != len(query_ids):
             raise ValueError("ReportBundle contains duplicate claim sets for a query")
         known_queries = set(query_ids)
-        known_claim_ids = {
-            claim.claim_id for claim_set in self.claim_sets for claim in claim_set.claims
+        claims_by_id = {
+            claim.claim_id: claim for claim_set in self.claim_sets for claim in claim_set.claims
         }
-        if self.sensitivities.knowledge_state is KnowledgeState.PRESENT and any(
-            record.derived_claim_id not in known_claim_ids
-            for record in self.sensitivities.value or ()
+        if self.conflicts.knowledge_state is KnowledgeState.PRESENT and any(
+            not set(record.inferential_query_ids).issubset(known_queries)
+            for record in self.conflicts.value or ()
         ):
-            raise ValueError("ReportBundle sensitivity references an unknown derived claim")
+            raise ValueError("ReportBundle conflict references a query outside the report")
+        if self.conflicts.knowledge_state is KnowledgeState.PRESENT:
+            conflict_ids = [record.conflict_id for record in self.conflicts.value or ()]
+            if len(set(conflict_ids)) != len(conflict_ids):
+                raise ValueError("ReportBundle contains duplicate conflict IDs")
+        sensitivity_by_id = {
+            record.sensitivity_id: record for record in self.sensitivities.value or ()
+        }
+        if len(sensitivity_by_id) != len(self.sensitivities.value or ()):
+            raise ValueError("ReportBundle contains duplicate sensitivity IDs")
+        if self.human_confirmations.knowledge_state is KnowledgeState.PRESENT and any(
+            not set(event.sensitivity_record_ids).issubset(sensitivity_by_id)
+            for event in self.human_confirmations.value or ()
+        ):
+            raise ValueError("ReportBundle confirmation has dangling sensitivity refs")
+        if self.sensitivities.knowledge_state is KnowledgeState.PRESENT:
+            for record in self.sensitivities.value or ():
+                claim = claims_by_id.get(record.derived_claim_id)
+                if claim is None:
+                    raise ValueError("ReportBundle sensitivity references an unknown derived claim")
+                traced_predicates = {
+                    reference.predicate_id
+                    for step in claim.proof_trace
+                    for reference in step.predicate_references
+                }
+                if record.decisive_predicate_id not in (
+                    set(claim.required_predicates) & traced_predicates
+                ):
+                    raise ValueError(
+                        "sensitivity decisive predicate is not in the derived claim proof"
+                    )
+                if record.sensitivity_id not in claim.sensitivity_records:
+                    raise ValueError("sensitivity lacks bidirectional derived-claim linkage")
+        for claim in claims_by_id.values():
+            for sensitivity_id in claim.sensitivity_records:
+                linked_record = sensitivity_by_id.get(sensitivity_id)
+                if linked_record is None or linked_record.derived_claim_id != claim.claim_id:
+                    raise ValueError("derived claim has dangling bidirectional sensitivity")
         context_query_ids = [item.request.query.id for item in self.verified_pipeline_contexts]
         section_query_ids = [item.inferential_query.id for item in self.query_sections]
         if query_ids != context_query_ids or query_ids != section_query_ids:
@@ -666,10 +825,69 @@ class ReportBundle(KernelModel):
         for context, section in zip(
             self.verified_pipeline_contexts, self.query_sections, strict=True
         ):
+            query_id = context.request.query.id
             expected_count_ids = tuple(
-                item.count_id
-                for item in self.count_registry.records_for_query(context.request.query.id)
+                item.count_id for item in self.count_registry.records_for_query(query_id)
             )
+            expected_candidates = _empty_or_scoped_knowledge(
+                self.ai_candidates,
+                query_id=query_id,
+                selected=(
+                    self.ai_candidates.value
+                    if self.ai_candidates.knowledge_state is KnowledgeState.PRESENT
+                    and self.ai_candidates.query_scope_id == query_id
+                    else ()
+                ),
+            )
+            expected_confirmations = _empty_or_scoped_knowledge(
+                self.human_confirmations,
+                query_id=query_id,
+                selected=tuple(
+                    event
+                    for event in self.human_confirmations.value or ()
+                    if event.confirmed_value.query_scope_id == query_id
+                ),
+                selected_evidence_ids=tuple(
+                    dict.fromkeys(
+                        evidence_id
+                        for event in self.human_confirmations.value or ()
+                        if event.confirmed_value.query_scope_id == query_id
+                        for evidence_id in event.evidence_refs
+                    )
+                ),
+            )
+            expected_conflicts = _empty_or_scoped_knowledge(
+                self.conflicts,
+                query_id=query_id,
+                selected=tuple(
+                    item
+                    for item in self.conflicts.value or ()
+                    if query_id in item.inferential_query_ids
+                ),
+                selected_evidence_ids=tuple(
+                    dict.fromkeys(
+                        evidence_id
+                        for item in self.conflicts.value or ()
+                        if query_id in item.inferential_query_ids
+                        for evidence_id in item.evidence_record_ids
+                    )
+                ),
+            )
+            expected_sensitivities = _empty_or_scoped_knowledge(
+                self.sensitivities,
+                query_id=query_id,
+                selected=tuple(
+                    item
+                    for item in self.sensitivities.value or ()
+                    if claims_by_id.get(item.derived_claim_id) is not None
+                    and claims_by_id[item.derived_claim_id].inferential_query_id == query_id
+                ),
+            )
+            expected_questions = tuple(
+                question for question in self.questions if question.inferential_query_id == query_id
+            )
+            if section.questions != expected_questions:
+                raise ValueError("query questions differ from the exact global projection")
             if (
                 section.inferential_query != context.request.query
                 or section.claim_set != context.result.claim_set
@@ -677,6 +895,10 @@ class ReportBundle(KernelModel):
                 or section.count_record_ids != expected_count_ids
                 or section.scenario_coverages != context.result.scenario_coverages
                 or section.profile_coverage != context.result.profile_coverage
+                or section.ai_candidates != expected_candidates
+                or section.human_confirmations != expected_confirmations
+                or section.conflicts != expected_conflicts
+                or section.sensitivities != expected_sensitivities
             ):
                 raise ValueError("query report section differs from its verified context")
         if self.design_record_context.mode is ReportDesignContext.UNVERIFIED_RETROSPECTIVE:
@@ -703,6 +925,68 @@ class ReportBundle(KernelModel):
             raise ValueError("count record is outside the report claim queries")
         if any(question.inferential_query_id not in known_queries for question in self.questions):
             raise ValueError("question is outside the report claim queries")
+        question_ids = [question.question_id for question in self.questions]
+        if len(set(question_ids)) != len(question_ids):
+            raise ValueError("ReportBundle contains duplicate question IDs")
+        if any(
+            sum(
+                question.primary
+                for question in self.questions
+                if question.inferential_query_id == query_id
+            )
+            != 1
+            for query_id in known_queries
+        ):
+            raise ValueError("each inferential query requires exactly one primary question")
+        questions_by_id = {question.question_id: question for question in self.questions}
+        predicates_by_query = {
+            query_id: {
+                predicate_id
+                for claim_set in self.claim_sets
+                if claim_set.inferential_query_id == query_id
+                for claim in claim_set.claims
+                for predicate_id in claim.required_predicates
+            }
+            for query_id in known_queries
+        }
+        predicate_evidence_by_query = {
+            query_id: {
+                predicate_id: {
+                    evidence_id
+                    for claim_set in self.claim_sets
+                    if claim_set.inferential_query_id == query_id
+                    for claim in claim_set.claims
+                    for step in claim.proof_trace
+                    for reference in step.predicate_references
+                    if reference.predicate_id == predicate_id
+                    for evidence_id in reference.predicate_value.evidence_ids
+                }
+                for predicate_id in predicates_by_query[query_id]
+            }
+            for query_id in known_queries
+        }
+        for item in self.statistical_handoff.items:
+            if item.inferential_query_id not in known_queries:
+                raise ValueError("handoff item references a query outside the report")
+            if not set(item.predicate_ids).issubset(predicates_by_query[item.inferential_query_id]):
+                raise ValueError("handoff structural constraint lacks verified predicate lineage")
+            predicate_evidence = {
+                evidence_id
+                for predicate_id in item.predicate_ids
+                for evidence_id in predicate_evidence_by_query[item.inferential_query_id][
+                    predicate_id
+                ]
+            }
+            if item.predicate_ids and not set(item.evidence_refs).issubset(predicate_evidence):
+                raise ValueError(
+                    "handoff structural evidence differs from verified predicate proof"
+                )
+            if any(
+                question_id not in questions_by_id
+                or questions_by_id[question_id].inferential_query_id != item.inferential_query_id
+                for question_id in item.question_ids
+            ):
+                raise ValueError("handoff unresolved question lacks exact report-question lineage")
         if any(
             coverage.profile_id != self.profile_coverage.profile_id
             for coverage in self.scenario_coverages
@@ -740,7 +1024,7 @@ def build_report_bundle(
     prospective_input_ledgers: KnowledgeValue[tuple[ProspectiveInputLedger, ...]],
     source_records: tuple[SourceRecord, ...],
     evidence_records: tuple[EvidenceRecord, ...],
-    ai_candidates: KnowledgeValue[Any],
+    ai_candidates: KnowledgeValue[tuple[ParserCandidateOutput, ...]],
     human_confirmations: KnowledgeValue[tuple[ConfirmationEvent, ...]],
     conflicts: KnowledgeValue[tuple[ConflictRecord, ...]],
     sensitivities: KnowledgeValue[tuple[SensitivityRecord, ...]],
@@ -770,6 +1054,42 @@ def build_report_bundle(
     if any(context.result.execution_manifest != execution_manifest for context in contexts[1:]):
         raise ValueError("verified pipeline contexts do not share one execution manifest")
 
+    if prospective_input_ledgers.knowledge_state is KnowledgeState.PRESENT:
+        checked_ledgers = tuple(
+            ProspectiveInputLedger.model_validate(item.model_dump(mode="python"))
+            for item in prospective_input_ledgers.value or ()
+        )
+        planned_sources = _ordered_addressed_union(
+            tuple(item.sources for item in checked_ledgers),
+            identifier="source_id",
+            label="source",
+        )
+        planned_evidence = _ordered_addressed_union(
+            tuple(item.evidence_records for item in checked_ledgers),
+            identifier="evidence_id",
+            label="evidence",
+        )
+        execution = design_record_context.executed_design_record.value
+        if execution is not None:
+            checked_execution = ExecutedDesignRecord.model_validate(
+                execution.model_dump(mode="python")
+            )
+            expected_sources = _ordered_addressed_union(
+                (planned_sources, checked_execution.executed_input_ledger.sources),
+                identifier="source_id",
+                label="source",
+            )
+            expected_evidence = _ordered_addressed_union(
+                (planned_evidence, checked_execution.executed_input_ledger.evidence_records),
+                identifier="evidence_id",
+                label="evidence",
+            )
+        else:
+            expected_sources = planned_sources
+            expected_evidence = planned_evidence
+        if source_records != expected_sources or evidence_records != expected_evidence:
+            raise ValueError("report source/evidence projection differs from addressed ledgers")
+
     questions_by_query = {
         query_id: tuple(
             question for question in questions if question.inferential_query_id == query_id
@@ -780,8 +1100,22 @@ def build_report_bundle(
         raise ValueError("every verified query requires at least one report question")
     if any(question.inferential_query_id not in query_ids for question in questions):
         raise ValueError("report question references an unverified query")
+    if any(
+        sum(question.primary for question in questions_by_query[query_id]) != 1
+        for query_id in query_ids
+    ):
+        raise ValueError("every verified query requires exactly one primary question")
 
     claim_sets = tuple(context.result.claim_set for context in contexts)
+    claims_by_id = {claim.claim_id: claim for claim_set in claim_sets for claim in claim_set.claims}
+    if conflicts.knowledge_state is KnowledgeState.PRESENT and any(
+        not set(item.inferential_query_ids).issubset(query_ids) for item in conflicts.value or ()
+    ):
+        raise ValueError("report conflict references a query outside verified queries")
+    if sensitivities.knowledge_state is KnowledgeState.PRESENT and any(
+        item.derived_claim_id not in claims_by_id for item in sensitivities.value or ()
+    ):
+        raise ValueError("report sensitivity references an unknown derived claim")
     adequacy_evaluations = tuple(
         evaluation
         for context in contexts
@@ -800,6 +1134,61 @@ def build_report_bundle(
             ),
             scenario_coverages=context.result.scenario_coverages,
             profile_coverage=context.result.profile_coverage,
+            ai_candidates=_empty_or_scoped_knowledge(
+                ai_candidates,
+                query_id=context.request.query.id,
+                selected=(
+                    ai_candidates.value
+                    if ai_candidates.knowledge_state is KnowledgeState.PRESENT
+                    and ai_candidates.query_scope_id == context.request.query.id
+                    else ()
+                ),
+            ),
+            human_confirmations=_empty_or_scoped_knowledge(
+                human_confirmations,
+                query_id=context.request.query.id,
+                selected=tuple(
+                    event
+                    for event in human_confirmations.value or ()
+                    if event.confirmed_value.query_scope_id == context.request.query.id
+                ),
+                selected_evidence_ids=tuple(
+                    dict.fromkeys(
+                        evidence_id
+                        for event in human_confirmations.value or ()
+                        if event.confirmed_value.query_scope_id == context.request.query.id
+                        for evidence_id in event.evidence_refs
+                    )
+                ),
+            ),
+            conflicts=_empty_or_scoped_knowledge(
+                conflicts,
+                query_id=context.request.query.id,
+                selected=tuple(
+                    item
+                    for item in conflicts.value or ()
+                    if context.request.query.id in item.inferential_query_ids
+                ),
+                selected_evidence_ids=tuple(
+                    dict.fromkeys(
+                        evidence_id
+                        for item in conflicts.value or ()
+                        if context.request.query.id in item.inferential_query_ids
+                        for evidence_id in item.evidence_record_ids
+                    )
+                ),
+            ),
+            sensitivities=_empty_or_scoped_knowledge(
+                sensitivities,
+                query_id=context.request.query.id,
+                selected=tuple(
+                    item
+                    for item in sensitivities.value or ()
+                    if claims_by_id.get(item.derived_claim_id) is not None
+                    and claims_by_id[item.derived_claim_id].inferential_query_id
+                    == context.request.query.id
+                ),
+            ),
             questions=questions_by_query[context.request.query.id],
         )
         for context in contexts

@@ -247,15 +247,19 @@ def _submission(*, include_coverage: bool = True) -> tuple[object, object]:
                     category=module.HandoffItemCategory.STRUCTURAL_CONSTRAINT,
                     origin=module.HandoffItemOrigin.VERIFIED_RECORD,
                     authority="EXPERT_ADJUDICATION",
-                    evidence_refs=("EV-HANDOFF-STRUCTURE",),
-                    text=handoff_text_by_evidence["EV-HANDOFF-STRUCTURE"],
+                    evidence_refs=request.predicate_values[
+                        next(iter(request.predicate_values))
+                    ].evidence_ids,
+                    inferential_query_id=query_id,
+                    predicate_ids=(next(iter(request.predicate_values)),),
                 ),
                 module.build_handoff_item(
                     category=module.HandoffItemCategory.UNRESOLVED_QUESTION,
                     origin=module.HandoffItemOrigin.VERIFIED_RECORD,
                     authority="EXPERT_ADJUDICATION",
                     evidence_refs=("EV-HANDOFF-QUESTION",),
-                    text=handoff_text_by_evidence["EV-HANDOFF-QUESTION"],
+                    inferential_query_id=query_id,
+                    question_ids=("QUESTION-QD-V8-001",),
                 ),
             ),
         ),
@@ -308,7 +312,7 @@ def test_quick_design_v8_fails_closed_without_scenario_coverage() -> None:
         )
 
 
-def test_quick_design_v8_propagates_task4_verifier_failure() -> None:
+def test_quick_design_v8_revalidates_tampered_submission_before_task4() -> None:
     module, submission = _submission()
     request = submission.pipeline_request
     malformed_graph = request.graph.model_copy(
@@ -320,7 +324,7 @@ def test_quick_design_v8_propagates_task4_verifier_failure() -> None:
         update={"pipeline_request": request.model_copy(update={"graph": malformed_graph})}
     )
 
-    with pytest.raises(module.V8PipelineVerificationError):
+    with pytest.raises(ValueError, match="graph does not contain"):
         module.run_quick_design_v8(
             malformed,
             conformance_bundle=load_canonical_bundle(runtime_fixture.REPOSITORY_ROOT),

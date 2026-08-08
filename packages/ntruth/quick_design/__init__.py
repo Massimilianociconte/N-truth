@@ -1,8 +1,8 @@
-"""Quick Design Session: valore prospettico immediato (PRD v7 §1.1, §6.1).
+"""PRD v8 Quick Design service plus explicitly qualified v7 compatibility adapters.
 
-Fetta verticale minima per ``simple_cell_culture``: dominio + CLI + export,
-senza UI. I target <10 minuti e <=3 domande sono ipotesi di prodotto
-PROVISIONAL, non validatori scientifici.
+The canonical service emits only verified deterministic v8 results and neutral
+HANDOFF_ONLY reports.  Historical v7 helpers remain available only under names
+that carry the ``v7`` qualifier.
 """
 
 from ntruth.quick_design.export import (
@@ -32,6 +32,7 @@ from ntruth.quick_design.v8 import (
     QuickDesignV8Result,
     QuickDesignV8Submission,
     run_quick_design_v8,
+    validate_raw_wizard_submission,
 )
 
 __all__ = [
@@ -47,4 +48,5 @@ __all__ = [
     "freeze_v7_plan",
     "run_quick_design_v7_session",
     "run_quick_design_v8",
+    "validate_raw_wizard_submission",
 ]

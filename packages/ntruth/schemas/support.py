@@ -219,10 +219,14 @@ class SensitivityRecord(KernelModel):
 
     @model_validator(mode="after")
     def _material_counterfactual(self) -> SensitivityRecord:
+        from ntruth.mvt_a.stage_schema import assert_no_final_scientific_fields
+
         ensure_unambiguous_scientific_payload(self.current_value)
         ensure_unambiguous_scientific_payload(self.counterfactual_value)
         ensure_unambiguous_scientific_payload(self.current_output)
         ensure_unambiguous_scientific_payload(self.counterfactual_output)
+        assert_no_final_scientific_fields(self.current_output)
+        assert_no_final_scientific_fields(self.counterfactual_output)
         if self.current_value == self.counterfactual_value:
             raise ValueError("sensitivity requires a distinct counterfactual value")
         return self

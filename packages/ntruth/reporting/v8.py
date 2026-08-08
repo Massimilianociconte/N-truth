@@ -168,6 +168,10 @@ def render_report_bundle_html(report: ReportBundle) -> str:
         f"<td>{_json_text(tuple(item.evaluation_id for item in section.adequacy_evaluations))}</td>"
         f"<td>{_json_text(tuple(item.status.value for item in section.scenario_coverages))}</td>"
         f"<td>{_e(section.profile_coverage.statement_id)}</td>"
+        f"<td>{_knowledge(section.ai_candidates)}</td>"
+        f"<td>{_knowledge(section.human_confirmations)}</td>"
+        f"<td>{_knowledge(section.conflicts)}</td>"
+        f"<td>{_knowledge(section.sensitivities)}</td>"
         f"<td>{_json_text(tuple(item.question_id for item in section.questions))}</td>"
         "</tr>"
         for section in report.query_sections
@@ -178,9 +182,28 @@ def render_report_bundle_html(report: ReportBundle) -> str:
         f"<td>{_e(item.origin.value)}</td>"
         f"<td>{_e(item.authority.value)}</td>"
         f"<td>{_json_text(item.evidence_refs)}</td>"
-        f"<td>{_e(item.text)}</td>"
+        f"<td>{_e(item.inferential_query_id)}</td>"
+        f"<td>{_json_text(item.predicate_ids)}</td>"
+        f"<td>{_json_text(item.question_ids)}</td>"
+        f"<td>{_e(item.user_note or '')}</td>"
         "</tr>"
         for item in report.statistical_handoff.items
+    )
+    prospective_ledger_rows = "".join(
+        "<tr>"
+        f"<td>{_e(ledger.ledger_id)}</td>"
+        f"<td>{_e(ledger.content_checksum)}</td>"
+        f"<td>{_e(ledger.request_checksum)}</td>"
+        f"<td>{_json_text(tuple(item.artifact_id for item in ledger.artifacts))}</td>"
+        "</tr>"
+        for ledger in report.prospective_input_ledgers.value or ()
+    )
+    execution = context.executed_design_record.value
+    executed_ledger = execution.executed_input_ledger if execution is not None else None
+    executed_ledger_projection = (
+        _json_text(executed_ledger.model_dump(mode="json"))
+        if executed_ledger is not None
+        else _e("NOT_APPLICABLE")
     )
     context_pins = _json_text(context.model_dump(mode="json"))
     execution_pins = _json_text(
@@ -231,6 +254,10 @@ th {{ background:var(--panel); }} pre {{ margin:.25rem 0; white-space:pre-wrap; 
 <table><thead><tr><th>Source</th><th>Context</th><th>Class</th><th>Version</th></tr></thead><tbody>{sources}</tbody></table>
 <h3>Evidence ledger</h3>
 <table><thead><tr><th>Evidence</th><th>Source</th><th>Type</th><th>Locator</th></tr></thead><tbody>{evidence_rows}</tbody></table>
+<h3>Content-addressed input ledgers</h3>
+<table><thead><tr><th>Ledger ID</th><th>Ledger checksum</th><th>Request checksum</th><th>Artifact pins</th></tr></thead><tbody>{prospective_ledger_rows}</tbody></table>
+<h3>Executed evidence and artifact ledger</h3><pre>{executed_ledger_projection}</pre>
+<p>Full source/authority/evidence/support lineage is retained in the ledgers and records above.</p>
 
 <h2>Confirmed graph</h2>
 <pre>{_json_text(report.confirmed_graph.model_dump(mode="json"))}</pre>
@@ -246,7 +273,7 @@ th {{ background:var(--panel); }} pre {{ margin:.25rem 0; white-space:pre-wrap; 
 <table><thead><tr><th>Query</th><th>Claim</th><th>Type</th><th>Determinability</th><th>Value</th><th>Support</th></tr></thead><tbody>{"".join(claim_rows)}</tbody></table>
 
 <h3>Query report sections</h3>
-<table><thead><tr><th>Query</th><th>Claim set</th><th>Counts</th><th>Adequacy</th><th>Scenarios</th><th>Profile</th><th>Questions</th></tr></thead><tbody>{section_rows}</tbody></table>
+<table><thead><tr><th>Query</th><th>Claim set</th><th>Counts</th><th>Adequacy</th><th>Scenarios</th><th>Profile</th><th>AI candidates</th><th>Confirmations</th><th>Conflicts</th><th>Sensitivities</th><th>Questions</th></tr></thead><tbody>{section_rows}</tbody></table>
 
 <h2>Proof and support</h2>
 <h3>Irrelevant predicates and rationale</h3>
@@ -270,12 +297,16 @@ th {{ background:var(--panel); }} pre {{ margin:.25rem 0; white-space:pre-wrap; 
 
 <h2>Statistical handoff</h2>
 <p>Status: <strong>{_e(report.statistical_handoff.strategy_module_status.value)}</strong></p>
-<table><thead><tr><th>Category</th><th>Origin</th><th>Authority</th><th>Evidence</th><th>Text</th></tr></thead><tbody>{handoff_rows}</tbody></table>
+<table><thead><tr><th>Category</th><th>Origin</th><th>Authority</th><th>Evidence</th><th>Query</th><th>Predicates</th><th>Questions</th><th>Human user note</th></tr></thead><tbody>{handoff_rows}</tbody></table>
 
 <h2>Inference limits</h2><ul>{_items(report.inference_limits)}</ul>
 
 <h2>Provenance and versions</h2>
 <p>Execution manifest <code>{_e(report.execution_manifest.manifest_id)}</code>; Theory {_e(report.execution_manifest.theory_version)}; Rulebook {_e(report.execution_manifest.rulebook_version)}.</p>
+<h3>Full execution manifest pins</h3>
+<pre>{_json_text(report.execution_manifest.model_dump(mode="json"))}</pre>
+<h3>Review requirement</h3>
+<pre>{_json_text(report.report_resolution.review_requirement.model_dump(mode="json") if report.report_resolution.review_requirement else "NOT_APPLICABLE")}</pre>
 <h3>Contract and execution pins</h3>
 <pre>{context_pins}</pre><pre>{execution_pins}</pre>
 

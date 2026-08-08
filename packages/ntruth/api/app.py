@@ -42,6 +42,7 @@ from ntruth.quick_design import (
     export_v7_for_biostatistician,
     run_quick_design_v7_session,
     run_quick_design_v8,
+    validate_raw_wizard_submission,
 )
 from ntruth.reporting import (
     read_json,
@@ -276,7 +277,6 @@ def create_app() -> Any:
             },
         }
 
-    @api.post("/v1/quick-design")
     @api.post("/v8/quick-design")
     def quick_design_v8(payload: QuickDesignV8Submission) -> dict[str, Any]:
         """Canonical prospective flow; claims come only from the v8 pipeline."""
@@ -284,6 +284,7 @@ def create_app() -> Any:
         from ntruth.derivation_theory.runtime import load_runtime_bundle
 
         try:
+            validate_raw_wizard_submission(payload)
             result = run_quick_design_v8(
                 payload,
                 conformance_bundle=load_runtime_bundle(),

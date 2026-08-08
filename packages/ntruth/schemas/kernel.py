@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, StringConstraints
+from pydantic import BaseModel, ConfigDict, StringConstraints
 
 from ntruth.schemas.core import FrozenModel
 
@@ -17,6 +17,12 @@ NonBlankStr = Annotated[str, StringConstraints(strip_whitespace=True, min_length
 class KernelModel(FrozenModel):
     """Strict, immutable and explicitly versioned v8 contract base."""
 
+    model_config = ConfigDict(
+        extra="forbid",
+        frozen=True,
+        revalidate_instances="always",
+        use_enum_values=False,
+    )
     schema_version: Literal["8.0.0"] = KERNEL_SCHEMA_VERSION
 
 
@@ -39,7 +45,9 @@ def kernel_json_schemas() -> dict[str, dict[str, Any]]:
     from ntruth.schemas.execution import V8ExecutionManifest
     from ntruth.schemas.knowledge import KnowledgeValue
     from ntruth.schemas.prospective import (
+        ConfirmationTarget,
         ExecutedDesignRecord,
+        ExecutedInputLedger,
         PlanExecutionReconciliation,
         PlannedDesignRecord,
         ProspectiveArtifact,
@@ -80,10 +88,12 @@ def kernel_json_schemas() -> dict[str, dict[str, Any]]:
         "report_resolution_outcome": ReportResolutionOutcome,
         "planned_design_record": PlannedDesignRecord,
         "executed_design_record": ExecutedDesignRecord,
+        "executed_input_ledger": ExecutedInputLedger,
         "plan_execution_reconciliation": PlanExecutionReconciliation,
         "prospective_artifact": ProspectiveArtifact,
         "prospective_input_ledger": ProspectiveInputLedger,
         "support_evidence_binding": SupportEvidenceBinding,
+        "confirmation_target": ConfirmationTarget,
         "conflict_record_v8": ConflictRecord,
         "handoff_item": HandoffItem,
         "query_report_section": QueryReportSection,
