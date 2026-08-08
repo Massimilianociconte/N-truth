@@ -7,7 +7,11 @@ from pathlib import Path
 import pytest
 
 from ntruth.governance.lineage import CorpusSplit
-from ntruth.parser_ai.contract import ParserAIInput, ParserAIOutput
+from ntruth.parser_ai.contract import (
+    GoldParserTarget,
+    ParserAIInput,
+    ParserCandidateOutput,
+)
 from ntruth.training import (
     AnnotationStatus,
     SupervisedRecord,
@@ -41,33 +45,54 @@ def _sha(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()
 
 
-def _output(*, confidence: float = 0.5) -> ParserAIOutput:
-    return ParserAIOutput.model_validate(
+def _output(*, confidence: float = 0.5) -> ParserCandidateOutput:
+    return ParserCandidateOutput.model_validate(
         {
-            "contract_version": "2.0.0",
-            "experiment_blocks": [],
-            "evidence_spans": [],
+            "contract_version": "8.0.0",
+            "experiment_blocks": [
+                {
+                    "block_id": "block-1",
+                    "title": "Candidate block",
+                    "evidence_ids": ["evidence-1"],
+                    "confidence": confidence,
+                }
+            ],
+            "evidence_spans": [
+                {
+                    "evidence_id": "evidence-1",
+                    "file_id": "fixture",
+                    "evidence_type": "STRUCTURAL_FACT",
+                    "text": "candidate",
+                    "confidence": confidence,
+                    "start": 0,
+                    "end": 9,
+                }
+            ],
             "candidate_nodes": [],
             "candidate_edges": [],
             "factors": [],
             "endpoints": [],
             "contrasts": [],
             "candidate_estimands": [],
-            "determinability": {
-                "status": "INDETERMINATE",
-                "rationale": "No decisive evidence.",
-                "confidence": confidence,
-                "evidence_ids": [],
-            },
+            "candidate_counts": [],
+            "candidate_events": [],
+            "candidate_graphs": [],
             "alternatives": [],
             "clarification_questions": [],
+            "missing_predicates": [],
+            "coverage": {
+                "status": "PARTIAL",
+                "covered_artifact_ids": ["fixture"],
+                "missing_artifact_ids": ["not-reported"],
+                "rationale": "Candidate-only test fixture.",
+            },
             "model_metadata": {
                 "adapter_name": "gold",
                 "model_name": "annotation",
                 "model_version": "1",
                 "model_checksum": None,
                 "prompt_template_version": "test",
-                "contract_version": "2.0.0",
+                "contract_version": "8.0.0",
                 "local_execution": True,
             },
         }
@@ -82,11 +107,16 @@ def _record(record_id: str, split: CorpusSplit) -> SupervisedRecord:
     )
     return SupervisedRecord(
         record_id=record_id,
-        task="parser_ai_v2",
+        task="parser_candidate_v8",
         language="en",
         domain="runtime_test",
         input_text=parser_input.model_dump_json(),
-        target=_output().model_dump(mode="json"),
+        target=GoldParserTarget(
+            candidate_target=_output(),
+            adjudication_id=f"adjudication-{record_id}",
+            reviewer_ids=("wet-lab", "biostatistician"),
+            adjudication_rationale="Candidate facts were reconciled.",
+        ),
         provenance=SupervisionProvenance(
             source_id=f"source-{record_id}",
             source_asset_id=f"asset-{record_id}",
@@ -98,8 +128,9 @@ def _record(record_id: str, split: CorpusSplit) -> SupervisedRecord:
             reviewer_roles=("wet-lab", "biostatistician"),
         ),
         annotation_status=AnnotationStatus.DOUBLE_REVIEWED,
-        training_eligible=True,
-        requested_split=split,
+        training_eligible=split in {CorpusSplit.TRAIN, CorpusSplit.VALIDATION},
+        evaluation_eligible=split is CorpusSplit.TEST,
+        split=split,
     )
 
 
@@ -198,7 +229,6 @@ def test_structured_score_does_not_require_identical_metadata() -> None:
 
     assert score["schema_valid"] is True
     assert score["micro"]["f1"] == 1.0
-    assert score["determinability_accuracy"] == 1.0
     assert score["exact_contract_match"] is False
 
 
@@ -209,7 +239,7 @@ def test_invalid_empty_prediction_is_not_reported_as_perfect() -> None:
     assert score["micro"]["f1"] == 0.0
     assert aggregate["invalid_output_count"] == 1
     assert aggregate["schema_valid_rate"] == 0.0
-    assert aggregate["determinability_macro_f1"] == 0.0
+    assert "determinability_macro_f1" not in aggregate
     assert aggregate["macro_category_f1"] == 0.0
     assert all(category["f1"] == 0.0 for category in aggregate["categories"].values())
     assert aggregate["micro"]["precision"] == 0.0
@@ -232,10 +262,12 @@ def test_governed_dataset_exports_mlx_chat_and_snapshot(tmp_path: Path) -> None:
 
     assert snapshot["training_approved"] is True
     assert snapshot["leakage_check_passed"] is True
-    assert validated["counts"] == {"train": 1, "valid": 1, "test": 1}
+    assert validated["counts"] == {"train": 1, "valid": 1}
+    assert snapshot["membership_counts"]["TEST"] == 1
+    assert not (output / "test.jsonl").exists()
     train = json.loads((output / "train.jsonl").read_text().splitlines()[0])
     assert train["messages"][-1]["role"] == "assistant"
-    ParserAIOutput.model_validate_json(train["messages"][-1]["content"])
+    ParserCandidateOutput.model_validate_json(train["messages"][-1]["content"])
 
 
 def test_runtime_smoke_dataset_is_allowed_only_with_explicit_smoke_gate(tmp_path: Path) -> None:
@@ -245,5 +277,5 @@ def test_runtime_smoke_dataset_is_allowed_only_with_explicit_smoke_gate(tmp_path
     with pytest.raises(MLXPipelineError, match="training bloccato"):
         validate_mlx_dataset(output)
     result = validate_mlx_dataset(output, smoke_test=True)
-    assert result["counts"] == {"train": 4, "valid": 2, "test": 2}
+    assert result["counts"] == {"train": 4, "valid": 4}
     assert result["smoke_test"] is True

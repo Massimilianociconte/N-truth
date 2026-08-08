@@ -21,20 +21,22 @@ from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
-from typing import Any
+from typing import Any, Literal, Protocol, runtime_checkable
 
-from ntruth.schemas.core import content_checksum
+from pydantic import Field, model_validator
+
+from ntruth.governance.lineage import CorpusSplit
+from ntruth.schemas.core import FrozenModel, content_checksum
 from ntruth.training.records import (
     DatasetManifest,
     PreparationReport,
-    PreparedDataset,
     PreparedRecord,
 )
 
 PROFILE_SCHEMA_VERSION = "1.0.0"
 PROVENANCE_SCHEMA_VERSION = "1.0.0"
-RUN_SCHEMA_VERSION = "2.0.0"
-SNAPSHOT_SCHEMA_VERSION = "2.0.0"
+RUN_SCHEMA_VERSION = "8.0.0"
+SNAPSHOT_SCHEMA_VERSION = "8.0.0"
 _TEST_LOSS = re.compile(r"Test loss\s+([0-9]+(?:\.[0-9]+)?)")
 _PEAK_MEMORY = re.compile(r"Peak mem(?:ory)?\s+([0-9]+(?:\.[0-9]+)?)\s*GB", re.I)
 _SHA256 = re.compile(r"[0-9a-f]{64}")
@@ -42,30 +44,137 @@ _REAL_SNAPSHOT_FILES = frozenset(
     {
         "train.jsonl",
         "valid.jsonl",
-        "test.jsonl",
-        "external.jsonl",
         "dataset-manifest.source.json",
-        "prepared-records.jsonl",
         "preparation-report.json",
     }
 )
-_SMOKE_SNAPSHOT_FILES = frozenset({"train.jsonl", "valid.jsonl", "test.jsonl"})
+_SMOKE_SNAPSHOT_FILES = frozenset({"train.jsonl", "valid.jsonl"})
 _SPLIT_FILES = {
     "train": "train.jsonl",
     "valid": "valid.jsonl",
-    "test": "test.jsonl",
-    "external": "external.jsonl",
 }
 _SOURCE_SPLIT_NAMES = {
-    "train": "train",
-    "validation": "valid",
-    "test": "test",
-    "external": "external",
+    "TRAIN": "train",
+    "VALIDATION": "valid",
 }
 
 
 class MLXPipelineError(RuntimeError):
     """Errore operativo previsto della corsia ML locale."""
+
+
+class TrainingRealityGateV8Request(FrozenModel):
+    gate_version: Literal["8.0.0"] = "8.0.0"
+    purpose: Literal["TRAIN"] = "TRAIN"
+    snapshot_id: str
+    snapshot_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class TrainingRealityGateV8Artifact(FrozenModel):
+    """Content-addressed authorization artifact supplied by the future Task-7 gate."""
+
+    gate_version: Literal["8.0.0"] = "8.0.0"
+    purpose: Literal["TRAIN"] = "TRAIN"
+    snapshot_id: str
+    snapshot_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    privacy_attestation_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    no_corpus_attestation_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    authorized: bool
+    issued_by: str
+    artifact_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    artifact_id: str
+
+    def identity_payload(self) -> dict[str, object]:
+        return self.model_dump(
+            mode="json",
+            exclude={"artifact_sha256", "artifact_id"},
+        )
+
+    @model_validator(mode="after")
+    def _content_addressed(self) -> TrainingRealityGateV8Artifact:
+        if not self.snapshot_id.strip() or not self.issued_by.strip():
+            raise ValueError("Reality Gate v8 snapshot_id/issued_by must not be blank")
+        expected = content_checksum(self.identity_payload())
+        if self.artifact_sha256 != expected:
+            raise ValueError("Reality Gate v8 artifact checksum mismatch")
+        if self.artifact_id != f"reality-gate-v8-{expected[:20]}":
+            raise ValueError("Reality Gate v8 artifact_id mismatch")
+        return self
+
+
+@runtime_checkable
+class RealityGateV8Protocol(Protocol):
+    def authorize_training(
+        self, request: TrainingRealityGateV8Request
+    ) -> TrainingRealityGateV8Artifact | Mapping[str, Any]: ...
+
+
+@dataclass(frozen=True)
+class FileRealityGateV8Protocol:
+    artifact_path: Path
+
+    def authorize_training(self, _request: TrainingRealityGateV8Request) -> Mapping[str, Any]:
+        try:
+            payload = json.loads(self.artifact_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ValueError(f"Reality Gate v8 artifact is not readable: {exc}") from exc
+        if not isinstance(payload, dict):
+            raise ValueError("Reality Gate v8 artifact must be a JSON object")
+        return payload
+
+
+def build_training_reality_gate_v8_artifact(
+    *,
+    snapshot_id: str,
+    snapshot_sha256: str,
+    privacy_attestation_sha256: str,
+    no_corpus_attestation_sha256: str,
+    authorized: bool,
+    issued_by: str,
+) -> TrainingRealityGateV8Artifact:
+    """Encode a gate decision; this helper does not decide scientific readiness."""
+
+    payload: dict[str, object] = {
+        "gate_version": "8.0.0",
+        "purpose": "TRAIN",
+        "snapshot_id": snapshot_id,
+        "snapshot_sha256": snapshot_sha256,
+        "privacy_attestation_sha256": privacy_attestation_sha256,
+        "no_corpus_attestation_sha256": no_corpus_attestation_sha256,
+        "authorized": authorized,
+        "issued_by": issued_by,
+    }
+    checksum = content_checksum(payload)
+    return TrainingRealityGateV8Artifact.model_validate(
+        {
+            **payload,
+            "artifact_sha256": checksum,
+            "artifact_id": f"reality-gate-v8-{checksum[:20]}",
+        }
+    )
+
+
+def verify_training_reality_gate_v8(
+    gate: RealityGateV8Protocol,
+    request: TrainingRealityGateV8Request,
+) -> TrainingRealityGateV8Artifact:
+    """Fail closed on absent, unparseable, stale, blocked or mismatched decisions."""
+
+    if not isinstance(gate, RealityGateV8Protocol):
+        raise MLXPipelineError("Reality Gate v8 protocol missing or invalid")
+    try:
+        artifact = TrainingRealityGateV8Artifact.model_validate(gate.authorize_training(request))
+    except (TypeError, ValueError) as exc:
+        raise MLXPipelineError(f"Reality Gate v8 artifact invalid: {exc}") from exc
+    if artifact.purpose != "TRAIN":
+        raise MLXPipelineError("Reality Gate v8 purpose must be TRAIN")
+    if artifact.snapshot_id != request.snapshot_id:
+        raise MLXPipelineError("Reality Gate v8 artifact is stale for this snapshot")
+    if artifact.snapshot_sha256 != request.snapshot_sha256:
+        raise MLXPipelineError("Reality Gate v8 snapshot hash mismatch")
+    if not artifact.authorized:
+        raise MLXPipelineError("Reality Gate v8 blocked purpose TRAIN")
+    return artifact
 
 
 @dataclass(frozen=True)
@@ -457,6 +566,8 @@ def _stream_command(
 
 
 def _jsonl_profile(path: Path) -> dict[str, Any]:
+    from ntruth.parser_ai.contract import ParserAIInput, ParserCandidateOutput
+
     record_ids: list[str] = []
     records: list[dict[str, Any]] = []
     with path.open(encoding="utf-8") as handle:
@@ -468,11 +579,32 @@ def _jsonl_profile(path: Path) -> dict[str, Any]:
             except json.JSONDecodeError as exc:
                 raise MLXPipelineError(f"JSONL non valido {path}:{line_number}: {exc}") from exc
             messages = value.get("messages") if isinstance(value, dict) else None
-            if not isinstance(messages, list) or not messages:
+            if (
+                not isinstance(messages, list)
+                or not messages
+                or any(not isinstance(message, dict) for message in messages)
+            ):
                 raise MLXPipelineError(f"record senza messages in {path}:{line_number}")
             record_id = value.get("record_id") if isinstance(value, dict) else None
             if not isinstance(record_id, str) or not record_id.strip():
                 raise MLXPipelineError(f"record_id assente in {path}:{line_number}")
+            user_messages = [message for message in messages if message.get("role") == "user"]
+            final = messages[-1]
+            if (
+                not user_messages
+                or not isinstance(user_messages[-1].get("content"), str)
+                or not isinstance(final, dict)
+                or final.get("role") != "assistant"
+                or not isinstance(final.get("content"), str)
+            ):
+                raise MLXPipelineError(f"record candidate incompleto in {path}:{line_number}")
+            try:
+                ParserAIInput.model_validate_json(user_messages[-1]["content"])
+                ParserCandidateOutput.model_validate_json(final["content"])
+            except ValueError as exc:
+                raise MLXPipelineError(
+                    f"record candidate v8 non valido in {path}:{line_number}: {exc}"
+                ) from exc
             record_ids.append(record_id)
             records.append(value)
     duplicates = sorted(record_id for record_id, count in Counter(record_ids).items() if count > 1)
@@ -580,7 +712,7 @@ def _verify_snapshot_counts(
     dict[str, tuple[str, ...]],
     dict[str, tuple[dict[str, Any], ...]],
 ]:
-    expected_split_names = ("train", "valid", "test") if smoke_test else tuple(_SPLIT_FILES)
+    expected_split_names = tuple(_SPLIT_FILES)
     manifest_counts = manifest.get("counts")
     if not isinstance(manifest_counts, dict) or set(manifest_counts) != set(expected_split_names):
         raise MLXPipelineError(
@@ -602,11 +734,7 @@ def _verify_snapshot_counts(
                 f"conteggio snapshot non coerente per {split}: "
                 f"atteso {declared_count}, trovato {actual_count}"
             )
-        if (
-            require_nonempty_training_splits
-            and split in {"train", "valid", "test"}
-            and actual_count < 1
-        ):
+        if require_nonempty_training_splits and split in {"train", "valid"} and actual_count < 1:
             raise MLXPipelineError(f"split MLX vuoto: {path}")
         ids = tuple(str(value) for value in profile["record_ids"])
         for record_id in ids:
@@ -618,10 +746,6 @@ def _verify_snapshot_counts(
         counts[split] = actual_count
         record_ids[split] = ids
         split_records[split] = tuple(profile["records"])
-    if smoke_test:
-        counts["external"] = 0
-        record_ids["external"] = ()
-        split_records["external"] = ()
     return counts, record_ids, split_records
 
 
@@ -650,8 +774,9 @@ def _load_prepared_records(path: Path) -> tuple[PreparedRecord, ...]:
 def _source_manifest_split_ids(source: DatasetManifest) -> dict[str, tuple[str, ...]]:
     grouped: dict[str, list[str]] = {name: [] for name in _SPLIT_FILES}
     for record in source.records:
-        split_name = _SOURCE_SPLIT_NAMES[record.split.value]
-        grouped[split_name].append(record.record_id)
+        split_name = _SOURCE_SPLIT_NAMES.get(record.split.value)
+        if split_name is not None and record.training_eligible:
+            grouped[split_name].append(record.record_id)
     return {name: tuple(sorted(values)) for name, values in grouped.items()}
 
 
@@ -684,7 +809,6 @@ def _validate_real_snapshot_source(
         "dataset_id": source.dataset_id,
         "manifest_checksum": source.manifest_checksum(),
         "records_checksum": source.records_checksum,
-        "prepared_records_sha256": file_hashes["prepared-records.jsonl"],
         "preparation_report_sha256": file_hashes["preparation-report.json"],
     }
     for key, actual in checks.items():
@@ -696,6 +820,7 @@ def _validate_real_snapshot_source(
         raise MLXPipelineError("source_records_checksum non coincide col manifest sorgente")
 
     source_ids = _source_manifest_split_ids(source)
+    source_by_id = {record.record_id: record for record in source.records}
     for split in _SPLIT_FILES:
         actual_ids = tuple(sorted(split_record_ids[split]))
         if actual_ids != source_ids[split]:
@@ -704,6 +829,32 @@ def _validate_real_snapshot_source(
             )
         if counts[split] != len(source_ids[split]):
             raise MLXPipelineError(f"conteggio {split} non coincide col manifest sorgente")
+        for row in split_records[split]:
+            record_id = str(row["record_id"])
+            source_record = source_by_id[record_id]
+            messages = row["messages"]
+            user_messages = [message for message in messages if message.get("role") == "user"]
+            try:
+                from ntruth.parser_ai.contract import ParserAIInput, ParserCandidateOutput
+
+                parser_input = ParserAIInput.model_validate_json(user_messages[-1]["content"])
+                candidate_target = ParserCandidateOutput.model_validate_json(
+                    messages[-1]["content"]
+                )
+            except (IndexError, KeyError, TypeError, ValueError) as exc:
+                raise MLXPipelineError(f"contenuto chat non valido per {record_id}: {exc}") from exc
+            if content_checksum(parser_input.model_dump(mode="json")) != (
+                source_record.input_checksum
+            ):
+                raise MLXPipelineError(
+                    f"contenuto chat input non coincide col manifest sorgente: {record_id}"
+                )
+            if content_checksum(candidate_target.model_dump(mode="json")) != (
+                source_record.candidate_target_checksum
+            ):
+                raise MLXPipelineError(
+                    f"contenuto chat target non coincide col manifest sorgente: {record_id}"
+                )
 
     report_path = data_dir / "preparation-report.json"
     report_raw = _load_json_object(report_path, label="report preparazione")
@@ -733,55 +884,32 @@ def _validate_real_snapshot_source(
         raise MLXPipelineError("decisions_checksum non coincide col report preparazione")
 
     expected_report_counts = {
-        "train": counts["train"],
-        "validation": counts["valid"],
-        "test": counts["test"],
-        "external": counts["external"],
+        split.value: sum(record.split is split for record in source.records)
+        for split in CorpusSplit
     }
     if report.split_counts != expected_report_counts:
         raise MLXPipelineError("split_counts del report non coincidono coi file snapshot")
 
-    prepared_records = _load_prepared_records(data_dir / "prepared-records.jsonl")
-    try:
-        PreparedDataset(records=prepared_records, manifest=source, report=report)
-    except ValueError as exc:
-        raise MLXPipelineError(
-            f"prepared records non coerenti col manifest sorgente: {exc}"
-        ) from exc
-    source_by_id = {record.record_id: record for record in source.records}
-    for prepared in prepared_records:
-        record_id = prepared.record.record_id
-        if (
-            content_checksum(prepared.model_dump(mode="json"))
-            != source_by_id[record_id].record_checksum
-        ):
-            raise MLXPipelineError(
-                f"record_checksum del prepared record {record_id} non coincide col manifest sorgente"
-            )
-
-    # Import locale per evitare il ciclo mlx_dataset -> mlx_runtime al module load.
-    from ntruth.training.mlx_dataset import _chat_record
-
-    expected_chat: dict[str, list[dict[str, Any]]] = {name: [] for name in _SPLIT_FILES}
-    for prepared in prepared_records:
-        split_name = _SOURCE_SPLIT_NAMES[prepared.split.value]
-        expected_chat[split_name].append(_chat_record(prepared))
-    for split in _SPLIT_FILES:
-        expected_rows = sorted(expected_chat[split], key=lambda row: str(row["record_id"]))
-        actual_rows = sorted(split_records[split], key=lambda row: str(row["record_id"]))
-        if actual_rows != expected_rows:
-            raise MLXPipelineError(
-                f"contenuto chat dello split {split} non coincide coi prepared records"
-            )
-
-    derived_approved = bool(source.records) and all(
-        record.training_eligible for record in source.records
+    membership_counts = manifest.get("membership_counts")
+    if membership_counts != expected_report_counts:
+        raise MLXPipelineError("membership_counts snapshot non coincide col manifest sorgente")
+    training_members = tuple(
+        record
+        for record in source.records
+        if record.split in {CorpusSplit.TRAIN, CorpusSplit.VALIDATION} and record.training_eligible
+    )
+    derived_approved = (
+        bool(source_ids["train"])
+        and bool(source_ids["valid"])
+        and all(record.training_eligible for record in training_members)
     )
     if manifest.get("training_approved") is not derived_approved:
         raise MLXPipelineError(
             "training_approved non coincide con le evidenze del manifest sorgente"
         )
-    derived_synthetic = bool(source.records) and all(record.synthetic for record in source.records)
+    derived_synthetic = bool(training_members) and all(
+        record.synthetic for record in training_members
+    )
     if manifest.get("synthetic_only") is not derived_synthetic:
         raise MLXPipelineError("synthetic_only non coincide col manifest sorgente")
     if manifest.get("leakage_check_passed") is not True:
@@ -808,9 +936,7 @@ def _validate_runtime_smoke_manifest(
         raise MLXPipelineError("lo smoke runtime non puo dichiarare un manifest sorgente reale")
     expected_ids = {
         "train": tuple(f"runtime-smoke-{index:02d}" for index in range(4)),
-        "valid": tuple(f"runtime-smoke-{index:02d}" for index in range(4, 6)),
-        "test": tuple(f"runtime-smoke-{index:02d}" for index in range(6, 8)),
-        "external": (),
+        "valid": tuple(f"runtime-smoke-{index:02d}" for index in range(4, 8)),
     }
     if dict(split_record_ids) != expected_ids:
         raise MLXPipelineError("record_id smoke non coincidono con la fixture runtime isolata")
@@ -913,7 +1039,7 @@ def validate_mlx_dataset(data_dir: Path, *, smoke_test: bool = False) -> dict[st
         )
     return {
         "path": integrity["path"],
-        "counts": {split: integrity["counts"][split] for split in ("train", "valid", "test")},
+        "counts": {split: integrity["counts"][split] for split in ("train", "valid")},
         "manifest": integrity["manifest_path"],
         "manifest_data": manifest,
         "manifest_sha256": integrity["manifest_sha256"],
@@ -943,6 +1069,7 @@ def run_training(
     run_dir: Path,
     *,
     seed: int,
+    reality_gate: RealityGateV8Protocol,
     smoke_test: bool = False,
     resume: bool = False,
 ) -> dict[str, Any]:
@@ -953,12 +1080,19 @@ def run_training(
     il controller interrompe dopo ``patience`` fasi senza miglioramento.
     """
 
+    dataset = validate_mlx_dataset(data_dir, smoke_test=smoke_test)
+    gate_artifact = verify_training_reality_gate_v8(
+        reality_gate,
+        TrainingRealityGateV8Request(
+            snapshot_id=str(dataset["snapshot_id"]),
+            snapshot_sha256=str(dataset["snapshot_sha256"]),
+        ),
+    )
     profile = load_profile(profile_path)
     machine = doctor(profile_path, repo_root)
     if not machine["ready_to_train"]:
         raise MLXPipelineError(f"training bloccato dal doctor: {machine['checks']}")
     model_check = verify_model(profile_path, repo_root)
-    dataset = validate_mlx_dataset(data_dir, smoke_test=smoke_test)
     environment_record = runtime_environment(repo_root)
     model_path = _model_path(repo_root, profile)
     training = profile["training"]
@@ -997,6 +1131,8 @@ def run_training(
             raise MLXPipelineError("identita snapshot cambiata: impossibile riprendere il run")
         if state.get("dataset_manifest_sha256") != dataset["manifest_sha256"]:
             raise MLXPipelineError("manifest snapshot cambiato: impossibile riprendere il run")
+        if state.get("reality_gate_artifact_sha256") != gate_artifact.artifact_sha256:
+            raise MLXPipelineError("Reality Gate v8 cambiato: impossibile riprendere il run")
         previous_environment = state.get("environment")
         if not isinstance(previous_environment, dict):
             raise MLXPipelineError("record ambiente assente: impossibile riprendere il run")
@@ -1014,6 +1150,12 @@ def run_training(
             "dataset_snapshot_sha256": dataset["snapshot_sha256"],
             "dataset_snapshot_id": dataset["snapshot_id"],
             "dataset_manifest_sha256": dataset["manifest_sha256"],
+            "reality_gate_artifact_id": gate_artifact.artifact_id,
+            "reality_gate_artifact_sha256": gate_artifact.artifact_sha256,
+            "reality_gate_privacy_attestation_sha256": (gate_artifact.privacy_attestation_sha256),
+            "reality_gate_no_corpus_attestation_sha256": (
+                gate_artifact.no_corpus_attestation_sha256
+            ),
             "model_provenance_sha256": model_check["provenance_sha256"],
             "environment": environment_record,
             "seed": seed,

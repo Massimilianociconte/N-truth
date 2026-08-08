@@ -7,7 +7,8 @@ from pathlib import Path
 from typing import Any
 
 from ntruth.governance.lineage import CorpusSplit
-from ntruth.parser_ai.contract import ParserAIInput, ParserAIOutput
+from ntruth.mvt_a.stage_schema import assert_no_final_scientific_fields
+from ntruth.parser_ai.contract import ParserAIInput, ParserCandidateOutput
 from ntruth.training.manifest import dumps_dataset_manifest, dumps_preparation_report
 from ntruth.training.mlx_runtime import (
     SNAPSHOT_SCHEMA_VERSION,
@@ -17,33 +18,40 @@ from ntruth.training.mlx_runtime import (
     sha256_file,
     utc_now,
 )
-from ntruth.training.records import PreparedDataset, PreparedRecord, dumps_prepared_jsonl
+from ntruth.training.records import PreparedDataset, PreparedRecord
 
-PROMPT_TEMPLATE_VERSION = "ntruth-parser-ai-v2-mlx-1.0.0"
+PROMPT_TEMPLATE_VERSION = "ntruth-parser-candidate-v8-mlx-1.0.0"
 SYSTEM_PROMPT = """You are the local N-Truth candidate-fact parser.
 Read exactly one ParserAIInput v2.0.0 JSON object supplied by the user.
-Return exactly one JSON object matching ParserAIOutput v2.0.0.
-Return candidate facts with evidence only: never emit a verdict, statistical test,
-power analysis, alert, accusation, Markdown, commentary, or facts not supported by
-the supplied source coordinates. Keep allocation and application levels distinct.
-If decisive evidence is absent, use determinability, alternatives and clarification
-questions; do not guess. The deterministic N-Truth compiler, not this model, applies
-scientific rules."""
+Return exactly one JSON object matching ParserCandidateOutput v8.0.0.
+Return only evidence, candidate entities, candidate counts, candidate events,
+candidate relations and graphs, alternatives, missing predicates, confidence and
+coverage. Never emit final scientific claims, verdicts, tests, alerts, accusations,
+Markdown, commentary, or unsupported facts. Keep allocation and application
+candidates distinct. Preserve uncertainty and ask a clarification question rather
+than guessing. A separate deterministic compiler performs scientific derivation."""
 
 
 def _chat_record(prepared: PreparedRecord) -> dict[str, Any]:
     record = prepared.record
-    if record.task != "parser_ai_v2":
+    if record.task != "parser_candidate_v8":
         raise MLXPipelineError(
-            f"record {record.record_id}: task atteso parser_ai_v2, ricevuto {record.task}"
+            f"record {record.record_id}: task atteso parser_candidate_v8, ricevuto {record.task}"
         )
+    if prepared.split not in {CorpusSplit.TRAIN, CorpusSplit.VALIDATION}:
+        raise MLXPipelineError(
+            f"record {record.record_id}: split protetto non leggibile dal training view"
+        )
+    if not record.training_eligible:
+        raise MLXPipelineError(f"record {record.record_id}: non training-eligible")
     try:
         parser_input = ParserAIInput.model_validate_json(record.input_text)
-        parser_output = ParserAIOutput.model_validate(record.target)
+        parser_output = record.target.candidate_target
     except (ValueError, TypeError) as exc:
         raise MLXPipelineError(
             f"record {record.record_id}: contratto Parser AI non valido: {exc}"
         ) from exc
+    assert_no_final_scientific_fields(parser_output.model_dump(mode="json"))
     user_content = json.dumps(
         parser_input.model_dump(mode="json"),
         ensure_ascii=False,
@@ -81,25 +89,24 @@ def export_mlx_dataset(dataset: PreparedDataset, output_dir: Path) -> dict[str, 
     if output_dir.exists() and any(output_dir.iterdir()):
         raise MLXPipelineError(f"directory output non vuota: {output_dir}")
     output_dir.mkdir(parents=True, exist_ok=True)
-    by_split: dict[CorpusSplit, list[dict[str, Any]]] = {split: [] for split in CorpusSplit}
+    by_split: dict[CorpusSplit, list[dict[str, Any]]] = {
+        CorpusSplit.TRAIN: [],
+        CorpusSplit.VALIDATION: [],
+    }
     for prepared in dataset.records:
-        by_split[prepared.split].append(_chat_record(prepared))
+        if prepared.split in by_split and prepared.record.training_eligible:
+            by_split[prepared.split].append(_chat_record(prepared))
     for values in by_split.values():
         values.sort(key=lambda value: str(value["record_id"]))
 
     names = {
         CorpusSplit.TRAIN: "train.jsonl",
         CorpusSplit.VALIDATION: "valid.jsonl",
-        CorpusSplit.TEST: "test.jsonl",
-        CorpusSplit.EXTERNAL: "external.jsonl",
     }
     for split, filename in names.items():
         _write_jsonl(output_dir / filename, by_split[split])
     (output_dir / "dataset-manifest.source.json").write_text(
         dumps_dataset_manifest(dataset.manifest), encoding="utf-8"
-    )
-    (output_dir / "prepared-records.jsonl").write_text(
-        dumps_prepared_jsonl(dataset.records), encoding="utf-8"
     )
     (output_dir / "preparation-report.json").write_text(
         dumps_preparation_report(dataset.report), encoding="utf-8"
@@ -115,7 +122,6 @@ def export_mlx_dataset(dataset: PreparedDataset, output_dir: Path) -> dict[str, 
     for filename in (
         *names.values(),
         "dataset-manifest.source.json",
-        "prepared-records.jsonl",
         "preparation-report.json",
     ):
         path = output_dir / filename
@@ -124,17 +130,24 @@ def export_mlx_dataset(dataset: PreparedDataset, output_dir: Path) -> dict[str, 
         "schema_version": SNAPSHOT_SCHEMA_VERSION,
         "created_at": utc_now(),
         "dataset_id": dataset.manifest.dataset_id,
-        "parser_contract_version": "2.0.0",
+        "parser_contract_version": "8.0.0",
         "prompt_template_version": PROMPT_TEMPLATE_VERSION,
-        "training_approved": bool(dataset.records)
-        and all(prepared.record.training_eligible for prepared in dataset.records),
+        "training_approved": bool(by_split[CorpusSplit.TRAIN])
+        and bool(by_split[CorpusSplit.VALIDATION])
+        and all(
+            prepared.record.training_eligible
+            for prepared in dataset.records
+            if prepared.split in by_split
+        ),
         "leakage_check_passed": bool(dataset.records) and leakage_free,
         "synthetic_only": bool(synthetic) and all(synthetic),
         "counts": {
             "train": len(by_split[CorpusSplit.TRAIN]),
             "valid": len(by_split[CorpusSplit.VALIDATION]),
-            "test": len(by_split[CorpusSplit.TEST]),
-            "external": len(by_split[CorpusSplit.EXTERNAL]),
+        },
+        "membership_counts": {
+            split.value: sum(prepared.split is split for prepared in dataset.records)
+            for split in CorpusSplit
         },
         "source_records_checksum": dataset.manifest.records_checksum,
         "source_manifest": {
@@ -143,7 +156,6 @@ def export_mlx_dataset(dataset: PreparedDataset, output_dir: Path) -> dict[str, 
             "dataset_id": dataset.manifest.dataset_id,
             "manifest_checksum": dataset.manifest.manifest_checksum(),
             "records_checksum": dataset.manifest.records_checksum,
-            "prepared_records_sha256": files["prepared-records.jsonl"]["sha256"],
             "preparation_report_sha256": files["preparation-report.json"]["sha256"],
         },
         "files": files,
@@ -160,7 +172,7 @@ def create_runtime_smoke_dataset(output_dir: Path) -> dict[str, Any]:
         raise MLXPipelineError(f"directory smoke non vuota: {output_dir}")
     output_dir.mkdir(parents=True, exist_ok=True)
     target = {
-        "contract_version": "2.0.0",
+        "contract_version": "8.0.0",
         "experiment_blocks": [],
         "evidence_spans": [],
         "candidate_nodes": [],
@@ -169,25 +181,29 @@ def create_runtime_smoke_dataset(output_dir: Path) -> dict[str, Any]:
         "endpoints": [],
         "contrasts": [],
         "candidate_estimands": [],
-        "determinability": {
-            "status": "INDETERMINATE",
-            "rationale": "Synthetic runtime smoke fixture with no scientific evidence.",
-            "confidence": 0.5,
-            "evidence_ids": [],
-        },
+        "candidate_counts": [],
+        "candidate_events": [],
+        "candidate_graphs": [],
         "alternatives": [],
         "clarification_questions": [],
+        "missing_predicates": [],
+        "coverage": {
+            "status": "PARTIAL",
+            "covered_artifact_ids": [],
+            "missing_artifact_ids": ["runtime-smoke-no-source"],
+            "rationale": "Technical smoke only; no scientific source is supplied.",
+        },
         "model_metadata": {
             "adapter_name": "runtime-smoke-gold",
             "model_name": "synthetic",
             "model_version": "1",
             "model_checksum": None,
             "prompt_template_version": PROMPT_TEMPLATE_VERSION,
-            "contract_version": "2.0.0",
+            "contract_version": "8.0.0",
             "local_execution": True,
         },
     }
-    ParserAIOutput.model_validate(target)
+    ParserCandidateOutput.model_validate(target)
     rows = []
     for index in range(8):
         parser_input = ParserAIInput(
@@ -215,7 +231,7 @@ def create_runtime_smoke_dataset(output_dir: Path) -> dict[str, Any]:
                 ],
             }
         )
-    split_rows = {"train": rows[:4], "valid": rows[4:6], "test": rows[6:]}
+    split_rows = {"train": rows[:4], "valid": rows[4:]}
     files = {}
     for split, values in split_rows.items():
         path = output_dir / f"{split}.jsonl"

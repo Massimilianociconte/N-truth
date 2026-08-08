@@ -23,10 +23,11 @@ _INTERNAL_SPLITS = (
     CorpusSplit.TEST,
 )
 _RESTRICTIVENESS = {
+    CorpusSplit.UNASSIGNED: -1,
     CorpusSplit.TRAIN: 0,
     CorpusSplit.VALIDATION: 1,
     CorpusSplit.TEST: 2,
-    CorpusSplit.EXTERNAL: 3,
+    CorpusSplit.EXTERNAL_CHALLENGE: 3,
 }
 
 
@@ -78,6 +79,20 @@ def leakage_tokens(record: NormalizedRecord) -> tuple[str, ...]:
     }
     if provenance.publication_id is not None:
         tokens.add(f"publication:{normalize_text(provenance.publication_id)}")
+    for label, value in (
+        ("study_family", provenance.study_family_id),
+        ("document_lineage", provenance.document_lineage_id),
+        ("preprint_family", provenance.preprint_family_id),
+        ("supplement_family", provenance.supplement_family_id),
+        ("dataset_family", provenance.dataset_family_id),
+        ("translation_family", provenance.translation_family_id),
+        ("paraphrase_family", provenance.paraphrase_family_id),
+        ("facility", provenance.facility_id),
+        ("synthetic_family", provenance.synthetic_family_id),
+        ("counterfactual_family", provenance.counterfactual_family_id),
+    ):
+        if value is not None:
+            tokens.add(f"{label}:{normalize_text(value)}")
     if provenance.project_id is not None:
         tokens.add(f"project:{normalize_text(provenance.project_id)}")
     if provenance.bundle_id is not None:
@@ -162,9 +177,9 @@ def _component_requested_split(
     members: tuple[NormalizedRecord, ...],
 ) -> tuple[CorpusSplit | None, tuple[ValidationIssue, ...]]:
     requested = {
-        member.record.requested_split
+        member.record.split
         for member in members
-        if member.record.requested_split is not None
+        if member.record.split is not CorpusSplit.UNASSIGNED
     }
     synthetic = any(member.record.provenance.synthetic for member in members)
     record_ids = tuple(member.record.record_id for member in members)
@@ -178,7 +193,9 @@ def _component_requested_split(
                 record_ids=record_ids,
             )
         )
-    selected = max(requested, key=lambda item: _RESTRICTIVENESS[item]) if requested else None
+    selected: CorpusSplit | None = None
+    if requested:
+        selected = max(requested, key=_RESTRICTIVENESS.__getitem__)
     if synthetic and selected not in {None, CorpusSplit.TRAIN}:
         issues.append(
             ValidationIssue(
@@ -234,7 +251,7 @@ def assign_group_aware_splits(
             unassigned.append((group_id, members))
             continue
         assignments_by_group[group_id] = requested_split
-        if requested_split is CorpusSplit.EXTERNAL:
+        if requested_split is CorpusSplit.EXTERNAL_CHALLENGE:
             external_count += len(members)
         else:
             counts[requested_split] += len(members)
@@ -250,8 +267,13 @@ def assign_group_aware_splits(
     )
     for group_id, members in unassigned:
         group_size = len(members)
+        candidate_splits = (
+            (CorpusSplit.TRAIN, CorpusSplit.VALIDATION)
+            if any(member.record.training_eligible for member in members)
+            else _INTERNAL_SPLITS
+        )
         selected = min(
-            _INTERNAL_SPLITS,
+            candidate_splits,
             key=lambda split: (
                 _allocation_error(counts, targets, split, group_size),
                 _stable_number(seed, group_id, split.value),
@@ -337,3 +359,18 @@ def validate_no_group_leakage(
             )
         )
     return tuple(sorted(issues, key=lambda issue: (issue.code, issue.record_ids)))
+
+
+def migrate_corpus_split_v7(raw: str) -> CorpusSplit:
+    """Explicit v7 adapter; the legacy ``external`` token is never canonical."""
+
+    if raw == "external":
+        return CorpusSplit.EXTERNAL_CHALLENGE
+    legacy = {
+        "train": CorpusSplit.TRAIN,
+        "validation": CorpusSplit.VALIDATION,
+        "test": CorpusSplit.TEST,
+    }
+    if raw in legacy:
+        return legacy[raw]
+    return CorpusSplit(raw)

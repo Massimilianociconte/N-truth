@@ -22,6 +22,10 @@ def build_manifest_records(records: tuple[PreparedRecord, ...]) -> tuple[Manifes
         ManifestRecord(
             record_id=prepared.record.record_id,
             record_checksum=content_checksum(prepared.model_dump(mode="json")),
+            input_checksum=_input_checksum(prepared.record.input_text),
+            candidate_target_checksum=content_checksum(
+                prepared.record.target.candidate_target.model_dump(mode="json")
+            ),
             exact_fingerprint=prepared.exact_fingerprint,
             near_fingerprint=prepared.near_fingerprint,
             split=prepared.split,
@@ -32,6 +36,9 @@ def build_manifest_records(records: tuple[PreparedRecord, ...]) -> tuple[Manifes
             governance_hash=prepared.record.provenance.governance_hash,
             annotation_status=prepared.record.annotation_status,
             training_eligible=prepared.record.training_eligible,
+            evaluation_eligible=prepared.record.evaluation_eligible,
+            release_eligible=prepared.record.release_eligible,
+            model_selection_eligible=prepared.record.model_selection_eligible,
             license_or_authorization_id=(prepared.record.provenance.license_or_authorization_id),
             reviewer_count=prepared.record.provenance.reviewer_count,
             adjudication_id=prepared.record.provenance.adjudication_id,
@@ -39,6 +46,14 @@ def build_manifest_records(records: tuple[PreparedRecord, ...]) -> tuple[Manifes
         )
         for prepared in sorted(records, key=lambda item: item.record.record_id)
     )
+
+
+def _input_checksum(input_text: str) -> str:
+    try:
+        payload = json.loads(input_text)
+    except json.JSONDecodeError:
+        payload = input_text
+    return content_checksum(payload)
 
 
 def manifest_records_checksum(records: tuple[ManifestRecord, ...]) -> str:

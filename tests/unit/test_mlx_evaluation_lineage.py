@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from ntruth.parser_ai.contract import ParserAIInput, ParserAIOutput
+from ntruth.parser_ai.contract import ParserAIInput, ParserCandidateOutput
 from ntruth.training.calibration import ConfidenceObservation
 from ntruth.training.cli import DEFAULT_PROFILE
 from ntruth.training.metrics import aggregate_scores, confidence_observations, score_output
@@ -19,33 +19,54 @@ from ntruth.training.mlx_inference import (
 from ntruth.training.mlx_runtime import MLXPipelineError, sha256_file
 
 
-def _parser_output(*, confidence: float = 0.7) -> ParserAIOutput:
-    return ParserAIOutput.model_validate(
+def _parser_output(*, confidence: float = 0.7) -> ParserCandidateOutput:
+    return ParserCandidateOutput.model_validate(
         {
-            "contract_version": "2.0.0",
-            "experiment_blocks": [],
-            "evidence_spans": [],
+            "contract_version": "8.0.0",
+            "experiment_blocks": [
+                {
+                    "block_id": "block-1",
+                    "title": "Candidate block",
+                    "evidence_ids": ["evidence-1"],
+                    "confidence": confidence,
+                }
+            ],
+            "evidence_spans": [
+                {
+                    "evidence_id": "evidence-1",
+                    "file_id": "fixture",
+                    "evidence_type": "STRUCTURAL_FACT",
+                    "text": "candidate",
+                    "confidence": confidence,
+                    "start": 0,
+                    "end": 9,
+                }
+            ],
             "candidate_nodes": [],
             "candidate_edges": [],
             "factors": [],
             "endpoints": [],
             "contrasts": [],
             "candidate_estimands": [],
-            "determinability": {
-                "status": "INDETERMINATE",
-                "rationale": "No decisive evidence.",
-                "confidence": confidence,
-                "evidence_ids": [],
-            },
+            "candidate_counts": [],
+            "candidate_events": [],
+            "candidate_graphs": [],
             "alternatives": [],
             "clarification_questions": [],
+            "missing_predicates": [],
+            "coverage": {
+                "status": "PARTIAL",
+                "covered_artifact_ids": ["fixture"],
+                "missing_artifact_ids": ["not-reported"],
+                "rationale": "Candidate-only lineage fixture.",
+            },
             "model_metadata": {
                 "adapter_name": "lineage-test",
                 "model_name": "test",
                 "model_version": "1",
                 "model_checksum": None,
                 "prompt_template_version": "lineage-test",
-                "contract_version": "2.0.0",
+                "contract_version": "8.0.0",
                 "local_execution": True,
             },
         }
@@ -58,7 +79,18 @@ def _evaluation_artifacts(
     snapshot_dir = tmp_path / "snapshot"
     snapshot_dir.mkdir()
     evaluation_path = snapshot_dir / "test.jsonl"
-    parser_input = ParserAIInput(metadata={"record": "test-1"}, language="en")
+    parser_input = ParserAIInput(
+        documents=(
+            {
+                "file_id": "fixture",
+                "filename": "fixture.txt",
+                "sha256": "a" * 64,
+                "text": "candidate",
+            },
+        ),
+        metadata={"record": "test-1"},
+        language="en",
+    )
     gold = _parser_output()
     evaluation_row = {
         "record_id": "test-1",
@@ -97,7 +129,7 @@ def _evaluation_artifacts(
     )
 
     run_lineage = {
-        "schema_version": "1.0.0",
+        "schema_version": "8.0.0",
         "profile_path": str(DEFAULT_PROFILE.resolve()),
         "repo_root": str(Path(".").resolve()),
         "run_dir": str((tmp_path / "run").resolve()),
@@ -163,7 +195,7 @@ def _fake_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Pa
     adapter.write_bytes(b"adapter")
     model_hash = "a" * 64
     state = {
-        "schema_version": "2.0.0",
+        "schema_version": "8.0.0",
         "status": "completed_maximum_phases",
         "profile_sha256": sha256_file(DEFAULT_PROFILE),
         "model_provenance_sha256": model_hash,
@@ -270,7 +302,7 @@ def test_metrics_top_level_cannot_detach_from_hashed_lineage(
     evaluation_path = evaluation_dir / "test.jsonl"
     evaluation_path.write_text("{}\n", encoding="utf-8")
     run_lineage = {
-        "schema_version": "1.0.0",
+        "schema_version": "8.0.0",
         "profile_path": str(DEFAULT_PROFILE.resolve()),
         "repo_root": str(Path(".").resolve()),
         "run_dir": str((tmp_path / "run").resolve()),
@@ -340,7 +372,7 @@ def test_tampered_prediction_is_rejected_after_predictions_hash_is_updated(
 ) -> None:
     metrics_path, predictions_path, _observations = _evaluation_artifacts(tmp_path, monkeypatch)
     row = json.loads(predictions_path.read_text(encoding="utf-8"))
-    row["prediction"]["determinability"]["confidence"] = 0.1
+    row["prediction"]["experiment_blocks"][0]["confidence"] = 0.1
     predictions_path.write_text(json.dumps(row) + "\n", encoding="utf-8")
     metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
     metrics["predictions_sha256"] = sha256_file(predictions_path)
@@ -355,7 +387,7 @@ def test_tampered_prediction_gold_is_rejected_against_snapshot(
 ) -> None:
     metrics_path, predictions_path, _observations = _evaluation_artifacts(tmp_path, monkeypatch)
     row = json.loads(predictions_path.read_text(encoding="utf-8"))
-    row["gold"]["determinability"]["rationale"] = "Altered gold."
+    row["gold"]["coverage"]["rationale"] = "Altered gold."
     predictions_path.write_text(json.dumps(row) + "\n", encoding="utf-8")
     metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
     metrics["predictions_sha256"] = sha256_file(predictions_path)

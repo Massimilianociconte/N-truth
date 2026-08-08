@@ -14,7 +14,7 @@ from ntruth.mvt_a import (
     DecisiveCorrection,
     FalseCertaintyRecord,
     HumanRevisionPatch,
-    MvtAStageOutput,
+    MvtAStageOutputV7,
     ParserCandidateBundle,
     assert_no_final_scientific_fields,
     hard_verify_candidates,
@@ -47,7 +47,7 @@ def test_empty_bundle_without_notes_fails() -> None:
 
 
 def test_stage_output_challenger_role() -> None:
-    stage = MvtAStageOutput(
+    stage = MvtAStageOutputV7(
         stage_id="s1",
         candidates=ParserCandidateBundle(notes=("abstain",)),
         model_id="granite-challenger",

@@ -1,4 +1,4 @@
-"""Contratto JSON stabile e backend-agnostic del parser AI (PRD v3, sezione 13).
+"""Contratto JSON candidate-only e backend-agnostic del parser AI (PRD v8 §13).
 
 Il contratto descrive soltanto candidate facts. Non contiene verdetti e non
 consente al modello di scrivere nel grafo scientifico confermato.
@@ -7,15 +7,21 @@ consente al modello di scrivere nel grafo scientifico confermato.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from pydantic import Field, JsonValue, model_validator
 
+from ntruth.mvt_a.stage_schema import (
+    ALLOWED_CANDIDATE_COUNT_KINDS,
+    StageCoverage,
+    assert_no_final_scientific_fields,
+)
 from ntruth.schemas.core import Determinability, EvidenceType, FrozenModel
 from ntruth.schemas.document import DocumentIR, StatisticalCodeArtifact
 from ntruth.schemas.graph import ALLOCATABLE_NODE_TYPES, NodeType, RelationType
 
-PARSER_AI_CONTRACT_VERSION = "2.0.0"
+PARSER_AI_CONTRACT_VERSION = "8.0.0"
+PARSER_AI_V3_CONTRACT_VERSION = "2.0.0"
 
 type ConfidenceScore = float
 
@@ -297,14 +303,14 @@ class CandidateEstimand(CandidateFact):
         return self
 
 
-class DeterminabilityAssessment(FrozenModel):
+class DeterminabilityAssessmentV3(FrozenModel):
     status: Determinability
     rationale: str
     confidence: ConfidenceScore = Field(ge=0.0, le=1.0, allow_inf_nan=False)
     evidence_ids: tuple[str, ...] = ()
 
     @model_validator(mode="after")
-    def _determinate_requires_evidence(self) -> DeterminabilityAssessment:
+    def _determinate_requires_evidence(self) -> DeterminabilityAssessmentV3:
         if self.status is Determinability.DETERMINATE and not self.evidence_ids:
             raise ValueError("DETERMINATE richiede evidence_ids")
         return self
@@ -326,7 +332,7 @@ class ClarificationQuestion(FrozenModel):
     rationale: str
 
 
-class ParserAIModelMetadata(FrozenModel):
+class ParserAIModelMetadataV3(FrozenModel):
     adapter_name: str
     model_name: str
     model_version: str
@@ -336,8 +342,8 @@ class ParserAIModelMetadata(FrozenModel):
     local_execution: bool = True
 
 
-class ParserAIOutput(FrozenModel):
-    """Output candidato completo; ``extra=forbid`` esclude verdetti nascosti."""
+class ParserAIOutputV3(FrozenModel):
+    """Deprecated PRD-v3 output accepted only by the named v3 adapter."""
 
     contract_version: Literal["2.0.0"] = "2.0.0"
     experiment_blocks: tuple[CandidateExperimentBlock, ...] = ()
@@ -348,13 +354,13 @@ class ParserAIOutput(FrozenModel):
     endpoints: tuple[CandidateEndpoint, ...] = ()
     contrasts: tuple[CandidateContrast, ...] = ()
     candidate_estimands: tuple[CandidateEstimand, ...] = ()
-    determinability: DeterminabilityAssessment
+    determinability: DeterminabilityAssessmentV3
     alternatives: tuple[CandidateAlternative, ...] = ()
     clarification_questions: tuple[ClarificationQuestion, ...] = ()
-    model_metadata: ParserAIModelMetadata
+    model_metadata: ParserAIModelMetadataV3
 
     @model_validator(mode="after")
-    def _referential_integrity(self) -> ParserAIOutput:
+    def _referential_integrity(self) -> ParserAIOutputV3:
         evidence_by_id = _unique_map(self.evidence_spans, "evidence_id")
         blocks = _unique_map(self.experiment_blocks, "block_id")
         nodes = _unique_map(self.candidate_nodes, "node_id")
@@ -480,7 +486,230 @@ class ParserAIOutput(FrozenModel):
         return self
 
 
-def validate_contract_pair(request: ParserAIInput, response: ParserAIOutput) -> ParserAIOutput:
+class CandidateCount(CandidateFact):
+    count_id: str
+    block_id: str
+    kind: str
+    candidate_value: int | float | str
+    raw_text: str
+
+    @model_validator(mode="after")
+    def _candidate_kind_only(self) -> CandidateCount:
+        if self.kind not in ALLOWED_CANDIDATE_COUNT_KINDS and not self.kind.endswith("_candidate"):
+            raise ValueError(f"count kind is not candidate-only: {self.kind!r}")
+        return self
+
+
+class CandidateEvent(CandidateFact):
+    event_id: str
+    block_id: str
+    event_type: str
+    participant_candidate_ids: tuple[str, ...] = ()
+
+
+class CandidateGraph(CandidateFact):
+    graph_id: str
+    block_id: str
+    candidate_node_ids: tuple[str, ...] = ()
+    candidate_edge_ids: tuple[str, ...] = ()
+    candidate_event_ids: tuple[str, ...] = ()
+
+
+class MissingPredicateCandidate(FrozenModel):
+    predicate_name: str
+    block_id: str
+    rationale: str
+    evidence_ids: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def _described(self) -> MissingPredicateCandidate:
+        if not self.predicate_name.strip() or not self.rationale.strip():
+            raise ValueError("missing predicate requires a name and rationale")
+        return self
+
+
+class ParserModelMetadata(FrozenModel):
+    adapter_name: str
+    model_name: str
+    model_version: str
+    model_checksum: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    prompt_template_version: str
+    contract_version: Literal["8.0.0"] = "8.0.0"
+    local_execution: bool = True
+
+
+class ParserCandidateOutput(FrozenModel):
+    """Canonical v8 parser output: candidates and coverage, never final claims."""
+
+    contract_version: Literal["8.0.0"] = "8.0.0"
+    experiment_blocks: tuple[CandidateExperimentBlock, ...] = ()
+    evidence_spans: tuple[ParserAIEvidenceSpan, ...] = ()
+    candidate_nodes: tuple[CandidateNode, ...] = ()
+    candidate_edges: tuple[CandidateEdge, ...] = ()
+    factors: tuple[CandidateFactor, ...] = ()
+    endpoints: tuple[CandidateEndpoint, ...] = ()
+    contrasts: tuple[CandidateContrast, ...] = ()
+    candidate_estimands: tuple[CandidateEstimand, ...] = ()
+    candidate_counts: tuple[CandidateCount, ...] = ()
+    candidate_events: tuple[CandidateEvent, ...] = ()
+    candidate_graphs: tuple[CandidateGraph, ...] = ()
+    alternatives: tuple[CandidateAlternative, ...] = ()
+    clarification_questions: tuple[ClarificationQuestion, ...] = ()
+    missing_predicates: tuple[MissingPredicateCandidate, ...] = ()
+    coverage: StageCoverage
+    model_metadata: ParserModelMetadata
+
+    @model_validator(mode="before")
+    @classmethod
+    def _raw_candidate_only(cls, value: Any) -> Any:
+        assert_no_final_scientific_fields(value)
+        return value
+
+    @model_validator(mode="after")
+    def _referential_integrity(self) -> ParserCandidateOutput:
+        evidence_by_id = _unique_map(self.evidence_spans, "evidence_id")
+        blocks = _unique_map(self.experiment_blocks, "block_id")
+        nodes = _unique_map(self.candidate_nodes, "node_id")
+        edges = _unique_map(self.candidate_edges, "edge_id")
+        factors = _unique_map(self.factors, "factor_id")
+        endpoints = _unique_map(self.endpoints, "endpoint_id")
+        contrasts = _unique_map(self.contrasts, "contrast_id")
+        estimands = _unique_map(self.candidate_estimands, "estimand_id")
+        counts = _unique_map(self.candidate_counts, "count_id")
+        events = _unique_map(self.candidate_events, "event_id")
+        graphs = _unique_map(self.candidate_graphs, "graph_id")
+        alternatives = _unique_map(self.alternatives, "alternative_id")
+        questions = _unique_map(self.clarification_questions, "question_id")
+
+        candidates: tuple[CandidateFact, ...] = (
+            *self.experiment_blocks,
+            *self.candidate_nodes,
+            *self.candidate_edges,
+            *self.factors,
+            *self.endpoints,
+            *self.contrasts,
+            *self.candidate_estimands,
+            *self.candidate_counts,
+            *self.candidate_events,
+            *self.candidate_graphs,
+            *self.alternatives,
+        )
+        for candidate in candidates:
+            _require_subset(candidate.evidence_ids, evidence_by_id, "evidence_id")
+
+        scoped_block_ids = (
+            *(item.block_id for item in self.candidate_nodes),
+            *(item.block_id for item in self.candidate_edges),
+            *(item.block_id for item in self.factors),
+            *(item.block_id for item in self.endpoints),
+            *(item.block_id for item in self.contrasts),
+            *(item.block_id for item in self.candidate_estimands),
+            *(item.block_id for item in self.candidate_counts),
+            *(item.block_id for item in self.candidate_events),
+            *(item.block_id for item in self.candidate_graphs),
+            *(item.block_id for item in self.alternatives),
+            *(item.block_id for item in self.clarification_questions),
+            *(item.block_id for item in self.missing_predicates),
+        )
+        _require_subset(scoped_block_ids, blocks, "block_id")
+
+        for edge in self.candidate_edges:
+            _require_subset((edge.source_id, edge.target_id), nodes, "node_id")
+            if (
+                nodes[edge.source_id].block_id != edge.block_id
+                or nodes[edge.target_id].block_id != edge.block_id
+            ):
+                raise ValueError("candidate edge crosses experiment blocks")
+        for contrast in self.contrasts:
+            _require_subset(contrast.factor_ids, factors, "factor_id")
+            _require_subset(contrast.endpoint_ids, endpoints, "endpoint_id")
+        for estimand in self.candidate_estimands:
+            _require_subset(estimand.factor_ids, factors, "factor_id")
+            _require_subset((estimand.endpoint_id,), endpoints, "endpoint_id")
+            if estimand.contrast_id is not None:
+                _require_subset((estimand.contrast_id,), contrasts, "contrast_id")
+        candidate_ids = set(nodes) | set(edges) | set(factors) | set(endpoints) | set(contrasts)
+        candidate_ids |= set(estimands) | set(counts) | set(events) | set(graphs)
+        for event in self.candidate_events:
+            _require_subset(event.participant_candidate_ids, candidate_ids, "candidate_id")
+        for graph in self.candidate_graphs:
+            _require_subset(graph.candidate_node_ids, nodes, "node_id")
+            _require_subset(graph.candidate_edge_ids, edges, "edge_id")
+            _require_subset(graph.candidate_event_ids, events, "event_id")
+        for alternative in self.alternatives:
+            _require_subset(alternative.candidate_node_ids, nodes, "node_id")
+            _require_subset(alternative.candidate_edge_ids, edges, "edge_id")
+        for question in self.clarification_questions:
+            _require_subset(question.resolves_candidate_ids, candidate_ids, "candidate_id")
+        for missing in self.missing_predicates:
+            _require_subset(missing.evidence_ids, evidence_by_id, "evidence_id")
+        if self.model_metadata.contract_version != self.contract_version:
+            raise ValueError("model metadata contract version mismatch")
+        if questions and not blocks:
+            raise ValueError("clarification questions require an experiment block")
+        if alternatives and not blocks:
+            raise ValueError("alternatives require an experiment block")
+        return self
+
+
+class GoldParserTarget(FrozenModel):
+    """Human-adjudicated supervision envelope, distinct from model output."""
+
+    schema_version: Literal["8.0.0"] = "8.0.0"
+    candidate_target: ParserCandidateOutput
+    adjudication_id: str
+    reviewer_ids: tuple[str, ...] = Field(min_length=2)
+    adjudication_rationale: str
+
+    @model_validator(mode="before")
+    @classmethod
+    def _raw_candidate_only(cls, value: Any) -> Any:
+        assert_no_final_scientific_fields(value)
+        return value
+
+    @model_validator(mode="after")
+    def _adjudicated(self) -> GoldParserTarget:
+        if not self.adjudication_id.strip() or not self.adjudication_rationale.strip():
+            raise ValueError("GoldParserTarget requires adjudication evidence")
+        if any(not reviewer.strip() for reviewer in self.reviewer_ids):
+            raise ValueError("GoldParserTarget reviewer IDs must not be blank")
+        if len(self.reviewer_ids) != len(set(self.reviewer_ids)):
+            raise ValueError("GoldParserTarget reviewer IDs must be unique")
+        return self
+
+
+class ParserV3MigrationReviewRequired(ValueError):
+    """Legacy direct-verdict targets require explicit human re-adjudication."""
+
+
+def migrate_parser_ai_output_v3_to_gold(_payload: Any) -> GoldParserTarget:
+    raise ParserV3MigrationReviewRequired(
+        "SCIENTIFIC_REVIEW_REQUIRED: ParserAIOutput v3 contains direct determinability; "
+        "it cannot be silently promoted to GoldParserTarget"
+    )
+
+
+def validate_contract_pair_v3(
+    request: ParserAIInput, response: ParserAIOutputV3
+) -> ParserAIOutputV3:
+    """Deprecated v3 request/response validation for the named legacy adapter."""
+
+    return cast(ParserAIOutputV3, _validate_contract_coordinates(request, response))
+
+
+def validate_candidate_contract_pair(
+    request: ParserAIInput, response: ParserCandidateOutput
+) -> ParserCandidateOutput:
+    """Validate v8 candidate evidence coordinates against immutable source input."""
+
+    assert_no_final_scientific_fields(response.model_dump(mode="json"))
+    return cast(ParserCandidateOutput, _validate_contract_coordinates(request, response))
+
+
+def _validate_contract_coordinates(
+    request: ParserAIInput,
+    response: ParserAIOutputV3 | ParserCandidateOutput,
+) -> ParserAIOutputV3 | ParserCandidateOutput:
     """Valida coordinate e file dell'output rispetto all'input immutabile."""
 
     text_by_file = {document.file_id: document.text for document in request.documents}
@@ -517,7 +746,9 @@ def parser_ai_json_schemas() -> dict[str, dict[str, object]]:
 
     return {
         "input": ParserAIInput.model_json_schema(),
-        "output": ParserAIOutput.model_json_schema(),
+        "candidate_output": ParserCandidateOutput.model_json_schema(),
+        "gold_parser_target": GoldParserTarget.model_json_schema(),
+        "legacy_v3_output": ParserAIOutputV3.model_json_schema(),
     }
 
 

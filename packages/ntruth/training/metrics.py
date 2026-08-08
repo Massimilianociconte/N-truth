@@ -7,7 +7,7 @@ import re
 from collections.abc import Iterable
 from typing import Any
 
-from ntruth.parser_ai.contract import ParserAIOutput
+from ntruth.parser_ai.contract import ParserCandidateOutput
 from ntruth.training.calibration import ConfidenceObservation
 
 
@@ -37,7 +37,7 @@ def _scores(predicted: set[tuple[Any, ...]], gold: set[tuple[Any, ...]]) -> dict
     }
 
 
-def _fact_sets(output: ParserAIOutput) -> dict[str, set[tuple[Any, ...]]]:
+def _fact_sets(output: ParserCandidateOutput) -> dict[str, set[tuple[Any, ...]]]:
     block_titles = {block.block_id: _text(block.title) for block in output.experiment_blocks}
     nodes = {
         node.node_id: (
@@ -112,11 +112,62 @@ def _fact_sets(output: ParserAIOutput) -> dict[str, set[tuple[Any, ...]]]:
             )
             for estimand in output.candidate_estimands
         },
+        "candidate_counts": {
+            (
+                block_titles.get(count.block_id, count.block_id),
+                _text(count.kind),
+                count.candidate_value,
+                _text(count.raw_text),
+            )
+            for count in output.candidate_counts
+        },
+        "candidate_events": {
+            (
+                block_titles.get(event.block_id, event.block_id),
+                _text(event.event_type),
+                tuple(sorted(event.participant_candidate_ids)),
+            )
+            for event in output.candidate_events
+        },
+        "candidate_graphs": {
+            (
+                block_titles.get(graph.block_id, graph.block_id),
+                tuple(sorted(graph.candidate_node_ids)),
+                tuple(sorted(graph.candidate_edge_ids)),
+                tuple(sorted(graph.candidate_event_ids)),
+            )
+            for graph in output.candidate_graphs
+        },
+        "alternatives": {
+            (
+                block_titles.get(alternative.block_id, alternative.block_id),
+                _text(alternative.description),
+                tuple(sorted(alternative.candidate_node_ids)),
+                tuple(sorted(alternative.candidate_edge_ids)),
+            )
+            for alternative in output.alternatives
+        },
+        "missing_predicates": {
+            (
+                block_titles.get(missing.block_id, missing.block_id),
+                _text(missing.predicate_name),
+                _text(missing.rationale),
+            )
+            for missing in output.missing_predicates
+        },
+        "coverage": {
+            (
+                output.coverage.status.value,
+                tuple(sorted(output.coverage.covered_artifact_ids)),
+                tuple(sorted(output.coverage.missing_artifact_ids)),
+                _text(output.coverage.rationale),
+            )
+        },
     }
 
 
 def _candidate_confidences(
-    output: ParserAIOutput,
+    output: ParserCandidateOutput,
 ) -> dict[str, list[tuple[tuple[Any, ...], float]]]:
     block_titles = {block.block_id: _text(block.title) for block in output.experiment_blocks}
     nodes = {
@@ -199,7 +250,7 @@ def _candidate_confidences(
     return result
 
 
-def parse_prediction_text(text: str) -> ParserAIOutput:
+def parse_prediction_text(text: str) -> ParserCandidateOutput:
     """Accetta JSON puro o un singolo code fence, poi applica lo schema Pydantic."""
 
     stripped = text.strip()
@@ -213,10 +264,10 @@ def parse_prediction_text(text: str) -> ParserAIOutput:
         raise ValueError(f"output non JSON: {exc.msg}") from exc
     if stripped[end:].strip():
         raise ValueError("testo extra dopo il payload JSON")
-    return ParserAIOutput.model_validate(value)
+    return ParserCandidateOutput.model_validate(value)
 
 
-def score_output(predicted: ParserAIOutput, gold: ParserAIOutput) -> dict[str, Any]:
+def score_output(predicted: ParserCandidateOutput, gold: ParserCandidateOutput) -> dict[str, Any]:
     predicted_sets = _fact_sets(predicted)
     gold_sets = _fact_sets(gold)
     category_scores = {
@@ -230,19 +281,12 @@ def score_output(predicted: ParserAIOutput, gold: ParserAIOutput) -> dict[str, A
     return {
         "schema_valid": True,
         "exact_contract_match": predicted.model_dump(mode="json") == gold.model_dump(mode="json"),
-        "determinability_accuracy": float(
-            predicted.determinability.status == gold.determinability.status
-        ),
-        "determinability": {
-            "predicted": _ontology(predicted.determinability.status),
-            "gold": _ontology(gold.determinability.status),
-        },
         "categories": category_scores,
         "micro": _scores(predicted_all, gold_all),
     }
 
 
-def score_invalid_output(gold: ParserAIOutput, error: str) -> dict[str, Any]:
+def score_invalid_output(gold: ParserCandidateOutput, error: str) -> dict[str, Any]:
     """Conta un output non validabile come mancata estrazione, senza ripararlo."""
 
     gold_sets = _fact_sets(gold)
@@ -252,11 +296,6 @@ def score_invalid_output(gold: ParserAIOutput, error: str) -> dict[str, Any]:
         "invalid_output": True,
         "validation_error": error,
         "exact_contract_match": False,
-        "determinability_accuracy": 0.0,
-        "determinability": {
-            "predicted": None,
-            "gold": _ontology(gold.determinability.status),
-        },
         "categories": {
             category: {
                 "true_positive": 0,
@@ -282,7 +321,7 @@ def score_invalid_output(gold: ParserAIOutput, error: str) -> dict[str, Any]:
 
 
 def confidence_observations(
-    predicted: ParserAIOutput, gold: ParserAIOutput
+    predicted: ParserCandidateOutput, gold: ParserCandidateOutput
 ) -> tuple[ConfidenceObservation, ...]:
     """Etichetta ogni fatto predetto come corretto/non corretto per la calibrazione."""
 
@@ -293,12 +332,6 @@ def confidence_observations(
             observations.append(
                 ConfidenceObservation(confidence=confidence, correct=key in gold_sets[category])
             )
-    observations.append(
-        ConfidenceObservation(
-            confidence=predicted.determinability.confidence,
-            correct=predicted.determinability.status == gold.determinability.status,
-        )
-    )
     return tuple(observations)
 
 
@@ -349,58 +382,12 @@ def aggregate_scores(scores: Iterable[dict[str, Any]]) -> dict[str, Any]:
             ),
         }
 
-    determinability_pairs = [row["determinability"] for row in rows]
-    determinability_labels = sorted(
-        {
-            str(value)
-            for pair in determinability_pairs
-            for value in (pair.get("gold"), pair.get("predicted"))
-            if value is not None
-        }
-    )
-    determinability_by_label: dict[str, dict[str, float | int]] = {}
-    for label in determinability_labels:
-        label_tp = sum(
-            pair.get("gold") == label and pair.get("predicted") == label
-            for pair in determinability_pairs
-        )
-        label_fp = sum(
-            pair.get("gold") != label and pair.get("predicted") == label
-            for pair in determinability_pairs
-        )
-        label_fn = sum(
-            pair.get("gold") == label and pair.get("predicted") != label
-            for pair in determinability_pairs
-        )
-        label_precision = label_tp / (label_tp + label_fp) if label_tp + label_fp else 0.0
-        label_recall = label_tp / (label_tp + label_fn) if label_tp + label_fn else 0.0
-        determinability_by_label[label] = {
-            "true_positive": label_tp,
-            "false_positive": label_fp,
-            "false_negative": label_fn,
-            "precision": label_precision,
-            "recall": label_recall,
-            "f1": (
-                2.0 * label_precision * label_recall / (label_precision + label_recall)
-                if label_precision + label_recall
-                else 0.0
-            ),
-        }
     return {
         "records": len(rows),
         "invalid_output_count": invalid_outputs,
         "schema_valid_rate": sum(bool(row.get("schema_valid")) for row in rows) / len(rows),
         "exact_contract_match_rate": sum(bool(row.get("exact_contract_match")) for row in rows)
         / len(rows),
-        "determinability_accuracy": sum(float(row["determinability_accuracy"]) for row in rows)
-        / len(rows),
-        "determinability_macro_f1": (
-            sum(float(item["f1"]) for item in determinability_by_label.values())
-            / len(determinability_by_label)
-            if determinability_by_label
-            else 0.0
-        ),
-        "determinability_by_label": determinability_by_label,
         "categories": categories,
         "macro_category_f1": (
             sum(float(item["f1"]) for item in categories.values()) / len(categories)

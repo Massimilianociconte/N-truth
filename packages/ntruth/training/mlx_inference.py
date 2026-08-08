@@ -10,7 +10,11 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from ntruth.parser_ai.contract import ParserAIInput, ParserAIOutput, validate_contract_pair
+from ntruth.parser_ai.contract import (
+    ParserAIInput,
+    ParserCandidateOutput,
+    validate_candidate_contract_pair,
+)
 from ntruth.training.calibration import ConfidenceObservation, calibration_report
 from ntruth.training.metrics import (
     aggregate_scores,
@@ -31,17 +35,17 @@ from ntruth.training.mlx_runtime import (
     verify_model,
 )
 
-EVALUATION_LINEAGE_SCHEMA_VERSION = "1.0.0"
+EVALUATION_LINEAGE_SCHEMA_VERSION = "8.0.0"
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _EVALUATION_SPLIT_FILES = {
     "validation": "valid.jsonl",
     "test": "test.jsonl",
-    "external": "external.jsonl",
+    "external_challenge": "external-challenge.jsonl",
 }
 _SNAPSHOT_COUNT_NAMES = {
     "validation": "valid",
     "test": "test",
-    "external": "external",
+    "external_challenge": "external_challenge",
 }
 _EXPORTABLE_RUN_STATUSES = {"completed_maximum_phases", "early_stopped"}
 _EVALUABLE_RUN_STATUSES = {*_EXPORTABLE_RUN_STATUSES, "stopped_memory_ceiling"}
@@ -87,8 +91,8 @@ def _verify_best_run(
 
     state_path = run_dir / "run-state.json"
     state = _read_json_object(state_path, label="run-state")
-    if state.get("schema_version") != "2.0.0":
-        raise MLXPipelineError("run-state v2 obbligatorio per inferenza ed export")
+    if state.get("schema_version") != "8.0.0":
+        raise MLXPipelineError("run-state v8 obbligatorio per inferenza ed export")
     status = state.get("status")
     if status not in _EVALUABLE_RUN_STATUSES:
         raise MLXPipelineError(f"run non valutabile nello stato {status!r}")
@@ -206,7 +210,7 @@ def _verify_evaluation_snapshot(
     snapshot = validate_snapshot_integrity(
         data_dir,
         smoke_test=smoke_test,
-        require_nonempty_training_splits=declared_split != "external",
+        require_nonempty_training_splits=declared_split != "external_challenge",
     )
     count_name = _SNAPSHOT_COUNT_NAMES[declared_split]
     if int(snapshot["counts"].get(count_name, 0)) < 1:
@@ -294,7 +298,7 @@ def tokenize_report(
         "splits": {},
     }
     all_lengths: list[int] = []
-    for split in ("train", "valid", "test"):
+    for split in ("train", "valid"):
         lengths: list[int] = []
         for record in iter_jsonl(data_dir / f"{split}.jsonl"):
             messages = record.get("messages")
@@ -359,7 +363,7 @@ def _chat_prompt(tokenizer: Any, messages: list[dict[str, Any]]) -> str:
 
 def _gold_and_prompt(
     record: dict[str, Any],
-) -> tuple[str, list[dict[str, Any]], ParserAIInput, ParserAIOutput]:
+) -> tuple[str, list[dict[str, Any]], ParserAIInput, ParserCandidateOutput]:
     record_id = str(record.get("record_id") or record.get("sample_id") or "")
     if not record_id:
         raise MLXPipelineError("record di evaluation senza record_id/sample_id")
@@ -378,7 +382,7 @@ def _gold_and_prompt(
         raise MLXPipelineError(f"record {record_id}: ParserAIInput user assente")
     try:
         parser_input = ParserAIInput.model_validate_json(user_messages[-1]["content"])
-        gold = validate_contract_pair(parser_input, parse_prediction_text(content))
+        gold = validate_candidate_contract_pair(parser_input, parse_prediction_text(content))
     except (ValueError, TypeError) as exc:
         raise MLXPipelineError(f"record {record_id}: coppia input/gold non valida: {exc}") from exc
     return record_id, prompt_messages, parser_input, gold
@@ -438,7 +442,7 @@ def predict_and_score(
             record_id, prompt_messages, parser_input, gold = _gold_and_prompt(record)
             raw_outputs: list[str] = []
             validation_error: str | None = None
-            predicted: ParserAIOutput | None = None
+            predicted: ParserCandidateOutput | None = None
             attempts = 2 if retry_invalid_once else 1
             for attempt in range(attempts):
                 messages = list(prompt_messages)
@@ -448,7 +452,7 @@ def predict_and_score(
                             "role": "user",
                             "content": (
                                 "The previous response failed JSON/schema validation. Return exactly "
-                                "one JSON object matching ParserAIOutput v2.0.0; do not add facts, prose "
+                                "one JSON object matching ParserCandidateOutput v8.0.0; do not add facts, prose "
                                 "or Markdown. Validation error: " + str(validation_error)[:500]
                             ),
                         }
@@ -464,7 +468,9 @@ def predict_and_score(
                 )
                 raw_outputs.append(raw)
                 try:
-                    predicted = validate_contract_pair(parser_input, parse_prediction_text(raw))
+                    predicted = validate_candidate_contract_pair(
+                        parser_input, parse_prediction_text(raw)
+                    )
                     validation_error = None
                     break
                 except (ValueError, TypeError) as exc:
@@ -550,8 +556,8 @@ _PREDICTION_ROW_KEYS = frozenset(
 )
 
 
-def _parse_generated_output(parser_input: ParserAIInput, raw: str) -> ParserAIOutput:
-    return validate_contract_pair(parser_input, parse_prediction_text(raw))
+def _parse_generated_output(parser_input: ParserAIInput, raw: str) -> ParserCandidateOutput:
+    return validate_candidate_contract_pair(parser_input, parse_prediction_text(raw))
 
 
 def _reconstruct_evaluation(
@@ -613,7 +619,7 @@ def _reconstruct_evaluation(
                 )
             try:
                 predicted_from_raw = _parse_generated_output(parser_input, raw_outputs[-1])
-                predicted = ParserAIOutput.model_validate(prediction_row.get("prediction"))
+                predicted = ParserCandidateOutput.model_validate(prediction_row.get("prediction"))
             except (ValueError, TypeError) as exc:
                 raise MLXPipelineError(
                     f"record prediction {record_id}: prediction dichiarata valida non validabile"
@@ -1003,7 +1009,7 @@ def export_adapter_bundle(
     metrics_context = _verify_metrics_artifacts(metrics_path, require_real=True)
     calibration_context = _verify_calibration_artifact(calibration_path)
     metrics_split = metrics_context["metrics"]["declared_split"]
-    if metrics_split not in {"test", "external"}:
+    if metrics_split not in {"test", "external_challenge"}:
         raise MLXPipelineError("export richiede metrics finali da test oppure external")
     for context_label, context in (
         ("metrics", metrics_context),

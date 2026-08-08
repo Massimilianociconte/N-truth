@@ -7,7 +7,11 @@ from pathlib import Path
 import pytest
 
 from ntruth.governance.lineage import CorpusSplit
-from ntruth.parser_ai.contract import ParserAIInput, ParserAIOutput
+from ntruth.parser_ai.contract import (
+    GoldParserTarget,
+    ParserAIInput,
+    ParserCandidateOutput,
+)
 from ntruth.training import (
     AnnotationStatus,
     DatasetManifest,
@@ -29,9 +33,9 @@ def _sha(value: str) -> str:
 
 
 def _target() -> dict[str, object]:
-    return ParserAIOutput.model_validate(
+    return ParserCandidateOutput.model_validate(
         {
-            "contract_version": "2.0.0",
+            "contract_version": "8.0.0",
             "experiment_blocks": [],
             "evidence_spans": [],
             "candidate_nodes": [],
@@ -40,21 +44,25 @@ def _target() -> dict[str, object]:
             "endpoints": [],
             "contrasts": [],
             "candidate_estimands": [],
-            "determinability": {
-                "status": "INDETERMINATE",
-                "rationale": "No decisive evidence.",
-                "confidence": 0.5,
-                "evidence_ids": [],
-            },
+            "candidate_counts": [],
+            "candidate_events": [],
+            "candidate_graphs": [],
             "alternatives": [],
             "clarification_questions": [],
+            "missing_predicates": [],
+            "coverage": {
+                "status": "PARTIAL",
+                "covered_artifact_ids": [],
+                "missing_artifact_ids": ["not-reported"],
+                "rationale": "Candidate-only snapshot fixture.",
+            },
             "model_metadata": {
                 "adapter_name": "snapshot-integrity-gold",
                 "model_name": "annotation",
                 "model_version": "1",
                 "model_checksum": None,
                 "prompt_template_version": "snapshot-integrity-test",
-                "contract_version": "2.0.0",
+                "contract_version": "8.0.0",
                 "local_execution": True,
             },
         }
@@ -74,17 +82,22 @@ def _record(
     )
     return SupervisedRecord(
         record_id=record_id,
-        task="parser_ai_v2",
+        task="parser_candidate_v8",
         language="en",
         domain="snapshot_integrity_test",
         input_text=parser_input.model_dump_json(),
-        target=_target(),
+        target=GoldParserTarget(
+            candidate_target=ParserCandidateOutput.model_validate(_target()),
+            adjudication_id=f"adjudication-{record_id}",
+            reviewer_ids=("wet-lab", "biostatistician"),
+            adjudication_rationale="Candidate facts were reconciled.",
+        ),
         provenance=SupervisionProvenance(
             source_id=f"source-{record_id}",
             source_asset_id=f"asset-{record_id}",
             source_sha256=_sha(f"source:{record_id}"),
             governance_hash=_sha(f"governance:{record_id}"),
-            license_or_authorization_id=(f"license-{record_id}" if training_eligible else None),
+            license_or_authorization_id=f"license-{record_id}",
             guideline_version="snapshot-integrity-test",
             reviewer_count=2 if training_eligible else 0,
             reviewer_roles=("wet-lab", "biostatistician") if training_eligible else (),
@@ -92,8 +105,10 @@ def _record(
         annotation_status=(
             AnnotationStatus.DOUBLE_REVIEWED if training_eligible else AnnotationStatus.CANDIDATE
         ),
-        training_eligible=training_eligible,
-        requested_split=split,
+        training_eligible=training_eligible
+        and split in {CorpusSplit.TRAIN, CorpusSplit.VALIDATION},
+        evaluation_eligible=split is CorpusSplit.TEST,
+        split=split,
     )
 
 
@@ -112,7 +127,7 @@ def _export_real_snapshot(
                     CorpusSplit.VALIDATION,
                     training_eligible=training_eligible,
                 ),
-                _record("test", CorpusSplit.TEST, training_eligible=training_eligible),
+                _record("test", CorpusSplit.TEST, training_eligible=False),
             )
         )
     dataset = prepare_dataset(
@@ -150,7 +165,8 @@ def test_real_snapshot_verifies_files_counts_and_source_identity(tmp_path: Path)
     result = validate_snapshot_integrity(output)
     training = validate_mlx_dataset(output)
 
-    assert result["counts"] == {"train": 1, "valid": 1, "test": 1, "external": 0}
+    assert result["counts"] == {"train": 1, "valid": 1}
+    assert result["manifest"]["membership_counts"]["TEST"] == 1
     assert result["snapshot_id"].startswith("mlx-dataset-")
     assert len(result["snapshot_sha256"]) == 64
     assert result["source_manifest"]["dataset_id"] == result["manifest"]["dataset_id"]
@@ -211,7 +227,12 @@ def test_updated_hash_cannot_certify_changed_messages_with_same_record_id(
     _export_real_snapshot(output)
     train_path = output / "train.jsonl"
     row = json.loads(train_path.read_text(encoding="utf-8"))
-    row["messages"][-1]["content"] = json.dumps(_target() | {"experiment_blocks": []}) + " "
+    changed_target = _target()
+    changed_target["coverage"] = {
+        **changed_target["coverage"],
+        "rationale": "Tampered candidate coverage.",
+    }
+    row["messages"][-1]["content"] = json.dumps(changed_target) + " "
     train_path.write_text(json.dumps(row, sort_keys=True) + "\n", encoding="utf-8")
 
     manifest_path = output / "snapshot-manifest.json"
@@ -223,7 +244,7 @@ def test_updated_hash_cannot_certify_changed_messages_with_same_record_id(
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
     _resign_snapshot(manifest_path)
 
-    with pytest.raises(MLXPipelineError, match=r"contenuto chat.*prepared records"):
+    with pytest.raises(MLXPipelineError, match=r"contenuto chat.*manifest sorgente"):
         validate_snapshot_integrity(output)
 
 
@@ -239,7 +260,7 @@ def test_training_approval_cannot_be_self_certified_with_boolean_flags(tmp_path:
     _resign_snapshot(manifest_path)
 
     with pytest.raises(MLXPipelineError, match=r"training_approved.*manifest sorgente"):
-        validate_snapshot_integrity(output)
+        validate_snapshot_integrity(output, require_nonempty_training_splits=False)
 
 
 def test_snapshot_dataset_id_must_match_content_addressed_source_manifest(
@@ -303,7 +324,7 @@ def test_integrity_can_inspect_empty_splits_but_training_remains_fail_closed(
         output,
         require_nonempty_training_splits=False,
     )
-    assert result["counts"] == {"train": 1, "valid": 0, "test": 0, "external": 0}
+    assert result["counts"] == {"train": 1, "valid": 0}
     with pytest.raises(MLXPipelineError, match="split MLX vuoto"):
         validate_mlx_dataset(output)
 

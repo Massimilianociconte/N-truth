@@ -11,10 +11,11 @@ from ntruth.schemas.core import FrozenModel, content_checksum
 
 
 class CorpusSplit(StrEnum):
-    TRAIN = "train"
-    VALIDATION = "validation"
-    TEST = "test"
-    EXTERNAL = "external"
+    UNASSIGNED = "UNASSIGNED"
+    TRAIN = "TRAIN"
+    VALIDATION = "VALIDATION"
+    TEST = "TEST"
+    EXTERNAL_CHALLENGE = "EXTERNAL_CHALLENGE"
 
 
 class LeakageGroupKind(StrEnum):

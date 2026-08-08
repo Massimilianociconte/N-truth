@@ -55,6 +55,22 @@ def _raise_if_errors(
         raise DatasetValidationError(errors)
 
 
+def _raise_if_split_membership_is_unrepresentable(
+    issues: tuple[ValidationIssue, ...],
+) -> None:
+    structural = tuple(
+        issue
+        for issue in issues
+        if issue.code
+        in {
+            "conflicting_requested_splits",
+            "conflicting_duplicate_requested_splits",
+        }
+    )
+    if structural:
+        raise DatasetValidationError(structural)
+
+
 def prepare_dataset(
     records: Iterable[SupervisedRecord],
     *,
@@ -75,49 +91,28 @@ def prepare_dataset(
     _raise_if_errors(identity_issues, fail_on_error=True, always=True)
 
     issues: list[ValidationIssue] = []
-    if active_config.require_training_eligible:
-        selected = tuple(record for record in normalized_all if record.record.training_eligible)
-        excluded_ids = tuple(
-            sorted(
-                record.record.record_id
-                for record in normalized_all
-                if not record.record.training_eligible
+    # Preparation preserves the complete membership ledger. Training eligibility
+    # controls only the physical training view produced later; it is never a data
+    # quality filter and must not erase TEST/EXTERNAL_CHALLENGE membership.
+    selected = normalized_all
+    excluded_ids: tuple[str, ...] = ()
+    diagnostic_ids = tuple(
+        sorted(
+            record.record.record_id for record in selected if not record.record.training_eligible
+        )
+    )
+    if diagnostic_ids:
+        issues.append(
+            ValidationIssue(
+                code="training_ineligible_membership_preserved",
+                severity=IssueSeverity.WARNING,
+                detail=(
+                    "non-training membership is preserved but excluded from every "
+                    "physical training view"
+                ),
+                record_ids=diagnostic_ids,
             )
         )
-        if excluded_ids:
-            issues.append(
-                ValidationIssue(
-                    code="training_ineligible_excluded",
-                    severity=IssueSeverity.WARNING,
-                    detail=(
-                        "record non autorizzati o non sufficientemente revisionati "
-                        "esclusi dal dataset"
-                    ),
-                    record_ids=excluded_ids,
-                )
-            )
-    else:
-        selected = normalized_all
-        excluded_ids = ()
-        diagnostic_ids = tuple(
-            sorted(
-                record.record.record_id
-                for record in selected
-                if not record.record.training_eligible
-            )
-        )
-        if diagnostic_ids:
-            issues.append(
-                ValidationIssue(
-                    code="training_ineligible_included_for_diagnostics",
-                    severity=IssueSeverity.WARNING,
-                    detail=(
-                        "record non training-eligible inclusi per configurazione esplicita; "
-                        "l'artefatto non va usato per training"
-                    ),
-                    record_ids=diagnostic_ids,
-                )
-            )
 
     if not selected:
         issues.append(
@@ -133,6 +128,7 @@ def prepare_dataset(
         near_threshold=active_config.near_duplicate_threshold,
     )
     issues.extend(deduplication.issues)
+    _raise_if_split_membership_is_unrepresentable(_ordered_issues(issues))
     _raise_if_errors(
         _ordered_issues(issues),
         fail_on_error=active_config.fail_on_error,
@@ -147,14 +143,16 @@ def prepare_dataset(
     )
     issues.extend(split_result.issues)
     ordered_issues = _ordered_issues(issues)
+    _raise_if_split_membership_is_unrepresentable(ordered_issues)
     _raise_if_errors(ordered_issues, fail_on_error=active_config.fail_on_error)
 
     assignment_by_id = {assignment.record_id: assignment for assignment in split_result.assignments}
     split_order = {
+        CorpusSplit.UNASSIGNED: -1,
         CorpusSplit.TRAIN: 0,
         CorpusSplit.VALIDATION: 1,
         CorpusSplit.TEST: 2,
-        CorpusSplit.EXTERNAL: 3,
+        CorpusSplit.EXTERNAL_CHALLENGE: 3,
     }
     prepared_records = tuple(
         sorted(
