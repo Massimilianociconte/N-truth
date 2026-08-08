@@ -47,6 +47,7 @@ from ntruth.evaluation_v8.models import (
     AdequacyAxisSnapshot,
     ClaimEvaluationSnapshot,
     QueryEvaluationSnapshot,
+    QuestionAttributionSnapshot,
 )
 from ntruth.schemas.claims import DeterminabilityState
 from ntruth.schemas.knowledge import KnowledgeState, KnowledgeValue
@@ -70,6 +71,15 @@ def _present(values: tuple[str, ...], scope: str) -> KnowledgeValue[tuple[str, .
         value=values,
         evidence_ids=(f"E-{scope}",),
         claim_scope_id=scope,
+    )
+
+
+def _adequacy_communication(query_id: str, *, positive: bool = False) -> KnowledgeValue[bool]:
+    return KnowledgeValue[bool](
+        knowledge_state=KnowledgeState.PRESENT,
+        value=positive,
+        evidence_ids=(f"E-ADEQUACY-{query_id}",),
+        query_scope_id=query_id,
     )
 
 
@@ -155,7 +165,23 @@ def _snapshot(
                         query_id="IQ-1",
                         axis_id="interference",
                         outcome_checksum=_digest(axis_value),
+                        communicated_positive=_adequacy_communication("IQ-1"),
                     ),
+                ),
+                question_attributions=tuple(
+                    QuestionAttributionSnapshot(
+                        query_id="IQ-1",
+                        question_id=question_id,
+                        claim_ids=KnowledgeValue[tuple[str, ...]](
+                            knowledge_state=KnowledgeState.PRESENT,
+                            value=(claim.claim_id,),
+                            evidence_ids=claim.actionable_question_ids.evidence_ids,
+                            query_scope_id="IQ-1",
+                        ),
+                    )
+                    for claim in claims
+                    if claim.actionable_question_ids.knowledge_state is KnowledgeState.PRESENT
+                    for question_id in claim.actionable_question_ids.value or ()
                 ),
             ),
         ),
@@ -314,6 +340,7 @@ def test_missing_query_is_counted_and_never_borrows_another_query_claim() -> Non
                 query_id="IQ-2",
                 axis_id="interference",
                 outcome_checksum=_digest("iq-2-axis"),
+                communicated_positive=_adequacy_communication("IQ-2"),
             ),
         ),
     )

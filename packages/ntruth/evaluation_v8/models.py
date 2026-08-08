@@ -27,6 +27,7 @@ CONFORMANCE_REFERENCE_REVIEW_ISSUE_ID = "SRR-V8-CONFORMANCE-REFERENCE-NONSCIENTI
 REFERENCE_STABILITY_REVIEW_ISSUE_ID = "SRR-V8-REFERENCE-STABILITY"
 PARTIAL_CLAIM_MATCH_REVIEW_ISSUE_ID = "SRR-V8-PARTIAL-CLAIM-MATCH"
 EVALUATION_PROCESS_METRICS_REVIEW_ISSUE_ID = "SRR-V8-EVAL-PROCESS-METRICS"
+FALSE_CERTAINTY_PROTOCOL_REVIEW_ISSUE_ID = "SRR-V8-FALSE-CERTAINTY-PROTOCOL"
 
 
 class FalseCertaintyCategory(StrEnum):
@@ -95,6 +96,10 @@ class ResidualDimension(StrEnum):
     ADEQUACY_AXIS = "ADEQUACY_AXIS"
     EVIDENCE_CORRECTNESS = "EVIDENCE_CORRECTNESS"
     PROOF_CORRECTNESS = "PROOF_CORRECTNESS"
+    COUNT_CORRECTNESS = "COUNT_CORRECTNESS"
+    SCENARIO_COVERAGE = "SCENARIO_COVERAGE"
+    PROFILE_COVERAGE = "PROFILE_COVERAGE"
+    SUPPORT_CORRECTNESS = "SUPPORT_CORRECTNESS"
 
 
 class ResidualScopeKind(StrEnum):
@@ -105,7 +110,34 @@ class ResidualScopeKind(StrEnum):
 
 
 class FalseCertaintyDenominatorScope(StrEnum):
+    """Deprecated named scope retained only for explicit migration payloads."""
+
     DECISIVE_REFERENCE_CLAIMS = "DECISIVE_REFERENCE_CLAIMS"
+
+
+class FalseCertaintyMetricProtocol(KernelModel):
+    """Reviewed denominator/event-unit pin required before a rate can be emitted."""
+
+    protocol_id: NonBlankStr
+    content_checksum: Sha256
+    report_scope_id: NonBlankStr
+    denominator_scope_id: NonBlankStr
+    denominator: int = Field(ge=1)
+    event_unit: NonBlankStr
+    severity_policy_id: NonBlankStr
+    severity_policy_checksum: Sha256
+    evidence_ids: tuple[NonBlankStr, ...] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _content_addressed(self) -> Self:
+        expected = content_checksum(
+            self.model_dump(mode="json", exclude={"protocol_id", "content_checksum"})
+        )
+        if self.content_checksum != expected:
+            raise ValueError("false-certainty metric protocol checksum mismatch")
+        if self.protocol_id != f"FALSE-CERTAINTY-PROTOCOL-{expected[:20]}":
+            raise ValueError("false-certainty metric protocol ID mismatch")
+        return self
 
 
 class QuestionAttributionSnapshot(KernelModel):
@@ -123,15 +155,48 @@ class QuestionAttributionSnapshot(KernelModel):
 
 
 class FalseCertaintySummary(KernelModel):
-    scope: FalseCertaintyDenominatorScope
-    denominator: int = Field(ge=1)
-    event_count: int = Field(ge=0)
+    scope: KnowledgeValue[NonBlankStr]
+    denominator: KnowledgeValue[int]
+    event_count: KnowledgeValue[int]
+    rate: KnowledgeValue[Decimal]
     severity: KnowledgeValue[tuple[ResidualSeverity, ...]]
 
     @model_validator(mode="after")
     def _bounded_and_scoped(self) -> Self:
-        if self.event_count > self.denominator:
+        scopes = (self.scope, self.denominator, self.event_count, self.rate, self.severity)
+        query_scopes = {item.query_scope_id for item in scopes}
+        if len(query_scopes) != 1 or None in query_scopes:
+            raise ValueError("false-certainty summary fields must share one report scope")
+        if (
+            self.denominator.knowledge_state is KnowledgeState.PRESENT
+            and self.event_count.knowledge_state is KnowledgeState.PRESENT
+            and self.denominator.value is not None
+            and self.event_count.value is not None
+            and self.event_count.value > self.denominator.value
+        ):
             raise ValueError("false-certainty event count exceeds its preregistered denominator")
+        for label, value in (
+            ("denominator", self.denominator),
+            ("event_count", self.event_count),
+        ):
+            if (
+                value.knowledge_state is KnowledgeState.PRESENT
+                and value.value is not None
+                and value.value < 0
+            ):
+                raise ValueError(f"false-certainty {label} must be non-negative")
+        if self.rate.knowledge_state is KnowledgeState.PRESENT:
+            if (
+                self.scope.knowledge_state is not KnowledgeState.PRESENT
+                or self.denominator.knowledge_state is not KnowledgeState.PRESENT
+                or self.event_count.knowledge_state is not KnowledgeState.PRESENT
+                or self.denominator.value in {None, 0}
+                or self.event_count.value is None
+            ):
+                raise ValueError("false-certainty rate requires a closed scope and denominator")
+            expected_rate = Decimal(self.event_count.value) / Decimal(self.denominator.value)
+            if self.rate.value != expected_rate:
+                raise ValueError("false-certainty rate differs from its pinned counts")
         return self
 
 
@@ -175,11 +240,22 @@ class QuestionUsefulnessObservation(KernelModel):
             1 <= int(self.relevance.value or 0) <= 5
         ):
             raise ValueError("question usefulness relevance must be between 1 and 5")
+        if (
+            self.response_time_seconds.knowledge_state is KnowledgeState.PRESENT
+            and self.response_time_seconds.value is not None
+            and self.response_time_seconds.value < 0
+        ):
+            raise ValueError("question response time must be non-negative")
         return self
 
 
 class EvaluationProcessObservations(KernelModel):
+    observation_id: NonBlankStr
+    content_checksum: Sha256
     report_scope_id: NonBlankStr
+    report_checksum: Sha256
+    evidence_ids: tuple[NonBlankStr, ...] = Field(min_length=1)
+    question_attributions: tuple[QuestionAttributionSnapshot, ...] = Field(min_length=1)
     time_to_confirmed_report: KnowledgeValue[TimeToConfirmedReportObservation]
     decisive_human_correction_count: KnowledgeValue[int]
     question_usefulness: KnowledgeValue[tuple[QuestionUsefulnessObservation, ...]]
@@ -193,6 +269,63 @@ class EvaluationProcessObservations(KernelModel):
         ):
             if value.query_scope_id != self.report_scope_id:
                 raise ValueError(f"process observation {label} has the wrong report scope")
+        if (
+            self.decisive_human_correction_count.knowledge_state is KnowledgeState.PRESENT
+            and self.decisive_human_correction_count.value is not None
+            and self.decisive_human_correction_count.value < 0
+        ):
+            raise ValueError("decisive human correction count must be non-negative")
+        identities = [(item.query_id, item.question_id) for item in self.question_attributions]
+        if len(set(identities)) != len(identities):
+            raise ValueError("process observations contain duplicate question attributions")
+        usefulness = tuple(self.question_usefulness.value or ())
+        usefulness_identities = [(item.query_id, item.question_id) for item in usefulness]
+        if len(set(usefulness_identities)) != len(usefulness_identities):
+            raise ValueError("process observations contain duplicate question-usefulness rows")
+        if self.question_usefulness.knowledge_state is KnowledgeState.PRESENT and set(
+            usefulness_identities
+        ) != set(identities):
+            raise ValueError("question usefulness differs from the exact attribution ledger")
+        nested_evidence = {
+            evidence_id
+            for value in (
+                self.time_to_confirmed_report,
+                self.decisive_human_correction_count,
+                self.question_usefulness,
+            )
+            for evidence_id in value.evidence_ids
+        }
+        nested_evidence.update(
+            evidence_id
+            for attribution in self.question_attributions
+            for evidence_id in attribution.claim_ids.evidence_ids
+        )
+        for item in usefulness:
+            if item.evidence_requested.knowledge_state is KnowledgeState.PRESENT and not set(
+                item.evidence_requested.value or ()
+            ).issubset(self.evidence_ids):
+                raise ValueError("question usefulness requests evidence outside the process record")
+            for usefulness_value in (
+                item.answerable,
+                item.relevance,
+                item.scenario_resolved,
+                item.output_changing,
+                item.redundant,
+                item.recipient_correct,
+                item.response_time_seconds,
+                item.evidence_requested,
+                item.remaining_scenario_coverage,
+            ):
+                nested_evidence.update(usefulness_value.evidence_ids)
+        if not nested_evidence.issubset(set(self.evidence_ids)):
+            raise ValueError("process observations contain dangling evidence IDs")
+        expected = content_checksum(
+            self.model_dump(mode="json", exclude={"observation_id", "content_checksum"})
+        )
+        if self.content_checksum != expected:
+            raise ValueError("evaluation process observation checksum mismatch")
+        if self.observation_id != f"EVAL-PROCESS-{expected[:20]}":
+            raise ValueError("evaluation process observation ID mismatch")
         return self
 
 
@@ -210,6 +343,13 @@ class AdequacyAxisSnapshot(KernelModel):
     query_id: NonBlankStr
     axis_id: NonBlankStr
     outcome_checksum: Sha256
+    communicated_positive: KnowledgeValue[bool]
+
+    @model_validator(mode="after")
+    def _query_scoped(self) -> Self:
+        if self.communicated_positive.query_scope_id != self.query_id:
+            raise ValueError("adequacy communication state has the wrong query scope")
+        return self
 
 
 class ClaimEvaluationSnapshot(KernelModel):
@@ -285,6 +425,22 @@ class QueryEvaluationSnapshot(KernelModel):
                 item.claim_ids.value or ()
             ).issubset(known_claim_ids):
                 raise ValueError("question attribution references a claim outside its query")
+        attributed_questions_by_claim: dict[str, set[str]] = {
+            claim_id: set() for claim_id in known_claim_ids
+        }
+        for item in self.question_attributions:
+            if item.claim_ids.knowledge_state is KnowledgeState.PRESENT:
+                for claim_id in item.claim_ids.value or ():
+                    attributed_questions_by_claim[claim_id].add(item.question_id)
+        for claim in self.claims:
+            if (
+                claim.actionable_question_ids.knowledge_state is KnowledgeState.PRESENT
+                and set(claim.actionable_question_ids.value or ())
+                != attributed_questions_by_claim[claim.claim_id]
+            ):
+                raise ValueError(
+                    "actionable question requires exact reviewed query-to-claim attribution"
+                )
         return self
 
 
@@ -477,6 +633,7 @@ class ResidualEvent(KernelModel):
     claim_id: NonBlankStr | None = None
     axis_id: NonBlankStr | None = None
     match_outcome: MatchOutcome
+    false_certainty: KnowledgeValue[bool]
     false_certainty_category: KnowledgeValue[FalseCertaintyCategory]
     origin: KnowledgeValue[ResidualOrigin]
     severity: KnowledgeValue[ResidualSeverity]
@@ -562,6 +719,15 @@ class EndToEndEvaluationReport(KernelModel):
             and EVALUATION_PROCESS_METRICS_REVIEW_ISSUE_ID not in blocker_ids
         ):
             raise ValueError("unclosed process metrics require their scientific-review blocker")
+        if (
+            self.false_certainty.knowledge_state is KnowledgeState.PRESENT
+            and self.false_certainty.value is not None
+            and self.false_certainty.value.rate.knowledge_state is not KnowledgeState.PRESENT
+            and FALSE_CERTAINTY_PROTOCOL_REVIEW_ISSUE_ID not in blocker_ids
+        ):
+            raise ValueError(
+                "unclosed false-certainty denominator requires its scientific-review blocker"
+            )
         expected = content_checksum(
             self.model_dump(mode="json", exclude={"evaluation_id", "content_checksum"})
         )
@@ -901,6 +1067,7 @@ __all__ = [
     "EVALUATION_PROCESS_METRICS_REVIEW_ISSUE_ID",
     "EVALUATION_REFERENCE_REVIEW_ISSUE_ID",
     "EVALUATION_SCIENTIFIC_HOLD_ISSUE_ID",
+    "FALSE_CERTAINTY_PROTOCOL_REVIEW_ISSUE_ID",
     "PARTIAL_CLAIM_MATCH_REVIEW_ISSUE_ID",
     "REFERENCE_STABILITY_REVIEW_ISSUE_ID",
     "AbstentionDisposition",
@@ -918,6 +1085,7 @@ __all__ = [
     "EvaluationStatus",
     "FalseCertaintyCategory",
     "FalseCertaintyDenominatorScope",
+    "FalseCertaintyMetricProtocol",
     "FalseCertaintySummary",
     "IndependentReferencePurpose",
     "IndependentReportReference",

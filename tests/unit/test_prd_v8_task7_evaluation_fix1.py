@@ -93,11 +93,13 @@ def test_every_material_report_mismatch_produces_a_scoped_residual() -> None:
                         query_id="IQ-1",
                         axis_id="interference",
                         outcome_checksum=_digest("wrong-axis"),
+                        communicated_positive=base._adequacy_communication("IQ-1"),
                     ),
                     AdequacyAxisSnapshot(
                         query_id="IQ-1",
                         axis_id="unexpected-axis",
                         outcome_checksum=_digest("unexpected-axis"),
+                        communicated_positive=base._adequacy_communication("IQ-1"),
                     ),
                 ),
             ),
@@ -116,6 +118,7 @@ def test_every_material_report_mismatch_produces_a_scoped_residual() -> None:
                         query_id="IQ-UNEXPECTED",
                         axis_id="interference",
                         outcome_checksum=_digest("unexpected-query-axis"),
+                        communicated_positive=base._adequacy_communication("IQ-UNEXPECTED"),
                     ),
                 ),
             ),
@@ -148,11 +151,13 @@ def test_every_material_report_mismatch_produces_a_scoped_residual() -> None:
                         query_id="IQ-1",
                         axis_id="interference",
                         outcome_checksum=_digest("correct-axis"),
+                        communicated_positive=base._adequacy_communication("IQ-1"),
                     ),
                     AdequacyAxisSnapshot(
                         query_id="IQ-1",
                         axis_id="missing-axis",
                         outcome_checksum=_digest("missing-axis"),
+                        communicated_positive=base._adequacy_communication("IQ-1"),
                     ),
                 ),
             ),
@@ -171,6 +176,7 @@ def test_every_material_report_mismatch_produces_a_scoped_residual() -> None:
                         query_id="IQ-MISSING",
                         axis_id="interference",
                         outcome_checksum=_digest("missing-query-axis"),
+                        communicated_positive=base._adequacy_communication("IQ-MISSING"),
                     ),
                 ),
             ),
@@ -218,9 +224,10 @@ def test_false_certainty_retains_scope_denominator_and_unknown_severity() -> Non
     summary = getattr(result, "false_certainty", None)
     assert summary is not None
     assert summary.knowledge_state is KnowledgeState.PRESENT
-    assert summary.value.scope.value == "DECISIVE_REFERENCE_CLAIMS"
-    assert summary.value.denominator == 1
-    assert summary.value.event_count == 1
+    assert summary.value.scope.knowledge_state is KnowledgeState.UNKNOWN
+    assert summary.value.denominator.knowledge_state is KnowledgeState.UNKNOWN
+    assert summary.value.event_count.value == 1
+    assert summary.value.rate.knowledge_state is KnowledgeState.UNKNOWN
     assert summary.value.severity.knowledge_state is KnowledgeState.UNKNOWN
     false_certainty_residuals = [
         item
@@ -234,7 +241,7 @@ def test_false_certainty_retains_scope_denominator_and_unknown_severity() -> Non
     )
 
 
-def test_nondecisive_false_certainty_does_not_enter_decisive_denominator() -> None:
+def test_nondecisive_false_certainty_is_retained_without_an_implicit_denominator() -> None:
     decisive_true = KnowledgeValue[bool](
         knowledge_state=KnowledgeState.PRESENT,
         value=True,
@@ -270,8 +277,9 @@ def test_nondecisive_false_certainty_does_not_enter_decisive_denominator() -> No
 
     result = evaluation.evaluate_end_to_end(observed, _reference_value(reference))
 
-    assert result.false_certainty.value.denominator == 1
-    assert result.false_certainty.value.event_count == 0
+    assert result.false_certainty.value.scope.knowledge_state is KnowledgeState.UNKNOWN
+    assert result.false_certainty.value.denominator.knowledge_state is KnowledgeState.UNKNOWN
+    assert result.false_certainty.value.event_count.value == 1
 
 
 def test_report_questions_remain_query_scoped_without_invented_claim_attribution() -> None:

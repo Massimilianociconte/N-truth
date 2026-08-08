@@ -147,6 +147,8 @@ class ClusterObservationManifest(KernelModel):
             rows = observations_by_cluster[estimate.generalization_unit_id]
             if not rows:
                 raise ValueError("cluster estimate has no elementary observations")
+            if estimate.metric_id != self.metric_id:
+                raise ValueError("cluster estimate belongs to another metric")
             if any(row.metric_id != self.metric_id for row in rows):
                 raise ValueError("cluster observation belongs to another metric")
             if any(row.stratum_values != estimate.stratum_values for row in rows):
@@ -215,6 +217,9 @@ class ClusterPrecisionResult(KernelModel):
             raise ValueError("cluster precision result differs from its pinned metric contract")
         if self.interval.query_scope_id != self.metric_id:
             raise ValueError("cluster precision interval has the wrong metric scope")
+        expected_interval = _expected_interval(self.generalization_contract, self.input_manifest)
+        if self.interval != expected_interval:
+            raise ValueError("cluster precision interval differs from sealed inputs")
         if self.scientific_use_permitted:
             raise ValueError("cluster precision result is not a scientific release authority")
         blocker_ids = {item.issue_id for item in self.blockers}
@@ -323,9 +328,25 @@ def _build_observation_manifest(
             by_observation_id[observation.observation_id] = observation
         elif previous != observation:
             raise ValueError("conflicting duplicate cluster observation")
+    by_semantic_identity: dict[
+        tuple[str, str, Decimal, tuple[tuple[str, str], ...], tuple[str, ...]],
+        ClusterMetricObservation,
+    ] = {}
+    for observation in by_observation_id.values():
+        identity = (
+            observation.metric_id,
+            observation.generalization_unit_id,
+            observation.value,
+            tuple(sorted(observation.stratum_values.items())),
+            tuple(sorted(observation.evidence_ids)),
+        )
+        previous = by_semantic_identity.get(identity)
+        if previous is None or observation.observation_id < previous.observation_id:
+            by_semantic_identity[identity] = observation
+    canonical_observations = tuple(by_semantic_identity.values())
     declared_ids = {unit.generalization_unit_id for unit in contract.units}
     observed_cluster_ids = {
-        observation.generalization_unit_id for observation in by_observation_id.values()
+        observation.generalization_unit_id for observation in canonical_observations
     }
     if observed_cluster_ids != declared_ids:
         missing = sorted(declared_ids - observed_cluster_ids)
@@ -337,7 +358,7 @@ def _build_observation_manifest(
     unit_order = {unit.generalization_unit_id: index for index, unit in enumerate(contract.units)}
     ordered_observations = tuple(
         sorted(
-            by_observation_id.values(),
+            canonical_observations,
             key=lambda item: (unit_order[item.generalization_unit_id], item.observation_id),
         )
     )
@@ -392,13 +413,12 @@ def _build_observation_manifest(
     )
 
 
-def cluster_bootstrap_precision(
+def _expected_interval(
     contract: MetricGeneralizationContract,
-    observations: tuple[ClusterMetricObservation, ...],
-) -> ClusterPrecisionResult:
-    """Aggregate sealed elementary rows, then resample clusters within exact strata."""
+    input_manifest: ClusterObservationManifest,
+) -> KnowledgeValue[PrecisionInterval]:
+    """Recompute the exact deterministic interval from the sealed elementary manifest."""
 
-    input_manifest = _build_observation_manifest(contract, observations)
     ordered_estimates = list(input_manifest.cluster_estimates)
     values = [estimate.estimate for estimate in ordered_estimates]
     evidence_ids = tuple(
@@ -408,23 +428,13 @@ def cluster_bootstrap_precision(
     )
     cluster_count = len(values)
     if cluster_count < 2:
-        rationale = (
-            "A single resampling cluster has no empirical between-cluster distribution; "
-            "precision and generalization remain unestimated."
-        )
-        return _build_cluster_precision_result(
-            contract,
-            input_manifest=input_manifest,
-            effective_cluster_count=cluster_count,
-            interval=KnowledgeValue[PrecisionInterval](
-                knowledge_state=KnowledgeState.UNKNOWN,
-                rationale=rationale,
-                query_scope_id=contract.metric_id,
+        return KnowledgeValue[PrecisionInterval](
+            knowledge_state=KnowledgeState.UNKNOWN,
+            rationale=(
+                "A single resampling cluster has no empirical between-cluster distribution; "
+                "precision and generalization remain unestimated."
             ),
-            unavailable_blocker=ScientificReviewRequirement(
-                issue_id=CLUSTER_PRECISION_REVIEW_ISSUE_ID,
-                rationale=rationale,
-            ),
+            query_scope_id=contract.metric_id,
         )
     with localcontext() as context:
         context.prec = 40
@@ -458,26 +468,48 @@ def cluster_bootstrap_precision(
         alpha = (Decimal("1") - contract.bootstrap.confidence_level) / Decimal("2")
         lower = _quantile(bootstrap_estimates, alpha)
         upper = _quantile(bootstrap_estimates, Decimal("1") - alpha)
-        # Finite deterministic bootstrap draws need not bracket the exact sample mean.
         lower = min(lower, point_estimate)
         upper = max(upper, point_estimate)
-    interval = PrecisionInterval(
-        method_id=contract.bootstrap.method_id,
-        confidence_level=contract.bootstrap.confidence_level,
-        point_estimate=point_estimate,
-        lower=lower,
-        upper=upper,
+    return KnowledgeValue[PrecisionInterval](
+        knowledge_state=KnowledgeState.PRESENT,
+        value=PrecisionInterval(
+            method_id=contract.bootstrap.method_id,
+            confidence_level=contract.bootstrap.confidence_level,
+            point_estimate=point_estimate,
+            lower=lower,
+            upper=upper,
+        ),
+        evidence_ids=evidence_ids,
+        query_scope_id=contract.metric_id,
     )
+
+
+def cluster_bootstrap_precision(
+    contract: MetricGeneralizationContract,
+    observations: tuple[ClusterMetricObservation, ...],
+) -> ClusterPrecisionResult:
+    """Aggregate sealed elementary rows, then resample clusters within exact strata."""
+
+    input_manifest = _build_observation_manifest(contract, observations)
+    cluster_count = input_manifest.cluster_count
+    interval_value = _expected_interval(contract, input_manifest)
+    if cluster_count < 2:
+        rationale = interval_value.rationale or "Cluster precision remains unavailable."
+        return _build_cluster_precision_result(
+            contract,
+            input_manifest=input_manifest,
+            effective_cluster_count=cluster_count,
+            interval=interval_value,
+            unavailable_blocker=ScientificReviewRequirement(
+                issue_id=CLUSTER_PRECISION_REVIEW_ISSUE_ID,
+                rationale=rationale,
+            ),
+        )
     return _build_cluster_precision_result(
         contract,
         input_manifest=input_manifest,
         effective_cluster_count=cluster_count,
-        interval=KnowledgeValue[PrecisionInterval](
-            knowledge_state=KnowledgeState.PRESENT,
-            value=interval,
-            evidence_ids=evidence_ids,
-            query_scope_id=contract.metric_id,
-        ),
+        interval=interval_value,
     )
 
 

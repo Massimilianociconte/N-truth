@@ -11,6 +11,7 @@ from ntruth.evaluation_v8.models import (
     EVALUATION_PROCESS_METRICS_REVIEW_ISSUE_ID,
     EVALUATION_REFERENCE_REVIEW_ISSUE_ID,
     EVALUATION_SCIENTIFIC_HOLD_ISSUE_ID,
+    FALSE_CERTAINTY_PROTOCOL_REVIEW_ISSUE_ID,
     PARTIAL_CLAIM_MATCH_REVIEW_ISSUE_ID,
     REFERENCE_STABILITY_REVIEW_ISSUE_ID,
     AbstentionDisposition,
@@ -24,7 +25,7 @@ from ntruth.evaluation_v8.models import (
     EvaluationProcessObservations,
     EvaluationStatus,
     FalseCertaintyCategory,
-    FalseCertaintyDenominatorScope,
+    FalseCertaintyMetricProtocol,
     FalseCertaintySummary,
     IndependentReferencePurpose,
     IndependentReportReference,
@@ -34,6 +35,7 @@ from ntruth.evaluation_v8.models import (
     QueryEvaluationResult,
     QueryEvaluationSnapshot,
     QuestionAttributionSnapshot,
+    QuestionUsefulnessObservation,
     ReferenceStabilityArtifactReference,
     ReferenceStabilityComponentRecord,
     ReferenceStabilityConclusion,
@@ -98,6 +100,135 @@ def build_report_evaluation_snapshot(
     )
     return ReportEvaluationSnapshot(
         snapshot_id=f"EVAL-SNAPSHOT-{checksum[:20]}",
+        content_checksum=checksum,
+        **fields,
+    )
+
+
+def build_false_certainty_metric_protocol(
+    *,
+    report_scope_id: str,
+    denominator_scope_id: str,
+    denominator: int,
+    event_unit: str,
+    severity_policy_id: str,
+    severity_policy_checksum: str,
+    evidence_ids: tuple[str, ...],
+) -> FalseCertaintyMetricProtocol:
+    """Address a reviewed metric denominator without inventing a repository threshold."""
+
+    fields: dict[str, Any] = {
+        "report_scope_id": report_scope_id,
+        "denominator_scope_id": denominator_scope_id,
+        "denominator": denominator,
+        "event_unit": event_unit,
+        "severity_policy_id": severity_policy_id,
+        "severity_policy_checksum": severity_policy_checksum,
+        "evidence_ids": evidence_ids,
+    }
+    draft = FalseCertaintyMetricProtocol.model_construct(
+        protocol_id="FALSE-CERTAINTY-PROTOCOL-PENDING",
+        content_checksum="0" * 64,
+        **fields,
+    )
+    checksum = content_checksum(
+        draft.model_dump(mode="json", exclude={"protocol_id", "content_checksum"})
+    )
+    return FalseCertaintyMetricProtocol(
+        protocol_id=f"FALSE-CERTAINTY-PROTOCOL-{checksum[:20]}",
+        content_checksum=checksum,
+        **fields,
+    )
+
+
+def build_evaluation_process_observations(
+    *,
+    report: ReportBundle,
+    time_to_confirmed_report: KnowledgeValue[Any],
+    decisive_human_correction_count: KnowledgeValue[int],
+    question_attributions: tuple[QuestionAttributionSnapshot, ...],
+    question_usefulness: tuple[QuestionUsefulnessObservation, ...],
+    evidence_ids: tuple[str, ...],
+) -> EvaluationProcessObservations:
+    """Build a report-bound process record from real questions, claims and evidence."""
+
+    from ntruth.schemas.report_bundle import ReportBundle
+
+    checked_report = ReportBundle.model_validate(report.model_dump(mode="python"))
+    known_evidence = {item.evidence_id for item in checked_report.evidence_records}
+    if not set(evidence_ids).issubset(known_evidence):
+        raise ValueError("process observations reference evidence outside the ReportBundle")
+    questions_by_id = {item.question_id: item for item in checked_report.questions}
+    claims_by_query = {
+        section.inferential_query.id: {claim.claim_id for claim in section.claim_set.claims}
+        for section in checked_report.query_sections
+    }
+    for attribution in question_attributions:
+        question = questions_by_id.get(attribution.question_id)
+        if question is None or question.inferential_query_id != attribution.query_id:
+            raise ValueError("process attribution references a question outside the report")
+        if attribution.claim_ids.knowledge_state is not KnowledgeState.PRESENT:
+            raise ValueError("process attribution must be reviewed and PRESENT")
+        if not set(attribution.claim_ids.value or ()).issubset(
+            claims_by_query.get(attribution.query_id, set())
+        ):
+            raise ValueError("process attribution references a claim outside its query")
+    attribution_identities = {(item.query_id, item.question_id) for item in question_attributions}
+    report_question_identities = {
+        (item.inferential_query_id, item.question_id) for item in checked_report.questions
+    }
+    if attribution_identities != report_question_identities:
+        raise ValueError("process attribution ledger differs from the complete report questions")
+    for item in question_usefulness:
+        question = questions_by_id.get(item.question_id)
+        if question is None or question.inferential_query_id != item.query_id:
+            raise ValueError("question-usefulness row references a question outside the report")
+        if (item.query_id, item.question_id) not in attribution_identities:
+            raise ValueError("question usefulness lacks a reviewed claim attribution")
+    usefulness_evidence = tuple(
+        sorted(
+            {
+                evidence_id
+                for item in question_usefulness
+                for value in (
+                    item.answerable,
+                    item.relevance,
+                    item.scenario_resolved,
+                    item.output_changing,
+                    item.redundant,
+                    item.recipient_correct,
+                    item.response_time_seconds,
+                    item.evidence_requested,
+                    item.remaining_scenario_coverage,
+                )
+                for evidence_id in value.evidence_ids
+            }
+        )
+    )
+    fields: dict[str, Any] = {
+        "report_scope_id": checked_report.report_id,
+        "report_checksum": checked_report.content_checksum,
+        "evidence_ids": evidence_ids,
+        "question_attributions": question_attributions,
+        "time_to_confirmed_report": time_to_confirmed_report,
+        "decisive_human_correction_count": decisive_human_correction_count,
+        "question_usefulness": KnowledgeValue[tuple[QuestionUsefulnessObservation, ...]](
+            knowledge_state=KnowledgeState.PRESENT,
+            value=question_usefulness,
+            evidence_ids=usefulness_evidence,
+            query_scope_id=checked_report.report_id,
+        ),
+    }
+    draft = EvaluationProcessObservations.model_construct(
+        observation_id="EVAL-PROCESS-PENDING",
+        content_checksum="0" * 64,
+        **fields,
+    )
+    checksum = content_checksum(
+        draft.model_dump(mode="json", exclude={"observation_id", "content_checksum"})
+    )
+    return EvaluationProcessObservations(
+        observation_id=f"EVAL-PROCESS-{checksum[:20]}",
         content_checksum=checksum,
         **fields,
     )
@@ -371,6 +502,8 @@ def _residual_event(
     claim_id: str | None = None,
     axis_id: str | None = None,
     false_certainty_category: KnowledgeValue[FalseCertaintyCategory] | None = None,
+    false_certainty: bool | None = None,
+    false_certainty_evidence_ids: tuple[str, ...] = (),
 ) -> ResidualEvent:
     if false_certainty_category is None:
         false_certainty_category = _unknown_residual_dimension(
@@ -391,6 +524,24 @@ def _residual_event(
         query_id=query_id,
         rationale="Severity requires the preregistered residual-audit rubric.",
     )
+    false_certainty_value: KnowledgeValue[bool]
+    if false_certainty is not None and false_certainty_evidence_ids:
+        false_certainty_value = KnowledgeValue[bool](
+            knowledge_state=KnowledgeState.PRESENT,
+            value=false_certainty,
+            evidence_ids=false_certainty_evidence_ids,
+            claim_scope_id=claim_id,
+            query_scope_id=None if claim_id is not None else (query_id or scope_id),
+        )
+    else:
+        false_certainty_value = _unknown_residual_dimension(
+            scope_id=scope_id,
+            claim_id=claim_id,
+            query_id=query_id,
+            rationale=(
+                "False-certainty status requires a definitive output and reviewed comparator."
+            ),
+        )
     identity = (
         dimension,
         scope_kind,
@@ -399,6 +550,7 @@ def _residual_event(
         query_id,
         claim_id,
         axis_id,
+        false_certainty_value.model_dump(mode="json"),
         false_certainty_category.model_dump(mode="json"),
     )
     return ResidualEvent(
@@ -410,6 +562,7 @@ def _residual_event(
         claim_id=claim_id,
         axis_id=axis_id,
         match_outcome=match_outcome,
+        false_certainty=false_certainty_value,
         false_certainty_category=false_certainty_category,
         origin=origin,
         severity=severity,
@@ -453,6 +606,10 @@ def _false_certainty_residuals(
                 claim_id=observed.claim_id,
                 match_outcome=MatchOutcome.INCORRECT,
                 false_certainty_category=category_value,
+                false_certainty=True,
+                false_certainty_evidence_ids=(
+                    categories.evidence_ids or reference.decisive.evidence_ids
+                ),
                 impact_on_claim=(
                     "Observed output was DETERMINATE while the independent reference retained "
                     "an unresolved state or a materially different semantic value."
@@ -569,6 +726,17 @@ def _score_query(
             else MatchOutcome.INCORRECT
         )
         disposition = _abstention_disposition(actual, expected, claim_outcomes[claim_id])
+        definitive_false_certainty = disposition is AbstentionDisposition.FALSE_CERTAINTY
+        definitive_evidence = tuple(
+            sorted(
+                {
+                    *actual.decisive.evidence_ids,
+                    *expected.decisive.evidence_ids,
+                    *actual.evidence_record_ids.evidence_ids,
+                    *expected.evidence_record_ids.evidence_ids,
+                }
+            )
+        )
         abstention[disposition] += 1
         if disposition is AbstentionDisposition.FALSE_CERTAINTY:
             false_certainty_claim_ids.append(claim_id)
@@ -594,6 +762,10 @@ def _score_query(
                     query_id=reference.query_id,
                     claim_id=claim_id,
                     match_outcome=evidence_outcomes[claim_id],
+                    false_certainty=True if definitive_false_certainty else None,
+                    false_certainty_evidence_ids=(
+                        definitive_evidence if definitive_false_certainty else ()
+                    ),
                     impact_on_claim="Observed evidence lineage differs from the independent reference.",
                 )
             )
@@ -606,11 +778,27 @@ def _score_query(
                     query_id=reference.query_id,
                     claim_id=claim_id,
                     match_outcome=proof_outcomes[claim_id],
+                    false_certainty=True if definitive_false_certainty else None,
+                    false_certainty_evidence_ids=(
+                        definitive_evidence if definitive_false_certainty else ()
+                    ),
                     impact_on_claim="Observed proof lineage differs from the independent reference.",
                 )
             )
 
     for claim_id in sorted(set(observed_claims) - set(reference_claims)):
+        unexpected_claim = observed_claims[claim_id]
+        unexpected_is_definitive = (
+            unexpected_claim.determinability_state is DeterminabilityState.DETERMINATE
+        )
+        unexpected_evidence = tuple(
+            sorted(
+                {
+                    *unexpected_claim.decisive.evidence_ids,
+                    *unexpected_claim.evidence_record_ids.evidence_ids,
+                }
+            )
+        )
         for dimension, impact in (
             (
                 ResidualDimension.CLAIM_SEMANTICS,
@@ -633,6 +821,10 @@ def _score_query(
                     query_id=reference.query_id,
                     claim_id=claim_id,
                     match_outcome=MatchOutcome.UNEXPECTED,
+                    false_certainty=True if unexpected_is_definitive else None,
+                    false_certainty_evidence_ids=(
+                        unexpected_evidence if unexpected_is_definitive else ()
+                    ),
                     impact_on_claim=impact,
                 )
             )
@@ -654,6 +846,12 @@ def _score_query(
     }
     for axis_id, outcome in axis_outcomes.items():
         if outcome is not MatchOutcome.EXACT:
+            observed_axis = observed_axes.get(axis_id)
+            communicated_positive = (
+                observed_axis is not None
+                and observed_axis.communicated_positive.knowledge_state is KnowledgeState.PRESENT
+                and observed_axis.communicated_positive.value is True
+            )
             residuals.append(
                 _residual_event(
                     dimension=ResidualDimension.ADEQUACY_AXIS,
@@ -662,10 +860,21 @@ def _score_query(
                     query_id=reference.query_id,
                     axis_id=axis_id,
                     match_outcome=outcome,
+                    false_certainty=True if communicated_positive else None,
+                    false_certainty_evidence_ids=(
+                        observed_axis.communicated_positive.evidence_ids
+                        if communicated_positive and observed_axis is not None
+                        else ()
+                    ),
                     impact_on_claim="Observed design-adequacy axis differs from the reference.",
                 )
             )
     for axis_id in sorted(set(observed_axes) - set(reference_axes)):
+        observed_axis = observed_axes[axis_id]
+        communicated_positive = (
+            observed_axis.communicated_positive.knowledge_state is KnowledgeState.PRESENT
+            and observed_axis.communicated_positive.value is True
+        )
         residuals.append(
             _residual_event(
                 dimension=ResidualDimension.ADEQUACY_AXIS,
@@ -674,6 +883,12 @@ def _score_query(
                 query_id=reference.query_id,
                 axis_id=axis_id,
                 match_outcome=MatchOutcome.UNEXPECTED,
+                false_certainty=True if communicated_positive else None,
+                false_certainty_evidence_ids=(
+                    observed_axis.communicated_positive.evidence_ids
+                    if communicated_positive
+                    else ()
+                ),
                 impact_on_claim="Observed report contains an adequacy axis absent from the reference.",
             )
         )
@@ -761,14 +976,59 @@ def _unknown_process_fields(report_scope_id: str) -> dict[str, KnowledgeValue[An
 
 
 def _process_fields(
-    report_scope_id: str,
+    observed: ReportEvaluationSnapshot,
     observations: EvaluationProcessObservations | None,
+    report_bundles: tuple[ReportBundle, ...],
 ) -> tuple[dict[str, KnowledgeValue[Any]], bool]:
+    report_scope_id = observed.report_id
     if observations is None:
         return _unknown_process_fields(report_scope_id), False
-    if observations.report_scope_id != report_scope_id:
-        raise ValueError("process observations belong to another report scope")
-    timing = observations.time_to_confirmed_report
+    from pydantic import ValidationError
+
+    from ntruth.schemas.report_bundle import ReportBundle
+
+    try:
+        checked = EvaluationProcessObservations.model_validate(
+            observations.model_dump(mode="python")
+        )
+        checked_reports = tuple(
+            ReportBundle.model_validate(item.model_dump(mode="python")) for item in report_bundles
+        )
+    except (AttributeError, TypeError, ValidationError, ValueError):
+        return _unknown_process_fields(report_scope_id), False
+    matching_reports = [
+        item
+        for item in checked_reports
+        if item.report_id == checked.report_scope_id
+        and item.content_checksum == checked.report_checksum
+    ]
+    if (
+        len(matching_reports) != 1
+        or checked.report_scope_id != report_scope_id
+        or checked.report_checksum != observed.report_checksum
+    ):
+        return _unknown_process_fields(report_scope_id), False
+    report = matching_reports[0]
+    known_evidence = {item.evidence_id for item in report.evidence_records}
+    known_questions = {(item.inferential_query_id, item.question_id) for item in report.questions}
+    known_claims = {
+        section.inferential_query.id: {claim.claim_id for claim in section.claim_set.claims}
+        for section in report.query_sections
+    }
+    attribution_identities = {
+        (item.query_id, item.question_id) for item in checked.question_attributions
+    }
+    if (
+        set(checked.evidence_ids) - known_evidence
+        or attribution_identities != known_questions
+        or any(
+            item.claim_ids.knowledge_state is not KnowledgeState.PRESENT
+            or not set(item.claim_ids.value or ()).issubset(known_claims.get(item.query_id, set()))
+            for item in checked.question_attributions
+        )
+    ):
+        return _unknown_process_fields(report_scope_id), False
+    timing = checked.time_to_confirmed_report
     if timing.knowledge_state is KnowledgeState.PRESENT and timing.value is not None:
         time_value = KnowledgeValue[Decimal](
             knowledge_state=KnowledgeState.PRESENT,
@@ -789,8 +1049,8 @@ def _process_fields(
     fields: dict[str, KnowledgeValue[Any]] = {
         "time_to_confirmed_report_seconds": time_value,
         "review_time_delta_seconds": delta_value,
-        "decisive_human_correction_count": observations.decisive_human_correction_count,
-        "question_usefulness": observations.question_usefulness,
+        "decisive_human_correction_count": checked.decisive_human_correction_count,
+        "question_usefulness": checked.question_usefulness,
     }
     return fields, all(value.knowledge_state is KnowledgeState.PRESENT for value in fields.values())
 
@@ -822,6 +1082,8 @@ def evaluate_end_to_end(
     *,
     reference_stability_reports: tuple[ReferenceStabilityReport, ...] = (),
     process_observations: EvaluationProcessObservations | None = None,
+    process_report_bundles: tuple[ReportBundle, ...] = (),
+    false_certainty_protocol: FalseCertaintyMetricProtocol | None = None,
 ) -> EndToEndEvaluationReport:
     """Score a complete report or emit explicit UNKNOWNs when reference is absent."""
 
@@ -832,7 +1094,7 @@ def evaluate_end_to_end(
         or reference_value.value is None
     ):
         rationale = "End-to-end evaluation requires an independently reviewed report reference."
-        process_fields, _ = _process_fields(observed.report_id, process_observations)
+        process_fields, _ = _process_fields(observed, process_observations, process_report_bundles)
         return _build_end_to_end_report(
             {
                 "report_scope_id": observed.report_id,
@@ -973,7 +1235,9 @@ def evaluate_end_to_end(
         proof_correctness_count=claim_count,
     )
     blockers: list[ScientificReviewRequirement] = []
-    process_fields, process_complete = _process_fields(observed.report_id, process_observations)
+    process_fields, process_complete = _process_fields(
+        observed, process_observations, process_report_bundles
+    )
     if not process_complete:
         blockers.append(
             ScientificReviewRequirement(
@@ -1040,45 +1304,134 @@ def evaluate_end_to_end(
             evidence_ids=reference.evidence_ids,
             query_scope_id=observed.report_id,
         )
-    decisive_denominator = decisive_count.value
-    if (
-        decisive_count.knowledge_state is KnowledgeState.PRESENT
-        and decisive_denominator is not None
-        and decisive_denominator > 0
-    ):
-        false_certainty_event_count = sum(
-            len(
-                set(result.false_certainty_claim_ids)
-                & decisive_claim_ids_by_query.get(result.query_id, set())
-            )
-            for result in query_results
-        )
-        false_certainty_value: KnowledgeValue[FalseCertaintySummary] = KnowledgeValue[
-            FalseCertaintySummary
-        ](
-            knowledge_state=KnowledgeState.PRESENT,
-            value=FalseCertaintySummary(
-                scope=FalseCertaintyDenominatorScope.DECISIVE_REFERENCE_CLAIMS,
-                denominator=decisive_denominator,
-                event_count=false_certainty_event_count,
-                severity=KnowledgeValue[tuple[ResidualSeverity, ...]](
-                    knowledge_state=KnowledgeState.UNKNOWN,
-                    rationale=(
-                        "False-certainty severity requires the preregistered blind residual-audit "
-                        "rubric."
-                    ),
-                    query_scope_id=observed.report_id,
+    false_certainty_events = {
+        (item.scope_kind, item.scope_id)
+        for item in residuals
+        if item.false_certainty.knowledge_state is KnowledgeState.PRESENT
+        and item.false_certainty.value is True
+    }
+    false_certainty_event_count = len(false_certainty_events)
+    false_certainty_classification_closed = all(
+        item.false_certainty.knowledge_state is KnowledgeState.PRESENT for item in residuals
+    )
+    count_evidence = tuple(
+        sorted(
+            {
+                *reference.evidence_ids,
+                *(
+                    evidence_id
+                    for item in residuals
+                    if item.false_certainty.knowledge_state is KnowledgeState.PRESENT
+                    and item.false_certainty.value is True
+                    for evidence_id in item.false_certainty.evidence_ids
                 ),
-            ),
-            evidence_ids=reference.evidence_ids,
+            }
+        )
+    )
+    checked_protocol: FalseCertaintyMetricProtocol | None = None
+    summary_scope: KnowledgeValue[str]
+    summary_denominator: KnowledgeValue[int]
+    summary_event_count: KnowledgeValue[int]
+    summary_rate: KnowledgeValue[Decimal]
+    if false_certainty_protocol is not None:
+        try:
+            candidate = FalseCertaintyMetricProtocol.model_validate(
+                false_certainty_protocol.model_dump(mode="python")
+            )
+        except (AttributeError, TypeError, ValueError):
+            candidate = None
+        if (
+            candidate is not None
+            and candidate.report_scope_id == observed.report_id
+            and set(candidate.evidence_ids).issubset(reference.evidence_ids)
+        ):
+            checked_protocol = candidate
+    if false_certainty_classification_closed:
+        summary_event_count = KnowledgeValue[int](
+            knowledge_state=KnowledgeState.PRESENT,
+            value=false_certainty_event_count,
+            evidence_ids=count_evidence,
             query_scope_id=observed.report_id,
         )
     else:
-        false_certainty_value = KnowledgeValue[FalseCertaintySummary](
-            knowledge_state=KnowledgeState.UNKNOWN,
-            rationale="False-certainty denominator requires closed decisive-claim designations.",
+        summary_event_count = _unknown(
+            scope=observed.report_id,
+            rationale=(
+                "At least one material residual lacks a reviewed false-certainty classification."
+            ),
+        )
+    rate_is_resolved = (
+        checked_protocol is not None
+        and false_certainty_classification_closed
+        and false_certainty_event_count <= checked_protocol.denominator
+    )
+    if not rate_is_resolved:
+        blockers.append(
+            ScientificReviewRequirement(
+                issue_id=FALSE_CERTAINTY_PROTOCOL_REVIEW_ISSUE_ID,
+                rationale=(
+                    "False-certainty rate remains UNKNOWN until its reviewed preregistration and "
+                    "every material residual classification are both resolved."
+                ),
+            )
+        )
+    if checked_protocol is None:
+        summary_scope = _unknown(
+            scope=observed.report_id,
+            rationale="No reviewed false-certainty denominator scope was supplied.",
+        )
+        summary_denominator = _unknown(
+            scope=observed.report_id,
+            rationale="No reviewed false-certainty denominator was supplied.",
+        )
+    else:
+        protocol_evidence = checked_protocol.evidence_ids
+        summary_scope = KnowledgeValue[str](
+            knowledge_state=KnowledgeState.PRESENT,
+            value=checked_protocol.denominator_scope_id,
+            evidence_ids=protocol_evidence,
             query_scope_id=observed.report_id,
         )
+        summary_denominator = KnowledgeValue[int](
+            knowledge_state=KnowledgeState.PRESENT,
+            value=checked_protocol.denominator,
+            evidence_ids=protocol_evidence,
+            query_scope_id=observed.report_id,
+        )
+    if rate_is_resolved and checked_protocol is not None:
+        summary_rate = KnowledgeValue[Decimal](
+            knowledge_state=KnowledgeState.PRESENT,
+            value=Decimal(false_certainty_event_count) / Decimal(checked_protocol.denominator),
+            evidence_ids=checked_protocol.evidence_ids,
+            query_scope_id=observed.report_id,
+        )
+    else:
+        summary_rate = _unknown(
+            scope=observed.report_id,
+            rationale=(
+                "A false-certainty rate requires a reviewed scope, denominator and complete "
+                "classification of material residuals."
+            ),
+        )
+    false_certainty_value = KnowledgeValue[FalseCertaintySummary](
+        knowledge_state=KnowledgeState.PRESENT,
+        value=FalseCertaintySummary(
+            scope=summary_scope,
+            denominator=summary_denominator,
+            event_count=summary_event_count,
+            rate=summary_rate,
+            severity=KnowledgeValue[tuple[ResidualSeverity, ...]](
+                knowledge_state=KnowledgeState.UNKNOWN,
+                rationale=(
+                    "False-certainty severity requires application of the independently reviewed "
+                    "severity policy to blind residual findings."
+                ),
+                query_scope_id=observed.report_id,
+            ),
+        ),
+        evidence_ids=count_evidence,
+        query_scope_id=observed.report_id,
+    )
     return _build_end_to_end_report(
         {
             "report_scope_id": observed.report_id,
@@ -1285,6 +1638,14 @@ def snapshot_report_bundle(report: ReportBundle) -> ReportEvaluationSnapshot:
                         outcome_checksum=content_checksum(
                             evaluation.outcome.model_dump(mode="json")
                         ),
+                        communicated_positive=KnowledgeValue[bool](
+                            knowledge_state=KnowledgeState.NOT_APPLICABLE,
+                            rationale=(
+                                "The canonical PRD v8 ReportBundle communicates an epistemic "
+                                "adequacy axis, never a positive design verdict."
+                            ),
+                            query_scope_id=evaluation.inferential_query_id,
+                        ),
                     )
                     for evaluation in section.adequacy_evaluations
                 ),
@@ -1316,6 +1677,8 @@ def snapshot_report_bundle(report: ReportBundle) -> ReportEvaluationSnapshot:
 
 
 __all__ = [
+    "build_evaluation_process_observations",
+    "build_false_certainty_metric_protocol",
     "build_independent_report_reference",
     "build_reference_stability_report",
     "build_report_evaluation_snapshot",
