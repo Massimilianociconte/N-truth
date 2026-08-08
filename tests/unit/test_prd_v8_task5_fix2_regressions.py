@@ -59,6 +59,15 @@ def _candidate_payload(
                 "confidence": 0.9,
             }
         ],
+        "block_boundaries": [
+            {
+                "block_id": "block-a",
+                "boundary_basis_candidates": ["explicit_document_structure"],
+                "rationale": "The source explicitly identifies Block A.",
+                "evidence_ids": ["ev-a"],
+                "confidence": 0.9,
+            }
+        ],
         "evidence_spans": [
             {
                 "evidence_id": "ev-a",

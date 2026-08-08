@@ -42,6 +42,15 @@ def _candidate_payload() -> dict[str, object]:
                 "confidence": 0.8,
             }
         ],
+        "block_boundaries": [
+            {
+                "block_id": "block-1",
+                "boundary_basis_candidates": ["explicit_document_structure"],
+                "rationale": "The source identifies Block one explicitly.",
+                "evidence_ids": ["ev-1"],
+                "confidence": 0.8,
+            }
+        ],
         "evidence_spans": [
             {
                 "evidence_id": "ev-1",

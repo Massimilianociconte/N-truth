@@ -57,6 +57,15 @@ def _output(*, confidence: float = 0.5) -> ParserCandidateOutput:
                     "confidence": confidence,
                 }
             ],
+            "block_boundaries": [
+                {
+                    "block_id": "block-1",
+                    "boundary_basis_candidates": ["explicit_document_structure"],
+                    "rationale": "The source explicitly identifies the candidate block.",
+                    "evidence_ids": ["evidence-1"],
+                    "confidence": confidence,
+                }
+            ],
             "evidence_spans": [
                 {
                     "evidence_id": "evidence-1",

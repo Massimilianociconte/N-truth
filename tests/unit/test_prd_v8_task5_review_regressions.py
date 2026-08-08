@@ -51,6 +51,22 @@ def _candidate_payload(*, coverage: str = "COMPLETE") -> dict[str, Any]:
                 "confidence": 0.9,
             },
         ],
+        "block_boundaries": [
+            {
+                "block_id": "block-a",
+                "boundary_basis_candidates": ["explicit_document_structure"],
+                "rationale": "The source explicitly separates block A.",
+                "evidence_ids": ["ev-a"],
+                "confidence": 0.9,
+            },
+            {
+                "block_id": "block-b",
+                "boundary_basis_candidates": ["explicit_document_structure"],
+                "rationale": "The source explicitly separates block B.",
+                "evidence_ids": ["ev-b"],
+                "confidence": 0.9,
+            },
+        ],
         "evidence_spans": [
             {
                 "evidence_id": "ev-a",
@@ -369,6 +385,7 @@ def test_04_complete_stage_cannot_preserve_failed_verifier_state() -> None:
     empty_payload.update(
         {
             "experiment_blocks": [],
+            "block_boundaries": [],
             "evidence_spans": [],
             "candidate_nodes": [],
             "factors": [],

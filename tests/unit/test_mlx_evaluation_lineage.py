@@ -70,6 +70,15 @@ def _parser_output(*, confidence: float = 0.7) -> ParserCandidateOutput:
                     "confidence": confidence,
                 }
             ],
+            "block_boundaries": [
+                {
+                    "block_id": "block-1",
+                    "boundary_basis_candidates": ["explicit_document_structure"],
+                    "rationale": "The source explicitly identifies the candidate block.",
+                    "evidence_ids": ["evidence-1"],
+                    "confidence": confidence,
+                }
+            ],
             "evidence_spans": [
                 {
                     "evidence_id": "evidence-1",
@@ -414,7 +423,7 @@ def test_metrics_are_reconstructed_from_predictions_and_snapshot(
     context = _verify_metrics_artifacts(metrics_path)
 
     assert context["metrics"]["micro"]["f1"] == 1.0
-    assert context["metrics"]["confidence_observations"] == 1
+    assert context["metrics"]["confidence_observations"] == 2
 
 
 def test_tampered_micro_f1_is_rejected_even_without_an_external_metrics_hash(
@@ -463,12 +472,12 @@ def test_tampered_observation_is_rejected_after_hash_and_count_are_updated(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     metrics_path, _predictions, observations_path = _evaluation_artifacts(tmp_path, monkeypatch)
-    row = json.loads(observations_path.read_text(encoding="utf-8"))
-    row["confidence"] = 0.1
-    observations_path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+    rows = [json.loads(line) for line in observations_path.read_text(encoding="utf-8").splitlines()]
+    rows[0]["confidence"] = 0.1
+    observations_path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
     metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
     metrics["confidence_observations_sha256"] = sha256_file(observations_path)
-    metrics["confidence_observations"] = 1
+    metrics["confidence_observations"] = len(rows)
     metrics_path.write_text(json.dumps(metrics), encoding="utf-8")
 
     with pytest.raises(MLXPipelineError, match="confidence-observations ricalcolate"):

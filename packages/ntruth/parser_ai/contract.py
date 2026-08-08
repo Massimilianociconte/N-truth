@@ -213,6 +213,24 @@ class CandidateExperimentBlock(CandidateFact):
     title: str
 
 
+class CandidateBlockBoundary(CandidateFact):
+    """Router proposal only; confirmation belongs to the epistemic ledger."""
+
+    block_id: str
+    boundary_basis_candidates: tuple[str, ...] = Field(min_length=1)
+    rationale: str
+
+    @model_validator(mode="after")
+    def _described_candidate(self) -> CandidateBlockBoundary:
+        if not self.block_id.strip() or not self.rationale.strip():
+            raise ValueError("block boundary candidate requires block_id and rationale")
+        if any(not basis.strip() for basis in self.boundary_basis_candidates):
+            raise ValueError("block boundary candidate basis must not be blank")
+        if len(set(self.boundary_basis_candidates)) != len(self.boundary_basis_candidates):
+            raise ValueError("block boundary candidate basis values must be unique")
+        return self
+
+
 class CandidateNode(CandidateFact):
     node_id: str
     block_id: str
@@ -543,6 +561,7 @@ class ParserCandidateOutput(FrozenModel):
 
     contract_version: Literal["8.0.0"] = "8.0.0"
     experiment_blocks: tuple[CandidateExperimentBlock, ...] = ()
+    block_boundaries: tuple[CandidateBlockBoundary, ...] = ()
     evidence_spans: tuple[ParserAIEvidenceSpan, ...] = ()
     candidate_nodes: tuple[CandidateNode, ...] = ()
     candidate_edges: tuple[CandidateEdge, ...] = ()
@@ -569,6 +588,7 @@ class ParserCandidateOutput(FrozenModel):
     def _referential_integrity(self) -> ParserCandidateOutput:
         evidence_by_id = _unique_map(self.evidence_spans, "evidence_id")
         blocks = _unique_map(self.experiment_blocks, "block_id")
+        boundaries = _unique_map(self.block_boundaries, "block_id")
         nodes = _unique_map(self.candidate_nodes, "node_id")
         edges = _unique_map(self.candidate_edges, "edge_id")
         factors = _unique_map(self.factors, "factor_id")
@@ -598,6 +618,7 @@ class ParserCandidateOutput(FrozenModel):
 
         candidates: tuple[CandidateFact, ...] = (
             *self.experiment_blocks,
+            *self.block_boundaries,
             *self.candidate_nodes,
             *self.candidate_edges,
             *self.factors,
@@ -612,7 +633,11 @@ class ParserCandidateOutput(FrozenModel):
         for candidate in candidates:
             _require_subset(candidate.evidence_ids, evidence_by_id, "evidence_id")
 
+        if set(boundaries) != set(blocks):
+            raise ValueError("every experiment block requires exactly one boundary candidate")
+
         scoped_block_ids = (
+            *(item.block_id for item in self.block_boundaries),
             *(item.block_id for item in self.candidate_nodes),
             *(item.block_id for item in self.candidate_edges),
             *(item.block_id for item in self.factors),

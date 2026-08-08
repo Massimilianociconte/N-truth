@@ -40,6 +40,10 @@ def kernel_json_schemas() -> dict[str, dict[str, Any]]:
     from pydantic import JsonValue
 
     from ntruth.schemas.adequacy import DesignAdequacyEvaluation
+    from ntruth.schemas.block_boundary import (
+        ExperimentBlockBoundaryChangeRecord,
+        ExperimentBlockBoundaryRecord,
+    )
     from ntruth.schemas.claims import DerivedClaim, DerivedClaimSet
     from ntruth.schemas.coverage import ProfileCoverageStatement, ScenarioCoverage
     from ntruth.schemas.execution import V8ExecutionManifest
@@ -73,6 +77,8 @@ def kernel_json_schemas() -> dict[str, dict[str, Any]]:
     models: dict[str, type[BaseModel]] = {
         "kernel_identity": KernelIdentity,
         "knowledge_value": KnowledgeValue[JsonValue],
+        "experiment_block_boundary_record": ExperimentBlockBoundaryRecord,
+        "experiment_block_boundary_change_record": ExperimentBlockBoundaryChangeRecord,
         "source_record": SourceRecord,
         "evidence_record": EvidenceRecord,
         "confirmation_event": ConfirmationEvent,

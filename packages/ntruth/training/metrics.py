@@ -65,6 +65,14 @@ def _fact_sets(output: ParserCandidateOutput) -> dict[str, set[tuple[Any, ...]]]
     }
     return {
         "experiment_blocks": {(title,) for title in block_titles.values()},
+        "block_boundaries": {
+            (
+                block_titles.get(boundary.block_id, boundary.block_id),
+                tuple(sorted(_text(item) for item in boundary.boundary_basis_candidates)),
+                _text(boundary.rationale),
+            )
+            for boundary in output.block_boundaries
+        },
         "evidence_spans": {
             (
                 span.file_id,
@@ -198,6 +206,17 @@ def _candidate_confidences(
         "experiment_blocks": [
             ((block_titles[block.block_id],), block.confidence)
             for block in output.experiment_blocks
+        ],
+        "block_boundaries": [
+            (
+                (
+                    block_titles.get(boundary.block_id, boundary.block_id),
+                    tuple(sorted(_text(item) for item in boundary.boundary_basis_candidates)),
+                    _text(boundary.rationale),
+                ),
+                boundary.confidence,
+            )
+            for boundary in output.block_boundaries
         ],
         "candidate_nodes": [
             (nodes[node.node_id], node.confidence) for node in output.candidate_nodes

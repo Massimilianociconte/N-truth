@@ -59,6 +59,7 @@ def _empty_candidate(*, suffix: str) -> ParserCandidateOutput:
     payload = parser_fixture._candidate_payload()
     for field in (
         "experiment_blocks",
+        "block_boundaries",
         "evidence_spans",
         "candidate_nodes",
         "candidate_edges",
