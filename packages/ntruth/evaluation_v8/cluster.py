@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Mapping
+import warnings
+from collections.abc import Mapping, Set
 from decimal import Decimal, localcontext
 from enum import StrEnum
 from typing import Annotated, Any, Literal, Self
 
-from pydantic import Field, model_validator
+from pydantic import Field, PydanticDeprecatedSince20, model_validator
 
 from ntruth.evaluation_v8.models import EVALUATION_SCIENTIFIC_HOLD_ISSUE_ID
 from ntruth.schemas.core import content_checksum
@@ -466,6 +467,28 @@ class PrecisionInterval(KernelModel):
 
 class _RevalidatedClusterOutput(KernelModel):
     """Keep validated cluster outputs valid across the public copy boundary."""
+
+    def copy(
+        self,
+        *,
+        include: Set[int] | Set[str] | Mapping[int, Any] | Mapping[str, Any] | None = None,
+        exclude: Set[int] | Set[str] | Mapping[int, Any] | Mapping[str, Any] | None = None,
+        update: Mapping[str, Any] | None = None,
+        deep: bool = False,
+    ) -> Self:
+        """Deprecated compatibility copy that retains full output validation."""
+
+        warnings.warn(
+            "The `copy` method is deprecated; use `model_copy` instead.",
+            category=PydanticDeprecatedSince20,
+            stacklevel=2,
+        )
+        if include is not None or exclude is not None:
+            raise TypeError(
+                "partial cluster output copies are forbidden; use model_dump followed by "
+                "model_validate"
+            )
+        return self.model_copy(update=update, deep=deep)
 
     def model_copy(
         self,
