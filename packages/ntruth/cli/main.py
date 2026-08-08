@@ -574,79 +574,100 @@ def quick_design_run_v7(
 
 @quick_design_app.command("reality-gate")
 def quick_design_reality_gate() -> None:
-    """Stampa lo stato atteso del Reality Gate (fail-closed, non validato)."""
+    """Stampa il confine canonico v8, che resta HOLD senza trust esterno."""
     from ntruth.reality_gate import (
-        GatePredicateName,
-        GatePurpose,
-        GateValue,
-        PredicateEvidence,
-        RealityGatePredicate,
-        ScientificValidation,
-        ScientificValidationEvidence,
-        evaluate_reality_gate,
-        human_blocker_report,
+        SUBSTANTIVE_TRAINING_PREDICATES,
+        ReadinessDimensionV8,
     )
-    from ntruth.reality_gate.gate import EXPECTED_CURRENT_STATE
-    from ntruth.reality_gate.predicates import predicate_for_mvt_a
+
+    typer.echo("Reality Gate 8.0.0 — HOLD")
+    typer.echo("status: SCIENTIFIC_REVIEW_REQUIRED")
+    typer.echo("authorized_for_training: false")
+    typer.echo("reason: production trust root and real reviewed evidence are unavailable")
+    typer.echo("readiness_dimensions:")
+    for dimension in ReadinessDimensionV8:
+        typer.echo(f"  {dimension.value}: SCIENTIFIC_REVIEW_REQUIRED")
+    typer.echo("substantive_training_predicates:")
+    for predicate in SUBSTANTIVE_TRAINING_PREDICATES:
+        typer.echo(f"  {predicate.value}: UNKNOWN")
+
+
+@quick_design_app.command("reality-gate-v7")
+def quick_design_reality_gate_v7() -> None:
+    """Stampa il report storico v7 attraverso un adapter deprecato esplicito."""
+    from ntruth.reality_gate.v7 import (
+        EXPECTED_CURRENT_STATE_V7,
+        GatePredicateNameV7,
+        GatePurposeV7,
+        GateValueV7,
+        PredicateEvidenceV7,
+        RealityGatePredicateV7,
+        ScientificValidationEvidenceV7,
+        ScientificValidationV7,
+        evaluate_reality_gate_v7,
+        human_blocker_report_v7,
+        predicate_for_mvt_a_v7,
+    )
 
     preds = (
-        RealityGatePredicate(
-            name=GatePredicateName.SCHEMA_STABLE_ON_REAL_CASES,
-            value=GateValue.UNKNOWN,
-            evidence=PredicateEvidence(basis="no real-case pilot closed in clean checkout"),
+        RealityGatePredicateV7(
+            name=GatePredicateNameV7.SCHEMA_STABLE_ON_REAL_CASES,
+            value=GateValueV7.UNKNOWN,
+            evidence=PredicateEvidenceV7(basis="no real-case pilot closed in clean checkout"),
         ),
-        RealityGatePredicate(
-            name=GatePredicateName.NO_BLOCKING_SCHEMA_GAPS,
-            value=GateValue.UNKNOWN,
-            evidence=PredicateEvidence(basis="schema contracts exist; real-case gaps unmeasured"),
+        RealityGatePredicateV7(
+            name=GatePredicateNameV7.NO_BLOCKING_SCHEMA_GAPS,
+            value=GateValueV7.UNKNOWN,
+            evidence=PredicateEvidenceV7(basis="schema contracts exist; real-case gaps unmeasured"),
         ),
-        RealityGatePredicate(
-            name=GatePredicateName.REAL_ANCHOR_AVAILABLE,
-            value=GateValue.FALSE,
-            evidence=PredicateEvidence(basis="no real anchor corpus in clean checkout"),
+        RealityGatePredicateV7(
+            name=GatePredicateNameV7.REAL_ANCHOR_AVAILABLE,
+            value=GateValueV7.FALSE,
+            evidence=PredicateEvidenceV7(basis="no real anchor corpus in clean checkout"),
         ),
-        RealityGatePredicate(
-            name=GatePredicateName.LICENCE_SCOPE_VERIFIED,
-            value=GateValue.UNKNOWN,
-            evidence=PredicateEvidence(basis="BLK-DATA-001 open"),
+        RealityGatePredicateV7(
+            name=GatePredicateNameV7.LICENCE_SCOPE_VERIFIED,
+            value=GateValueV7.UNKNOWN,
+            evidence=PredicateEvidenceV7(basis="BLK-DATA-001 open"),
         ),
-        RealityGatePredicate(
-            name=GatePredicateName.PROTECTED_SPLIT_FROZEN,
-            value=GateValue.FALSE,
-            evidence=PredicateEvidence(basis="no protected real split frozen"),
+        RealityGatePredicateV7(
+            name=GatePredicateNameV7.PROTECTED_SPLIT_FROZEN,
+            value=GateValueV7.FALSE,
+            evidence=PredicateEvidenceV7(basis="no protected real split frozen"),
         ),
-        RealityGatePredicate(
-            name=GatePredicateName.HUMAN_SECOND_REVIEW_COMPLETED,
-            value=GateValue.FALSE,
-            evidence=PredicateEvidence(basis="not started"),
+        RealityGatePredicateV7(
+            name=GatePredicateNameV7.HUMAN_SECOND_REVIEW_COMPLETED,
+            value=GateValueV7.FALSE,
+            evidence=PredicateEvidenceV7(basis="not started"),
         ),
-        RealityGatePredicate(
-            name=GatePredicateName.DECISIVE_FIELDS_REVIEWED,
-            value=GateValue.FALSE,
-            evidence=PredicateEvidence(basis="not started"),
+        RealityGatePredicateV7(
+            name=GatePredicateNameV7.DECISIVE_FIELDS_REVIEWED,
+            value=GateValueV7.FALSE,
+            evidence=PredicateEvidenceV7(basis="not started"),
         ),
-        RealityGatePredicate(
-            name=GatePredicateName.REAL_BASELINE_EXECUTED,
-            value=GateValue.FALSE,
-            evidence=PredicateEvidence(basis="not started"),
+        RealityGatePredicateV7(
+            name=GatePredicateNameV7.REAL_BASELINE_EXECUTED,
+            value=GateValueV7.FALSE,
+            evidence=PredicateEvidenceV7(basis="not started"),
         ),
-        predicate_for_mvt_a(
-            GatePredicateName.SYNTHETIC_FACTORY_HUMAN_CALIBRATED,
-            PredicateEvidence(basis="N/A for MVT-A before synthetic promotion (E-14)"),
+        predicate_for_mvt_a_v7(
+            GatePredicateNameV7.SYNTHETIC_FACTORY_HUMAN_CALIBRATED,
+            PredicateEvidenceV7(basis="N/A for MVT-A before synthetic promotion (E-14)"),
         ),
     )
-    result = evaluate_reality_gate(
+    result = evaluate_reality_gate_v7(
         preds,
-        purpose=GatePurpose.MVT_A_EXPLORATORY,
-        scientific_validation=ScientificValidationEvidence(
-            status=ScientificValidation.NOT_STARTED,
+        purpose=GatePurposeV7.MVT_A_EXPLORATORY,
+        scientific_validation=ScientificValidationEvidenceV7(
+            status=ScientificValidationV7.NOT_STARTED,
             evidence_basis="scientific validation not started",
         ),
     )
-    typer.echo(human_blocker_report(result))
+    typer.echo("DEPRECATED_V7_ADAPTER")
+    typer.echo(human_blocker_report_v7(result))
     typer.echo("")
     typer.echo("EXPECTED_CURRENT_STATE:")
-    for key, value in EXPECTED_CURRENT_STATE.items():
+    for key, value in EXPECTED_CURRENT_STATE_V7.items():
         typer.echo(f"  {key}: {value}")
 
 

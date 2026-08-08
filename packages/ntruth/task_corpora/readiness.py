@@ -18,14 +18,27 @@ from typing import Final, Literal, Self
 
 from pydantic import model_validator
 
-from ntruth.reality_gate.gate import (
-    EXPECTED_CURRENT_STATE,
-    DataReadiness,
-    EngineeringReadiness,
-    GatePurpose,
-    ScientificValidation,
+from ntruth.reality_gate.v7 import (
+    EXPECTED_CURRENT_STATE_V7 as EXPECTED_CURRENT_STATE,
 )
-from ntruth.reality_gate.predicates import GatePredicateName, GateValue
+from ntruth.reality_gate.v7 import (
+    DataReadinessV7 as DataReadiness,
+)
+from ntruth.reality_gate.v7 import (
+    EngineeringReadinessV7 as EngineeringReadiness,
+)
+from ntruth.reality_gate.v7 import (
+    GatePredicateNameV7 as GatePredicateName,
+)
+from ntruth.reality_gate.v7 import (
+    GatePurposeV7 as GatePurpose,
+)
+from ntruth.reality_gate.v7 import (
+    GateValueV7 as GateValue,
+)
+from ntruth.reality_gate.v7 import (
+    ScientificValidationV7 as ScientificValidation,
+)
 from ntruth.schemas.core import FrozenModel
 
 # Dataset engineering is component-verified for C0/C1 adapters only.
