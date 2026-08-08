@@ -908,7 +908,8 @@ def reconcile_training_authorization_pins_v8(
     recorded: dict[str, object], expected: RealityGateTrainingPinTupleV8
 ) -> None:
     expected_state = expected.state_payload()
-    aliases = set(type(expected).model_fields) & set(recorded)
+    pin_aliases = {field_name.removeprefix("reality_gate_") for field_name in expected_state}
+    aliases = pin_aliases & set(recorded)
     if aliases:
         raise ValueError(
             f"non-canonical Reality Gate authorization pins present: {sorted(aliases)}"

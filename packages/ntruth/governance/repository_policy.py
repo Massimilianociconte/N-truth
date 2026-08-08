@@ -40,10 +40,21 @@ _MODEL_SUFFIXES = frozenset(
     }
 )
 _CORPUS_SUFFIXES = frozenset(
-    {".arrow", ".db", ".feather", ".jsonl", ".ndjson", ".parquet", ".sqlite", ".sqlite3"}
+    {
+        ".arrow",
+        ".db",
+        ".duckdb",
+        ".feather",
+        ".jsonl",
+        ".mdb",
+        ".ndjson",
+        ".parquet",
+        ".sqlite",
+        ".sqlite3",
+    }
 )
 _STRUCTURED_DATA_SUFFIXES = frozenset({".csv", ".json", ".tsv"})
-_ARCHIVE_SUFFIXES = frozenset({".7z", ".bz2", ".gz", ".tar", ".xz", ".zip"})
+_ARCHIVE_SUFFIXES = frozenset({".7z", ".bz2", ".gz", ".rar", ".tar", ".tgz", ".xz", ".zip", ".zst"})
 _CORPUS_NAME_MARKERS = frozenset(
     {"challenge", "corpus", "dataset", "participants", "records", "subjects"}
 )
@@ -149,7 +160,21 @@ def _binary_findings(path: Path) -> tuple[RepositoryPolicyFindingKindV8, ...]:
     except OSError:
         return ()
     kinds: list[RepositoryPolicyFindingKindV8] = []
-    if head.startswith((b"\x1f\x8b", b"PK\x03\x04", b"SQLite format 3\x00")):
+    archive_magic = (
+        b"\x1f\x8b",
+        b"BZh",
+        b"PK\x03\x04",
+        b"PK\x05\x06",
+        b"PK\x07\x08",
+        b"\x28\xb5\x2f\xfd",
+        b"Rar!\x1a\x07\x00",
+        b"Rar!\x1a\x07\x01\x00",
+        b"\xfd7zXZ\x00",
+        b"7z\xbc\xaf'\x1c",
+    )
+    if head.startswith((*archive_magic, b"SQLite format 3\x00")) or (
+        len(head) >= 262 and head[257:262] == b"ustar"
+    ):
         kinds.append(RepositoryPolicyFindingKindV8.NO_CORPUS)
     if head.startswith((b"\x89HDF\r\n\x1a\n", b"\x93NUMPY")):
         kinds.append(RepositoryPolicyFindingKindV8.MODEL_OR_WEIGHT)

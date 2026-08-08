@@ -1837,19 +1837,74 @@ def run_training(
     il controller interrompe dopo ``patience`` fasi senza miglioramento.
     """
 
-    training_lineage = resolve_training_lineage_inputs(
-        design_lineage_pins=design_lineage_pins,
-        design_lineage_artifact_path=design_lineage_artifact_path,
-        protected_source_manifest_path=protected_source_manifest_path,
-    )
-    envelope = read_training_snapshot_envelope(data_dir, smoke_test=smoke_test)
-    gate_pins = verify_training_reality_gate_v8(
-        reality_gate,
-        TrainingRealityGateV8Request(
-            snapshot_id=str(envelope["snapshot_id"]),
-            snapshot_sha256=str(envelope["snapshot_sha256"]),
-        ),
-    )
+    state_path = run_dir / "run-state.json"
+    if run_dir.exists() and any(run_dir.iterdir()) and not resume:
+        raise MLXPipelineError("run directory non vuota; usare --resume o una nuova directory")
+
+    state: dict[str, Any]
+    training_lineage: TrainingRunLineagePins | None = None
+    if resume:
+        try:
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise MLXPipelineError(f"stato run non riprendibile: {exc}") from exc
+        if state.get("schema_version") != RUN_SCHEMA_VERSION:
+            raise MLXPipelineError("schema run cambiato: impossibile riprendere il run")
+    else:
+        state = {}
+        training_lineage = resolve_training_lineage_inputs(
+            design_lineage_pins=design_lineage_pins,
+            design_lineage_artifact_path=design_lineage_artifact_path,
+            protected_source_manifest_path=protected_source_manifest_path,
+        )
+
+    if resume:
+        recorded_snapshot_id = state.get("dataset_snapshot_id")
+        recorded_snapshot_sha256 = state.get("dataset_snapshot_sha256")
+        if not isinstance(recorded_snapshot_id, str) or not recorded_snapshot_id.strip():
+            raise MLXPipelineError("resume dataset snapshot ID pin missing or invalid")
+        if (
+            not isinstance(recorded_snapshot_sha256, str)
+            or _SHA256.fullmatch(recorded_snapshot_sha256) is None
+        ):
+            raise MLXPipelineError("resume dataset snapshot checksum pin missing or invalid")
+        gate_pins = verify_training_reality_gate_v8(
+            reality_gate,
+            TrainingRealityGateV8Request(
+                snapshot_id=recorded_snapshot_id,
+                snapshot_sha256=recorded_snapshot_sha256,
+            ),
+        )
+        try:
+            reconcile_training_authorization_pins_v8(state, gate_pins)
+        except ValueError as exc:
+            raise MLXPipelineError(str(exc)) from exc
+        envelope = read_training_snapshot_envelope(data_dir, smoke_test=smoke_test)
+        if envelope["snapshot_id"] != recorded_snapshot_id:
+            raise MLXPipelineError("identita snapshot cambiata: impossibile riprendere il run")
+        if envelope["snapshot_sha256"] != recorded_snapshot_sha256:
+            raise MLXPipelineError("snapshot dati cambiato: impossibile riprendere il run")
+        if envelope["manifest_sha256"] != state.get("dataset_manifest_sha256"):
+            raise MLXPipelineError("manifest snapshot cambiato: impossibile riprendere il run")
+        training_lineage = resolve_training_lineage_inputs(
+            design_lineage_pins=design_lineage_pins,
+            design_lineage_artifact_path=design_lineage_artifact_path,
+            protected_source_manifest_path=protected_source_manifest_path,
+        )
+    else:
+        envelope = read_training_snapshot_envelope(data_dir, smoke_test=smoke_test)
+        gate_pins = verify_training_reality_gate_v8(
+            reality_gate,
+            TrainingRealityGateV8Request(
+                snapshot_id=str(envelope["snapshot_id"]),
+                snapshot_sha256=str(envelope["snapshot_sha256"]),
+            ),
+        )
+    if training_lineage is None:
+        raise TrainingLineageReviewRequired(
+            "SCIENTIFIC_REVIEW_REQUIRED: Task 6 training lineage resolution failed"
+        )
+
     dataset = validate_mlx_dataset(data_dir, smoke_test=smoke_test)
     if dataset["manifest_sha256"] != envelope["manifest_sha256"]:
         raise MLXPipelineError("training snapshot manifest changed after gate decision")
@@ -1865,9 +1920,6 @@ def run_training(
     if seed not in allowed_seeds and not smoke_test:
         raise MLXPipelineError(f"seed non preregistrato: {seed}; ammessi {allowed_seeds}")
 
-    state_path = run_dir / "run-state.json"
-    if run_dir.exists() and any(run_dir.iterdir()) and not resume:
-        raise MLXPipelineError("run directory non vuota; usare --resume o una nuova directory")
     run_dir.mkdir(parents=True, exist_ok=True)
     training_view = stage_verified_training_view(
         data_dir,
@@ -1892,14 +1944,7 @@ def run_training(
     )
     patience = int(training["early_stopping_patience"])
     min_delta = float(training["early_stopping_min_delta"])
-    state: dict[str, Any]
     if resume:
-        try:
-            state = json.loads(state_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            raise MLXPipelineError(f"stato run non riprendibile: {exc}") from exc
-        if state.get("schema_version") != RUN_SCHEMA_VERSION:
-            raise MLXPipelineError("schema run cambiato: impossibile riprendere il run")
         if state.get("profile_sha256") != sha256_file(profile_path):
             raise MLXPipelineError("profilo cambiato: impossibile riprendere il run")
         if state.get("dataset_snapshot_sha256") != dataset["snapshot_sha256"]:
@@ -1908,10 +1953,6 @@ def run_training(
             raise MLXPipelineError("identita snapshot cambiata: impossibile riprendere il run")
         if state.get("dataset_manifest_sha256") != dataset["manifest_sha256"]:
             raise MLXPipelineError("manifest snapshot cambiato: impossibile riprendere il run")
-        try:
-            reconcile_training_authorization_pins_v8(state, gate_pins)
-        except ValueError as exc:
-            raise MLXPipelineError(str(exc)) from exc
         reconcile_training_lineage_pins(state, training_lineage)
         previous_environment = state.get("environment")
         if not isinstance(previous_environment, dict):
