@@ -28,6 +28,24 @@ from ntruth.reporting.privacy import (
     write_share_readiness,
 )
 from ntruth.reporting.ro_crate import ro_crate_to_dict, write_ro_crate
+from ntruth.reporting.v8 import (
+    read_report_bundle_json as read_report_bundle_json,
+)
+from ntruth.reporting.v8 import (
+    render_report_bundle_html as render_report_bundle_html,
+)
+from ntruth.reporting.v8 import (
+    report_bundle_to_dict as report_bundle_to_dict,
+)
+from ntruth.reporting.v8 import (
+    write_report_bundle_html as write_report_bundle_html,
+)
+from ntruth.reporting.v8 import (
+    write_report_bundle_json as write_report_bundle_json,
+)
+from ntruth.reporting.v8 import (
+    write_report_bundle_yaml as write_report_bundle_yaml,
+)
 from ntruth.schemas.report import Report
 
 
@@ -95,7 +113,11 @@ def write_all(
         parser_schemas["input"], out_dir / "parser-ai-input.schema.json"
     )
     written["parser_ai_output_schema"] = _write_json_schema(
-        parser_schemas["output"], out_dir / "parser-ai-output.schema.json"
+        # Historical v7 revisions retain their audited direct-verdict schema.
+        # Canonical v8 surfaces export ``candidate_output`` separately and never
+        # relabel the legacy contract as current.
+        parser_schemas["legacy_v3_output"],
+        out_dir / "parser-ai-output.schema.json",
     )
     if privacy_audit is not None:
         written["privacy_scan"] = write_privacy_audit(privacy_audit, out_dir / "privacy-scan.json")

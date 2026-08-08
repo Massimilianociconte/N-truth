@@ -16,14 +16,22 @@ from ntruth.quick_design.templates import (
     build_methods_draft,
     build_sample_sheet,
 )
+from ntruth.quick_design.v8 import (
+    QuickDesignV8Result,
+    QuickDesignV8Submission,
+    run_quick_design_v8,
+)
 
 __all__ = [
     "QuickDesignAnswers",
     "QuickDesignResult",
+    "QuickDesignV8Result",
+    "QuickDesignV8Submission",
     "build_id_convention",
     "build_methods_draft",
     "build_sample_sheet",
     "export_for_biostatistician",
     "freeze_plan",
     "run_quick_design_session",
+    "run_quick_design_v8",
 ]

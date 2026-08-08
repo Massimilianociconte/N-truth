@@ -38,6 +38,12 @@ def kernel_json_schemas() -> dict[str, dict[str, Any]]:
     from ntruth.schemas.coverage import ProfileCoverageStatement, ScenarioCoverage
     from ntruth.schemas.execution import V8ExecutionManifest
     from ntruth.schemas.knowledge import KnowledgeValue
+    from ntruth.schemas.prospective import (
+        ExecutedDesignRecord,
+        PlanExecutionReconciliation,
+        PlannedDesignRecord,
+    )
+    from ntruth.schemas.report_bundle import ReportBundle
     from ntruth.schemas.report_resolution import ReportResolutionOutcome
     from ntruth.schemas.support import (
         ConfirmationEvent,
@@ -63,6 +69,10 @@ def kernel_json_schemas() -> dict[str, dict[str, Any]]:
         "design_adequacy_evaluation": DesignAdequacyEvaluation,
         "v8_execution_manifest": V8ExecutionManifest,
         "report_resolution_outcome": ReportResolutionOutcome,
+        "planned_design_record": PlannedDesignRecord,
+        "executed_design_record": ExecutedDesignRecord,
+        "plan_execution_reconciliation": PlanExecutionReconciliation,
+        "report_bundle": ReportBundle,
     }
     return {name: model.model_json_schema(mode="validation") for name, model in models.items()}
 

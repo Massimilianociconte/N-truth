@@ -35,7 +35,14 @@ from ntruth.governance import (
     RedactionManifest,
 )
 from ntruth.ingest.safety import SafetyError
-from ntruth.reporting import read_json, report_to_dict
+from ntruth.quick_design import (
+    QuickDesignAnswers,
+    QuickDesignV8Submission,
+    export_for_biostatistician,
+    run_quick_design_session,
+    run_quick_design_v8,
+)
+from ntruth.reporting import read_json, report_bundle_to_dict, report_to_dict
 from ntruth.rules.loader import (
     DEFAULT_RULESET_ID,
     DEFAULT_RULESET_VERSION,
@@ -67,6 +74,24 @@ class AnalyzeRequest(BaseModel):
     ruleset_id: str = DEFAULT_RULESET_ID
     ruleset_version: str = DEFAULT_RULESET_VERSION
     acknowledge_unvalidated_domain: bool = False
+
+
+class LegacyQuickDesignRequest(BaseModel):
+    source_description: str = Field(min_length=1)
+    preparation_description: str = "unknown"
+    factor_id: str = "treatment"
+    levels: tuple[str, str] = ("control", "treated")
+    endpoint_id: str = "viability"
+    contrast_id: str = "control_vs_treated"
+    allocation_level: str = "unknown"
+    application_level: str = "unknown"
+    assignment_timing: str = "unknown"
+    assignment_method: str = "unknown"
+    independently_assigned: str = "UNKNOWN"
+    biological_source_independence: str = "UNKNOWN"
+    interference_status: str = "UNKNOWN"
+    planned_unit_type: str = "unknown"
+    planned_units_per_level: int | None = None
 
 
 class CorrectionDraft(BaseModel):
@@ -239,6 +264,64 @@ def create_app() -> Any:
             "output_dir": str(execution.run_dir),
             "privacy_audit": execution.privacy_audit.model_dump(mode="json"),
             "share_readiness": execution.share_readiness.model_dump(mode="json"),
+            "contract": {
+                "code": "DEPRECATED_V7_ADAPTER",
+                "version": "v7",
+            },
+        }
+
+    @api.post("/v1/quick-design")
+    @api.post("/v8/quick-design")
+    def quick_design_v8(payload: QuickDesignV8Submission) -> dict[str, Any]:
+        """Canonical prospective flow; claims come only from the v8 pipeline."""
+
+        from ntruth.derivation_theory.runtime import load_runtime_bundle
+
+        try:
+            result = run_quick_design_v8(
+                payload,
+                conformance_bundle=load_runtime_bundle(),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return {
+            "planned_design": result.planned_design.model_dump(mode="json"),
+            "report": report_bundle_to_dict(result.report_bundle),
+            "contract": {
+                "code": "PRD_V8",
+                "version": "8.0.0",
+                "strategy_module_status": result.report_bundle.strategy_module_status.value,
+            },
+        }
+
+    @api.post("/v7/quick-design")
+    def quick_design_v7(payload: LegacyQuickDesignRequest) -> dict[str, Any]:
+        """Explicitly qualified historical adapter; never the canonical route."""
+
+        try:
+            result = run_quick_design_session(
+                QuickDesignAnswers(
+                    source_description=payload.source_description,
+                    preparation_description=payload.preparation_description,
+                    factor_id=payload.factor_id,
+                    levels=payload.levels,
+                    endpoint_id=payload.endpoint_id,
+                    contrast_id=payload.contrast_id,
+                    allocation_level=payload.allocation_level,
+                    application_level=payload.application_level,
+                    assignment_timing=payload.assignment_timing,
+                    assignment_method=payload.assignment_method,
+                    independently_assigned=payload.independently_assigned,
+                    biological_source_independence=payload.biological_source_independence,
+                    interference_status=payload.interference_status,
+                    planned_unit_type=payload.planned_unit_type,
+                    planned_units_per_level=payload.planned_units_per_level,
+                )
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return {
+            "result": export_for_biostatistician(result),
             "contract": {
                 "code": "DEPRECATED_V7_ADAPTER",
                 "version": "v7",

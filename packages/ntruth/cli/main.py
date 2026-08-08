@@ -43,7 +43,7 @@ app = typer.Typer(
 rules_app = typer.Typer(add_completion=False, help="Ispezione dei ruleset versionati.")
 quick_design_app = typer.Typer(
     add_completion=False,
-    help="Quick Design Session (PRD v7): simple_cell_culture vertical slice.",
+    help="Quick Design Session PRD v8; the historical v7 adapter is explicitly named.",
 )
 app.add_typer(rules_app, name="rules")
 app.add_typer(quick_design_app, name="quick-design")
@@ -398,7 +398,59 @@ def rules_paths() -> None:
 
 
 @quick_design_app.command("run")
-def quick_design_run(
+@quick_design_app.command("run-v8")
+def quick_design_run_v8(
+    submission: Path = typer.Argument(..., help="QuickDesignV8Submission JSON locale."),
+    out: Path = typer.Option(Path("./ntruth-quick-design-v8"), "--out", "-o"),
+) -> None:
+    """Esegue la Quick Design v8 esclusivamente tramite il pipeline verificato."""
+
+    import json
+
+    from ntruth.derivation_theory.runtime import load_runtime_bundle
+    from ntruth.quick_design.v8 import QuickDesignV8Submission, run_quick_design_v8
+    from ntruth.reporting.v8 import (
+        write_report_bundle_html,
+        write_report_bundle_json,
+        write_report_bundle_yaml,
+    )
+
+    try:
+        parsed = QuickDesignV8Submission.model_validate_json(
+            submission.expanduser().read_text(encoding="utf-8")
+        )
+        result = run_quick_design_v8(
+            parsed,
+            conformance_bundle=load_runtime_bundle(),
+        )
+    except (OSError, ValidationError, ValueError) as exc:
+        typer.secho(f"Quick Design PRD v8 non eseguibile: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2) from exc
+
+    out = out.expanduser()
+    out.mkdir(parents=True, exist_ok=True)
+    plan_path = out / "planned-design-v8.json"
+    plan_path.write_text(
+        json.dumps(
+            result.planned_design.model_dump(mode="json"),
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    report_json = write_report_bundle_json(result.report_bundle, out / "report-v8.json")
+    report_yaml = write_report_bundle_yaml(result.report_bundle, out / "report-v8.yaml")
+    report_html = write_report_bundle_html(result.report_bundle, out / "report-v8.html")
+    typer.echo("PRD_V8 Quick Design completed through the verified deterministic pipeline.")
+    typer.echo(f"Strategy module: {result.report_bundle.strategy_module_status.value}")
+    for path in (plan_path, report_json, report_yaml, report_html):
+        typer.echo(str(path))
+
+
+@quick_design_app.command("run-v7")
+def quick_design_run_v7(
     source: str = typer.Option(..., "--source", help="Descrizione della sorgente biologica."),
     factor: str = typer.Option("treatment", "--factor"),
     levels: str = typer.Option(
@@ -429,7 +481,7 @@ def quick_design_run(
     freeze: bool = typer.Option(False, "--freeze", help="Congela il piano e stampa export JSON."),
     output: Path | None = typer.Option(None, "--output", help="Scrivi export JSON su file."),
 ) -> None:
-    """Sessione Quick Design minimale (simple_cell_culture). Non e validazione scientifica."""
+    """Adapter storico v7 esplicito; non e il contratto scientifico corrente."""
     import json
 
     from ntruth.quick_design import (
@@ -439,6 +491,11 @@ def quick_design_run(
         run_quick_design_session,
     )
 
+    typer.secho(
+        "DEPRECATED_V7_ADAPTER: Quick Design contract v7 explicitly selected.",
+        fg=typer.colors.YELLOW,
+        err=True,
+    )
     level_parts = tuple(part.strip() for part in levels.split(",") if part.strip())
     if len(level_parts) != 2:
         typer.secho(

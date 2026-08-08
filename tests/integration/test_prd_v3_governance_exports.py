@@ -1,4 +1,4 @@
-"""Integrazione PRD v3: schemi, privacy, licenze e gate distribuzione."""
+"""Governance/export integration through explicitly qualified legacy adapters."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from ntruth.application import (
     DistributionGovernanceBundle,
     RedactedDerivativeMaterial,
     evaluate_distribution_readiness,
-    execute_analysis,
+    execute_analysis_v7_adapter,
 )
 from ntruth.cli.main import app
 from ntruth.governance import (
@@ -28,7 +28,7 @@ from ntruth.governance import (
     PrivacyBlocked,
     RedactionManifest,
 )
-from ntruth.pipeline import analyze_project
+from ntruth.pipeline import analyze_project_v7_adapter
 from ntruth.reporting import write_all
 
 METHODS = """# Methods
@@ -60,7 +60,7 @@ def test_write_all_exports_parser_ai_schemas_and_ro_crate_does_not_relicense_dat
     make_project: ProjectFactory,
     tmp_path: Path,
 ) -> None:
-    result = analyze_project(make_project({"methods.md": METHODS}))
+    result = analyze_project_v7_adapter(make_project({"methods.md": METHODS}))
 
     written = write_all(result.report, tmp_path / "out")
 
@@ -100,7 +100,7 @@ def test_analysis_exposes_privacy_findings_without_mutating_or_blocking_source(
     )
     source.write_text(original, encoding="utf-8")
 
-    execution = execute_analysis(source, out=tmp_path / "out")
+    execution = execute_analysis_v7_adapter(source, out=tmp_path / "out")
 
     assert execution.privacy_audit.finding_count >= 2
     assert execution.share_readiness.analysis_allowed is True
@@ -122,8 +122,19 @@ def test_api_distribution_readiness_is_explicit_and_fail_closed(tmp_path: Path) 
     source = tmp_path / "methods.md"
     source.write_text(METHODS, encoding="utf-8")
     client = TestClient(create_app())
-    analyzed = client.post(
+    canonical = client.post(
         "/v1/analyze",
+        json={
+            "source": str(source),
+            "out": str(tmp_path / "api-out"),
+            "acknowledge_unvalidated_domain": True,
+        },
+    )
+    assert canonical.status_code == 409
+    assert canonical.json()["detail"]["code"] == "SCIENTIFIC_REVIEW_REQUIRED"
+
+    analyzed = client.post(
+        "/v7/analyze",
         json={
             "source": str(source),
             "out": str(tmp_path / "api-out"),
@@ -132,6 +143,7 @@ def test_api_distribution_readiness_is_explicit_and_fail_closed(tmp_path: Path) 
     )
     assert analyzed.status_code == 200, analyzed.text
     body = analyzed.json()
+    assert body["contract"]["code"] == "DEPRECATED_V7_ADAPTER"
     assert body["share_readiness"]["share_ready"] is False
     assert body["privacy_audit"]["original_sources_mutated"] is False
 
@@ -162,7 +174,7 @@ def test_api_distribution_readiness_is_explicit_and_fail_closed(tmp_path: Path) 
 def test_cli_distribution_check_never_performs_a_transfer(tmp_path: Path) -> None:
     source = tmp_path / "methods.md"
     source.write_text(METHODS, encoding="utf-8")
-    execution = execute_analysis(source, out=tmp_path / "out")
+    execution = execute_analysis_v7_adapter(source, out=tmp_path / "out")
     records = _governance_records(
         [asset.model_dump(mode="json") for asset in execution.share_readiness.assets]
     )
@@ -192,7 +204,7 @@ def test_cli_distribution_check_never_performs_a_transfer(tmp_path: Path) -> Non
 def test_distribution_gate_rejects_an_empty_asset_scope(tmp_path: Path) -> None:
     source = tmp_path / "methods.md"
     source.write_text(METHODS, encoding="utf-8")
-    execution = execute_analysis(source, out=tmp_path / "out")
+    execution = execute_analysis_v7_adapter(source, out=tmp_path / "out")
     empty_scope = execution.share_readiness.model_copy(update={"assets": ()})
 
     with pytest.raises(GovernanceDenied) as exc_info:
@@ -212,7 +224,7 @@ def test_redacted_copy_checksum_is_recomputed_from_exact_scanned_scope(tmp_path:
         "# Methods\n\nContact alice@example.org; sample_id=SUBJ-009.",
         encoding="utf-8",
     )
-    execution = execute_analysis(source, out=tmp_path / "out")
+    execution = execute_analysis_v7_adapter(source, out=tmp_path / "out")
     records = _governance_records(
         [asset.model_dump(mode="json") for asset in execution.share_readiness.assets]
     )
