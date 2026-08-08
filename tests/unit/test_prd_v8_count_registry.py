@@ -42,13 +42,14 @@ def _scope(
     condition: str = "confirmed_independent_cultures",
     evidence_id: str = "EV-COUNT-01",
     cohort_value: KnowledgeValue[str] | None = None,
+    group_value: KnowledgeValue[str] | None = None,
 ) -> CountScope:
     return CountScope(
         query_id=query_id,
         unit_type=_present("culture", evidence_id=evidence_id),
         factor_id=_present("treatment", evidence_id=evidence_id),
         contrast_id=_present("vehicle_vs_drug", evidence_id=evidence_id),
-        group_id=_present("drug", evidence_id=evidence_id),
+        group_id=group_value or _present("drug", evidence_id=evidence_id),
         endpoint_id=_present("viability", evidence_id=evidence_id),
         timepoint_id=_present("T48H", evidence_id=evidence_id),
         cohort_id=cohort_value or _present(cohort_id, evidence_id=evidence_id),
@@ -71,6 +72,7 @@ def _record(
     condition: str = "confirmed_independent_cultures",
     scope_evidence_id: str = "EV-COUNT-01",
     cohort_value: KnowledgeValue[str] | None = None,
+    group_value: KnowledgeValue[str] | None = None,
     value_query_id: str | None = None,
 ) -> CanonicalCountRecord:
     origin = (
@@ -96,6 +98,7 @@ def _record(
             condition=condition,
             evidence_id=scope_evidence_id,
             cohort_value=cohort_value,
+            group_value=group_value,
         ),
         source_evidence=("EV-COUNT-01",),
         origin=origin,
@@ -180,6 +183,96 @@ def test_unresolved_decisive_scope_requires_review() -> None:
         cohort_value=unresolved_cohort,
     )
     assert count_compatibility(count, count) is CountCompatibility.REVIEW_REQUIRED
+
+
+def test_not_applicable_scope_is_comparison_ready_and_provenance_free() -> None:
+    first_scope = KnowledgeValue[str](
+        knowledge_state=KnowledgeState.NOT_APPLICABLE,
+        rationale="the count has no group dimension",
+        query_scope_id="IQ-001",
+    )
+    second_scope = KnowledgeValue[str](
+        knowledge_state=KnowledgeState.NOT_APPLICABLE,
+        rationale="grouping does not apply to this count kind",
+        query_scope_id="IQ-001",
+    )
+    first = _record(count_id="CNT-NA-A", group_value=first_scope)
+    second = _record(count_id="CNT-NA-B", group_value=second_scope)
+
+    assert CanonicalCountRegistry(records=(first,)).records == (first,)
+    assert first.semantic_identity() == second.semantic_identity()
+    assert count_compatibility(first, second) is CountCompatibility.COMPATIBLE
+
+
+def test_explicit_absence_scope_is_comparison_ready_and_provenance_free() -> None:
+    first_scope = KnowledgeValue[str](
+        knowledge_state=KnowledgeState.ABSENT_EXPLICIT,
+        evidence_ids=("EV-ABSENCE-A",),
+    )
+    second_scope = KnowledgeValue[str](
+        knowledge_state=KnowledgeState.ABSENT_EXPLICIT,
+        evidence_ids=("EV-ABSENCE-B",),
+    )
+    first = _record(count_id="CNT-ABSENT-A", group_value=first_scope)
+    second = _record(count_id="CNT-ABSENT-B", group_value=second_scope)
+
+    assert CanonicalCountRegistry(records=(first,)).records == (first,)
+    assert first.semantic_identity() == second.semantic_identity()
+    assert count_compatibility(first, second) is CountCompatibility.COMPATIBLE
+
+
+def test_explicit_absence_and_not_applicable_remain_distinct_scope_states() -> None:
+    not_applicable = _record(
+        count_id="CNT-NA",
+        group_value=KnowledgeValue[str](
+            knowledge_state=KnowledgeState.NOT_APPLICABLE,
+            rationale="the count has no group dimension",
+            query_scope_id="IQ-001",
+        ),
+    )
+    explicitly_absent = _record(
+        count_id="CNT-ABSENT",
+        group_value=KnowledgeValue[str](
+            knowledge_state=KnowledgeState.ABSENT_EXPLICIT,
+            evidence_ids=("EV-ABSENCE",),
+        ),
+    )
+
+    assert not_applicable.semantic_identity() != explicitly_absent.semantic_identity()
+    assert (
+        count_compatibility(not_applicable, explicitly_absent) is CountCompatibility.NOT_COMPARABLE
+    )
+
+
+@pytest.mark.parametrize(
+    "unresolved_scope",
+    (
+        KnowledgeValue[str](
+            knowledge_state=KnowledgeState.UNKNOWN,
+            rationale="the cohort cannot be reconstructed",
+            query_scope_id="IQ-001",
+        ),
+        KnowledgeValue[str](
+            knowledge_state=KnowledgeState.NOT_REPORTED,
+            source_scope_ids=("METHODS",),
+        ),
+        KnowledgeValue[str](
+            knowledge_state=KnowledgeState.CONFLICTING,
+            conflicting_values=("COHORT-A", "COHORT-B"),
+            evidence_ids=("EV-COHORT-A", "EV-COHORT-B"),
+        ),
+    ),
+    ids=("unknown", "not-reported", "conflicting"),
+)
+def test_unresolved_scope_states_remain_review_required(
+    unresolved_scope: KnowledgeValue[str],
+) -> None:
+    count = _record(count_id="CNT-UNRESOLVED", cohort_value=unresolved_scope)
+
+    assert count.semantic_identity() is None
+    assert count_compatibility(count, count) is CountCompatibility.REVIEW_REQUIRED
+    with pytest.raises(ValidationError, match="SCIENTIFIC_REVIEW_REQUIRED"):
+        CanonicalCountRegistry(records=(count,))
 
 
 def test_count_value_query_scope_must_match_record_scope() -> None:

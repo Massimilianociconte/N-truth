@@ -112,8 +112,19 @@ class CountScopeIdentity(KernelModel):
     )
 
     @property
+    def comparison_ready(self) -> bool:
+        comparison_ready_states = {
+            KnowledgeState.PRESENT,
+            KnowledgeState.ABSENT_EXPLICIT,
+            KnowledgeState.NOT_APPLICABLE,
+        }
+        return all(state in comparison_ready_states for _, state, _ in self.components)
+
+    @property
     def resolved(self) -> bool:
-        return all(state is KnowledgeState.PRESENT for _, state, _ in self.components)
+        """Compatibility alias for the narrower comparison-ready predicate."""
+
+        return self.comparison_ready
 
     def key(self) -> tuple[object, ...]:
         return (self.query_id, *self.components)
@@ -240,7 +251,7 @@ class CanonicalCountRecord(KernelModel):
 
     def semantic_identity(self) -> tuple[object, ...] | None:
         identity = self.scope.identity()
-        if not identity.resolved:
+        if not identity.comparison_ready:
             return None
         return (self.kind.value, *identity.key())
 
