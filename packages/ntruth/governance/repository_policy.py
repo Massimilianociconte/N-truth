@@ -8,6 +8,7 @@ and makes path-escape and symlink behavior testable.
 
 from __future__ import annotations
 
+import ctypes
 import hashlib
 import os
 import re
@@ -27,6 +28,7 @@ from ntruth.schemas.kernel import KernelModel, NonBlankStr
 from ntruth.schemas.knowledge import KnowledgeState, KnowledgeValue
 
 Sha256 = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
+_MountIdentity = tuple[str, ...]
 _SCAN_EVIDENCE_ID = "REPOSITORY-POLICY-SCAN-V8"
 _MODEL_SUFFIXES = frozenset(
     {
@@ -354,6 +356,46 @@ def _crosses_mount_boundary(
     )
 
 
+def _descriptor_mount_identity(file_fd: int) -> _MountIdentity | None:
+    """Return mount identity bound to an already-open descriptor, or fail closed."""
+
+    if sys.platform.startswith("linux"):
+        try:
+            lines = Path(f"/proc/self/fdinfo/{file_fd}").read_text(encoding="ascii").splitlines()
+        except (OSError, UnicodeError):
+            return None
+        mount_ids = [line.partition(":")[2].strip() for line in lines if line.startswith("mnt_id:")]
+        if len(mount_ids) != 1 or not mount_ids[0].isdigit():
+            return None
+        return ("linux-mnt-id", mount_ids[0])
+
+    if sys.platform == "darwin":
+        # Darwin's 64-bit ``struct statfs`` is 2168 bytes.  The selected
+        # fields are descriptor-bound: fsid [48:56], filesystem type [72:88],
+        # mount-on name [88:1112], and mount-from name [1112:2136].
+        statfs_buffer = ctypes.create_string_buffer(2168)
+        try:
+            libc = ctypes.CDLL(None, use_errno=True)
+            fstatfs = libc.fstatfs
+            if fstatfs(file_fd, ctypes.byref(statfs_buffer)) != 0:
+                return None
+        except (AttributeError, OSError, ctypes.ArgumentError):
+            return None
+        payload = statfs_buffer.raw
+        selected = payload[48:56] + payload[72:2136]
+        return ("darwin-fstatfs", hashlib.sha256(selected).hexdigest())
+
+    return None
+
+
+def _require_same_mount(file_fd: int, root_mount_identity: _MountIdentity) -> None:
+    observed = _descriptor_mount_identity(file_fd)
+    if observed is None:
+        raise OSError("descriptor-bound mount identity is unavailable")
+    if observed != root_mount_identity:
+        raise OSError("tracked path crosses a descriptor-observed mount boundary")
+
+
 @dataclass(frozen=True)
 class _TrackedFileInspection:
     size: int
@@ -373,7 +415,13 @@ def _open_flags(*, directory: bool) -> int:
     return flags
 
 
-def _open_beneath(root_fd: int, relative: PurePosixPath, *, root_device: int) -> int:
+def _open_beneath(
+    root_fd: int,
+    relative: PurePosixPath,
+    *,
+    root_device: int,
+    root_mount_identity: _MountIdentity,
+) -> int:
     """Open a same-filesystem regular-file candidate below ``root_fd`` without links."""
 
     parent_fd = os.dup(root_fd)
@@ -384,17 +432,28 @@ def _open_beneath(root_fd: int, relative: PurePosixPath, *, root_device: int) ->
                 _open_flags(directory=True),
                 dir_fd=parent_fd,
             )
-            child_metadata = os.fstat(child_fd)
+            try:
+                _require_same_mount(child_fd, root_mount_identity)
+                child_metadata = os.fstat(child_fd)
+            except OSError:
+                os.close(child_fd)
+                raise
             if child_metadata.st_dev != root_device:
                 os.close(child_fd)
                 raise OSError("tracked path crosses a filesystem boundary")
             os.close(parent_fd)
             parent_fd = child_fd
-        return os.open(
+        leaf_fd = os.open(
             relative.name,
             _open_flags(directory=False),
             dir_fd=parent_fd,
         )
+        try:
+            _require_same_mount(leaf_fd, root_mount_identity)
+        except OSError:
+            os.close(leaf_fd)
+            raise
+        return leaf_fd
     finally:
         os.close(parent_fd)
 
@@ -428,10 +487,16 @@ def _inspect_tracked_file(
     *,
     max_file_bytes: int,
     root_device: int,
+    root_mount_identity: _MountIdentity,
 ) -> _TrackedFileInspection:
     """Read bytes and metadata from one stable, no-follow descriptor."""
 
-    file_fd = _open_beneath(root_fd, relative, root_device=root_device)
+    file_fd = _open_beneath(
+        root_fd,
+        relative,
+        root_device=root_device,
+        root_mount_identity=root_mount_identity,
+    )
     try:
         initial = os.fstat(file_fd)
         if not stat.S_ISREG(initial.st_mode):
@@ -448,7 +513,12 @@ def _inspect_tracked_file(
         if _metadata_signature(initial) != _metadata_signature(final):
             raise OSError("tracked file changed while it was inspected")
 
-        verification_fd = _open_beneath(root_fd, relative, root_device=root_device)
+        verification_fd = _open_beneath(
+            root_fd,
+            relative,
+            root_device=root_device,
+            root_mount_identity=root_mount_identity,
+        )
         try:
             verification = os.fstat(verification_fd)
         finally:
@@ -488,6 +558,7 @@ def _binary_findings(head: bytes, tail: bytes) -> tuple[RepositoryPolicyFindingK
     corpus_signature = (
         head.startswith((*archive_magic, b"SQLite format 3\x00", b"ARROW1"))
         or (head.startswith(b"PAR1") and tail.endswith(b"PAR1"))
+        or (head.startswith(b"FEA1") and tail.endswith(b"FEA1"))
         or (len(head) >= 12 and head[8:12] == b"DUCK")
     )
     if corpus_signature or (len(head) >= 262 and head[257:262] == b"ustar"):
@@ -528,9 +599,11 @@ def scan_tracked_repository_v8(
     mount_points = _mount_points_for_repository(root)
     root_fd: int | None = None
     root_device: int | None = None
+    root_mount_identity: _MountIdentity | None = None
     try:
         root_fd = os.open(root, _open_flags(directory=True))
         root_device = os.fstat(root_fd).st_dev
+        root_mount_identity = _descriptor_mount_identity(root_fd)
     except OSError:
         if root_fd is not None:
             os.close(root_fd)
@@ -574,12 +647,22 @@ def scan_tracked_repository_v8(
                     )
                 )
                 continue
+            if root_mount_identity is None:
+                findings.append(
+                    _finding(
+                        raw,
+                        RepositoryPolicyFindingKindV8.UNSAFE_PATH,
+                        "descriptor-bound mount identity is unavailable; policy scan fails closed",
+                    )
+                )
+                continue
             try:
                 inspection = _inspect_tracked_file(
                     root_fd,
                     relative,
                     max_file_bytes=max_file_bytes,
                     root_device=root_device,
+                    root_mount_identity=root_mount_identity,
                 )
             except (OSError, RuntimeError):
                 findings.append(

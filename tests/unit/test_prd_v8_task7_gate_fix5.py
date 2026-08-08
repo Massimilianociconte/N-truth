@@ -150,7 +150,7 @@ def test_marker_bearing_non_utf8_payloads_are_blocked_independently_of_suffix(
         ),
         (
             "assets/ordinary-feather.safe",
-            b"ARROW1\x00\x00synthetic-featherARROW1",
+            b"FEA1\x00\x00synthetic-feather-v1FEA1",
             RepositoryPolicyFindingKindV8.NO_CORPUS,
         ),
         (
@@ -262,6 +262,7 @@ def test_real_ci_command_blocks_all_fix5_counterfactuals(tmp_path: Path) -> None
         _write(root, "assets/corpus.dat", b"\xff\xfe\x00synthetic"),
         _write(root, "assets/parquet.safe", b"PAR1syntheticPAR1"),
         _write(root, "assets/arrow.safe", b"ARROW1syntheticARROW1"),
+        _write(root, "assets/feather-v1.safe", b"FEA1syntheticFEA1"),
         _write(root, "assets/model.safe", b"GGUF\x03\x00\x00\x00synthetic"),
         _write(root, "assets/database.safe", b"\x00\x00\x00\x00\x00\x00\x00\x00DUCKsynthetic"),
         _write(
