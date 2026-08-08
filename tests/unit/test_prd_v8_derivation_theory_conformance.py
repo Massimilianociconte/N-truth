@@ -224,6 +224,37 @@ def test_negative_fixture_must_discriminate_from_positive() -> None:
     assert "NON_DISCRIMINATING_FIXTURE" in _failure_codes(report)
 
 
+def test_provenance_only_change_is_not_a_scientific_counterfactual() -> None:
+    """Catches evidence metadata being mistaken for a decisive scientific value change."""
+
+    bundle = _bundle()
+    rule = bundle.rulebook.rules[0]
+    positive = next(fixture for fixture in rule.fixtures if fixture.kind.value == "POSITIVE")
+    counterfactual = next(
+        fixture for fixture in rule.fixtures if fixture.kind.value == "MINIMAL_COUNTERFACTUAL"
+    )
+    decisive = counterfactual.decisive_predicate_id
+    provenance_only = positive.predicate_values[decisive].model_copy(
+        update={
+            "evidence_ids": ("EV-PROVENANCE-ONLY",),
+            "source_scope_ids": ("SOURCE-SCOPE-PROVENANCE-ONLY",),
+            "rationale": "Only provenance metadata changed.",
+        }
+    )
+    predicate_values = dict(counterfactual.predicate_values)
+    predicate_values[decisive] = provenance_only
+    mutated = _replace_fixture(
+        bundle,
+        rule.rule_id,
+        counterfactual.fixture_id,
+        predicate_values=predicate_values,
+    )
+
+    report = _harness().evaluate_conformance(mutated)
+
+    assert "NON_DISCRIMINATING_FIXTURE" in _failure_codes(report)
+
+
 def test_each_fixture_decisive_predicate_must_be_required_by_rule() -> None:
     """Catches a fixture claiming falsification through an out-of-contract predicate."""
 
@@ -237,6 +268,26 @@ def test_each_fixture_decisive_predicate_must_be_required_by_rule() -> None:
         rule.rule_id,
         positive.fixture_id,
         decisive_predicate_id="unreviewed_decisive_predicate",
+        predicate_values=predicate_values,
+    )
+
+    report = _harness().evaluate_conformance(mutated)
+
+    assert "FIXTURE_PREDICATE_CONTRACT_MISMATCH" in _failure_codes(report)
+
+
+def test_fixture_rejects_predicate_input_outside_required_or_irrelevant_contract() -> None:
+    """Catches fixture inputs that escape the rule's explicit predicate closure."""
+
+    bundle = _bundle()
+    rule = bundle.rulebook.rules[0]
+    positive = next(fixture for fixture in rule.fixtures if fixture.kind.value == "POSITIVE")
+    predicate_values = dict(positive.predicate_values)
+    predicate_values["undeclared_fixture_predicate"] = next(iter(predicate_values.values()))
+    mutated = _replace_fixture(
+        bundle,
+        rule.rule_id,
+        positive.fixture_id,
         predicate_values=predicate_values,
     )
 

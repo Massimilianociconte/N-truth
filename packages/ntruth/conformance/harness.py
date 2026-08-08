@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from enum import StrEnum
 
+from pydantic import JsonValue
+
 from ntruth.derivation_theory.contracts import (
     ConformanceBundle,
     ConformanceFixture,
@@ -18,6 +20,7 @@ from ntruth.derivation_theory.contracts import (
 )
 from ntruth.derivation_theory.loader import canonical_checksum
 from ntruth.schemas.kernel import KernelModel, NonBlankStr
+from ntruth.schemas.knowledge import KnowledgeValue
 
 
 class ConformanceFailureCode(StrEnum):
@@ -95,13 +98,30 @@ def _claim_signature(fixture: ConformanceFixture) -> tuple[tuple[object, ...], .
     )
 
 
+def _scientific_predicate_signature(
+    value: KnowledgeValue[JsonValue] | None,
+) -> tuple[str, str, tuple[str, ...]]:
+    """Compare scientific state/value only; fixture query scope is already an input predicate."""
+
+    if value is None:
+        return ("__MISSING__", canonical_checksum(None), ())
+    normalized_conflicting_values = tuple(
+        sorted(canonical_checksum(item) for item in value.conflicting_values)
+    )
+    return (
+        value.knowledge_state.value,
+        canonical_checksum(value.value),
+        normalized_conflicting_values,
+    )
+
+
 def _predicate_differences(left: ConformanceFixture, right: ConformanceFixture) -> set[str]:
     keys = set(left.predicate_values) | set(right.predicate_values)
     return {
         key
         for key in keys
-        if canonical_checksum(left.predicate_values.get(key))
-        != canonical_checksum(right.predicate_values.get(key))
+        if _scientific_predicate_signature(left.predicate_values.get(key))
+        != _scientific_predicate_signature(right.predicate_values.get(key))
     }
 
 
@@ -134,6 +154,8 @@ def _check_fixtures(
         )
 
     required_predicates = {item.predicate_id for item in rule.required_predicates}
+    irrelevant_predicates = {item.id for item in rule.irrelevant_predicates}
+    allowed_predicates = required_predicates | irrelevant_predicates
     allowed_outputs = set(rule.output_claim_types) & clause_output_claim_types
     expected_outputs: set[str] = set()
     expected_outcome_by_kind = {
@@ -144,10 +166,12 @@ def _check_fixtures(
     for fixture in rule.fixtures:
         fixture_predicates = set(fixture.predicate_values)
         missing_predicates = required_predicates - fixture_predicates
+        unexpected_predicates = fixture_predicates - allowed_predicates
         if (
             fixture.decisive_predicate_id not in required_predicates
             or fixture.decisive_predicate_id not in fixture_predicates
             or missing_predicates
+            or unexpected_predicates
         ):
             failures.append(
                 ConformanceFailure(
@@ -156,7 +180,9 @@ def _check_fixtures(
                     fixture_id=fixture.fixture_id,
                     message=(
                         "fixture decisive predicate must be required and every required input "
-                        f"must be present; missing={sorted(missing_predicates)}"
+                        "must be present; all inputs must be required or irrelevant; "
+                        f"missing={sorted(missing_predicates)}, "
+                        f"unexpected={sorted(unexpected_predicates)}"
                     ),
                 )
             )
@@ -215,16 +241,13 @@ def _check_fixtures(
         negative = fixtures_by_kind[FixtureKind.NEGATIVE][0]
         counterfactual = fixtures_by_kind[FixtureKind.MINIMAL_COUNTERFACTUAL][0]
         negative_differences = _predicate_differences(positive, negative)
-        if (
-            negative.decisive_predicate_id != positive.decisive_predicate_id
-            or negative.decisive_predicate_id not in negative_differences
-        ):
+        if not negative_differences:
             failures.append(
                 ConformanceFailure(
                     code=ConformanceFailureCode.NON_DISCRIMINATING_FIXTURE,
                     rule_id=rule.rule_id,
                     fixture_id=negative.fixture_id,
-                    message="negative fixture must differ on the declared decisive predicate",
+                    message="negative fixture must differ on at least one scientific predicate",
                 )
             )
         counterfactual_differences = _predicate_differences(positive, counterfactual)
