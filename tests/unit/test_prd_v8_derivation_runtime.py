@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 
-from ntruth.derivation_theory.loader import load_canonical_bundle
+from ntruth.derivation_theory.loader import canonical_checksum, load_canonical_bundle
 from ntruth.schemas.authority import AuthorityType
 from ntruth.schemas.causal_context import (
     InterferenceStatus,
@@ -17,6 +17,15 @@ from ntruth.schemas.causal_context import (
     QueryCausalEventAggregate,
 )
 from ntruth.schemas.core import content_checksum
+from ntruth.schemas.count_registry import (
+    CanonicalCountKind,
+    CanonicalCountRecord,
+    CanonicalCountRegistry,
+    CountLifecyclePhase,
+    CountOrigin,
+    CountQuantifier,
+    CountScope,
+)
 from ntruth.schemas.events import ApplicationEvent, AssignmentEvent, EventRegistry, ExposureEvent
 from ntruth.schemas.graph_v8 import (
     V8ExperimentGraph,
@@ -44,6 +53,7 @@ QUERY_ID = "IQ-RUNTIME-001"
 BLOCK_ID = "BLOCK-RUNTIME-001"
 PROFILE_ID = "simple_cell_culture"
 PROFILE_VERSION = "0.1.0"
+CANONICAL_BUNDLE = load_canonical_bundle(REPOSITORY_ROOT)
 
 
 def _present(value: Any, *, evidence_id: str = "EV-RUNTIME-001") -> KnowledgeValue[Any]:
@@ -171,6 +181,78 @@ def _support() -> SupportDescriptor:
     )
 
 
+def _count_scope(*, unit_type: str) -> CountScope:
+    return CountScope(
+        query_id=QUERY_ID,
+        unit_type=_present(unit_type),
+        factor_id=_present("FACTOR-TREATMENT"),
+        contrast_id=_present("CONTRAST-VEHICLE-DRUG"),
+        group_id=_present("drug"),
+        endpoint_id=_present("ENDPOINT-VIABILITY"),
+        timepoint_id=_present("T48H"),
+        cohort_id=_present("COHORT-RUNTIME-001"),
+        lifecycle_phase=_present(CountLifecyclePhase.TREATED),
+        population_scope=_present("cultures_under_protocol_x"),
+        condition=_present("confirmed_units"),
+    )
+
+
+def _count_registry() -> CanonicalCountRegistry:
+    eu = CanonicalCountRecord(
+        count_id="COUNT-EU-RUNTIME-001",
+        kind=CanonicalCountKind.EXPERIMENTAL_UNIT_COUNT,
+        value=_present(2),
+        quantifier=CountQuantifier.EXACT,
+        scope=_count_scope(unit_type="well"),
+        source_evidence=("EV-RUNTIME-001",),
+        origin=CountOrigin.RULE_DERIVATION,
+        rule_trace=("V8-C-EXPERIMENTAL-UNIT-COUNT",),
+    )
+    source = CanonicalCountRecord(
+        count_id="COUNT-SOURCE-RUNTIME-001",
+        kind=CanonicalCountKind.BIOLOGICAL_SOURCE_COUNT,
+        value=_present(2),
+        quantifier=CountQuantifier.EXACT,
+        scope=_count_scope(unit_type="culture_preparation"),
+        source_evidence=("EV-RUNTIME-001",),
+        origin=CountOrigin.SOURCE_DECLARATION,
+    )
+    return CanonicalCountRegistry(records=(eu, source))
+
+
+def _successor_bundle() -> object:
+    theory = CANONICAL_BUNDLE.theory.model_copy(update={"theory_version": "0.1.1"})
+    theory = theory.model_copy(
+        update={
+            "declared_checksum": canonical_checksum(
+                theory.model_dump(mode="json", exclude_unset=True),
+                exclude_declared_checksum=True,
+            )
+        }
+    )
+    rules = tuple(
+        rule.model_copy(update={"rule_version": "0.1.1"})
+        for rule in CANONICAL_BUNDLE.rulebook.rules
+    )
+    rulebook = CANONICAL_BUNDLE.rulebook.model_copy(
+        update={
+            "rulebook_version": "0.1.1",
+            "theory_version": theory.theory_version,
+            "theory_checksum": theory.declared_checksum,
+            "rules": rules,
+        }
+    )
+    rulebook = rulebook.model_copy(
+        update={
+            "declared_checksum": canonical_checksum(
+                rulebook.model_dump(mode="json", exclude_unset=True),
+                exclude_declared_checksum=True,
+            )
+        }
+    )
+    return CANONICAL_BUNDLE.model_copy(update={"theory": theory, "rulebook": rulebook})
+
+
 def _request(
     *,
     overrides: dict[str, KnowledgeValue[Any]] | None = None,
@@ -178,7 +260,7 @@ def _request(
     scenario_coverages: tuple[object, ...] = (),
 ) -> tuple[object, object]:
     runtime = import_module("ntruth.pipeline_v8")
-    bundle = load_canonical_bundle(REPOSITORY_ROOT)
+    bundle = CANONICAL_BUNDLE
     predicates = _predicate_values()
     predicates.update(overrides or {})
     profile_coverage = runtime.ProfileCoverageStatement(
@@ -186,8 +268,10 @@ def _request(
         profile_id=PROFILE_ID,
         profile_version=PROFILE_VERSION,
         theory_version=bundle.theory.theory_version,
-        predicate_closure_argument_id="PCA-SIMPLE-CELL-0.1.0",
-        covered_predicate_ids=tuple(sorted(predicates)),
+        predicate_closure_argument_id=bundle.profile_closure.asset_id,
+        covered_predicate_ids=tuple(
+            sorted(set(predicates) & set(bundle.profile_closure.candidate_predicate_ids))
+        ),
         known_gap_ids=("SRR-V8-008",),
         contract_review=ScientificReviewRequirement(
             issue_id="SRR-V8-008",
@@ -208,6 +292,9 @@ def _request(
         support_by_clause={clause.clause_id: _support() for clause in bundle.theory.clauses},
         profile_coverage=profile_coverage,
         scenario_coverages=scenario_coverages,
+        count_registry=_count_registry(),
+        experimental_unit_count_record_id="COUNT-EU-RUNTIME-001",
+        biological_source_count_record_id="COUNT-SOURCE-RUNTIME-001",
         runtime_ruleset_version="ntruth-v8-core-0.1.0",
     )
     return runtime, request
@@ -227,7 +314,7 @@ def test_source_independence_never_promotes_assignment_eu_or_count() -> None:
         }
     )
 
-    result = runtime.run_v8_pipeline(request)
+    result = runtime.run_v8_pipeline(request, conformance_bundle=CANONICAL_BUNDLE)
 
     assert _claim(result, "ASSIGNMENT_UNIT").determinability_state.value == (
         "INSUFFICIENT_INFORMATION"
@@ -252,7 +339,7 @@ def test_documented_interference_never_auto_replaces_experimental_unit() -> None
         },
     )
 
-    result = runtime.run_v8_pipeline(request)
+    result = runtime.run_v8_pipeline(request, conformance_bundle=CANONICAL_BUNDLE)
     eu_claim = _claim(result, "EXPERIMENTAL_UNIT")
 
     assert eu_claim.determinability_state.value == "INSUFFICIENT_INFORMATION"
@@ -268,7 +355,7 @@ def test_same_block_query_retains_different_claim_specific_states() -> None:
         overrides={"source_diversity": _unknown("source diversity cannot be reconstructed")}
     )
 
-    result = runtime.run_v8_pipeline(request)
+    result = runtime.run_v8_pipeline(request, conformance_bundle=CANONICAL_BUNDLE)
 
     assert _claim(result, "ASSIGNMENT_UNIT").determinability_state.value == "DETERMINATE"
     assert _claim(result, "INFERENCE_SCOPE").determinability_state.value == (
@@ -292,7 +379,7 @@ def test_non_exhaustive_scenario_coverage_is_retained_and_never_presented_as_com
     )
     runtime, request = _request(scenario_coverages=(coverage,))
 
-    result = runtime.run_v8_pipeline(request)
+    result = runtime.run_v8_pipeline(request, conformance_bundle=CANONICAL_BUNDLE)
 
     assert result.scenario_coverages == (coverage,)
     assert result.scenario_space_complete is False
@@ -318,11 +405,12 @@ def test_equal_numeric_eu_and_source_counts_remain_distinct_claims() -> None:
     """Catches collapsing biological-source count into experimental-unit count."""
 
     runtime, request = _request()
-    result = runtime.run_v8_pipeline(request)
+    result = runtime.run_v8_pipeline(request, conformance_bundle=CANONICAL_BUNDLE)
     eu_count = _claim(result, "EXPERIMENTAL_UNIT_COUNT")
     source_count = _claim(result, "BIOLOGICAL_SOURCE_COUNT")
 
-    assert eu_count.value.value == source_count.value.value == 2
+    assert eu_count.value.value["value"]["value"] == 2
+    assert source_count.value.value["value"]["value"] == 2
     assert eu_count.claim_id != source_count.claim_id
     assert eu_count.required_predicates != source_count.required_predicates
 
@@ -331,7 +419,7 @@ def test_design_adequacy_is_separate_and_cannot_change_claim_determinability() -
     """Catches an adequacy finding rewriting a claim-specific state."""
 
     runtime, possible_request = _request(interference=InterferenceStatus.POSSIBLE)
-    possible = runtime.run_v8_pipeline(possible_request)
+    possible = runtime.run_v8_pipeline(possible_request, conformance_bundle=CANONICAL_BUNDLE)
     runtime, documented_request = _request(
         interference=InterferenceStatus.DOCUMENTED,
         overrides={
@@ -339,7 +427,7 @@ def test_design_adequacy_is_separate_and_cannot_change_claim_determinability() -
             "exposure_interference": _present("documented"),
         },
     )
-    documented = runtime.run_v8_pipeline(documented_request)
+    documented = runtime.run_v8_pipeline(documented_request, conformance_bundle=CANONICAL_BUNDLE)
 
     assert _claim(possible, "EXPERIMENTAL_UNIT").determinability_state.value == "DETERMINATE"
     assert _claim(documented, "EXPERIMENTAL_UNIT").determinability_state.value == "DETERMINATE"
@@ -352,16 +440,19 @@ def test_progressive_verifier_fails_closed_before_theory_derivation() -> None:
 
     verifier = import_module("ntruth.verifier.v8")
     _, request = _request()
-    valid = verifier.verify_v8_pipeline_request(request)
+    valid = verifier.verify_v8_pipeline_request(request, conformance_bundle=CANONICAL_BUNDLE)
     predicates = dict(request.predicate_values)
     del predicates["realized_exposure_separability"]
     invalid_request = request.model_copy(update={"predicate_values": predicates})
 
-    invalid = verifier.verify_v8_pipeline_request(invalid_request)
+    invalid = verifier.verify_v8_pipeline_request(
+        invalid_request, conformance_bundle=CANONICAL_BUNDLE
+    )
 
     assert valid.passed is True
     assert invalid.passed is False
-    assert invalid.highest_completed_stage == "FACT_VERIFICATION"
+    assert invalid.highest_completed_stage == "NONE"
+    assert invalid.failed_stage == "FACT_VERIFICATION"
     assert invalid.issues[0].code == "MISSING_EXPLICIT_PREDICATE"
     assert invalid.issues[0].theory_clause_id == "DT-B-EXPERIMENTAL-UNIT"
 
@@ -375,9 +466,10 @@ def test_pipeline_stops_at_typed_fact_verification_failure() -> None:
     invalid_request = request.model_copy(update={"predicate_values": predicates})
 
     with pytest.raises(runtime.V8PipelineVerificationError) as error:
-        runtime.run_v8_pipeline(invalid_request)
+        runtime.run_v8_pipeline(invalid_request, conformance_bundle=CANONICAL_BUNDLE)
 
-    assert error.value.report.highest_completed_stage == "FACT_VERIFICATION"
+    assert error.value.report.highest_completed_stage == "NONE"
+    assert error.value.report.failed_stage == "FACT_VERIFICATION"
     assert error.value.report.issues[0].theory_clause_id == "DT-C-EXPERIMENTAL-UNIT-COUNT"
 
 
@@ -461,7 +553,7 @@ def test_rule_challenge_requires_successor_versions_and_full_rederivation() -> N
 
     corrections_v8 = import_module("ntruth.corrections.v8")
     runtime, original_request = _request()
-    original = runtime.run_v8_pipeline(original_request)
+    original = runtime.run_v8_pipeline(original_request, conformance_bundle=CANONICAL_BUNDLE)
     frozen_claim = _claim(original, "EXPERIMENTAL_UNIT")
     created_at = datetime(2026, 8, 8, 12, 0, tzinfo=UTC)
     challenge = RuleChallenge(
@@ -476,8 +568,7 @@ def test_rule_challenge_requires_successor_versions_and_full_rederivation() -> N
         actor_role="domain_method_reviewer",
         created_at=created_at,
     )
-    canonical_theory = load_canonical_bundle(REPOSITORY_ROOT).theory
-    successor_theory = canonical_theory.model_copy(update={"theory_version": "0.1.1"})
+    successor_bundle = _successor_bundle()
     successor_request = original_request.model_copy(
         update={
             "runtime_ruleset_version": "ntruth-v8-core-0.1.1",
@@ -506,7 +597,7 @@ def test_rule_challenge_requires_successor_versions_and_full_rederivation() -> N
     rederived = corrections_v8.rederive_after_rule_challenge(
         previous=original,
         request=successor_request,
-        theory=successor_theory,
+        conformance_bundle=successor_bundle,
         challenge=challenge,
         decision=decision,
     )
@@ -526,7 +617,7 @@ def test_main_deterministic_pipeline_is_v8_and_v7_is_an_explicit_adapter() -> No
     runtime = import_module("ntruth.pipeline_v8")
 
     assert main_pipeline.run_deterministic_pipeline is runtime.run_v8_pipeline
-    assert main_pipeline.analyze_project_v7_adapter is main_pipeline.analyze_project
+    assert main_pipeline.analyze_project_v7_adapter is not main_pipeline.analyze_project
     assert main_pipeline.LEGACY_PIPELINE_CONTRACT == "ntruth-v7-deprecated-adapter"
 
 
@@ -535,7 +626,7 @@ def test_v8_pipeline_order_is_facts_theory_claims_adequacy_report() -> None:
 
     runtime, request = _request()
 
-    result = runtime.run_v8_pipeline(request)
+    result = runtime.run_v8_pipeline(request, conformance_bundle=CANONICAL_BUNDLE)
 
     assert result.stage_order == (
         "FACT_VERIFICATION",
@@ -584,6 +675,7 @@ def test_runtime_gates_rulebook_conformance_without_using_it_as_theory() -> None
         runtime.run_v8_pipeline(request, conformance_bundle=malformed_bundle)
 
     assert error.value.report.passed is False
-    assert _claim(runtime.run_v8_pipeline(request), "ASSIGNMENT_UNIT").rule_trace == (
-        "V8-A-ASSIGNMENT-UNIT",
-    )
+    assert _claim(
+        runtime.run_v8_pipeline(request, conformance_bundle=CANONICAL_BUNDLE),
+        "ASSIGNMENT_UNIT",
+    ).rule_trace == ("V8-A-ASSIGNMENT-UNIT",)

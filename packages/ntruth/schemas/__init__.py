@@ -1,6 +1,6 @@
 """Contratti dati di N-Truth. Tutto il resto del sistema dipende solo da qui."""
 
-from ntruth.schemas.adequacy import DesignAdequacyFinding
+from ntruth.schemas.adequacy import DesignAdequacyEvaluation, DesignAdequacyFinding
 from ntruth.schemas.causal_context import QueryCausalContext, QueryCausalEventAggregate
 from ntruth.schemas.claims import (
     DerivedClaim,
@@ -76,6 +76,7 @@ from ntruth.schemas.events import (
     SplitEvent,
     TemporalRelation,
 )
+from ntruth.schemas.execution import ImplementationRulePin, V8ExecutionManifest
 from ntruth.schemas.experiment import (
     Alert,
     ConditionalScenario,
@@ -228,6 +229,7 @@ __all__ = [
     "DataSufficiency",
     "DerivedClaim",
     "DerivedClaimSet",
+    "DesignAdequacyEvaluation",
     "DesignAdequacyFinding",
     "DesignEvent",
     "Determinability",
@@ -257,6 +259,7 @@ __all__ = [
     "GraphRelation",
     "GraphViolation",
     "Hierarchy",
+    "ImplementationRulePin",
     "Inferability",
     "InferenceTarget",
     "InferenceTargetStatus",
@@ -329,6 +332,7 @@ __all__ = [
     "TemporalRelation",
     "TrivialExplicitReportResolutionPolicy",
     "UnitAssessment",
+    "V8ExecutionManifest",
     "V8ExperimentGraph",
     "V8GraphNode",
     "V8GraphNodeType",

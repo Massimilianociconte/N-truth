@@ -9,7 +9,7 @@ from pydantic import Field, model_validator
 
 from ntruth.schemas.claims import ProfileCoverageReference
 from ntruth.schemas.kernel import KernelModel, NonBlankStr
-from ntruth.schemas.knowledge import KnowledgeValue
+from ntruth.schemas.knowledge import KnowledgeState, KnowledgeValue
 from ntruth.schemas.support import ScientificReviewRequirement
 
 PROFILE_COVERAGE_REVIEW_ISSUE_ID = "SRR-V8-008"
@@ -28,6 +28,33 @@ class ScenarioCoverage(KernelModel):
     emitting_clause_ids: tuple[NonBlankStr, ...] = Field(min_length=1)
     omitted_dimensions: KnowledgeValue[tuple[NonBlankStr, ...]]
     caveat: KnowledgeValue[NonBlankStr]
+
+    @model_validator(mode="after")
+    def _status_specific_open_world_contract(self) -> Self:
+        if len(set(self.emitting_clause_ids)) != len(self.emitting_clause_ids):
+            raise ValueError("emitting_clause_ids contains duplicates")
+        omitted_state = self.omitted_dimensions.knowledge_state
+        caveat_state = self.caveat.knowledge_state
+        if self.status is ScenarioCoverageStatus.EXHAUSTIVE_WITHIN_PROFILE:
+            if omitted_state is not KnowledgeState.ABSENT_EXPLICIT:
+                raise ValueError("EXHAUSTIVE_WITHIN_PROFILE requires explicit absence of omissions")
+            if caveat_state not in {
+                KnowledgeState.ABSENT_EXPLICIT,
+                KnowledgeState.NOT_APPLICABLE,
+            }:
+                raise ValueError("EXHAUSTIVE_WITHIN_PROFILE requires an explicit caveat state")
+        elif self.status is ScenarioCoverageStatus.NON_EXHAUSTIVE:
+            if omitted_state is not KnowledgeState.PRESENT:
+                raise ValueError("NON_EXHAUSTIVE requires named omitted dimensions")
+            if caveat_state is not KnowledgeState.PRESENT:
+                raise ValueError("NON_EXHAUSTIVE requires a present caveat")
+        elif omitted_state not in {
+            KnowledgeState.UNKNOWN,
+            KnowledgeState.NOT_REPORTED,
+            KnowledgeState.CONFLICTING,
+        }:
+            raise ValueError("UNKNOWN coverage must retain unresolved omission semantics")
+        return self
 
 
 class ProfileCoverageStatement(KernelModel):

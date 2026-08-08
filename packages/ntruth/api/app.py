@@ -22,7 +22,7 @@ from ntruth.application import (
     NoUsableFilesError,
     RedactedDerivativeMaterial,
     evaluate_distribution_readiness,
-    execute_analysis,
+    execute_analysis_v7_adapter,
 )
 from ntruth.corrections import CorrectionEngineError, CorrectionLedger
 from ntruth.governance import (
@@ -193,7 +193,7 @@ def create_app() -> Any:
                 },
             )
         try:
-            execution = execute_analysis(
+            execution = execute_analysis_v7_adapter(
                 Path(payload.source),
                 out=Path(payload.out),
                 project_dir=Path(payload.project_dir) if payload.project_dir else None,

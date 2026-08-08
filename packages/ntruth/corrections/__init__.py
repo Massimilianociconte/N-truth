@@ -35,6 +35,7 @@ from ntruth.corrections.v8 import (
     ReDerivationEvent,
     RuleChallengeOutcomeReviewRequired,
     V8ReDerivationResult,
+    apply_v8_patch,
     rederive_after_rule_challenge,
     reject_direct_derived_claim_patch,
 )
@@ -62,6 +63,7 @@ __all__ = [
     "RuleChallengeOutcomeReviewRequired",
     "V8ReDerivationResult",
     "apply_json_patch",
+    "apply_v8_patch",
     "candidate_annotations_payload",
     "parse_json_patch",
     "recalculate_corrected_block",

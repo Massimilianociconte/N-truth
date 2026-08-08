@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from collections import Counter
+from collections.abc import Mapping
+
 import networkx as nx
 from networkx.algorithms.isomorphism import (
     MultiDiGraphMatcher,
-    categorical_multiedge_match,
     categorical_node_match,
 )
 from pydantic import Field, model_validator
@@ -62,9 +64,20 @@ def exact_graph_equal(left: ExactGraphView, right: ExactGraphView) -> bool:
         _networkx_graph(left),
         _networkx_graph(right),
         node_match=categorical_node_match("identity", None),
-        edge_match=categorical_multiedge_match("relation_type", None),
+        edge_match=_parallel_relation_types_match,
     )
     return matcher.is_isomorphic()
+
+
+def _parallel_relation_types_match(
+    left: Mapping[object, Mapping[str, object]],
+    right: Mapping[object, Mapping[str, object]],
+) -> bool:
+    """Compare the full directed multiset, not only the set of edge labels."""
+
+    return Counter(item.get("relation_type") for item in left.values()) == Counter(
+        item.get("relation_type") for item in right.values()
+    )
 
 
 def partial_graph_score() -> ScientificReviewRequirement:

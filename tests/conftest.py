@@ -16,7 +16,7 @@ from typing import Any
 import pytest
 
 from ntruth.ingest.project import Project
-from ntruth.pipeline import AnalysisResult, analyze_project
+from ntruth.pipeline import AnalysisResult, analyze_project_v7_adapter
 from ntruth.rules.loader import load_ruleset
 from ntruth.schemas.rules import Ruleset
 
@@ -60,7 +60,7 @@ def analyze_directory(source: Path, workspace: Path, *, lang: str = "it") -> Ana
     """Esegue la pipeline completa su una cartella di input."""
     project = Project.create(workspace, name=source.name, language="en")
     project.add(source)
-    return analyze_project(project, ruleset=load_ruleset(), lang=lang)
+    return analyze_project_v7_adapter(project, ruleset=load_ruleset(), lang=lang)
 
 
 @pytest.fixture

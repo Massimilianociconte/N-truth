@@ -1,12 +1,19 @@
-"""Fail-closed progressive verifier for the PRD v8 deterministic lane."""
+"""Fail-closed progressive verifier for PRD v8 inputs, pins and claims."""
 
 from __future__ import annotations
 
 from enum import StrEnum
 
-from ntruth.derivation_theory.contracts import DerivationTheory
-from ntruth.derivation_theory.runtime import V8DerivationInput, load_runtime_theory
+from ntruth.derivation_theory.contracts import ConformanceBundle
+from ntruth.derivation_theory.loader import canonical_checksum
+from ntruth.derivation_theory.runtime import (
+    V8DerivationInput,
+    build_execution_manifest,
+    verify_runtime_bundle,
+)
 from ntruth.schemas.claims import DerivedClaimSet
+from ntruth.schemas.count_registry import CanonicalCountKind
+from ntruth.schemas.execution import V8ExecutionManifest
 from ntruth.schemas.graph_v8 import V8GraphNodeType
 from ntruth.schemas.kernel import KernelModel, NonBlankStr
 
@@ -18,9 +25,16 @@ class V8VerificationCode(StrEnum):
     GRAPH_SCOPE_MISMATCH = "GRAPH_SCOPE_MISMATCH"
     CAUSAL_SCOPE_MISMATCH = "CAUSAL_SCOPE_MISMATCH"
     PROFILE_SCOPE_MISMATCH = "PROFILE_SCOPE_MISMATCH"
+    PROFILE_COVERAGE_INCOMPLETE = "PROFILE_COVERAGE_INCOMPLETE"
+    SCENARIO_COVERAGE_MISMATCH = "SCENARIO_COVERAGE_MISMATCH"
+    COUNT_SCOPE_MISMATCH = "COUNT_SCOPE_MISMATCH"
+    VERSION_PIN_MISMATCH = "VERSION_PIN_MISMATCH"
+    EXECUTION_MANIFEST_MISMATCH = "EXECUTION_MANIFEST_MISMATCH"
     CLAIM_SCOPE_MISMATCH = "CLAIM_SCOPE_MISMATCH"
     CLAIM_CLAUSE_MISMATCH = "CLAIM_CLAUSE_MISMATCH"
     CLAIM_PROOF_MISMATCH = "CLAIM_PROOF_MISMATCH"
+    CLAIM_SUPPORT_MISMATCH = "CLAIM_SUPPORT_MISMATCH"
+    CLAIM_COVERAGE_MISMATCH = "CLAIM_COVERAGE_MISMATCH"
 
 
 class V8VerificationIssue(KernelModel):
@@ -35,18 +49,35 @@ class V8VerificationIssue(KernelModel):
 class V8VerificationReport(KernelModel):
     passed: bool
     highest_completed_stage: NonBlankStr
+    failed_stage: NonBlankStr | None = None
     issues: tuple[V8VerificationIssue, ...]
+
+
+def _fact_issue(
+    code: V8VerificationCode,
+    message: str,
+    *,
+    clause_id: str | None = None,
+    predicate_id: str | None = None,
+) -> V8VerificationIssue:
+    return V8VerificationIssue(
+        code=code,
+        stage="FACT_VERIFICATION",
+        message=message,
+        theory_clause_id=clause_id,
+        predicate_id=predicate_id,
+    )
 
 
 def verify_v8_pipeline_request(
     request: V8DerivationInput,
     *,
-    theory: DerivationTheory | None = None,
+    conformance_bundle: ConformanceBundle,
 ) -> V8VerificationReport:
-    """Validate graph/query/fact closure before any scientific derivation runs."""
+    """Close graph/query/count/coverage/version facts before derivation."""
 
     issues: list[V8VerificationIssue] = []
-    theory = theory or load_runtime_theory()
+    theory = conformance_bundle.theory
     block_nodes = {
         node.node_id
         for node in request.graph.nodes
@@ -59,10 +90,9 @@ def verify_v8_pipeline_request(
     }
     if request.experiment_block_id not in block_nodes or request.query.id not in query_nodes:
         issues.append(
-            V8VerificationIssue(
-                code=V8VerificationCode.GRAPH_SCOPE_MISMATCH,
-                stage="FACT_VERIFICATION",
-                message="Graph must contain the requested block and InferentialQuery.",
+            _fact_issue(
+                V8VerificationCode.GRAPH_SCOPE_MISMATCH,
+                "Graph must contain the requested block and InferentialQuery.",
             )
         )
     if (
@@ -70,64 +100,132 @@ def verify_v8_pipeline_request(
         or request.causal_aggregate.causal_context.inferential_query_id != request.query.id
     ):
         issues.append(
-            V8VerificationIssue(
-                code=V8VerificationCode.CAUSAL_SCOPE_MISMATCH,
-                stage="FACT_VERIFICATION",
-                message="Causal aggregate must share block and query scope.",
+            _fact_issue(
+                V8VerificationCode.CAUSAL_SCOPE_MISMATCH,
+                "Causal aggregate must share block and query scope.",
             )
         )
+    profile = request.profile_coverage
+    closure = conformance_bundle.profile_closure
     if (
-        request.profile_coverage.profile_id != request.query.profile_id
-        or request.profile_coverage.theory_version != theory.theory_version
+        profile.profile_id != theory.profile_id
+        or profile.profile_id != request.query.profile_id
+        or profile.profile_version != theory.profile_version
+        or profile.profile_version != closure.profile_version
+        or profile.theory_version != theory.theory_version
+        or profile.predicate_closure_argument_id != closure.asset_id
     ):
         issues.append(
-            V8VerificationIssue(
-                code=V8VerificationCode.PROFILE_SCOPE_MISMATCH,
-                stage="FACT_VERIFICATION",
-                message="Profile coverage must match query profile and runtime theory.",
+            _fact_issue(
+                V8VerificationCode.PROFILE_SCOPE_MISMATCH,
+                "Profile coverage must pin query, Theory and predicate-closure asset.",
             )
         )
-
+    required_predicates = {
+        item.predicate_id for clause in theory.clauses for item in clause.required_predicates
+    }
+    covered = set(profile.covered_predicate_ids)
+    if not required_predicates.issubset(covered) or not covered.issubset(
+        set(closure.candidate_predicate_ids)
+    ):
+        issues.append(
+            _fact_issue(
+                V8VerificationCode.PROFILE_COVERAGE_INCOMPLETE,
+                "Profile coverage must contain every Theory predicate and remain within the "
+                "pinned closure candidate set.",
+            )
+        )
+    clause_ids = {clause.clause_id for clause in theory.clauses}
+    for coverage in request.scenario_coverages:
+        if (
+            coverage.profile_id != theory.profile_id
+            or coverage.theory_version != theory.theory_version
+            or not set(coverage.emitting_clause_ids).issubset(clause_ids)
+        ):
+            issues.append(
+                _fact_issue(
+                    V8VerificationCode.SCENARIO_COVERAGE_MISMATCH,
+                    "ScenarioCoverage must reference this profile, Theory and real clauses.",
+                )
+            )
+    expected_ruleset = (
+        f"{conformance_bundle.rulebook.rulebook_id}-{conformance_bundle.rulebook.rulebook_version}"
+    )
+    if request.runtime_ruleset_version != expected_ruleset:
+        issues.append(
+            _fact_issue(
+                V8VerificationCode.VERSION_PIN_MISMATCH,
+                "Request ruleset version must equal the verified Rulebook ID/version.",
+            )
+        )
     for predicate_id, value in request.predicate_values.items():
         if value.query_scope_id is not None and value.query_scope_id != request.query.id:
             issues.append(
-                V8VerificationIssue(
-                    code=V8VerificationCode.CROSS_QUERY_SCOPE,
-                    stage="FACT_VERIFICATION",
-                    message=f"Predicate {predicate_id} has a cross-query scope.",
+                _fact_issue(
+                    V8VerificationCode.CROSS_QUERY_SCOPE,
+                    f"Predicate {predicate_id} has a cross-query scope.",
                     predicate_id=predicate_id,
                 )
             )
-
     for clause in theory.clauses:
         if clause.clause_id not in request.support_by_clause:
             issues.append(
-                V8VerificationIssue(
-                    code=V8VerificationCode.MISSING_SUPPORT_DESCRIPTOR,
-                    stage="FACT_VERIFICATION",
-                    message=f"Clause {clause.clause_id} lacks an explicit support descriptor.",
-                    theory_clause_id=clause.clause_id,
+                _fact_issue(
+                    V8VerificationCode.MISSING_SUPPORT_DESCRIPTOR,
+                    f"Clause {clause.clause_id} lacks an explicit support descriptor.",
+                    clause_id=clause.clause_id,
                 )
             )
         for requirement in clause.required_predicates:
             if requirement.predicate_id not in request.predicate_values:
                 issues.append(
-                    V8VerificationIssue(
-                        code=V8VerificationCode.MISSING_EXPLICIT_PREDICATE,
-                        stage="FACT_VERIFICATION",
-                        message=(
-                            "Missing facts must be represented by an explicit KnowledgeState: "
-                            f"{requirement.predicate_id}."
-                        ),
-                        theory_clause_id=clause.clause_id,
+                    _fact_issue(
+                        V8VerificationCode.MISSING_EXPLICIT_PREDICATE,
+                        "Missing facts require an explicit KnowledgeState: "
+                        f"{requirement.predicate_id}.",
+                        clause_id=clause.clause_id,
                         predicate_id=requirement.predicate_id,
                     )
                 )
-
+    count_records = {record.count_id: record for record in request.count_registry.records}
+    for count_id, kind in (
+        (
+            request.experimental_unit_count_record_id,
+            CanonicalCountKind.EXPERIMENTAL_UNIT_COUNT,
+        ),
+        (
+            request.biological_source_count_record_id,
+            CanonicalCountKind.BIOLOGICAL_SOURCE_COUNT,
+        ),
+    ):
+        record = count_records.get(count_id)
+        if record is None or record.kind is not kind or record.scope.query_id != request.query.id:
+            issues.append(
+                _fact_issue(
+                    V8VerificationCode.COUNT_SCOPE_MISMATCH,
+                    f"{count_id} must identify one {kind.value} record in this query scope.",
+                )
+            )
     return V8VerificationReport(
         passed=not issues,
-        highest_completed_stage="FACT_VERIFICATION",
+        highest_completed_stage="FACT_VERIFICATION" if not issues else "NONE",
+        failed_stage=None if not issues else "FACT_VERIFICATION",
         issues=tuple(issues),
+    )
+
+
+def _claim_issue(
+    code: V8VerificationCode,
+    message: str,
+    claim_id: str,
+    clause_id: str | None = None,
+) -> V8VerificationIssue:
+    return V8VerificationIssue(
+        code=code,
+        stage="CLAIM_VERIFICATION",
+        message=message,
+        theory_clause_id=clause_id,
+        claim_id=claim_id,
     )
 
 
@@ -135,12 +233,24 @@ def verify_v8_derived_claim_set(
     request: V8DerivationInput,
     claim_set: DerivedClaimSet,
     *,
-    theory: DerivationTheory,
+    conformance_bundle: ConformanceBundle,
+    execution_manifest: V8ExecutionManifest,
 ) -> V8VerificationReport:
-    """Verify the theory-clause and proof boundary before adequacy evaluation."""
+    """Join every claim byte back to request, Theory, Rulebook and execution pins."""
 
     issues: list[V8VerificationIssue] = []
-    clauses = {clause.clause_id: clause for clause in theory.clauses}
+    conformance = verify_runtime_bundle(conformance_bundle)
+    expected_manifest = build_execution_manifest(conformance_bundle, conformance)
+    if execution_manifest != expected_manifest:
+        issues.append(
+            V8VerificationIssue(
+                code=V8VerificationCode.EXECUTION_MANIFEST_MISMATCH,
+                stage="CLAIM_VERIFICATION",
+                message="Execution manifest does not identify the supplied bundle bytes.",
+            )
+        )
+    clauses = {clause.clause_id: clause for clause in conformance_bundle.theory.clauses}
+    rules = {rule.theory_clause_id: rule for rule in conformance_bundle.rulebook.rules}
     if claim_set.inferential_query_id != request.query.id:
         issues.append(
             V8VerificationIssue(
@@ -150,58 +260,120 @@ def verify_v8_derived_claim_set(
             )
         )
     for claim in claim_set.claims:
-        if claim.inferential_query_id != request.query.id:
+        clause_id = claim.theory_clauses[0] if len(claim.theory_clauses) == 1 else None
+        clause = clauses.get(clause_id or "")
+        rule = rules.get(clause_id or "")
+        if (
+            claim.inferential_query_id != request.query.id
+            or claim.value.query_scope_id != request.query.id
+        ):
             issues.append(
-                V8VerificationIssue(
-                    code=V8VerificationCode.CLAIM_SCOPE_MISMATCH,
-                    stage="CLAIM_VERIFICATION",
-                    message="DerivedClaim has a cross-query scope.",
-                    claim_id=claim.claim_id,
+                _claim_issue(
+                    V8VerificationCode.CLAIM_SCOPE_MISMATCH,
+                    "Claim and scientific value must share the request query scope.",
+                    claim.claim_id,
+                    clause_id,
                 )
             )
-        if len(claim.theory_clauses) != 1 or claim.theory_clauses[0] not in clauses:
+        if clause is None or rule is None:
             issues.append(
-                V8VerificationIssue(
-                    code=V8VerificationCode.CLAIM_CLAUSE_MISMATCH,
-                    stage="CLAIM_VERIFICATION",
-                    message="DerivedClaim does not reference exactly one runtime theory clause.",
-                    claim_id=claim.claim_id,
+                _claim_issue(
+                    V8VerificationCode.CLAIM_CLAUSE_MISMATCH,
+                    "Claim lacks one conformant Theory clause/rule mapping.",
+                    claim.claim_id,
+                    clause_id,
                 )
             )
             continue
-        clause = clauses[claim.theory_clauses[0]]
-        expected = tuple(item.predicate_id for item in clause.required_predicates)
-        proof_predicates = tuple(
-            reference.predicate_id
-            for step in claim.proof_trace
-            for reference in step.predicate_references
+        expected_required = tuple(item.predicate_id for item in clause.required_predicates)
+        expected_ruleset = (
+            f"{conformance_bundle.rulebook.rulebook_id}-"
+            f"{conformance_bundle.rulebook.rulebook_version}"
         )
         if (
             claim.claim_type not in clause.output_claim_types
-            or claim.required_predicates != expected
+            or claim.required_predicates != expected_required
+            or claim.theory_version != conformance_bundle.theory.theory_version
+            or claim.ruleset_version != expected_ruleset
         ):
             issues.append(
-                V8VerificationIssue(
-                    code=V8VerificationCode.CLAIM_CLAUSE_MISMATCH,
-                    stage="CLAIM_VERIFICATION",
-                    message="Claim output or required predicates diverge from its theory clause.",
-                    theory_clause_id=clause.clause_id,
-                    claim_id=claim.claim_id,
+                _claim_issue(
+                    V8VerificationCode.CLAIM_CLAUSE_MISMATCH,
+                    "Claim output, predicates or Theory/Rulebook versions diverge.",
+                    claim.claim_id,
+                    clause_id,
                 )
             )
-        if proof_predicates != expected:
+        if claim.rule_trace != (rule.rule_id,) or len(claim.proof_trace) != 1:
             issues.append(
-                V8VerificationIssue(
-                    code=V8VerificationCode.CLAIM_PROOF_MISMATCH,
-                    stage="CLAIM_VERIFICATION",
-                    message="Proof trace does not exactly reproduce clause-required predicates.",
-                    theory_clause_id=clause.clause_id,
-                    claim_id=claim.claim_id,
+                _claim_issue(
+                    V8VerificationCode.CLAIM_PROOF_MISMATCH,
+                    "Claim must reference exactly its conformant implementation rule.",
+                    claim.claim_id,
+                    clause_id,
+                )
+            )
+        else:
+            proof = claim.proof_trace[0]
+            expected_references = tuple(
+                (
+                    predicate_id,
+                    canonical_checksum(request.predicate_values[predicate_id]),
+                )
+                for predicate_id in expected_required
+            )
+            actual_references = tuple(
+                (
+                    reference.predicate_id,
+                    canonical_checksum(reference.predicate_value),
+                )
+                for reference in proof.predicate_references
+            )
+            if (
+                proof.theory_clause_id != clause.clause_id
+                or proof.rule_id != rule.rule_id
+                or actual_references != expected_references
+            ):
+                issues.append(
+                    _claim_issue(
+                        V8VerificationCode.CLAIM_PROOF_MISMATCH,
+                        "Proof IDs and predicate bytes must equal the verified request.",
+                        claim.claim_id,
+                        clause_id,
+                    )
+                )
+        support = request.support_by_clause[clause.clause_id]
+        if claim.support_grade != support.support_grade:
+            issues.append(
+                _claim_issue(
+                    V8VerificationCode.CLAIM_SUPPORT_MISMATCH,
+                    "Claim SupportGrade differs from the clause support descriptor.",
+                    claim.claim_id,
+                    clause_id,
+                )
+            )
+        if claim.irrelevant_predicates != rule.irrelevant_predicates:
+            issues.append(
+                _claim_issue(
+                    V8VerificationCode.CLAIM_PROOF_MISMATCH,
+                    "Irrelevant predicate IDs/rationales differ from the conformant rule.",
+                    claim.claim_id,
+                    clause_id,
+                )
+            )
+        if claim.profile_coverage != request.profile_coverage.claim_reference():
+            issues.append(
+                _claim_issue(
+                    V8VerificationCode.CLAIM_COVERAGE_MISMATCH,
+                    "Claim profile coverage differs from the verified request.",
+                    claim.claim_id,
+                    clause_id,
                 )
             )
     return V8VerificationReport(
         passed=not issues,
-        highest_completed_stage=("CLAIM_VERIFICATION" if not issues else "THEORY_DERIVATION"),
+        highest_completed_stage="CLAIM_VERIFICATION" if not issues else "THEORY_DERIVATION",
+        failed_stage=None if not issues else "CLAIM_VERIFICATION",
         issues=tuple(issues),
     )
 

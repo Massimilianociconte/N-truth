@@ -14,7 +14,8 @@ import ntruth.pipeline as pipeline_module
 from ntruth.extract.facts import ExtractionResult
 from ntruth.graph.builder import BuildResult
 from ntruth.graph.validation import GraphValidationError
-from ntruth.pipeline import AnalysisResult, analyze_project
+from ntruth.pipeline import AnalysisResult
+from ntruth.pipeline import analyze_project_v7_adapter as analyze_project
 from ntruth.reporting import write_all
 from ntruth.reporting.html_report import render_html
 from ntruth.schemas.core import Provenance, ProvenanceKind
@@ -207,5 +208,5 @@ def test_invalid_graph_is_rejected_before_unit_resolution(
     monkeypatch.setattr(pipeline_module, "resolve_units", forbidden_resolver)
 
     with pytest.raises(GraphValidationError, match="dangling_relation_endpoint"):
-        pipeline_module.analyze_project(project)
+        pipeline_module.analyze_project_v7_adapter(project)
     assert not resolver_called

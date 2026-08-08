@@ -33,9 +33,10 @@ def kernel_json_schemas() -> dict[str, dict[str, Any]]:
 
     from pydantic import JsonValue
 
-    from ntruth.schemas.adequacy import DesignAdequacyFinding
+    from ntruth.schemas.adequacy import DesignAdequacyEvaluation
     from ntruth.schemas.claims import DerivedClaim, DerivedClaimSet
     from ntruth.schemas.coverage import ProfileCoverageStatement, ScenarioCoverage
+    from ntruth.schemas.execution import V8ExecutionManifest
     from ntruth.schemas.knowledge import KnowledgeValue
     from ntruth.schemas.report_resolution import ReportResolutionOutcome
     from ntruth.schemas.support import (
@@ -58,7 +59,9 @@ def kernel_json_schemas() -> dict[str, dict[str, Any]]:
         "derived_claim_set": DerivedClaimSet,
         "profile_coverage_statement": ProfileCoverageStatement,
         "scenario_coverage": ScenarioCoverage,
-        "design_adequacy_finding": DesignAdequacyFinding,
+        "design_adequacy_finding": DesignAdequacyEvaluation,
+        "design_adequacy_evaluation": DesignAdequacyEvaluation,
+        "v8_execution_manifest": V8ExecutionManifest,
         "report_resolution_outcome": ReportResolutionOutcome,
     }
     return {name: model.model_json_schema(mode="validation") for name, model in models.items()}

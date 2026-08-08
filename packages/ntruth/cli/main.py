@@ -17,7 +17,7 @@ from ntruth.application import (
     DomainAcknowledgementRequired,
     NoUsableFilesError,
     evaluate_distribution_readiness,
-    execute_analysis,
+    execute_analysis_v7_adapter,
 )
 from ntruth.governance import GovernanceDenied, PrivacyBlocked
 from ntruth.ingest.project import Project
@@ -96,7 +96,7 @@ def analyze(
             typer.secho("ATTENZIONE DOMINIO: " + notice.warning, fg=typer.colors.YELLOW, err=True)
 
     try:
-        execution = execute_analysis(
+        execution = execute_analysis_v7_adapter(
             source,
             out=out,
             project_dir=project_dir,

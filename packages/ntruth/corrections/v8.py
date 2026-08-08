@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from typing import Any
 
 from pydantic import model_validator
 
-from ntruth.corrections.json_patch import parse_json_patch, parse_pointer
-from ntruth.derivation_theory.contracts import DerivationTheory
+from ntruth.corrections.json_patch import apply_json_patch, parse_json_patch, parse_pointer
+from ntruth.derivation_theory.contracts import ConformanceBundle
 from ntruth.pipeline_v8 import (
     V8PipelineRequest,
     V8PipelineResult,
@@ -39,6 +40,7 @@ _DERIVED_OUTPUT_ROOTS = frozenset(
     {
         "claims",
         "claim_sets",
+        "claim_set",
         "derived_claim",
         "derived_claims",
         "derived_claim_set",
@@ -63,11 +65,21 @@ def reject_direct_derived_claim_patch(
             if pointer is None:
                 continue
             tokens = parse_pointer(pointer)
-            if tokens and tokens[0] in _DERIVED_OUTPUT_ROOTS:
+            if any(token in _DERIVED_OUTPUT_ROOTS for token in tokens):
                 raise DirectDerivedClaimPatchError(
                     "DerivedClaim output is immutable; submit a RuleChallenge and re-derive "
                     "under reviewed theory/rules versions."
                 )
+
+
+def apply_v8_patch(
+    document: Any,
+    patch: Sequence[Mapping[str, object]],
+) -> Any:
+    """The sole v8 patch API always enforces the DerivedClaim immutability boundary."""
+
+    reject_direct_derived_claim_patch(patch)
+    return apply_json_patch(document, patch)
 
 
 class ReDerivationEvent(KernelModel):
@@ -81,6 +93,8 @@ class ReDerivationEvent(KernelModel):
     new_ruleset_version: NonBlankStr
     previous_claim_set_checksum: NonBlankStr
     new_claim_set_checksum: NonBlankStr
+    previous_execution_manifest_id: NonBlankStr
+    new_execution_manifest_id: NonBlankStr
     outcome_contract_review: ScientificReviewRequirement
 
     @model_validator(mode="after")
@@ -99,7 +113,7 @@ def rederive_after_rule_challenge(
     *,
     previous: V8PipelineResult,
     request: V8PipelineRequest,
-    theory: DerivationTheory,
+    conformance_bundle: ConformanceBundle,
     challenge: RuleChallenge,
     decision: RuleChallengeDecision,
 ) -> V8ReDerivationResult:
@@ -113,14 +127,27 @@ def rederive_after_rule_challenge(
         raise ValueError("RuleChallengeDecision cannot precede its RuleChallenge")
     if decision.outcome_contract_review.issue_id != "SRR-V8-024":
         raise ValueError("RuleChallengeDecision must retain blocker SRR-V8-024")
+    theory = conformance_bundle.theory
+    expected_ruleset_version = (
+        f"{conformance_bundle.rulebook.rulebook_id}-{conformance_bundle.rulebook.rulebook_version}"
+    )
     if decision.resulting_theory_version != theory.theory_version:
         raise ValueError("decision and successor Derivation Theory version differ")
-    if decision.resulting_ruleset_version != request.runtime_ruleset_version:
+    if decision.resulting_ruleset_version != expected_ruleset_version:
+        raise ValueError("decision and successor Rulebook version differ")
+    if request.runtime_ruleset_version != expected_ruleset_version:
         raise ValueError("decision and successor runtime rules version differ")
     if theory.theory_version == challenge.theory_version:
         raise ValueError("accepted RuleChallenge requires a successor Derivation Theory version")
     if request.runtime_ruleset_version == challenge.ruleset_version:
         raise ValueError("accepted RuleChallenge requires a successor runtime rules version")
+    if previous.execution_manifest.theory_version != challenge.theory_version:
+        raise ValueError("frozen execution manifest and RuleChallenge Theory version differ")
+    if (
+        f"{previous.execution_manifest.rulebook_id}-"
+        f"{previous.execution_manifest.rulebook_version}" != challenge.ruleset_version
+    ):
+        raise ValueError("frozen execution manifest and RuleChallenge rules version differ")
 
     frozen_claim = next(
         (
@@ -139,7 +166,7 @@ def rederive_after_rule_challenge(
     if frozen_claim.ruleset_version != challenge.ruleset_version:
         raise ValueError("RuleChallenge rules version does not match the frozen claim")
 
-    result = run_v8_pipeline(request, theory=theory)
+    result = run_v8_pipeline(request, conformance_bundle=conformance_bundle)
     event = ReDerivationEvent(
         rederivation_id=decision.rederivation_record_id,
         challenge_id=challenge.challenge_id,
@@ -151,6 +178,8 @@ def rederive_after_rule_challenge(
         new_ruleset_version=request.runtime_ruleset_version,
         previous_claim_set_checksum=content_checksum(previous.claim_set.model_dump(mode="json")),
         new_claim_set_checksum=content_checksum(result.claim_set.model_dump(mode="json")),
+        previous_execution_manifest_id=previous.execution_manifest.manifest_id,
+        new_execution_manifest_id=result.execution_manifest.manifest_id,
         outcome_contract_review=decision.outcome_contract_review,
     )
     return V8ReDerivationResult(result=result, event=event)
@@ -161,6 +190,7 @@ __all__ = [
     "ReDerivationEvent",
     "RuleChallengeOutcomeReviewRequired",
     "V8ReDerivationResult",
+    "apply_v8_patch",
     "rederive_after_rule_challenge",
     "reject_direct_derived_claim_patch",
 ]

@@ -7,6 +7,7 @@ legacy inputs; it is not the v8 scientific derivation contract.
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 
 from ntruth import GRAPH_VERSION, ONTOLOGY_VERSION, PARSER_VERSION, SCHEMA_VERSION
@@ -15,6 +16,7 @@ from ntruth.calibration.abstention import (
     enforce_evidence_floor,
     evaluate_abstention,
 )
+from ntruth.derivation_theory.contracts import ConformanceBundle
 from ntruth.design import DesignCompilation, compile_experiment_block
 from ntruth.extract import extract
 from ntruth.extract.blocks import SegmentedDocument, segment_document_ir
@@ -84,10 +86,16 @@ class AnalysisResult:
         return self.block_analyses[0].evaluations
 
 
-def analyze_project(
+def analyze_project_v7_adapter(
     project: Project, *, ruleset: Ruleset | None = None, lang: str = "it"
 ) -> AnalysisResult:
-    """Analizza tutti i file registrati in un progetto locale."""
+    """Deprecated rule-first adapter for immutable v7 Project inputs."""
+
+    warnings.warn(
+        "analyze_project_v7_adapter is a deprecated v7 scientific contract",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     integrity_problems = project.verify_integrity()
     if integrity_problems:
         raise SafetyError("integrita del progetto non valida: " + "; ".join(integrity_problems))
@@ -367,10 +375,19 @@ def severity_order(severity: Severity | None) -> int:
     return order.get(severity, 5) if severity else 5
 
 
-# v7 remains an immutable input adapter; the unqualified deterministic lane is v8.
+# v7 remains an explicit immutable input adapter; the unqualified lane is v8.
 LEGACY_PIPELINE_CONTRACT = "ntruth-v7-deprecated-adapter"
-analyze_project_v7_adapter = analyze_project
 run_deterministic_pipeline = run_v8_pipeline
+
+
+def analyze_project(
+    request: V8PipelineRequest,
+    *,
+    conformance_bundle: ConformanceBundle,
+) -> V8PipelineResult:
+    """Canonical application-neutral v8 entry point."""
+
+    return run_v8_pipeline(request, conformance_bundle=conformance_bundle)
 
 
 __all__ = [
