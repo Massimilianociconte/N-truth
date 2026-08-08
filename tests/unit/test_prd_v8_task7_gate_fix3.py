@@ -15,6 +15,8 @@ from ntruth.governance.repository_policy import (
     scan_tracked_repository_v8,
 )
 
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
 
 def _write(root: Path, relative: str, payload: bytes) -> str:
     path = root / relative
@@ -52,16 +54,24 @@ def test_named_raw_text_corpora_are_blocked_below_the_size_limit(
     assert report.clean is False
 
 
-def test_documentation_suffixes_remain_an_explicit_non_payload_exception(tmp_path: Path) -> None:
-    """A corpus subject in human documentation is not itself a tracked corpus payload."""
+def test_exact_reviewed_documentation_assets_remain_non_payload_controls(tmp_path: Path) -> None:
+    """Content-addressed reviewed documents remain allowed without a class-wide exception."""
 
     tracked = (
-        _write(tmp_path, "docs/dataset.md", b"Dataset governance documentation.\n"),
-        _write(tmp_path, "docs/challenge.rst", b"External Challenge policy.\n"),
+        _write(
+            tmp_path,
+            "docs/dataset-assessment.md",
+            (_PROJECT_ROOT / "docs/dataset-assessment.md").read_bytes(),
+        ),
+        _write(
+            tmp_path,
+            "docs/task_corpora/provisional-reality-gate-ref.md",
+            (_PROJECT_ROOT / "docs/task_corpora/provisional-reality-gate-ref.md").read_bytes(),
+        ),
         _write(
             tmp_path,
             "docs/task_corpora/task_record.schema.json",
-            b'{"$schema":"https://json-schema.org/draft/2020-12/schema"}\n',
+            (_PROJECT_ROOT / "docs/task_corpora/task_record.schema.json").read_bytes(),
         ),
     )
     report = scan_tracked_repository_v8(tmp_path, tracked)
@@ -174,6 +184,7 @@ def test_path_replacement_during_read_is_an_explicit_blocking_finding(
 
     relative = _write(tmp_path, "assets/ordinary.safe", b"original safe text\n")
     tracked_path = tmp_path / relative
+    tracked_inode = tracked_path.stat().st_ino
     replacement = tmp_path / "assets/replacement.safe"
     replacement.write_bytes(b"replacement bytes\n")
     real_read = os.read
@@ -181,7 +192,7 @@ def test_path_replacement_during_read_is_an_explicit_blocking_finding(
 
     def replacing_read(fd: int, size: int) -> bytes:
         nonlocal swapped
-        if not swapped:
+        if not swapped and os.fstat(fd).st_ino == tracked_inode:
             os.replace(replacement, tracked_path)
             swapped = True
         return real_read(fd, size)

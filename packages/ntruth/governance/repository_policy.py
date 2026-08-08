@@ -9,11 +9,11 @@ and makes path-escape and symlink behavior testable.
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 import re
 import stat
 import subprocess
+import sys
 from contextlib import suppress
 from dataclasses import dataclass
 from enum import StrEnum
@@ -59,12 +59,6 @@ _CORPUS_SUFFIXES = frozenset(
         ".sqlite3",
     }
 )
-_STRUCTURED_DATA_SUFFIXES = frozenset({".csv", ".json", ".tsv"})
-_RAW_CORPUS_TEXT_SUFFIXES = frozenset(
-    {".bio", ".conll", ".iob", ".iob2", ".tei", ".text", ".txt", ".xml"}
-)
-_CORPUS_NAME_SUFFIXES = _STRUCTURED_DATA_SUFFIXES | _RAW_CORPUS_TEXT_SUFFIXES
-_DOCUMENTATION_SCHEMA_SUFFIX = ".schema.json"
 _ARCHIVE_SUFFIXES = frozenset({".7z", ".bz2", ".gz", ".rar", ".tar", ".tgz", ".xz", ".zip", ".zst"})
 _CORPUS_NAME_MARKERS = frozenset(
     {
@@ -84,23 +78,10 @@ _GOVERNED_SOURCE_ROOTS = ("packages/", "scripts/", "tests/")
 _GOVERNED_SOURCE_SUFFIXES = frozenset(
     {".c", ".cpp", ".go", ".js", ".jsx", ".mjs", ".py", ".pyi", ".rs", ".sh", ".ts", ".tsx"}
 )
-_GOVERNED_METADATA_PREFIXES = (
-    "data/manifests/",
-    "packages/ntruth/task_corpora/",
-    "scripts/task_corpora/",
-    "tests/integration/task_corpora/",
-    "tests/unit/task_corpora/",
-)
-_GOVERNED_MANIFEST_SUFFIXES = frozenset({".json", ".md", ".toml", ".yaml", ".yml"})
-_GOVERNED_DOCUMENTATION_SUFFIXES = frozenset({".md", ".rst"})
-_GOVERNED_DOCUMENTATION_SCHEMA_PATHS = frozenset(
-    {
-        "docs/task_corpora/build_manifest.schema.json",
-        "docs/task_corpora/license_use_decision.schema.json",
-        "docs/task_corpora/task_record.schema.json",
-    }
-)
-_REVIEWED_DOCUMENTATION_ASSET_SHA256 = {
+_REVIEWED_REPOSITORY_ASSET_SHA256 = {
+    "docs/audits/dataset-pipeline-20260803/REPORT_B_DATASET_PIPELINE.md": (
+        "5a2f6ea73a4fef0943c1834a57f7e9a3e8866c360bfe37365c14365ffc9aabe4"
+    ),
     "docs/audits/dataset-pipeline-20260803/idempotency-summary.json": (
         "c7db93671152579563c38a01d652bab0aa5baa58ff219772ef523dac7ff3d889"
     ),
@@ -113,56 +94,70 @@ _REVIEWED_DOCUMENTATION_ASSET_SHA256 = {
     "docs/audits/dataset-pipeline-20260803/split-authority-summary.json": (
         "ac19f7334bdbdd62d6a7e437d1474703c43cbb5d7f2c98d29e91a9d444f9507e"
     ),
+    "docs/audits/dataset-pipeline-20260803/volume-constraints.md": (
+        "9aadfee7de4877bafbba62bcc6c79dd2df7060f906e5d9ba93bc12f38e1de026"
+    ),
+    "docs/dataset-assessment.md": (
+        "02a90ba8681aa0134de4c1be0e644af98351ccd4f67e5748443a0f17979e23d3"
+    ),
+    "docs/plans/modernbert-task-corpora-v1.md": (
+        "5f6fe0c7c86fc7cdc958d836d33af0008e0228034711fb1598e8953e94feb035"
+    ),
+    "docs/task_corpora/build_manifest.schema.json": (
+        "c082b3509e8fe3f54b8107ec932bacc029893882878f792facdfb198e68d9ffc"
+    ),
+    "docs/task_corpora/c1.1-sourcedata-document-provenance-investigation.md": (
+        "12b632842fd3bbf4d005a697b2760c1d8f206334c537fd34d35495887555a04c"
+    ),
+    "docs/task_corpora/c1.1-sourcedata-document-provenance-plan.md": (
+        "4d334d93251384bd8a6198fc4bd1495e523f1237955ea440fc40b08006aeeb2f"
+    ),
     "docs/task_corpora/c1.1-sourcedata-upstream-assets.yaml": (
         "f6b62ce6bf0df697dd4ac1efe531255faa4b3f1f3d3a44e186ca40de60daaa0e"
     ),
+    "docs/task_corpora/c2-preclinie-design.md": (
+        "01939ff39aeca3ad4ce44a9f41af1cea7a3b91dff11ef2fbf7817e9c6c44162f"
+    ),
+    "docs/task_corpora/jsonl-framing-contract.md": (
+        "a90ba402c8861f8e2dac6ceed6d72f8ee328e69b226c80d99da215ba9a62f222"
+    ),
+    "docs/task_corpora/license_use_decision.schema.json": (
+        "187e2d832928c0648158d93495403cbe647d69c4798ae8acd16c8ba0839370a6"
+    ),
+    "docs/task_corpora/pr3-post-merge-attestation.md": (
+        "55eb90b303412b7cb776029fbf9a62ed0bd8dabbba908d078627bd1cc193b3e0"
+    ),
+    "docs/task_corpora/pr4-pr5-post-merge-attestation.md": (
+        "9d7ba16c0f5dacb39feb36e41dbf1450690e192e95b568dd3e094fa082ef9e4c"
+    ),
+    "docs/task_corpora/prd-v7-dataset-impact-matrix.md": (
+        "37019d2cd7be209d9b027e71f95658cd954ede421a0db29a6655f984e74f70ae"
+    ),
+    "docs/task_corpora/provisional-reality-gate-ref.md": (
+        "51d7d89b215e8b332fdc216aea0e960463aa0171acdc2bf7049258b33185a91a"
+    ),
+    "docs/task_corpora/root-dataset-contract-compatibility-matrix.md": (
+        "1f8647ed087b97c9e9e7ff1dacdc8d07e1b739cb5ee5c235f291949df19c1a37"
+    ),
+    "docs/task_corpora/sourcedata-entity-roles-label-map.md": (
+        "eb67bd97dead78eb39b8fdc9838f0ee68f77946e6629e28d9d6eda2236831296"
+    ),
+    "docs/task_corpora/storage-estimate-c0-c1.md": (
+        "14155139b88d0002917d3cd3d3d3cb7f9989ea3bd63f0914af3659a3c63d8032"
+    ),
+    "docs/task_corpora/task_record.schema.json": (
+        "2b19e6a390d0f35cc51afa149db3b18e1d9cb3e98b9969d005df1529f771a452"
+    ),
+    "docs/task_corpora/workstream-c-c0-c1-readiness.md": (
+        "43428f95725530dc9792c397ddb77d6059e5ecdd786c84d13025b6fccb7213db"
+    ),
+    "packages/ntruth/task_corpora/label_maps/sourcedata_entity_roles.json": (
+        "6b1921ba6c52761911ca3a59a0b4fff7f4a18c708c2a7e81a55c0ac54055bf6b"
+    ),
+    "packages/ntruth/task_corpora/license_decisions/sourcedata.json": (
+        "1b40388623703ed39f3a13e0b330048031ee10168873d78ecb869c7558a79626"
+    ),
 }
-_JSON_SCHEMA_KEYWORDS = frozenset(
-    {
-        "$anchor",
-        "$comment",
-        "$defs",
-        "$id",
-        "$ref",
-        "$schema",
-        "additionalProperties",
-        "allOf",
-        "anyOf",
-        "const",
-        "contains",
-        "default",
-        "dependentSchemas",
-        "description",
-        "else",
-        "enum",
-        "exclusiveMaximum",
-        "exclusiveMinimum",
-        "format",
-        "if",
-        "items",
-        "maxItems",
-        "maxLength",
-        "maxProperties",
-        "maximum",
-        "minItems",
-        "minLength",
-        "minProperties",
-        "minimum",
-        "multipleOf",
-        "not",
-        "oneOf",
-        "pattern",
-        "patternProperties",
-        "prefixItems",
-        "properties",
-        "propertyNames",
-        "required",
-        "then",
-        "title",
-        "type",
-        "uniqueItems",
-    }
-)
 _SECRET_SUFFIXES = frozenset({".key", ".p12", ".pem", ".pfx"})
 _PRIVACY_PAYLOAD_SUFFIXES = frozenset({".csv", ".json", ".jsonl", ".tsv", ".txt", ".xml"})
 _PRIVATE_KEY = re.compile(r"-----BEGIN (?:DSA |EC |ENCRYPTED |OPENSSH |RSA )?PRIVATE KEY-----")
@@ -170,6 +165,9 @@ _HIGH_CONFIDENCE_TOKEN = re.compile(
     r"(?:AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9]{20,})"
 )
 _EMAIL = re.compile(r"(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+_GIT_LFS_OID = re.compile(r"^oid sha256:[0-9a-f]{64}$")
+_GIT_LFS_SIZE = re.compile(r"^size [0-9]+$")
+_MOUNT_ESCAPE = re.compile(r"\\([0-7]{3})")
 
 
 class RepositoryPolicyFindingKindV8(StrEnum):
@@ -248,92 +246,21 @@ def _path_marker_tokens(path: PurePosixPath) -> frozenset[str]:
     return frozenset(tokens)
 
 
-def _is_json_schema_node(value: object) -> bool:
-    if isinstance(value, bool):
-        return True
-    if not isinstance(value, dict) or not set(value).issubset(_JSON_SCHEMA_KEYWORDS):
-        return False
-
-    for key in ("$defs", "dependentSchemas", "patternProperties", "properties"):
-        nested = value.get(key)
-        if nested is not None and (
-            not isinstance(nested, dict)
-            or not all(_is_json_schema_node(item) for item in nested.values())
-        ):
-            return False
-    for key in (
-        "additionalProperties",
-        "contains",
-        "else",
-        "if",
-        "items",
-        "not",
-        "propertyNames",
-        "then",
-    ):
-        nested = value.get(key)
-        if nested is not None and not _is_json_schema_node(nested):
-            return False
-    for key in ("allOf", "anyOf", "oneOf", "prefixItems"):
-        nested = value.get(key)
-        if nested is not None and (
-            not isinstance(nested, list) or not all(_is_json_schema_node(item) for item in nested)
-        ):
-            return False
-    required = value.get("required")
-    if required is not None and (
-        not isinstance(required, list) or not all(isinstance(item, str) for item in required)
-    ):
-        return False
-    enum = value.get("enum")
-    if enum is not None and (
-        not isinstance(enum, list) or any(isinstance(item, (dict, list)) for item in enum)
-    ):
-        return False
-    if isinstance(value.get("default"), (dict, list)):
-        return False
-    return not isinstance(value.get("const"), (dict, list))
-
-
-def _is_reviewed_documentation_schema(path: PurePosixPath, text: str | None) -> bool:
-    normalized = path.as_posix().lower()
-    if normalized not in _GOVERNED_DOCUMENTATION_SCHEMA_PATHS or text is None:
-        return False
-    try:
-        candidate = json.loads(text)
-    except (TypeError, json.JSONDecodeError):
-        return False
-    if not _is_json_schema_node(candidate):
-        return False
-    if not isinstance(candidate, dict):
-        return False
-    dialect = candidate.get("$schema")
-    has_explicit_dialect = isinstance(dialect, str) and dialect.startswith(
-        "https://json-schema.org/"
-    )
-    has_object_contract = candidate.get("type") == "object" and isinstance(
-        candidate.get("properties"), dict
-    )
-    return has_explicit_dialect or has_object_contract
-
-
 def _is_governed_metadata_path(path: PurePosixPath, text: str | None) -> bool:
-    normalized = path.as_posix().lower()
+    normalized = path.as_posix()
     suffix = path.suffix.lower()
-    if normalized.startswith(_GOVERNED_METADATA_PREFIXES):
-        if normalized.startswith("data/manifests/"):
-            return suffix in _GOVERNED_MANIFEST_SUFFIXES
+    if (
+        text is not None
+        and normalized.startswith(_GOVERNED_SOURCE_ROOTS)
+        and suffix in _GOVERNED_SOURCE_SUFFIXES
+    ):
         return True
-    if normalized.startswith(_GOVERNED_SOURCE_ROOTS) and suffix in _GOVERNED_SOURCE_SUFFIXES:
-        return True
-    if normalized.startswith("docs/") and suffix in _GOVERNED_DOCUMENTATION_SUFFIXES:
-        return True
-    expected_sha256 = _REVIEWED_DOCUMENTATION_ASSET_SHA256.get(normalized)
-    if expected_sha256 is not None and text is not None:
-        return hashlib.sha256(text.encode("utf-8")).hexdigest() == expected_sha256
-    if path.name.lower().endswith(_DOCUMENTATION_SCHEMA_SUFFIX):
-        return _is_reviewed_documentation_schema(path, text)
-    return False
+    expected_sha256 = _REVIEWED_REPOSITORY_ASSET_SHA256.get(normalized)
+    return (
+        expected_sha256 is not None
+        and text is not None
+        and hashlib.sha256(text.encode("utf-8")).hexdigest() == expected_sha256
+    )
 
 
 def _is_forbidden_corpus_path(path: PurePosixPath, text: str | None) -> bool:
@@ -352,18 +279,86 @@ def _is_forbidden_corpus_path(path: PurePosixPath, text: str | None) -> bool:
         return True
     if suffix in _ARCHIVE_SUFFIXES:
         return True
-    if normalized.startswith("docs/") and path.name.lower().endswith(_DOCUMENTATION_SCHEMA_SUFFIX):
-        return not _is_reviewed_documentation_schema(path, text)
     marker_semantics = bool(_path_marker_tokens(path) & _CORPUS_NAME_MARKERS)
-    if not marker_semantics or _is_governed_metadata_path(path, text):
-        return False
-    return text is not None or suffix in _CORPUS_NAME_SUFFIXES
+    return marker_semantics and not _is_governed_metadata_path(path, text)
+
+
+def _decode_mount_field(value: str) -> str:
+    return _MOUNT_ESCAPE.sub(lambda match: chr(int(match.group(1), 8)), value)
+
+
+def _platform_mount_points() -> frozenset[Path] | None:
+    """Return a complete platform mount inventory, or ``None`` when unavailable."""
+
+    try:
+        raw_mounts: list[str] = []
+        if sys.platform.startswith("linux"):
+            lines = Path("/proc/self/mountinfo").read_text(encoding="utf-8").splitlines()
+            for line in lines:
+                left, separator, _right = line.partition(" - ")
+                fields = left.split()
+                if not separator or len(fields) < 5:
+                    return None
+                raw_mounts.append(fields[4])
+        elif sys.platform == "darwin":
+            completed = subprocess.run(
+                ["/sbin/mount"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            for line in completed.stdout.splitlines():
+                match = re.fullmatch(r".+ on (.+) \(.+\)", line)
+                if match is None:
+                    return None
+                raw_mounts.append(match.group(1))
+        else:
+            return None
+    except (OSError, subprocess.SubprocessError, UnicodeError):
+        return None
+
+    mount_points: set[Path] = set()
+    for raw_mount in raw_mounts:
+        decoded = Path(_decode_mount_field(raw_mount))
+        if not decoded.is_absolute():
+            return None
+        mount_points.add(decoded)
+    return frozenset(mount_points)
+
+
+def _mount_points_for_repository(repository_root: Path) -> frozenset[Path] | None:
+    """Return mount points strictly below a resolved repository root."""
+
+    platform_mounts = _platform_mount_points()
+    if platform_mounts is None:
+        return None
+    descendants: set[Path] = set()
+    for mount_point in platform_mounts:
+        try:
+            mount_point.relative_to(repository_root)
+        except ValueError:
+            continue
+        if mount_point != repository_root:
+            descendants.add(mount_point)
+    return frozenset(descendants)
+
+
+def _crosses_mount_boundary(
+    repository_root: Path,
+    relative: PurePosixPath,
+    mount_points: frozenset[Path],
+) -> bool:
+    candidate = repository_root.joinpath(*relative.parts)
+    return any(
+        mount_point == candidate or mount_point in candidate.parents for mount_point in mount_points
+    )
 
 
 @dataclass(frozen=True)
 class _TrackedFileInspection:
     size: int
     head: bytes
+    tail: bytes
     text: str | None
 
 
@@ -378,8 +373,8 @@ def _open_flags(*, directory: bool) -> int:
     return flags
 
 
-def _open_beneath(root_fd: int, relative: PurePosixPath) -> int:
-    """Open a regular-file candidate below ``root_fd`` without following links."""
+def _open_beneath(root_fd: int, relative: PurePosixPath, *, root_device: int) -> int:
+    """Open a same-filesystem regular-file candidate below ``root_fd`` without links."""
 
     parent_fd = os.dup(root_fd)
     try:
@@ -389,6 +384,10 @@ def _open_beneath(root_fd: int, relative: PurePosixPath) -> int:
                 _open_flags(directory=True),
                 dir_fd=parent_fd,
             )
+            child_metadata = os.fstat(child_fd)
+            if child_metadata.st_dev != root_device:
+                os.close(child_fd)
+                raise OSError("tracked path crosses a filesystem boundary")
             os.close(parent_fd)
             parent_fd = child_fd
         return os.open(
@@ -428,14 +427,17 @@ def _inspect_tracked_file(
     relative: PurePosixPath,
     *,
     max_file_bytes: int,
+    root_device: int,
 ) -> _TrackedFileInspection:
     """Read bytes and metadata from one stable, no-follow descriptor."""
 
-    file_fd = _open_beneath(root_fd, relative)
+    file_fd = _open_beneath(root_fd, relative, root_device=root_device)
     try:
         initial = os.fstat(file_fd)
         if not stat.S_ISREG(initial.st_mode):
             raise OSError("tracked path is not a regular file")
+        if initial.st_dev != root_device:
+            raise OSError("tracked file crosses a filesystem boundary")
         if initial.st_nlink != 1:
             raise OSError(
                 "tracked path has multiple hard links; repository provenance is ambiguous"
@@ -446,7 +448,7 @@ def _inspect_tracked_file(
         if _metadata_signature(initial) != _metadata_signature(final):
             raise OSError("tracked file changed while it was inspected")
 
-        verification_fd = _open_beneath(root_fd, relative)
+        verification_fd = _open_beneath(root_fd, relative, root_device=root_device)
         try:
             verification = os.fstat(verification_fd)
         finally:
@@ -462,13 +464,14 @@ def _inspect_tracked_file(
         return _TrackedFileInspection(
             size=observed_size,
             head=payload[:4096],
+            tail=payload[-4096:],
             text=text,
         )
     finally:
         os.close(file_fd)
 
 
-def _binary_findings(head: bytes) -> tuple[RepositoryPolicyFindingKindV8, ...]:
+def _binary_findings(head: bytes, tail: bytes) -> tuple[RepositoryPolicyFindingKindV8, ...]:
     kinds: list[RepositoryPolicyFindingKindV8] = []
     archive_magic = (
         b"\x1f\x8b",
@@ -482,13 +485,26 @@ def _binary_findings(head: bytes) -> tuple[RepositoryPolicyFindingKindV8, ...]:
         b"\xfd7zXZ\x00",
         b"7z\xbc\xaf'\x1c",
     )
-    if head.startswith((*archive_magic, b"SQLite format 3\x00")) or (
-        len(head) >= 262 and head[257:262] == b"ustar"
-    ):
+    corpus_signature = (
+        head.startswith((*archive_magic, b"SQLite format 3\x00", b"ARROW1"))
+        or (head.startswith(b"PAR1") and tail.endswith(b"PAR1"))
+        or (len(head) >= 12 and head[8:12] == b"DUCK")
+    )
+    if corpus_signature or (len(head) >= 262 and head[257:262] == b"ustar"):
         kinds.append(RepositoryPolicyFindingKindV8.NO_CORPUS)
-    if head.startswith((b"\x89HDF\r\n\x1a\n", b"\x93NUMPY")):
+    if head.startswith((b"\x89HDF\r\n\x1a\n", b"\x93NUMPY", b"GGUF")):
         kinds.append(RepositoryPolicyFindingKindV8.MODEL_OR_WEIGHT)
     return tuple(kinds)
+
+
+def _is_git_lfs_pointer(text: str) -> bool:
+    lines = text.splitlines()
+    return (
+        len(lines) >= 3
+        and lines[0] == "version https://git-lfs.github.com/spec/v1"
+        and any(_GIT_LFS_OID.fullmatch(line) for line in lines[1:])
+        and any(_GIT_LFS_SIZE.fullmatch(line) for line in lines[1:])
+    )
 
 
 def _privacy_payload_path(path: PurePosixPath) -> bool:
@@ -509,9 +525,15 @@ def scan_tracked_repository_v8(
     findings: list[RepositoryPolicyFindingV8] = []
     scanned = 0
     canonical_paths = tuple(sorted(dict.fromkeys(tracked_paths)))
+    mount_points = _mount_points_for_repository(root)
+    root_fd: int | None = None
+    root_device: int | None = None
     try:
         root_fd = os.open(root, _open_flags(directory=True))
+        root_device = os.fstat(root_fd).st_dev
     except OSError:
+        if root_fd is not None:
+            os.close(root_fd)
         root_fd = None
     try:
         for raw in canonical_paths:
@@ -525,7 +547,25 @@ def scan_tracked_repository_v8(
                 )
                 continue
             relative = PurePosixPath(raw)
-            if root_fd is None:
+            if mount_points is None:
+                findings.append(
+                    _finding(
+                        raw,
+                        RepositoryPolicyFindingKindV8.UNSAFE_PATH,
+                        "platform mount-boundary inventory is unavailable; policy scan fails closed",
+                    )
+                )
+                continue
+            if _crosses_mount_boundary(root, relative, mount_points):
+                findings.append(
+                    _finding(
+                        raw,
+                        RepositoryPolicyFindingKindV8.UNSAFE_PATH,
+                        "tracked path crosses an inventoried mount boundary; bytes were not inspected",
+                    )
+                )
+                continue
+            if root_fd is None or root_device is None:
                 findings.append(
                     _finding(
                         raw,
@@ -539,6 +579,7 @@ def scan_tracked_repository_v8(
                     root_fd,
                     relative,
                     max_file_bytes=max_file_bytes,
+                    root_device=root_device,
                 )
             except (OSError, RuntimeError):
                 findings.append(
@@ -577,7 +618,7 @@ def scan_tracked_repository_v8(
                     )
                 )
             existing_kinds = {item.kind for item in findings if item.path == raw}
-            for binary_kind in _binary_findings(inspection.head):
+            for binary_kind in _binary_findings(inspection.head, inspection.tail):
                 if binary_kind not in existing_kinds:
                     findings.append(
                         _finding(
@@ -599,6 +640,14 @@ def scan_tracked_repository_v8(
                     )
                 )
             text = inspection.text
+            if text and _is_git_lfs_pointer(text):
+                findings.append(
+                    _finding(
+                        raw,
+                        RepositoryPolicyFindingKindV8.UNSAFE_PATH,
+                        "Git LFS pointer references external bytes outside tracked-tree inspection",
+                    )
+                )
             if text and (_PRIVATE_KEY.search(text) or _HIGH_CONFIDENCE_TOKEN.search(text)):
                 findings.append(
                     _finding(

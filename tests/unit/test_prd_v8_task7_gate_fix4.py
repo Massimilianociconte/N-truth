@@ -18,6 +18,8 @@ from ntruth.governance.repository_policy import (
     tracked_paths_from_git_v8,
 )
 
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
 
 def _write(root: Path, relative: str, payload: bytes) -> str:
     path = root / relative
@@ -75,17 +77,28 @@ def test_named_utf8_markdown_and_yaml_payloads_are_content_classified(
     assert RepositoryPolicyFindingKindV8.NO_CORPUS in _kinds_for(report, relative)
 
 
-def test_explicit_source_and_manifest_metadata_directories_remain_non_payload_controls(
+def test_source_and_exact_reviewed_metadata_assets_remain_non_payload_controls(
     tmp_path: Path,
 ) -> None:
-    """Governed tooling and manifest paths must not be confused with corpus payload storage."""
+    """Source code and content-addressed metadata remain explicit non-payload controls."""
 
     tracked = (
         _write(tmp_path, "packages/ntruth/task_corpora/cli.py", b"VALUE = 'metadata'\n"),
         _write(tmp_path, "scripts/task_corpora/check_records.py", b"VALUE = 'tooling'\n"),
         _write(tmp_path, "tests/unit/task_corpora/test_records.py", b"VALUE = 'test'\n"),
-        _write(tmp_path, "data/manifests/dataset.json", b'{"snapshot_id":"synthetic"}\n'),
-        _write(tmp_path, "docs/dataset.md", b"Dataset governance documentation.\n"),
+        _write(
+            tmp_path,
+            "packages/ntruth/task_corpora/label_maps/sourcedata_entity_roles.json",
+            (
+                _PROJECT_ROOT
+                / "packages/ntruth/task_corpora/label_maps/sourcedata_entity_roles.json"
+            ).read_bytes(),
+        ),
+        _write(
+            tmp_path,
+            "docs/dataset-assessment.md",
+            (_PROJECT_ROOT / "docs/dataset-assessment.md").read_bytes(),
+        ),
     )
 
     report = scan_tracked_repository_v8(tmp_path, tracked)
