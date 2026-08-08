@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 from decimal import Decimal, localcontext
 from enum import StrEnum
-from typing import Annotated, Self
+from typing import Annotated, Literal, Self
 
 from pydantic import Field, model_validator
 
@@ -16,6 +16,9 @@ from ntruth.schemas.knowledge import KnowledgeState, KnowledgeValue
 from ntruth.schemas.support import ScientificReviewRequirement
 
 CLUSTER_PRECISION_REVIEW_ISSUE_ID = "SRR-V8-CLUSTER-PRECISION"
+IMPLEMENTATION_CONFORMANCE_REVIEW_SCOPE_ID: Literal["IMPLEMENTATION-CONFORMANCE-ONLY"] = (
+    "IMPLEMENTATION-CONFORMANCE-ONLY"
+)
 SUPPORTED_CLUSTER_BOOTSTRAP_METHOD = "cluster-bootstrap-sha256-v1"
 SUPPORTED_CLUSTER_ESTIMATOR_ID = "cluster-mean-by-stratum-v1"
 SUPPORTED_CLUSTER_ESTIMATOR_CHECKSUM = content_checksum(
@@ -88,7 +91,7 @@ class MetricGeneralizationContract(KernelModel):
 
 
 class ClusterEvidenceRecord(KernelModel):
-    """Content and custody address for one independently resolved evidence record."""
+    """Caller-buildable evidence/custody declaration for conformance checks."""
 
     evidence_record_id: NonBlankStr
     evidence_content_checksum: Sha256
@@ -135,7 +138,7 @@ class ClusterStratumAssignment(KernelModel):
 
 
 class MetricGeneralizationContractArtifact(KernelModel):
-    """Separately reviewed and content-addressed metric preregistration artifact."""
+    """Caller-buildable implementation-conformance preregistration-shaped artifact."""
 
     artifact_id: NonBlankStr
     content_checksum: Sha256
@@ -145,13 +148,13 @@ class MetricGeneralizationContractArtifact(KernelModel):
     custody_evidence_records: tuple[ClusterEvidenceReference, ...] = Field(min_length=1)
     review_evidence_records: tuple[ClusterEvidenceReference, ...] = Field(min_length=1)
     reviewer_actor_ids: tuple[NonBlankStr, ...] = Field(min_length=2)
-    review_scope_id: NonBlankStr
+    review_scope_id: Literal["IMPLEMENTATION-CONFORMANCE-ONLY"]
 
     @model_validator(mode="after")
-    def _reviewed_and_content_addressed(self) -> Self:
+    def _conformance_shape_and_content_addressed(self) -> Self:
         reviewer_ids = tuple(self.reviewer_actor_ids)
         if len(reviewer_ids) != len(set(reviewer_ids)):
-            raise ValueError("cluster contract reviewers must be distinct")
+            raise ValueError("cluster contract reviewer identifiers must be distinct")
         expected_cluster_ids = tuple(unit.generalization_unit_id for unit in self.contract.units)
         actual_cluster_ids = tuple(item.generalization_unit_id for item in self.cluster_strata)
         if actual_cluster_ids != expected_cluster_ids:
@@ -168,7 +171,7 @@ class MetricGeneralizationContractArtifact(KernelModel):
             (item.evidence_record_id, item.record_checksum) for item in all_references
         )
         if len(reference_keys) != len(set(reference_keys)):
-            raise ValueError("cluster contract authority evidence references must be distinct")
+            raise ValueError("cluster contract conformance evidence references must be distinct")
         expected = content_checksum(
             self.model_dump(mode="json", exclude={"artifact_id", "content_checksum"})
         )
@@ -180,7 +183,7 @@ class MetricGeneralizationContractArtifact(KernelModel):
 
 
 class ClusterElementarySourceRecord(KernelModel):
-    """Reviewed elementary row resolved independently of a metric observation."""
+    """Caller-buildable elementary row declaration for conformance checks."""
 
     source_record_id: NonBlankStr
     content_checksum: Sha256
@@ -231,7 +234,9 @@ class ClusterElementarySourceLedger(KernelModel):
         return self
 
 
-class ClusterPrecisionAuthorityRegistry(KernelModel):
+class ImplementationConformanceClusterRegistry(KernelModel):
+    """Closed caller-buildable registry; never an independent authority root."""
+
     registry_id: NonBlankStr
     content_checksum: Sha256
     contract_artifact: MetricGeneralizationContractArtifact
@@ -256,7 +261,7 @@ class ClusterPrecisionAuthorityRegistry(KernelModel):
             if source.metric_id != artifact.contract.metric_id:
                 raise ValueError("cluster source ledger contains a different metric")
             if source.stratum_values != strata_by_cluster.get(source.generalization_unit_id):
-                raise ValueError("cluster source ledger differs from preregistered strata")
+                raise ValueError("cluster source ledger differs from declared conformance strata")
         evidence_by_id = {item.evidence_record_id: item for item in self.evidence_ledger.records}
         required_references = (
             *artifact.preregistration_evidence_records,
@@ -270,33 +275,35 @@ class ClusterPrecisionAuthorityRegistry(KernelModel):
         )
         required_ids = {item.evidence_record_id for item in required_references}
         if required_ids != set(evidence_by_id):
-            raise ValueError("cluster authority evidence ledger is not exactly closed")
+            raise ValueError("cluster conformance evidence ledger is not exactly closed")
         for reference in required_references:
             resolved = evidence_by_id.get(reference.evidence_record_id)
             if resolved is None or resolved.record_checksum != reference.record_checksum:
-                raise ValueError("cluster authority evidence checksum cannot be resolved")
+                raise ValueError("cluster conformance evidence checksum cannot be resolved")
         expected = content_checksum(
             self.model_dump(mode="json", exclude={"registry_id", "content_checksum"})
         )
         if self.content_checksum != expected:
-            raise ValueError("cluster precision authority registry checksum mismatch")
-        if self.registry_id != f"CLUSTER-AUTHORITY-{expected[:20]}":
-            raise ValueError("cluster precision authority registry ID mismatch")
+            raise ValueError("cluster conformance registry checksum mismatch")
+        if self.registry_id != f"CLUSTER-CONFORMANCE-REGISTRY-{expected[:20]}":
+            raise ValueError("cluster conformance registry ID mismatch")
         return self
 
 
-class ClusterPrecisionAuthorityPin(KernelModel):
-    """Pin supplied by the governed configuration, separately from the registry."""
+class ImplementationConformanceClusterPin(KernelModel):
+    """Caller-buildable checksum pin used only for implementation conformance."""
 
     registry_id: NonBlankStr
     registry_checksum: Sha256
 
 
-class ClusterPrecisionAuthorityResolution(KernelModel):
+class ImplementationConformanceClusterAuthority(KernelModel):
+    """Self-consistent caller artifact that cannot authorize governed precision."""
+
     resolution_id: NonBlankStr
     content_checksum: Sha256
-    registry: ClusterPrecisionAuthorityRegistry
-    pin: ClusterPrecisionAuthorityPin
+    registry: ImplementationConformanceClusterRegistry
+    pin: ImplementationConformanceClusterPin
 
     @model_validator(mode="after")
     def _pinned_and_content_addressed(self) -> Self:
@@ -304,15 +311,28 @@ class ClusterPrecisionAuthorityResolution(KernelModel):
             self.pin.registry_id != self.registry.registry_id
             or self.pin.registry_checksum != self.registry.content_checksum
         ):
-            raise ValueError("cluster authority registry differs from its external pin")
+            raise ValueError("cluster conformance registry differs from its checksum pin")
         expected = content_checksum(
             self.model_dump(mode="json", exclude={"resolution_id", "content_checksum"})
         )
         if self.content_checksum != expected:
-            raise ValueError("cluster authority resolution checksum mismatch")
-        if self.resolution_id != f"CLUSTER-AUTHORITY-RESOLUTION-{expected[:20]}":
-            raise ValueError("cluster authority resolution ID mismatch")
+            raise ValueError("cluster conformance resolution checksum mismatch")
+        if self.resolution_id != f"CLUSTER-CONFORMANCE-RESOLUTION-{expected[:20]}":
+            raise ValueError("cluster conformance resolution ID mismatch")
         return self
+
+
+class GovernedClusterPrecisionAuthority(KernelModel):
+    """Address returned by a future externally governed, pre-reviewed resolver.
+
+    No builder or resolver for this type exists in the repository.  Until that
+    external boundary is configured, canonical precision remains UNKNOWN.
+    """
+
+    registry_id: NonBlankStr
+    registry_checksum: Sha256
+    resolver_configuration_id: NonBlankStr
+    resolver_configuration_checksum: Sha256
 
 
 class ClusterMetricEstimate(KernelModel):
@@ -453,7 +473,7 @@ class ClusterPrecisionResult(KernelModel):
     resampling_cluster: GeneralizationUnitKind
     declared_cluster_count: int = Field(ge=1)
     effective_cluster_count: int = Field(ge=1)
-    authority_resolution: KnowledgeValue[ClusterPrecisionAuthorityResolution]
+    authority_resolution: KnowledgeValue[GovernedClusterPrecisionAuthority]
     interval: KnowledgeValue[PrecisionInterval]
     small_cluster_caveat: NonBlankStr
     scientific_use_permitted: bool = False
@@ -488,17 +508,9 @@ class ClusterPrecisionResult(KernelModel):
         if self.authority_resolution.query_scope_id != self.metric_id:
             raise ValueError("cluster precision authority has the wrong metric scope")
         if self.authority_resolution.knowledge_state is KnowledgeState.PRESENT:
-            resolution = self.authority_resolution.value
-            if resolution is None:
-                raise ValueError("PRESENT cluster authority has no resolved value")
-            _validate_resolved_authority(
-                self.generalization_contract,
-                self.input_manifest,
-                resolution,
-            )
-            expected_interval = _expected_interval(
-                self.generalization_contract,
-                self.input_manifest,
+            raise ValueError(
+                "governed cluster authority resolver is unavailable; "
+                "caller-authored authority cannot be PRESENT"
             )
         elif self.authority_resolution.knowledge_state is KnowledgeState.UNKNOWN:
             if self.authority_resolution != _unresolved_authority_value(self.metric_id):
@@ -528,12 +540,64 @@ class ClusterPrecisionResult(KernelModel):
         return self
 
 
+class ClusterPrecisionConformanceArtifact(KernelModel):
+    """Deterministic interval sealed as non-authoritative implementation evidence."""
+
+    artifact_id: NonBlankStr
+    content_checksum: Sha256
+    generalization_contract: MetricGeneralizationContract
+    input_manifest: ClusterObservationManifest
+    metric_id: NonBlankStr
+    declared_cluster_count: int = Field(ge=1)
+    effective_cluster_count: int = Field(ge=1)
+    implementation_conformance: ImplementationConformanceClusterAuthority
+    interval: KnowledgeValue[PrecisionInterval]
+    scientific_use_permitted: Literal[False] = False
+    blockers: tuple[ScientificReviewRequirement, ...] = Field(min_length=2)
+
+    @model_validator(mode="after")
+    def _sealed_non_authoritative_calculation(self) -> Self:
+        contract = self.generalization_contract
+        manifest = self.input_manifest
+        if (
+            self.metric_id != contract.metric_id
+            or manifest.metric_id != contract.metric_id
+            or manifest.estimator_id != contract.cluster_estimator_id
+            or manifest.estimator_checksum != contract.cluster_estimator_checksum
+            or manifest.stratification_variables != contract.stratification_variables
+            or self.declared_cluster_count != len(contract.units)
+            or self.effective_cluster_count != manifest.cluster_count
+        ):
+            raise ValueError("cluster conformance artifact differs from its metric contract")
+        _validate_implementation_conformance_authority(
+            contract,
+            manifest,
+            self.implementation_conformance,
+        )
+        if self.interval != _expected_interval(contract, manifest):
+            raise ValueError("conformance interval differs from sealed inputs")
+        blocker_ids = tuple(item.issue_id for item in self.blockers)
+        if blocker_ids != (
+            CLUSTER_PRECISION_REVIEW_ISSUE_ID,
+            EVALUATION_SCIENTIFIC_HOLD_ISSUE_ID,
+        ):
+            raise ValueError("cluster conformance artifact must retain both scientific blockers")
+        expected = content_checksum(
+            self.model_dump(mode="json", exclude={"artifact_id", "content_checksum"})
+        )
+        if self.content_checksum != expected:
+            raise ValueError("cluster precision conformance checksum mismatch")
+        if self.artifact_id != f"CLUSTER-PRECISION-CONFORMANCE-{expected[:20]}":
+            raise ValueError("cluster precision conformance ID mismatch")
+        return self
+
+
 def _build_cluster_precision_result(
     contract: MetricGeneralizationContract,
     *,
     input_manifest: ClusterObservationManifest,
     effective_cluster_count: int,
-    authority_resolution: KnowledgeValue[ClusterPrecisionAuthorityResolution],
+    authority_resolution: KnowledgeValue[GovernedClusterPrecisionAuthority],
     interval: KnowledgeValue[PrecisionInterval],
     unavailable_blocker: ScientificReviewRequirement | None = None,
 ) -> ClusterPrecisionResult:
@@ -728,8 +792,8 @@ def _unresolved_authority_interval(metric_id: str) -> KnowledgeValue[PrecisionIn
 
 def _unresolved_authority_value(
     metric_id: str,
-) -> KnowledgeValue[ClusterPrecisionAuthorityResolution]:
-    return KnowledgeValue[ClusterPrecisionAuthorityResolution](
+) -> KnowledgeValue[GovernedClusterPrecisionAuthority]:
+    return KnowledgeValue[GovernedClusterPrecisionAuthority](
         knowledge_state=KnowledgeState.UNKNOWN,
         rationale=(
             "No externally pinned cluster-precision authority registry was resolved for this "
@@ -739,30 +803,12 @@ def _unresolved_authority_value(
     )
 
 
-def _authority_evidence_ids(
-    resolution: ClusterPrecisionAuthorityResolution,
-) -> tuple[str, ...]:
-    artifact = resolution.registry.contract_artifact
-    return tuple(
-        sorted(
-            {
-                item.evidence_record_id
-                for item in (
-                    *artifact.preregistration_evidence_records,
-                    *artifact.custody_evidence_records,
-                    *artifact.review_evidence_records,
-                )
-            }
-        )
-    )
-
-
-def _validate_resolved_authority(
+def _validate_implementation_conformance_authority(
     contract: MetricGeneralizationContract,
     manifest: ClusterObservationManifest,
-    resolution: ClusterPrecisionAuthorityResolution,
+    resolution: ImplementationConformanceClusterAuthority,
 ) -> None:
-    checked = ClusterPrecisionAuthorityResolution.model_validate(
+    checked = ImplementationConformanceClusterAuthority.model_validate(
         resolution.model_dump(mode="python")
     )
     registry = checked.registry
@@ -773,7 +819,7 @@ def _validate_resolved_authority(
     resolved_sources = {item.source_record_id: item for item in registry.source_ledger.records}
     observed_sources = {item.elementary_source_id: item for item in manifest.observations}
     if set(resolved_sources) != set(observed_sources):
-        raise ValueError("cluster observations do not exactly close the resolved source ledger")
+        raise ValueError("cluster observations do not exactly close the conformance source ledger")
 
     evidence_by_id = {item.evidence_record_id: item for item in registry.evidence_ledger.records}
     strata_by_cluster = {
@@ -790,7 +836,7 @@ def _validate_resolved_authority(
             or observation.stratum_values
             != strata_by_cluster.get(observation.generalization_unit_id)
         ):
-            raise ValueError("cluster observation differs from its resolved source record")
+            raise ValueError("cluster observation differs from its conformance source record")
         source_evidence = {
             item.evidence_record_id: item.record_checksum for item in source.evidence_records
         }
@@ -876,59 +922,93 @@ def _expected_interval(
 def cluster_bootstrap_precision(
     contract: MetricGeneralizationContract,
     observations: tuple[ClusterMetricObservation, ...],
-    *,
-    authority_resolution: ClusterPrecisionAuthorityResolution | None = None,
 ) -> ClusterPrecisionResult:
-    """Resolve governed rows, then resample clusters within preregistered strata."""
+    """Return governed precision only when an external authority resolver exists.
+
+    The repository currently has no independently governed resolver or trust
+    root. Caller-supplied registries and pins are accepted only by the separate
+    implementation-conformance artifact builder; this canonical API cannot use
+    them to establish scientific authority or populate the governed interval.
+    """
 
     input_manifest = _build_observation_manifest(contract, observations)
     cluster_count = input_manifest.cluster_count
-    if authority_resolution is None:
-        authority_value = _unresolved_authority_value(contract.metric_id)
-        interval_value = _unresolved_authority_interval(contract.metric_id)
-        return _build_cluster_precision_result(
-            contract,
-            input_manifest=input_manifest,
-            effective_cluster_count=cluster_count,
-            authority_resolution=authority_value,
-            interval=interval_value,
-            unavailable_blocker=ScientificReviewRequirement(
-                issue_id=CLUSTER_PRECISION_REVIEW_ISSUE_ID,
-                rationale=interval_value.rationale
-                or "Cluster precision authority remains unresolved.",
-            ),
-        )
-
-    checked_authority = ClusterPrecisionAuthorityResolution.model_validate(
-        authority_resolution.model_dump(mode="python")
-    )
-    _validate_resolved_authority(contract, input_manifest, checked_authority)
-    authority_value = KnowledgeValue[ClusterPrecisionAuthorityResolution](
-        knowledge_state=KnowledgeState.PRESENT,
-        value=checked_authority,
-        evidence_ids=_authority_evidence_ids(checked_authority),
-        query_scope_id=contract.metric_id,
-    )
-    interval_value = _expected_interval(contract, input_manifest)
-    if cluster_count < 2:
-        rationale = interval_value.rationale or "Cluster precision remains unavailable."
-        return _build_cluster_precision_result(
-            contract,
-            input_manifest=input_manifest,
-            effective_cluster_count=cluster_count,
-            authority_resolution=authority_value,
-            interval=interval_value,
-            unavailable_blocker=ScientificReviewRequirement(
-                issue_id=CLUSTER_PRECISION_REVIEW_ISSUE_ID,
-                rationale=rationale,
-            ),
-        )
+    authority_value = _unresolved_authority_value(contract.metric_id)
+    interval_value = _unresolved_authority_interval(contract.metric_id)
     return _build_cluster_precision_result(
         contract,
         input_manifest=input_manifest,
         effective_cluster_count=cluster_count,
         authority_resolution=authority_value,
         interval=interval_value,
+        unavailable_blocker=ScientificReviewRequirement(
+            issue_id=CLUSTER_PRECISION_REVIEW_ISSUE_ID,
+            rationale=interval_value.rationale or "Cluster precision authority remains unresolved.",
+        ),
+    )
+
+
+def build_cluster_precision_conformance_artifact(
+    contract: MetricGeneralizationContract,
+    observations: tuple[ClusterMetricObservation, ...],
+    *,
+    implementation_conformance: ImplementationConformanceClusterAuthority,
+) -> ClusterPrecisionConformanceArtifact:
+    """Seal deterministic bootstrap output without granting scientific authority."""
+
+    input_manifest = _build_observation_manifest(contract, observations)
+    checked_conformance = ImplementationConformanceClusterAuthority.model_validate(
+        implementation_conformance.model_dump(mode="python")
+    )
+    _validate_implementation_conformance_authority(
+        contract,
+        input_manifest,
+        checked_conformance,
+    )
+    interval = _expected_interval(contract, input_manifest)
+    blockers = (
+        ScientificReviewRequirement(
+            issue_id=CLUSTER_PRECISION_REVIEW_ISSUE_ID,
+            rationale=(
+                "Implementation-conformance calculations cannot replace a separately "
+                "governed, pre-reviewed external authority resolver."
+            ),
+        ),
+        ScientificReviewRequirement(
+            issue_id=EVALUATION_SCIENTIFIC_HOLD_ISSUE_ID,
+            rationale=(
+                "This deterministic conformance artifact is not a scientific release authority."
+            ),
+        ),
+    )
+    draft = ClusterPrecisionConformanceArtifact.model_construct(
+        artifact_id="CLUSTER-PRECISION-CONFORMANCE-PENDING",
+        content_checksum="0" * 64,
+        generalization_contract=contract,
+        input_manifest=input_manifest,
+        metric_id=contract.metric_id,
+        declared_cluster_count=len(contract.units),
+        effective_cluster_count=input_manifest.cluster_count,
+        implementation_conformance=checked_conformance,
+        interval=interval,
+        scientific_use_permitted=False,
+        blockers=blockers,
+    )
+    checksum = content_checksum(
+        draft.model_dump(mode="json", exclude={"artifact_id", "content_checksum"})
+    )
+    return ClusterPrecisionConformanceArtifact(
+        artifact_id=f"CLUSTER-PRECISION-CONFORMANCE-{checksum[:20]}",
+        content_checksum=checksum,
+        generalization_contract=contract,
+        input_manifest=input_manifest,
+        metric_id=contract.metric_id,
+        declared_cluster_count=len(contract.units),
+        effective_cluster_count=input_manifest.cluster_count,
+        implementation_conformance=checked_conformance,
+        interval=interval,
+        scientific_use_permitted=False,
+        blockers=blockers,
     )
 
 
@@ -1000,7 +1080,9 @@ def build_metric_generalization_contract_artifact(
     custody_evidence_records: tuple[ClusterEvidenceRecord, ...],
     review_evidence_records: tuple[ClusterEvidenceRecord, ...],
     reviewer_actor_ids: tuple[str, ...],
-    review_scope_id: str,
+    review_scope_id: Literal["IMPLEMENTATION-CONFORMANCE-ONLY"] = (
+        IMPLEMENTATION_CONFORMANCE_REVIEW_SCOPE_ID
+    ),
 ) -> MetricGeneralizationContractArtifact:
     checked_contract = MetricGeneralizationContract.model_validate(
         contract.model_dump(mode="python")
@@ -1112,12 +1194,12 @@ def build_cluster_elementary_source_ledger(
     )
 
 
-def build_cluster_precision_authority_registry(
+def build_implementation_conformance_cluster_registry(
     *,
     contract_artifact: MetricGeneralizationContractArtifact,
     source_ledger: ClusterElementarySourceLedger,
     evidence_ledger: ClusterEvidenceLedger,
-) -> ClusterPrecisionAuthorityRegistry:
+) -> ImplementationConformanceClusterRegistry:
     checked_artifact = MetricGeneralizationContractArtifact.model_validate(
         contract_artifact.model_dump(mode="python")
     )
@@ -1127,8 +1209,8 @@ def build_cluster_precision_authority_registry(
     checked_evidence_ledger = ClusterEvidenceLedger.model_validate(
         evidence_ledger.model_dump(mode="python")
     )
-    draft = ClusterPrecisionAuthorityRegistry.model_construct(
-        registry_id="CLUSTER-AUTHORITY-PENDING",
+    draft = ImplementationConformanceClusterRegistry.model_construct(
+        registry_id="CLUSTER-CONFORMANCE-REGISTRY-PENDING",
         content_checksum="0" * 64,
         contract_artifact=checked_artifact,
         source_ledger=checked_source_ledger,
@@ -1137,8 +1219,8 @@ def build_cluster_precision_authority_registry(
     checksum = content_checksum(
         draft.model_dump(mode="json", exclude={"registry_id", "content_checksum"})
     )
-    return ClusterPrecisionAuthorityRegistry(
-        registry_id=f"CLUSTER-AUTHORITY-{checksum[:20]}",
+    return ImplementationConformanceClusterRegistry(
+        registry_id=f"CLUSTER-CONFORMANCE-REGISTRY-{checksum[:20]}",
         content_checksum=checksum,
         contract_artifact=checked_artifact,
         source_ledger=checked_source_ledger,
@@ -1146,17 +1228,17 @@ def build_cluster_precision_authority_registry(
     )
 
 
-def resolve_cluster_precision_authority(
+def build_implementation_conformance_cluster_authority(
     *,
-    registry: ClusterPrecisionAuthorityRegistry,
-    pin: ClusterPrecisionAuthorityPin,
-) -> ClusterPrecisionAuthorityResolution:
-    checked_registry = ClusterPrecisionAuthorityRegistry.model_validate(
+    registry: ImplementationConformanceClusterRegistry,
+    pin: ImplementationConformanceClusterPin,
+) -> ImplementationConformanceClusterAuthority:
+    checked_registry = ImplementationConformanceClusterRegistry.model_validate(
         registry.model_dump(mode="python")
     )
-    checked_pin = ClusterPrecisionAuthorityPin.model_validate(pin.model_dump(mode="python"))
-    draft = ClusterPrecisionAuthorityResolution.model_construct(
-        resolution_id="CLUSTER-AUTHORITY-RESOLUTION-PENDING",
+    checked_pin = ImplementationConformanceClusterPin.model_validate(pin.model_dump(mode="python"))
+    draft = ImplementationConformanceClusterAuthority.model_construct(
+        resolution_id="CLUSTER-CONFORMANCE-RESOLUTION-PENDING",
         content_checksum="0" * 64,
         registry=checked_registry,
         pin=checked_pin,
@@ -1164,8 +1246,8 @@ def resolve_cluster_precision_authority(
     checksum = content_checksum(
         draft.model_dump(mode="json", exclude={"resolution_id", "content_checksum"})
     )
-    return ClusterPrecisionAuthorityResolution(
-        resolution_id=f"CLUSTER-AUTHORITY-RESOLUTION-{checksum[:20]}",
+    return ImplementationConformanceClusterAuthority(
+        resolution_id=f"CLUSTER-CONFORMANCE-RESOLUTION-{checksum[:20]}",
         content_checksum=checksum,
         registry=checked_registry,
         pin=checked_pin,
@@ -1210,7 +1292,7 @@ def cluster_elementary_source_checksum(
     value: Decimal,
     stratum_values: dict[str, str],
 ) -> str:
-    """Address one local row declaration; governed identity still requires its pinned ledger."""
+    """Address one local row declaration without claiming governed identity."""
 
     return content_checksum(
         {
@@ -1225,6 +1307,7 @@ def cluster_elementary_source_checksum(
 
 __all__ = [
     "CLUSTER_PRECISION_REVIEW_ISSUE_ID",
+    "IMPLEMENTATION_CONFORMANCE_REVIEW_SCOPE_ID",
     "SUPPORTED_CLUSTER_BOOTSTRAP_METHOD",
     "SUPPORTED_CLUSTER_ESTIMATOR_CHECKSUM",
     "SUPPORTED_CLUSTER_ESTIMATOR_ID",
@@ -1237,13 +1320,15 @@ __all__ = [
     "ClusterMetricEstimate",
     "ClusterMetricObservation",
     "ClusterObservationManifest",
-    "ClusterPrecisionAuthorityPin",
-    "ClusterPrecisionAuthorityRegistry",
-    "ClusterPrecisionAuthorityResolution",
+    "ClusterPrecisionConformanceArtifact",
     "ClusterPrecisionResult",
     "ClusterStratumAssignment",
     "GeneralizationUnit",
     "GeneralizationUnitKind",
+    "GovernedClusterPrecisionAuthority",
+    "ImplementationConformanceClusterAuthority",
+    "ImplementationConformanceClusterPin",
+    "ImplementationConformanceClusterRegistry",
     "MetricGeneralizationContract",
     "MetricGeneralizationContractArtifact",
     "PrecisionInterval",
@@ -1252,9 +1337,10 @@ __all__ = [
     "build_cluster_evidence_ledger",
     "build_cluster_evidence_record",
     "build_cluster_metric_observation",
-    "build_cluster_precision_authority_registry",
+    "build_cluster_precision_conformance_artifact",
+    "build_implementation_conformance_cluster_authority",
+    "build_implementation_conformance_cluster_registry",
     "build_metric_generalization_contract_artifact",
     "cluster_bootstrap_precision",
     "cluster_elementary_source_checksum",
-    "resolve_cluster_precision_authority",
 ]

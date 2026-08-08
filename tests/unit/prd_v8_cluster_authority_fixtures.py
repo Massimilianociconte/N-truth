@@ -9,22 +9,30 @@ def _digest(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
-def reviewed_cluster_authority(contract: object, rows: tuple[object, ...]) -> object:
-    """Build a content-addressed implementation-conformance authority fixture."""
+def implementation_conformance_cluster_authority(
+    contract: object,
+    rows: tuple[object, ...],
+    *,
+    reviewer_actor_ids: tuple[str, ...] = (
+        "REVIEWER-INDEPENDENT-A",
+        "REVIEWER-INDEPENDENT-B",
+    ),
+) -> object:
+    """Build a content-addressed implementation-conformance closure fixture."""
 
     required_symbols = (
-        "ClusterPrecisionAuthorityPin",
+        "ImplementationConformanceClusterPin",
         "ClusterStratumAssignment",
         "build_cluster_evidence_ledger",
         "build_cluster_evidence_record",
         "build_cluster_elementary_source_ledger",
         "build_cluster_elementary_source_record",
-        "build_cluster_precision_authority_registry",
+        "build_implementation_conformance_cluster_authority",
+        "build_implementation_conformance_cluster_registry",
         "build_metric_generalization_contract_artifact",
-        "resolve_cluster_precision_authority",
     )
     missing = tuple(name for name in required_symbols if not hasattr(evaluation, name))
-    assert not missing, f"cluster authority API is missing: {missing}"
+    assert not missing, f"cluster conformance API is missing: {missing}"
 
     evidence_ids = {
         evidence_id
@@ -60,8 +68,8 @@ def reviewed_cluster_authority(contract: object, rows: tuple[object, ...]) -> ob
         preregistration_evidence_records=(evidence_records["E-PREREGISTRATION"],),
         custody_evidence_records=(evidence_records["E-CUSTODY"],),
         review_evidence_records=(evidence_records["E-INDEPENDENT-REVIEW"],),
-        reviewer_actor_ids=("REVIEWER-INDEPENDENT-A", "REVIEWER-INDEPENDENT-B"),
-        review_scope_id="IMPLEMENTATION-CONFORMANCE-ONLY",
+        reviewer_actor_ids=reviewer_actor_ids,
+        review_scope_id=evaluation.IMPLEMENTATION_CONFORMANCE_REVIEW_SCOPE_ID,
     )
     source_records = tuple(
         evaluation.build_cluster_elementary_source_record(
@@ -78,13 +86,16 @@ def reviewed_cluster_authority(contract: object, rows: tuple[object, ...]) -> ob
         contract_artifact=contract_artifact,
         records=source_records,
     )
-    registry = evaluation.build_cluster_precision_authority_registry(
+    registry = evaluation.build_implementation_conformance_cluster_registry(
         contract_artifact=contract_artifact,
         source_ledger=source_ledger,
         evidence_ledger=evidence_ledger,
     )
-    pin = evaluation.ClusterPrecisionAuthorityPin(
+    pin = evaluation.ImplementationConformanceClusterPin(
         registry_id=registry.registry_id,
         registry_checksum=registry.content_checksum,
     )
-    return evaluation.resolve_cluster_precision_authority(registry=registry, pin=pin)
+    return evaluation.build_implementation_conformance_cluster_authority(
+        registry=registry,
+        pin=pin,
+    )

@@ -4,7 +4,7 @@ import importlib
 from decimal import Decimal
 
 import pytest
-from prd_v8_cluster_authority_fixtures import reviewed_cluster_authority
+from prd_v8_cluster_authority_fixtures import implementation_conformance_cluster_authority
 from pydantic import ValidationError
 
 import ntruth.evaluation_v8 as evaluation
@@ -40,26 +40,29 @@ def test_unknown_authority_state_cannot_be_reissued_with_caller_semantics() -> N
         evaluation.ClusterPrecisionResult.model_validate(fix2._readdress_cluster_payload(payload))
 
 
-def test_reviewed_content_addressed_authority_resolves_conformance_interval() -> None:
+def test_content_addressed_conformance_chain_only_builds_conformance_interval() -> None:
     contract, rows = fix2._cluster_fixture()
-    authority = reviewed_cluster_authority(contract, rows)
+    authority = implementation_conformance_cluster_authority(contract, rows)
 
-    result = evaluation.cluster_bootstrap_precision(
+    result = evaluation.build_cluster_precision_conformance_artifact(
         contract,
         rows,
-        authority_resolution=authority,
+        implementation_conformance=authority,
     )
 
-    assert result.authority_resolution.knowledge_state is KnowledgeState.PRESENT
+    assert result.implementation_conformance == authority
     assert result.interval.knowledge_state is KnowledgeState.PRESENT
     assert result.input_manifest.observation_count == 6
     assert result.scientific_use_permitted is False
-    assert "SRR-V8-EVAL-SCIENTIFIC-HOLD" in {item.issue_id for item in result.blockers}
+    assert {item.issue_id for item in result.blockers} == {
+        "SRR-V8-CLUSTER-PRECISION",
+        "SRR-V8-EVAL-SCIENTIFIC-HOLD",
+    }
 
 
 def test_source_and_evidence_aliases_cannot_create_a_pseudo_observation() -> None:
     contract, rows = fix2._cluster_fixture()
-    authority = reviewed_cluster_authority(contract, rows)
+    authority = implementation_conformance_cluster_authority(contract, rows)
     original = rows[4]
     alias = evaluation.build_cluster_metric_observation(
         metric_id=original.metric_id,
@@ -70,17 +73,17 @@ def test_source_and_evidence_aliases_cannot_create_a_pseudo_observation() -> Non
         evidence_ids=("E-EVIDENCE-ALIAS",),
     )
 
-    with pytest.raises(ValueError, match=r"resolved source|evidence ledger|authority"):
-        evaluation.cluster_bootstrap_precision(
+    with pytest.raises(ValueError, match=r"conformance source|evidence ledger"):
+        evaluation.build_cluster_precision_conformance_artifact(
             contract,
             (*rows, alias),
-            authority_resolution=authority,
+            implementation_conformance=authority,
         )
 
 
 def test_caller_restratification_cannot_change_the_precision_interval() -> None:
     contract, rows = fix2._cluster_fixture()
-    authority = reviewed_cluster_authority(contract, rows)
+    authority = implementation_conformance_cluster_authority(contract, rows)
     changed = tuple(
         evaluation.build_cluster_metric_observation(
             metric_id=row.metric_id,
@@ -95,18 +98,20 @@ def test_caller_restratification_cannot_change_the_precision_interval() -> None:
         for row in rows
     )
 
-    with pytest.raises(ValueError, match=r"strat|resolved source|authority"):
-        evaluation.cluster_bootstrap_precision(
+    with pytest.raises(ValueError, match=r"strat|conformance source"):
+        evaluation.build_cluster_precision_conformance_artifact(
             contract,
             changed,
-            authority_resolution=authority,
+            implementation_conformance=authority,
         )
 
 
 @pytest.mark.parametrize("mutation", ["reorder", "replace"])
-def test_embedded_contract_unit_mutation_fails_against_external_pin(mutation: str) -> None:
+def test_embedded_contract_unit_mutation_fails_against_fixed_conformance_pin(
+    mutation: str,
+) -> None:
     contract, rows = fix2._cluster_fixture()
-    authority = reviewed_cluster_authority(contract, rows)
+    authority = implementation_conformance_cluster_authority(contract, rows)
     units = contract.units
     if mutation == "reorder":
         changed_units = tuple(reversed(units))
@@ -135,10 +140,10 @@ def test_embedded_contract_unit_mutation_fails_against_external_pin(mutation: st
     changed_contract = _replace_contract(contract, units=changed_units)
 
     with pytest.raises(ValueError, match=r"contract artifact|authority|metric contract"):
-        evaluation.cluster_bootstrap_precision(
+        evaluation.build_cluster_precision_conformance_artifact(
             changed_contract,
             changed_rows,
-            authority_resolution=authority,
+            implementation_conformance=authority,
         )
 
 
@@ -150,33 +155,33 @@ def test_embedded_contract_unit_mutation_fails_against_external_pin(mutation: st
         ("confidence_level", Decimal("0.9")),
     ],
 )
-def test_bootstrap_protocol_mutation_fails_against_preregistered_pin(
+def test_bootstrap_protocol_mutation_fails_against_fixed_conformance_pin(
     field: str,
     value: object,
 ) -> None:
     contract, rows = fix2._cluster_fixture()
-    authority = reviewed_cluster_authority(contract, rows)
+    authority = implementation_conformance_cluster_authority(contract, rows)
     bootstrap_payload = contract.bootstrap.model_dump(mode="python")
     bootstrap_payload[field] = value
     changed_contract = _replace_contract(contract, bootstrap=bootstrap_payload)
 
     with pytest.raises(ValueError, match=r"contract artifact|authority|metric contract"):
-        evaluation.cluster_bootstrap_precision(
+        evaluation.build_cluster_precision_conformance_artifact(
             changed_contract,
             rows,
-            authority_resolution=authority,
+            implementation_conformance=authority,
         )
 
 
-def test_authority_resolution_rejects_readdressed_registry_without_external_pin() -> None:
+def test_conformance_resolution_rejects_readdressed_registry_with_stale_pin() -> None:
     contract, rows = fix2._cluster_fixture()
-    authority = reviewed_cluster_authority(contract, rows)
+    authority = implementation_conformance_cluster_authority(contract, rows)
     registry = authority.registry.model_copy(
-        update={"registry_id": "CLUSTER-AUTHORITY-CALLER-REISSUED"}
+        update={"registry_id": "CLUSTER-CONFORMANCE-REGISTRY-CALLER-REISSUED"}
     )
 
     with pytest.raises((ValidationError, ValueError), match=r"registry|checksum|pin"):
-        evaluation.resolve_cluster_precision_authority(
+        evaluation.build_implementation_conformance_cluster_authority(
             registry=registry,
             pin=authority.pin,
         )

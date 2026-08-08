@@ -5,7 +5,7 @@ import importlib
 from decimal import Decimal
 
 import pytest
-from prd_v8_cluster_authority_fixtures import reviewed_cluster_authority
+from prd_v8_cluster_authority_fixtures import implementation_conformance_cluster_authority
 from pydantic import ValidationError
 
 from ntruth.derivation_theory.loader import load_canonical_bundle
@@ -36,10 +36,10 @@ from ntruth.evaluation_v8 import (
     ResidualSeverity,
     StabilityComponentObservation,
     build_cluster_metric_observation,
+    build_cluster_precision_conformance_artifact,
     build_independent_report_reference,
     build_reference_stability_report,
     build_report_evaluation_snapshot,
-    cluster_bootstrap_precision,
     evaluate_end_to_end,
     snapshot_report_bundle,
     summarize_blind_residual_audit,
@@ -623,33 +623,34 @@ def test_cluster_precision_is_invariant_to_duplicate_rows_inside_cluster() -> No
         ),
     )
 
-    authority = reviewed_cluster_authority(contract, base)
-    original = cluster_bootstrap_precision(
+    authority = implementation_conformance_cluster_authority(contract, base)
+    original = build_cluster_precision_conformance_artifact(
         contract,
         base,
-        authority_resolution=authority,
+        implementation_conformance=authority,
     )
-    duplicated = cluster_bootstrap_precision(
+    duplicated = build_cluster_precision_conformance_artifact(
         contract,
         base + (base[0],) * 50,
-        authority_resolution=authority,
+        implementation_conformance=authority,
     )
 
     assert original == duplicated
     assert original.effective_cluster_count == 3
     assert original.interval.knowledge_state is KnowledgeState.PRESENT
-    with pytest.raises(ValidationError, match="precision result checksum mismatch"):
+    with pytest.raises(ValidationError, match="precision conformance checksum mismatch"):
         type(original).model_validate(
             original.model_copy(update={"content_checksum": "0" * 64}).model_dump(mode="python")
         )
 
     with pytest.raises(ValueError, match=r"elementary source checksum|observation ID"):
-        cluster_bootstrap_precision(
+        build_cluster_precision_conformance_artifact(
             contract,
             (
                 *base,
                 base[0].model_copy(update={"value": Decimal("0.8")}),
             ),
+            implementation_conformance=authority,
         )
 
 
@@ -684,12 +685,13 @@ def test_one_cluster_returns_unknown_precision_instead_of_a_spurious_interval() 
             evidence_ids=("E-SF-1",),
         ),
     )
-    result = cluster_bootstrap_precision(
+    conformance = implementation_conformance_cluster_authority(contract, rows)
+    result = build_cluster_precision_conformance_artifact(
         contract,
         rows,
-        authority_resolution=reviewed_cluster_authority(contract, rows),
+        implementation_conformance=conformance,
     )
 
     assert result.interval.knowledge_state is KnowledgeState.UNKNOWN
-    assert result.authority_resolution.knowledge_state is KnowledgeState.PRESENT
+    assert result.implementation_conformance == conformance
     assert "SRR-V8-CLUSTER-PRECISION" in {item.issue_id for item in result.blockers}

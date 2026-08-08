@@ -5,7 +5,7 @@ import importlib
 from decimal import Decimal
 
 import pytest
-from prd_v8_cluster_authority_fixtures import reviewed_cluster_authority
+from prd_v8_cluster_authority_fixtures import implementation_conformance_cluster_authority
 from pydantic import ValidationError
 
 import ntruth.evaluation_v8 as evaluation
@@ -580,16 +580,16 @@ def test_cluster_bootstrap_aggregates_elementary_rows_and_seals_numeric_inputs()
         for row, value in enumerate(values, start=1)
     )
 
-    authority = reviewed_cluster_authority(contract, rows)
-    original = evaluation.cluster_bootstrap_precision(
+    authority = implementation_conformance_cluster_authority(contract, rows)
+    original = evaluation.build_cluster_precision_conformance_artifact(
         contract,
         rows,
-        authority_resolution=authority,
+        implementation_conformance=authority,
     )
-    duplicated = evaluation.cluster_bootstrap_precision(
+    duplicated = evaluation.build_cluster_precision_conformance_artifact(
         contract,
         rows + (rows[0],) * 50,
-        authority_resolution=authority,
+        implementation_conformance=authority,
     )
 
     assert original == duplicated
@@ -607,11 +607,11 @@ def test_cluster_bootstrap_aggregates_elementary_rows_and_seals_numeric_inputs()
         {
             key: value
             for key, value in payload.items()
-            if key not in {"result_id", "content_checksum"}
+            if key not in {"artifact_id", "content_checksum"}
         }
     )
     payload["content_checksum"] = outer_checksum
-    payload["result_id"] = f"CLUSTER-PRECISION-{outer_checksum[:20]}"
+    payload["artifact_id"] = f"CLUSTER-PRECISION-CONFORMANCE-{outer_checksum[:20]}"
     with pytest.raises(
         ValidationError,
         match=(
@@ -619,7 +619,7 @@ def test_cluster_bootstrap_aggregates_elementary_rows_and_seals_numeric_inputs()
             r"cluster elementary source checksum mismatch"
         ),
     ):
-        evaluation.ClusterPrecisionResult.model_validate(payload)
+        evaluation.ClusterPrecisionConformanceArtifact.model_validate(payload)
 
 
 def test_decisive_and_process_metrics_are_typed_unknown_until_observed() -> None:

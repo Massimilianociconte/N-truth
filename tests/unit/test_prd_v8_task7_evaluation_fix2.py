@@ -4,7 +4,7 @@ import importlib
 from decimal import Decimal
 
 import pytest
-from prd_v8_cluster_authority_fixtures import reviewed_cluster_authority
+from prd_v8_cluster_authority_fixtures import implementation_conformance_cluster_authority
 from pydantic import ValidationError
 
 import ntruth.evaluation_v8 as evaluation
@@ -362,10 +362,10 @@ def _readdress_cluster_payload(payload: dict) -> dict:
 
 def test_cluster_result_recomputes_interval_from_sealed_inputs() -> None:
     contract, rows = _cluster_fixture()
-    result = evaluation.cluster_bootstrap_precision(
+    result = evaluation.build_cluster_precision_conformance_artifact(
         contract,
         rows,
-        authority_resolution=reviewed_cluster_authority(contract, rows),
+        implementation_conformance=implementation_conformance_cluster_authority(contract, rows),
     )
     payload = result.model_dump(mode="python")
     payload["interval"]["value"].update(
@@ -378,8 +378,17 @@ def test_cluster_result_recomputes_interval_from_sealed_inputs() -> None:
         }
     )
 
+    checksum = content_checksum(
+        {
+            key: value
+            for key, value in payload.items()
+            if key not in {"artifact_id", "content_checksum"}
+        }
+    )
+    payload["content_checksum"] = checksum
+    payload["artifact_id"] = f"CLUSTER-PRECISION-CONFORMANCE-{checksum[:20]}"
     with pytest.raises(ValidationError, match="interval differs from sealed inputs"):
-        evaluation.ClusterPrecisionResult.model_validate(_readdress_cluster_payload(payload))
+        evaluation.ClusterPrecisionConformanceArtifact.model_validate(payload)
 
 
 def test_cluster_manifest_rejects_cross_metric_estimate_after_readdressing() -> None:
