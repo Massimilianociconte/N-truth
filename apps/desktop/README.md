@@ -13,7 +13,8 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-Il dev server inoltra `/v1` a `127.0.0.1:8765`. Il build di produzione viene incluso nel wheel:
+Il dev server inoltra le superfici versionate `/v1`, `/v7` e `/v8` a
+`127.0.0.1:8765`. Il build di produzione viene incluso nel wheel:
 
 ```bash
 pnpm test

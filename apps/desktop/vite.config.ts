@@ -18,6 +18,8 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       "/v1": "http://127.0.0.1:8765",
+      "/v7": "http://127.0.0.1:8765",
+      "/v8": "http://127.0.0.1:8765",
       "/health": "http://127.0.0.1:8765",
     },
   },

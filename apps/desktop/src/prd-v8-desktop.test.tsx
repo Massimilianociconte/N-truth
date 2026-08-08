@@ -29,7 +29,7 @@ function analysisErrorFetch(detail: Record<string, unknown>) {
         warning: "",
       });
     }
-    if (url.includes("/v1/analyze")) {
+    if (url.includes("/v7/analyze")) {
       return jsonResponse({ detail }, 409);
     }
     throw new Error(`unexpected request: ${url}`);
@@ -38,11 +38,14 @@ function analysisErrorFetch(detail: Record<string, unknown>) {
 
 async function submitImport(): Promise<void> {
   fireEvent.click(screen.getByRole("button", { name: "Importa fonti" }));
-  await screen.findByRole("button", { name: "Avvia analisi" });
+  fireEvent.click(
+    await screen.findByRole("radio", { name: "Flusso storico v7 deprecato" }),
+  );
+  await screen.findByRole("button", { name: "Avvia analisi v7 deprecata" });
   fireEvent.change(screen.getByPlaceholderText("/percorso/locale/metodi-e-sample-sheet"), {
     target: { value: "/tmp/methods.md" },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Avvia analisi" }));
+  fireEvent.click(screen.getByRole("button", { name: "Avvia analisi v7 deprecata" }));
 }
 
 describe("PRD v8 desktop scientific boundary", () => {

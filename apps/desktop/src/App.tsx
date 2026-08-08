@@ -41,13 +41,14 @@ import {
   ApiError,
   apiErrorCode,
   apiErrorIssueId,
-  analyze,
+  analyzeV7,
   applyCorrection,
   confirmInferenceTarget,
   downloadJson,
   health,
   navigateCorrection,
   preflight,
+  quickDesignV8,
   type InferenceTargetDraft,
 } from "./api";
 import { DEMO_REPORT } from "./data/demo";
@@ -61,7 +62,10 @@ import type {
   ExperimentBlock,
   GraphNode,
   GraphRelation,
+  KnowledgeValue,
   PrivacyAudit,
+  QuickDesignV8Response,
+  QuickDesignV8Submission,
   Report,
   Severity,
   ShareReadiness,
@@ -208,6 +212,7 @@ function focusId(view: View): string {
 
 export function App() {
   const [report, setReport] = useState<Report>(DEMO_REPORT);
+  const [quickDesignResult, setQuickDesignResult] = useState<QuickDesignV8Response>();
   const [isDemo, setIsDemo] = useState(true);
   const [activeView, setActiveView] = useState<View>("project");
   const [selectedBlockId, setSelectedBlockId] = useState(DEMO_REPORT.blocks[0].id);
@@ -743,6 +748,7 @@ export function App() {
   };
 
   const onAnalysis = (response: AnalysisResponse) => {
+    setQuickDesignResult(undefined);
     setReport(response.report);
     setIsDemo(false);
     setSessionId(response.session_id);
@@ -758,6 +764,13 @@ export function App() {
     setCorrectionState({});
     setCandidateExports({});
     applyGovernanceState(response);
+  };
+
+  const onQuickDesign = (response: QuickDesignV8Response) => {
+    setQuickDesignResult(response);
+    setIsDemo(false);
+    setShowImport(false);
+    setNotice(`PRD v8 ReportBundle ${response.report.report_id} compilato.`);
   };
 
   const reviewed = report.blocks.filter((item) => item.corrections.length > 0).length;
@@ -833,6 +846,10 @@ export function App() {
           </div>
         )}
 
+        {quickDesignResult ? (
+          <ReportBundleV8View result={quickDesignResult} language={uiLanguage} />
+        ) : (
+          <>
         <section className="workspace-grid">
           <section
             id="blocks-panel"
@@ -1104,10 +1121,287 @@ export function App() {
             </button>
           </div>
         </footer>
+          </>
+        )}
       </main>
 
-      {showImport && <ImportDialog apiState={apiState} uiLanguage={uiLanguage} onClose={() => setShowImport(false)} onAnalysis={onAnalysis} />}
+      {showImport && (
+        <ImportDialog
+          apiState={apiState}
+          uiLanguage={uiLanguage}
+          onClose={() => setShowImport(false)}
+          onAnalysis={onAnalysis}
+          onQuickDesign={onQuickDesign}
+        />
+      )}
     </div>
+  );
+}
+
+function scientificValueText(value: unknown): string {
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (Array.isArray(value)) return value.map(scientificValueText).join(" · ");
+  if (value && typeof value === "object") return JSON.stringify(value);
+  return "";
+}
+
+function KnowledgeStateValue({ value }: { value: KnowledgeValue }) {
+  const text = scientificValueText(value.value);
+  return (
+    <div className="knowledge-value">
+      <span className={`knowledge-state state-${value.knowledge_state.toLowerCase()}`}>
+        {value.knowledge_state}
+      </span>
+      {text && <code>{text}</code>}
+      {value.rationale && <small>{value.rationale}</small>}
+    </div>
+  );
+}
+
+function ReportBundleV8View({
+  result,
+  language,
+}: {
+  result: QuickDesignV8Response;
+  language: "it" | "en";
+}) {
+  const report = result.report;
+  const planned = report.design_record_context.planned_design_record;
+  const handoffItems = report.statistical_handoff.items;
+  const labels = language === "it"
+    ? {
+        source: "Fonti e contesto del disegno",
+        resolution: "Risoluzione del report",
+        claims: "Claim derivati per query inferenziale",
+        adequacy: "Valutazioni di adeguatezza del disegno",
+        counts: "Conteggi canonici",
+        coverage: "Copertura di scenari e profilo",
+        review: "Sensitività e domande di revisione",
+        handoff: "Handoff statistico",
+        limits: "Limiti inferenziali",
+      }
+    : {
+        source: "Sources and design context",
+        resolution: "Report resolution",
+        claims: "Derived claims by inferential query",
+        adequacy: "Design adequacy evaluations",
+        counts: "Canonical counts",
+        coverage: "Scenario and profile coverage",
+        review: "Sensitivities and review questions",
+        handoff: "Statistical handoff",
+        limits: "Inference limits",
+      };
+
+  return (
+    <section className="v8-report-workspace" aria-labelledby="v8-report-heading">
+      <header className="v8-report-header">
+        <div>
+          <span className="eyebrow">PRD v8 · canonical query-scoped output</span>
+          <h1 id="v8-report-heading">ReportBundle v8</h1>
+          <p>{report.epistemic_boundary}</p>
+        </div>
+        <div className="v8-contract-pins" aria-label="PRD v8 contract pins">
+          <span>{result.contract.code}</span>
+          <span>{result.contract.version}</span>
+          <span>{report.strategy_module_status}</span>
+        </div>
+      </header>
+
+      <div className="v8-report-grid">
+        <section className="v8-card" aria-label="Sources and design context">
+          <h2>{labels.source}</h2>
+          <dl className="v8-definition-grid">
+            <div><dt>Report</dt><dd><code>{report.report_id}</code></dd></div>
+            <div><dt>Checksum</dt><dd><code>{report.content_checksum}</code></dd></div>
+            <div><dt>Design mode</dt><dd>{report.design_record_context.mode}</dd></div>
+            <div><dt>Planned design state</dt><dd>{planned.knowledge_state}</dd></div>
+            {planned.value && <div><dt>Plan ID</dt><dd><code>{planned.value.plan_id}</code></dd></div>}
+          </dl>
+          <div className="v8-record-list">
+            {report.source_records.map((source) => (
+              <article key={source.source_id} aria-label={`Source ${source.source_id}`}>
+                <strong>{source.source_id}</strong>
+                <span>{source.source_context}</span>
+                <span>{source.source_class.token}</span>
+                <small>{source.source_class.registry_id}</small>
+              </article>
+            ))}
+          </div>
+          <details>
+            <summary>Evidence ledger · {report.evidence_records.length}</summary>
+            <ul>
+              {report.evidence_records.map((evidence) => (
+                <li key={evidence.evidence_id}>
+                  <code>{evidence.evidence_id}</code> · {evidence.evidence_type} · {evidence.source_id}
+                </li>
+              ))}
+            </ul>
+          </details>
+        </section>
+
+        <section className="v8-card" aria-label="Report resolution">
+          <h2>{labels.resolution}</h2>
+          <KnowledgeStateValue value={report.report_resolution.resolution} />
+          <p className="v8-neutral-note">
+            {language === "it"
+              ? "La risoluzione aggrega stati query-scoped; non certifica la qualità del disegno."
+              : "Resolution aggregates query-scoped states; it does not certify design quality."}
+          </p>
+        </section>
+
+        <section className="v8-card v8-span-all" aria-label="Derived claims by inferential query">
+          <h2>{labels.claims}</h2>
+          {report.claim_sets.map((claimSet) => (
+            <section className="v8-query-section" key={claimSet.claim_set_id}>
+              <h3>{claimSet.inferential_query_id}</h3>
+              <div className="v8-claim-grid">
+                {claimSet.claims.map((claim) => (
+                  <article
+                    className="v8-claim"
+                    key={claim.claim_id}
+                    aria-label={`Derived claim ${claim.claim_id} for query ${claimSet.inferential_query_id}`}
+                  >
+                    <div className="v8-claim-heading">
+                      <strong>{claim.claim_type}</strong>
+                      <span>{claim.determinability_state}</span>
+                    </div>
+                    <code>{claim.claim_id}</code>
+                    <KnowledgeStateValue value={claim.value} />
+                    <dl>
+                      <div><dt>Support grade</dt><dd>{claim.support_grade.token}</dd></div>
+                      <div><dt>Vocabulary</dt><dd>{claim.support_grade.vocabulary_id}</dd></div>
+                    </dl>
+                    <details>
+                      <summary>Proof trace · {claim.proof_trace.length}</summary>
+                      <ul>
+                        {claim.proof_trace.map((step, index) => (
+                          <li key={`${claim.claim_id}-proof-${index}`}>
+                            <code>{step.theory_clause_id}</code> → <code>{step.rule_id}</code>
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  </article>
+                ))}
+              </div>
+            </section>
+          ))}
+        </section>
+
+        <section className="v8-card v8-span-all" aria-label="Design adequacy evaluations">
+          <h2>{labels.adequacy}</h2>
+          <p className="v8-neutral-note">
+            DETERMINATE ≠ good design. {language === "it" ? "Questo asse resta separato dai claim." : "This axis remains separate from claims."}
+          </p>
+          <div className="v8-record-list">
+            {report.design_adequacy_evaluations.map((evaluation) => (
+              <article
+                key={evaluation.evaluation_id}
+                aria-label={`Design adequacy ${evaluation.evaluation_id} for query ${evaluation.inferential_query_id}`}
+              >
+                <strong>{evaluation.axis}</strong>
+                <code>{evaluation.evaluation_id}</code>
+                <KnowledgeStateValue value={evaluation.outcome} />
+                <small>{evaluation.rationale}</small>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section className="v8-card" aria-label="Canonical counts">
+          <h2>{labels.counts}</h2>
+          <p><code>{report.count_registry.registry_version}</code></p>
+          <div className="v8-record-list">
+            {report.count_registry.records.map((count) => (
+              <article key={count.count_id} aria-label={`Canonical count ${count.count_id}`}>
+                <strong>{count.kind}</strong>
+                <span>{count.quantifier} · {count.origin}</span>
+                <KnowledgeStateValue value={count.value} />
+                <small>query: {count.scope.query_id}</small>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section className="v8-card" aria-label="Scenario and profile coverage">
+          <h2>{labels.coverage}</h2>
+          <strong>{report.profile_coverage.profile_id}</strong>
+          <p><code>{report.profile_coverage.statement_id}</code></p>
+          <p>{report.profile_coverage.contract_review.status} · {report.profile_coverage.contract_review.issue_id}</p>
+          <ul>
+            {report.scenario_coverages.map((coverage, index) => (
+              <li key={`${coverage.profile_id}-${index}`}>
+                <strong>{coverage.status}</strong> · {coverage.profile_id}
+                <KnowledgeStateValue value={coverage.omitted_dimensions} />
+                <KnowledgeStateValue value={coverage.caveat} />
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        <section className="v8-card" aria-label="Sensitivities and review questions">
+          <h2>{labels.review}</h2>
+          <dl className="v8-definition-grid">
+            <div><dt>Sensitivities</dt><dd>{report.sensitivities.knowledge_state}</dd></div>
+            <div><dt>Confirmations</dt><dd>{report.human_confirmations.knowledge_state}</dd></div>
+            <div><dt>Conflicts</dt><dd>{report.conflicts.knowledge_state}</dd></div>
+            <div><dt>AI candidates</dt><dd>{report.ai_candidates.map((item) => item.knowledge_state).join(" · ")}</dd></div>
+          </dl>
+          <ul>
+            {report.questions.map((question) => (
+              <li key={question.question_id}>
+                <strong>{question.primary ? "Primary" : "Review"}</strong> · {question.text}
+                <small>{question.inferential_query_id} · evidence: {question.evidence_required.join(" · ")}</small>
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        <section className="v8-card" aria-label="Statistical handoff">
+          <h2>{labels.handoff}</h2>
+          <strong>{report.statistical_handoff.strategy_module_status}</strong>
+          <div className="v8-record-list">
+            {handoffItems.map((item, index) => (
+              <article key={`${item.category}-${index}`}>
+                <strong>{item.category}</strong>
+                <span>{item.origin} · {item.authority}</span>
+                <small>
+                  query: {item.inferential_query_id} · evidence: {item.evidence_refs.join(" · ")}
+                </small>
+                {(item.predicate_ids.length > 0 || item.question_ids.length > 0) && (
+                  <small>
+                    predicates: {item.predicate_ids.join(" · ") || "N/A"} · questions: {item.question_ids.join(" · ") || "N/A"}
+                  </small>
+                )}
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section className="v8-card" aria-label="Confirmed graph and execution pins">
+          <h2>{language === "it" ? "Grafo confermato e pin di esecuzione" : "Confirmed graph and execution pins"}</h2>
+          <p>{report.confirmed_graph.nodes.length} nodes · {report.confirmed_graph.relations.length} relations</p>
+          <ul>
+            {report.confirmed_graph.nodes.map((node) => (
+              <li key={node.node_id}><code>{node.node_id}</code> · {node.node_type}</li>
+            ))}
+          </ul>
+          <dl className="v8-definition-grid">
+            <div><dt>Manifest</dt><dd><code>{report.execution_manifest.manifest_id}</code></dd></div>
+            <div><dt>Theory</dt><dd>{report.execution_manifest.theory_id} · {report.execution_manifest.theory_version}</dd></div>
+            <div><dt>Rulebook</dt><dd>{report.execution_manifest.rulebook_id} · {report.execution_manifest.rulebook_version}</dd></div>
+            <div><dt>Release blockers</dt><dd>{report.execution_manifest.release_blocker_issue_ids.join(" · ")}</dd></div>
+          </dl>
+        </section>
+
+        <section className="v8-card v8-span-all" aria-label="Inference limits">
+          <h2>{labels.limits}</h2>
+          <ul>{report.inference_limits.map((item) => <li key={item}>{item}</li>)}</ul>
+        </section>
+      </div>
+    </section>
   );
 }
 
@@ -2076,12 +2370,16 @@ function ImportDialog({
   uiLanguage,
   onClose,
   onAnalysis,
+  onQuickDesign,
 }: {
   apiState: "checking" | "online" | "offline";
   uiLanguage: "it" | "en";
   onClose: () => void;
   onAnalysis: (result: AnalysisResponse) => void;
+  onQuickDesign: (result: QuickDesignV8Response) => void;
 }) {
+  const [mode, setMode] = useState<"v8" | "v7">("v8");
+  const [quickDesignJson, setQuickDesignJson] = useState("");
   const [source, setSource] = useState("");
   const [out, setOut] = useState("./ntruth-out");
   const [domain, setDomain] = useState("quantitative_microscopy");
@@ -2092,16 +2390,25 @@ function ImportDialog({
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (apiState !== "online") return;
+    if (apiState !== "online" || mode !== "v7") return;
     preflight(domain).then(setDomainNotice).catch(() => undefined);
-  }, [apiState, domain]);
+  }, [apiState, domain, mode]);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setError(undefined);
     setBusy(true);
     try {
-      const result = await analyze({
+      if (mode === "v8") {
+        const parsed = JSON.parse(quickDesignJson) as unknown;
+        if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+          throw new Error("QuickDesignV8Submission deve essere un oggetto JSON.");
+        }
+        const result = await quickDesignV8(parsed as QuickDesignV8Submission);
+        onQuickDesign(result);
+        return;
+      }
+      const result = await analyzeV7({
         source: source.trim(),
         out: out.trim(),
         language,
@@ -2138,47 +2445,96 @@ function ImportDialog({
     <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <section className="dialog" role="dialog" aria-modal="true" aria-labelledby="import-title">
         <div className="dialog-header">
-          <div><span className="eyebrow">{uiLanguage === "it" ? "Nessun upload · elaborazione locale" : "No upload · local processing"}</span><h2 id="import-title">{uiLanguage === "it" ? "Importa fonti" : "Import sources"}</h2></div>
+          <div><span className="eyebrow">{uiLanguage === "it" ? "Nessun upload · elaborazione locale" : "No upload · local processing"}</span><h2 id="import-title">{uiLanguage === "it" ? "Compila o importa" : "Compile or import"}</h2></div>
           <button aria-label={uiLanguage === "it" ? "Chiudi" : "Close"} onClick={onClose}><X size={20} /></button>
         </div>
         {apiState !== "online" ? (
           <div className="offline-message"><Database size={22} /><div><strong>{uiLanguage === "it" ? "API locale non raggiungibile" : "Local API is unreachable"}</strong><p>{uiLanguage === "it" ? <>Avvia <code>ntruth-api</code>; nel frattempo resta disponibile la demo sintetica.</> : <>Start <code>ntruth-api</code>; the synthetic demo remains available.</>}</p></div></div>
         ) : (
           <form onSubmit={submit} className="import-form">
-            <label className="field-label">{uiLanguage === "it" ? "File o cartella sorgente" : "Source file or folder"}
-              <input autoFocus required value={source} onChange={(event) => setSource(event.target.value)} placeholder="/percorso/locale/metodi-e-sample-sheet" />
-              <small>{uiLanguage === "it" ? "Il percorso resta sul computer e viene letto soltanto dall’API in loopback." : "The path stays on this computer and is read only by the loopback API."}</small>
-            </label>
-            <label className="field-label">{uiLanguage === "it" ? "Cartella output" : "Output folder"}
-              <input required value={out} onChange={(event) => setOut(event.target.value)} />
-            </label>
-            <div className="field-grid">
-              <label className="field-label">{uiLanguage === "it" ? "Dominio" : "Domain"}
-                <select value={domain} onChange={(event) => { setDomain(event.target.value); setAcknowledged(false); }}>
-                  <option value="quantitative_microscopy">{uiLanguage === "it" ? "Microscopia quantitativa" : "Quantitative microscopy"}</option>
-                  <option value="cell_culture">{uiLanguage === "it" ? "Colture cellulari" : "Cell culture"}</option>
-                  <option value="animal_experiment">{uiLanguage === "it" ? "Esperimenti animali" : "Animal experiments"}</option>
-                  <option value="microbiome">{uiLanguage === "it" ? "Microbioma (fuori scope)" : "Microbiome (out of scope)"}</option>
-                </select>
+            <fieldset className="workflow-selector">
+              <legend>{uiLanguage === "it" ? "Contratto di elaborazione" : "Processing contract"}</legend>
+              <label>
+                <input
+                  type="radio"
+                  name="workflow-contract"
+                  checked={mode === "v8"}
+                  onChange={() => { setMode("v8"); setError(undefined); }}
+                />
+                {uiLanguage === "it" ? "Quick Design v8 canonico" : "Canonical Quick Design v8"}
               </label>
-              <label className="field-label">{uiLanguage === "it" ? "Lingua" : "Language"}
-                <select value={language} onChange={(event) => setLanguage(event.target.value as "it" | "en")}>
-                  <option value="it">Italiano</option>
-                  <option value="en">English</option>
-                </select>
+              <label>
+                <input
+                  type="radio"
+                  name="workflow-contract"
+                  checked={mode === "v7"}
+                  onChange={() => { setMode("v7"); setError(undefined); }}
+                />
+                {uiLanguage === "it" ? "Flusso storico v7 deprecato" : "Deprecated historical v7 flow"}
               </label>
-            </div>
-            {domainNotice?.warning && (
-              <div className="preflight-warning"><AlertTriangle size={19} /><div><strong>{domainNotice.validation_status === "out_of_scope" ? (uiLanguage === "it" ? "Fuori dal perimetro validato" : "Outside the validated scope") : (uiLanguage === "it" ? "Validazione esterna non completata" : "External validation is incomplete")}</strong><p>{domainNotice.warning}</p></div></div>
-            )}
-            {domainNotice?.requires_acknowledgement && (
-              <label className="acknowledge"><input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} /> {uiLanguage === "it" ? "Comprendo il limite e autorizzo l’analisi locale senza interpretarla come validazione scientifica." : "I understand the limitation and authorize local analysis without treating it as scientific validation."}</label>
+            </fieldset>
+            {mode === "v8" ? (
+              <>
+                <div className="canonical-contract-note">
+                  <strong>PRD v8 · /v8/quick-design</strong>
+                  <p>{uiLanguage === "it" ? "Invia un QuickDesignV8Submission strutturato. Non esiste fallback automatico al percorso storico." : "Submit a structured QuickDesignV8Submission. There is no automatic fallback to the historical path."}</p>
+                </div>
+                <label className="field-label">
+                  QuickDesignV8Submission JSON
+                  <textarea
+                    autoFocus
+                    required
+                    rows={12}
+                    aria-label="QuickDesignV8Submission JSON"
+                    value={quickDesignJson}
+                    onChange={(event) => setQuickDesignJson(event.target.value)}
+                    placeholder='{ "schema_version": "8.0.0", "pipeline_request": { ... } }'
+                  />
+                  <small>{uiLanguage === "it" ? "Il backend valida integralmente schema, teoria, predicates e coverage." : "The backend validates schema, theory, predicates and coverage in full."}</small>
+                </label>
+              </>
+            ) : (
+              <>
+                <div className="legacy-contract-warning" role="note">
+                  <strong>{uiLanguage === "it" ? "Compatibilità storica v7 · deprecata" : "Historical v7 compatibility · deprecated"}</strong>
+                  <p>{uiLanguage === "it" ? "Questo percorso usa esclusivamente /v7/analyze e viene adattato in una presentazione neutra." : "This path uses only /v7/analyze and is adapted to a neutral presentation."}</p>
+                </div>
+                <label className="field-label">{uiLanguage === "it" ? "File o cartella sorgente" : "Source file or folder"}
+                  <input aria-label={uiLanguage === "it" ? "File o cartella sorgente" : "Source file or folder"} required value={source} onChange={(event) => setSource(event.target.value)} placeholder="/percorso/locale/metodi-e-sample-sheet" />
+                  <small>{uiLanguage === "it" ? "Il percorso resta sul computer e viene letto soltanto dall’API in loopback." : "The path stays on this computer and is read only by the loopback API."}</small>
+                </label>
+                <label className="field-label">{uiLanguage === "it" ? "Cartella output" : "Output folder"}
+                  <input required value={out} onChange={(event) => setOut(event.target.value)} />
+                </label>
+                <div className="field-grid">
+                  <label className="field-label">{uiLanguage === "it" ? "Dominio" : "Domain"}
+                    <select value={domain} onChange={(event) => { setDomain(event.target.value); setAcknowledged(false); }}>
+                      <option value="quantitative_microscopy">{uiLanguage === "it" ? "Microscopia quantitativa" : "Quantitative microscopy"}</option>
+                      <option value="cell_culture">{uiLanguage === "it" ? "Colture cellulari" : "Cell culture"}</option>
+                      <option value="animal_experiment">{uiLanguage === "it" ? "Esperimenti animali" : "Animal experiments"}</option>
+                      <option value="microbiome">{uiLanguage === "it" ? "Microbioma (fuori scope)" : "Microbiome (out of scope)"}</option>
+                    </select>
+                  </label>
+                  <label className="field-label">{uiLanguage === "it" ? "Lingua" : "Language"}
+                    <select value={language} onChange={(event) => setLanguage(event.target.value as "it" | "en")}>
+                      <option value="it">Italiano</option>
+                      <option value="en">English</option>
+                    </select>
+                  </label>
+                </div>
+                {domainNotice?.warning && (
+                  <div className="preflight-warning"><AlertTriangle size={19} /><div><strong>{domainNotice.validation_status === "out_of_scope" ? (uiLanguage === "it" ? "Fuori dal perimetro validato" : "Outside the validated scope") : (uiLanguage === "it" ? "Validazione esterna non completata" : "External validation is incomplete")}</strong><p>{domainNotice.warning}</p></div></div>
+                )}
+                {domainNotice?.requires_acknowledgement && (
+                  <label className="acknowledge"><input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} /> {uiLanguage === "it" ? "Comprendo il limite e autorizzo l’analisi locale senza interpretarla come validazione scientifica." : "I understand the limitation and authorize local analysis without treating it as scientific validation."}</label>
+                )}
+              </>
             )}
             {error && <p className="form-error" role="alert">{error}</p>}
             <div className="dialog-actions">
               <button type="button" className="button secondary" onClick={onClose}>{uiLanguage === "it" ? "Annulla" : "Cancel"}</button>
-              <button className="button primary" disabled={busy || !source.trim() || Boolean(domainNotice?.requires_acknowledgement && !acknowledged)}>
-                {busy ? <LoaderCircle className="spin" size={18} /> : <Beaker size={18} />} {uiLanguage === "it" ? "Avvia analisi" : "Start analysis"}
+              <button className="button primary" disabled={busy || (mode === "v8" ? !quickDesignJson.trim() : !source.trim() || Boolean(domainNotice?.requires_acknowledgement && !acknowledged))}>
+                {busy ? <LoaderCircle className="spin" size={18} /> : <Beaker size={18} />} {mode === "v8" ? (uiLanguage === "it" ? "Compila Quick Design v8" : "Compile Quick Design v8") : (uiLanguage === "it" ? "Avvia analisi v7 deprecata" : "Start deprecated v7 analysis")}
               </button>
             </div>
           </form>

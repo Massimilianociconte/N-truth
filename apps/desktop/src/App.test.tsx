@@ -189,7 +189,8 @@ describe("N-Truth workspace", () => {
         ? { status: "ok", version: "test" }
         : url.includes("/v1/preflight")
           ? domainTransparency
-          : {
+          : url === "/v7/analyze"
+            ? {
               report: { ...DEMO_REPORT, domain_transparency: domainTransparency },
               ingest_summary: "Analisi fixture completata.",
               artifacts: { ro_crate: "/tmp/ro-crate-metadata.json" },
@@ -218,7 +219,9 @@ describe("N-Truth workspace", () => {
                 reasons: ["privacy_findings_require_policy"],
                 requires_explicit_distribution_check: true,
               },
-            };
+              contract: { code: "DEPRECATED_V7_ADAPTER", version: "v7" },
+            }
+            : (() => { throw new Error(`unexpected request: ${url}`); })();
       return new Response(JSON.stringify(body), {
         status: 200,
         headers: { "Content-Type": "application/json" },
@@ -228,11 +231,14 @@ describe("N-Truth workspace", () => {
     render(<App />);
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     fireEvent.click(screen.getByRole("button", { name: "Importa fonti" }));
-    await screen.findByRole("button", { name: "Avvia analisi" });
+    fireEvent.click(
+      await screen.findByRole("radio", { name: "Flusso storico v7 deprecato" }),
+    );
+    await screen.findByRole("button", { name: "Avvia analisi v7 deprecata" });
     fireEvent.change(screen.getByPlaceholderText("/percorso/locale/metodi-e-sample-sheet"), {
       target: { value: "/tmp/methods.md" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Avvia analisi" }));
+    fireEvent.click(screen.getByRole("button", { name: "Avvia analisi v7 deprecata" }));
 
     expect(await screen.findByText("Revisione privacy richiesta")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Salva report" })).toBeDisabled();

@@ -287,6 +287,22 @@ export type DeterminabilityState =
   | "INVALID_GRAPH"
   | "OUT_OF_SCOPE";
 
+export type ScientificKnowledgeState =
+  | "PRESENT"
+  | "ABSENT_EXPLICIT"
+  | "NOT_REPORTED"
+  | "UNKNOWN"
+  | "NOT_APPLICABLE"
+  | "CONFLICTING";
+
+export interface KnowledgeValue<T = unknown> {
+  knowledge_state: ScientificKnowledgeState;
+  value?: T | null;
+  rationale?: string | null;
+  evidence_ids?: string[];
+  query_scope_id?: string | null;
+}
+
 export interface BlockReviewOutput {
   block_id: string;
   path_status: "review_required" | "conditional" | "incomplete";
@@ -336,7 +352,7 @@ export interface BlockReviewOutput {
     rationale: string;
   };
   design_adequacy: {
-    knowledge_state: "PRESENT" | "UNKNOWN" | "NOT_APPLICABLE" | "CONFLICTING";
+    knowledge_state: ScientificKnowledgeState;
     finding: string;
     rationale: string;
   };
@@ -399,6 +415,181 @@ export interface AnalysisResponse {
   output_dir?: string;
   privacy_audit: PrivacyAudit;
   share_readiness: ShareReadiness;
+}
+
+export interface QuickDesignV8Submission {
+  pipeline_request: Record<string, unknown>;
+  planned_sources: unknown[];
+  planned_event_registry?: Record<string, unknown>;
+  planned_unit_counts?: unknown[];
+  sample_sheet_csv?: string;
+  methods_draft?: string;
+  id_convention?: string;
+  user_confirmation_scopes?: string[];
+  ai_candidates?: KnowledgeValue<unknown[]>;
+  human_confirmations?: KnowledgeValue<unknown[]>;
+  conflicts?: KnowledgeValue<Array<Record<string, unknown>>>;
+  sensitivities?: KnowledgeValue<unknown[]>;
+  questions?: unknown[];
+  statistical_handoff?: StatisticalHandoffV8;
+  inference_limits?: string[];
+  [field: string]: unknown;
+}
+
+export interface DerivedClaimV8 {
+  claim_id: string;
+  claim_type: string;
+  inferential_query_id: string;
+  value: KnowledgeValue;
+  determinability_state: DeterminabilityState;
+  support_grade: {
+    token: string;
+    vocabulary_id: string;
+    [field: string]: unknown;
+  };
+  proof_trace: Array<{
+    theory_clause_id: string;
+    rule_id: string;
+    [field: string]: unknown;
+  }>;
+  required_predicates: string[];
+  irrelevant_predicates: Array<{ id: string; rationale: string }>;
+  assumptions: string[];
+  sensitivity_records: string[];
+  [field: string]: unknown;
+}
+
+export interface DerivedClaimSetV8 {
+  claim_set_id: string;
+  inferential_query_id: string;
+  claims: DerivedClaimV8[];
+}
+
+export interface DesignAdequacyEvaluationV8 {
+  evaluation_id: string;
+  inferential_query_id: string;
+  axis: string;
+  outcome: KnowledgeValue;
+  rationale: string;
+}
+
+export interface StatisticalHandoffV8 {
+  strategy_module_status: "HANDOFF_ONLY";
+  items: Array<{
+    category: "STRUCTURAL_CONSTRAINT" | "UNRESOLVED_QUESTION";
+    origin: string;
+    authority: string;
+    inferential_query_id: string;
+    evidence_refs: string[];
+    predicate_ids: string[];
+    question_ids: string[];
+    [field: string]: unknown;
+  }>;
+}
+
+export interface ReportBundleV8 {
+  report_id: string;
+  content_checksum: string;
+  epistemic_boundary: string;
+  design_record_context: {
+    mode: string;
+    planned_design_record: KnowledgeValue<{ plan_id: string; content_checksum: string }>;
+    executed_design_record: KnowledgeValue<Record<string, unknown>>;
+    reconciliation_record: KnowledgeValue<Record<string, unknown>>;
+    [field: string]: unknown;
+  };
+  source_records: Array<{
+    source_id: string;
+    source_context: string;
+    source_class: { token: string; registry_id: string };
+    source_version: string;
+    [field: string]: unknown;
+  }>;
+  evidence_records: Array<{
+    evidence_id: string;
+    source_id: string;
+    evidence_type: string;
+    locator: string;
+    [field: string]: unknown;
+  }>;
+  query_sections: Array<{
+    inferential_query: { id: string; profile_id: string; [field: string]: unknown };
+    claim_set: DerivedClaimSetV8;
+    [field: string]: unknown;
+  }>;
+  claim_sets: DerivedClaimSetV8[];
+  report_resolution: { resolution: KnowledgeValue; [field: string]: unknown };
+  design_adequacy_evaluations: DesignAdequacyEvaluationV8[];
+  count_registry: {
+    registry_version: string;
+    records: Array<{
+      count_id: string;
+      kind: string;
+      quantifier: string;
+      origin: string;
+      value: KnowledgeValue<number>;
+      scope: { query_id: string; [field: string]: unknown };
+      rule_trace: string[];
+      [field: string]: unknown;
+    }>;
+  };
+  scenario_coverages: Array<{
+    status: string;
+    profile_id: string;
+    emitting_clause_ids: string[];
+    omitted_dimensions: KnowledgeValue<string[]>;
+    caveat: KnowledgeValue<string>;
+    [field: string]: unknown;
+  }>;
+  profile_coverage: {
+    profile_id: string;
+    statement_id: string;
+    predicate_closure_argument_id: string;
+    covered_predicate_ids: string[];
+    known_gap_ids: string[];
+    contract_review: { issue_id: string; status: string; rationale: string };
+    [field: string]: unknown;
+  };
+  questions: Array<{
+    question_id: string;
+    inferential_query_id: string;
+    text: string;
+    evidence_required: string[];
+    primary: boolean;
+  }>;
+  sensitivities: KnowledgeValue<Array<Record<string, unknown>>>;
+  human_confirmations: KnowledgeValue<Array<Record<string, unknown>>>;
+  conflicts: KnowledgeValue<Array<Record<string, unknown>>>;
+  ai_candidates: Array<KnowledgeValue<Array<Record<string, unknown>>>>;
+  confirmed_graph: {
+    nodes: Array<{ node_id: string; node_type: string }>;
+    relations: Array<Record<string, unknown>>;
+  };
+  execution_manifest: {
+    manifest_id: string;
+    theory_id: string;
+    theory_version: string;
+    theory_checksum: string;
+    rulebook_id: string;
+    rulebook_version: string;
+    rulebook_checksum: string;
+    release_blocker_issue_ids: string[];
+    [field: string]: unknown;
+  };
+  statistical_handoff: StatisticalHandoffV8;
+  strategy_module_status: "HANDOFF_ONLY";
+  inference_limits: string[];
+  [field: string]: unknown;
+}
+
+export interface QuickDesignV8Response {
+  planned_design: { plan_id: string; [field: string]: unknown };
+  report: ReportBundleV8;
+  contract: {
+    code: "PRD_V8";
+    version: string;
+    strategy_module_status: "HANDOFF_ONLY";
+  };
 }
 
 export interface AuditEntry {

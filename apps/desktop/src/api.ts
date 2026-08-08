@@ -4,6 +4,8 @@ import type {
   Correction,
   DomainTransparency,
   PrivacyAudit,
+  QuickDesignV8Response,
+  QuickDesignV8Submission,
   Report,
   ShareReadiness,
 } from "./types";
@@ -66,7 +68,7 @@ export async function preflight(domain: string): Promise<DomainTransparency> {
   });
 }
 
-export interface AnalyzePayload {
+export interface LegacyAnalyzePayload {
   source: string;
   out: string;
   project_dir?: string;
@@ -75,8 +77,142 @@ export interface AnalyzePayload {
   acknowledge_unvalidated_domain: boolean;
 }
 
-export async function analyze(payload: AnalyzePayload): Promise<AnalysisResponse> {
-  return request("/v1/analyze", { method: "POST", body: JSON.stringify(payload) });
+type JsonRecord = Record<string, unknown>;
+
+function isRecord(value: unknown): value is JsonRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isCanonicalQuickDesignResponse(value: unknown): value is QuickDesignV8Response {
+  if (!isRecord(value) || !isRecord(value.contract) || !isRecord(value.report)) return false;
+  const report = value.report;
+  const countRegistry = report.count_registry;
+  return (
+    value.contract.code === "PRD_V8" &&
+    value.contract.version === "8.0.0" &&
+    value.contract.strategy_module_status === "HANDOFF_ONLY" &&
+    typeof report.report_id === "string" &&
+    typeof report.content_checksum === "string" &&
+    report.strategy_module_status === "HANDOFF_ONLY" &&
+    Array.isArray(report.query_sections) &&
+    Array.isArray(report.claim_sets) &&
+    Array.isArray(report.source_records) &&
+    isRecord(countRegistry) &&
+    Array.isArray(countRegistry.records)
+  );
+}
+
+function sanitizeLegacyValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sanitizeLegacyValue);
+  if (!isRecord(value)) return value === "ready_for_review" ? "review_required" : value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([field]) => field !== "candidate_analysis_strategies")
+      .map(([field, item]) => [field, sanitizeLegacyValue(item)]),
+  );
+}
+
+function neutralLegacyReviewOutput(blockId: string, value: unknown): JsonRecord {
+  const sanitized = isRecord(sanitizeLegacyValue(value))
+    ? (sanitizeLegacyValue(value) as JsonRecord)
+    : {};
+  const methods = isRecord(sanitized.methods_statement)
+    ? sanitized.methods_statement
+    : {};
+  return {
+    ...sanitized,
+    block_id: typeof sanitized.block_id === "string" ? sanitized.block_id : blockId,
+    path_status: "review_required",
+    non_certifying: true,
+    methods_statement: {
+      ...methods,
+      status: "review_required",
+      non_certifying: true,
+    },
+    determinability: isRecord(sanitized.determinability)
+      ? sanitized.determinability
+      : {
+          state: "INSUFFICIENT_INFORMATION",
+          rationale:
+            "The v7 adapter does not provide claim-specific PRD v8 determinability.",
+        },
+    design_adequacy: isRecord(sanitized.design_adequacy)
+      ? sanitized.design_adequacy
+      : {
+          knowledge_state: "UNKNOWN",
+          finding: "NOT_ASSESSED",
+          rationale:
+            "The historical output does not authorize a PRD v8 design-adequacy evaluation.",
+        },
+    strategy_module_status: "HANDOFF_ONLY",
+    statistical_handoff: isRecord(sanitized.statistical_handoff)
+      ? sanitized.statistical_handoff
+      : {
+          structural_requirements: [],
+          unresolved_questions: [
+            "Migrate this historical output to a verified PRD v8 query-scoped report.",
+          ],
+        },
+  };
+}
+
+export function adaptV7AnalysisResponse(value: unknown): AnalysisResponse {
+  if (!isRecord(value) || !isRecord(value.report)) {
+    throw new Error("Malformed DEPRECATED_V7_ADAPTER response.");
+  }
+  const sanitizedResponse = sanitizeLegacyValue(value) as JsonRecord;
+  const sanitizedReport = sanitizedResponse.report as JsonRecord;
+  const legacyReport = value.report;
+  const rawOutputs = isRecord(legacyReport.review_outputs)
+    ? legacyReport.review_outputs
+    : isRecord(legacyReport.positive_outputs)
+      ? legacyReport.positive_outputs
+      : {};
+  const reviewOutputs = Object.fromEntries(
+    Object.entries(rawOutputs).map(([blockId, output]) => [
+      blockId,
+      neutralLegacyReviewOutput(blockId, output),
+    ]),
+  );
+  const { positive_outputs: _positiveOutputs, ...reportWithoutPositiveOutputs } =
+    sanitizedReport;
+  return {
+    ...sanitizedResponse,
+    report: {
+      ...reportWithoutPositiveOutputs,
+      review_outputs: reviewOutputs,
+    },
+  } as unknown as AnalysisResponse;
+}
+
+export async function analyzeV7(
+  payload: LegacyAnalyzePayload,
+): Promise<AnalysisResponse> {
+  const raw = await request<unknown>("/v7/analyze", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  if (
+    !isRecord(raw) ||
+    !isRecord(raw.contract) ||
+    raw.contract.code !== "DEPRECATED_V7_ADAPTER"
+  ) {
+    throw new Error("The historical endpoint did not return DEPRECATED_V7_ADAPTER.");
+  }
+  return adaptV7AnalysisResponse(raw);
+}
+
+export async function quickDesignV8(
+  payload: QuickDesignV8Submission,
+): Promise<QuickDesignV8Response> {
+  const result = await request<unknown>("/v8/quick-design", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  if (!isCanonicalQuickDesignResponse(result)) {
+    throw new Error("The canonical endpoint returned a malformed PRD_V8 ReportBundle.");
+  }
+  return result;
 }
 
 export interface CorrectionResponse {
