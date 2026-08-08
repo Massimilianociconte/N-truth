@@ -16,6 +16,8 @@ from typing import Self
 from pydantic import Field, model_validator
 
 from ntruth.schemas.core import FrozenModel
+from ntruth.schemas.kernel import KernelModel, NonBlankStr
+from ntruth.schemas.knowledge import KnowledgeValue
 
 
 class AssignmentLevel(StrEnum):
@@ -160,3 +162,43 @@ class IndependenceProfile(FrozenModel):
     def proxy_forbidden(self) -> None:
         """Promemoria normativo: nessuna dimensione e proxy di un'altra."""
         return None
+
+
+class QueryCausalContext(KernelModel):
+    """Query-scoped v8 causal roles, stored without a scientific resolver.
+
+    Assignment, application, effective exposure, experimental and biological-source
+    units are separate facts even when their reported labels happen to match.
+    """
+
+    inferential_query_id: NonBlankStr
+    assignment_event_id: KnowledgeValue[NonBlankStr]
+    application_event_id: KnowledgeValue[NonBlankStr]
+    exposure_event_id: KnowledgeValue[NonBlankStr]
+    assignment_unit_type: KnowledgeValue[NonBlankStr]
+    application_unit_type: KnowledgeValue[NonBlankStr]
+    effective_exposure_unit_type: KnowledgeValue[NonBlankStr]
+    experimental_unit_type: KnowledgeValue[NonBlankStr]
+    biological_source_unit_type: KnowledgeValue[NonBlankStr]
+    interference_status: KnowledgeValue[InterferenceStatus]
+
+    @model_validator(mode="after")
+    def _query_scopes_match(self) -> Self:
+        for field_name in (
+            "assignment_event_id",
+            "application_event_id",
+            "exposure_event_id",
+            "assignment_unit_type",
+            "application_unit_type",
+            "effective_exposure_unit_type",
+            "experimental_unit_type",
+            "biological_source_unit_type",
+            "interference_status",
+        ):
+            value = getattr(self, field_name)
+            if (
+                value.query_scope_id is not None
+                and value.query_scope_id != self.inferential_query_id
+            ):
+                raise ValueError(f"{field_name}.query_scope_id must match inferential query")
+        return self

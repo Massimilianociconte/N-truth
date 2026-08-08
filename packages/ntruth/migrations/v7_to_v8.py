@@ -9,6 +9,8 @@ from typing import Self
 from pydantic import model_validator
 
 from ntruth.schemas.claims import DeterminabilityState
+from ntruth.schemas.count_registry import CanonicalCountKind, canonical_count_kind
+from ntruth.schemas.events import RelativeTiming, TemporalRelation
 from ntruth.schemas.kernel import KernelModel, NonBlankStr
 from ntruth.schemas.knowledge import (
     KnowledgeState,
@@ -322,6 +324,158 @@ def migrate_support_grade(
     )
 
 
+def migrate_v7_count_kind(
+    raw_kind: str,
+    *,
+    source_contract: str,
+    query_id: str | None = None,
+) -> MigrationResult[CanonicalCountKind]:
+    """Migrate only unambiguous v7 count labels with explicit lineage.
+
+    Appendix P labels that diverge from §7.9 remain review-required under
+    SRR-V8-011.  No many-to-one lifecycle mapping is guessed here.
+    """
+
+    lineage = MigrationLineage(
+        source_contract=source_contract,
+        target_contract="ntruth-canonical-count-registry/8.0.0",
+        field_name="kind",
+    )
+    try:
+        canonical = canonical_count_kind(raw_kind)
+    except ValueError:
+        canonical = None
+    if canonical is not None:
+        return MigrationResult(value=canonical, lineage=(lineage,))
+
+    if raw_kind == "independent_n":
+        if query_id is None or not query_id.strip():
+            return MigrationResult(
+                diagnostics=(
+                    _review_required(
+                        issue_id="SRR-V8-011",
+                        field_name="kind",
+                        message=(
+                            "independent_n can migrate only as the deprecated presentation "
+                            "alias of query-scoped experimental_unit_count"
+                        ),
+                    ),
+                ),
+                lineage=(lineage,),
+            )
+        scoped_lineage = lineage.model_copy(
+            update={"migration_rule_id": "PRD-V8-7.9-independent-n"}
+        )
+        return MigrationResult(
+            value=CanonicalCountKind.EXPERIMENTAL_UNIT_COUNT,
+            lineage=(scoped_lineage,),
+        )
+
+    return MigrationResult(
+        diagnostics=(
+            _review_required(
+                issue_id="SRR-V8-011",
+                field_name="kind",
+                message=(
+                    f"legacy count label {raw_kind!r} is not a §7.9 canonical name; "
+                    "no implicit Appendix P mapping is permitted"
+                ),
+            ),
+        ),
+        lineage=(lineage,),
+    )
+
+
+def migrate_v7_global_timing(
+    raw_timing: str,
+    *,
+    source_contract: str,
+    subject_event_id: str | None = None,
+    reference_event_id: str | None = None,
+    evidence_refs: tuple[str, ...] = (),
+    rationale: str | None = None,
+) -> MigrationResult[RelativeTiming]:
+    """Adapt deprecated global timing only when real event IDs are supplied."""
+
+    lineage = MigrationLineage(
+        source_contract=source_contract,
+        target_contract="ntruth-event-timing/8.0.0",
+        field_name="timing_relative_to_split",
+        migration_rule_id="PRD-V8-7.7-event-referenced-timing",
+    )
+    if (
+        subject_event_id is None
+        or not subject_event_id.strip()
+        or reference_event_id is None
+        or not reference_event_id.strip()
+    ):
+        return MigrationResult(
+            diagnostics=(
+                _review_required(
+                    issue_id="PRD-V8-7.7",
+                    field_name="timing_relative_to_split",
+                    message=(
+                        "deprecated global timing requires caller-supplied subject and "
+                        "reference event IDs; migration never invents an event ID"
+                    ),
+                ),
+            ),
+            lineage=(lineage,),
+        )
+
+    relation_by_legacy_value = {
+        "before": TemporalRelation.BEFORE,
+        "after": TemporalRelation.AFTER,
+        "same_event": TemporalRelation.SAME_EVENT,
+        "unknown": TemporalRelation.UNKNOWN,
+    }
+    relation = relation_by_legacy_value.get(raw_timing)
+    if relation is None:
+        return MigrationResult(
+            diagnostics=(
+                _review_required(
+                    issue_id="PRD-V8-7.7",
+                    field_name="timing_relative_to_split",
+                    message=f"unrecognized legacy timing label: {raw_timing!r}",
+                ),
+            ),
+            lineage=(lineage,),
+        )
+    if relation is TemporalRelation.UNKNOWN and (rationale is None or not rationale.strip()):
+        return MigrationResult(
+            diagnostics=(
+                _review_required(
+                    issue_id="PRD-V8-7.7",
+                    field_name="timing_relative_to_split",
+                    message="UNKNOWN event timing requires an explicit rationale",
+                ),
+            ),
+            lineage=(lineage,),
+        )
+    if relation is not TemporalRelation.UNKNOWN and not evidence_refs:
+        return MigrationResult(
+            diagnostics=(
+                _review_required(
+                    issue_id="PRD-V8-7.7",
+                    field_name="timing_relative_to_split",
+                    message="event-referenced timing requires evidence_refs",
+                ),
+            ),
+            lineage=(lineage,),
+        )
+
+    return MigrationResult(
+        value=RelativeTiming(
+            subject_event_id=subject_event_id,
+            reference_event_id=reference_event_id,
+            relation=relation,
+            evidence_refs=evidence_refs,
+            rationale=rationale,
+        ),
+        lineage=(lineage,),
+    )
+
+
 __all__ = [
     "MigrationDiagnostic",
     "MigrationDiagnosticCode",
@@ -329,5 +483,7 @@ __all__ = [
     "MigrationResult",
     "migrate_support_grade",
     "migrate_v7_claim_field_names",
+    "migrate_v7_count_kind",
+    "migrate_v7_global_timing",
     "migrate_v7_scientific_field",
 ]
