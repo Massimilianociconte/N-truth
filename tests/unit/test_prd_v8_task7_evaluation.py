@@ -263,6 +263,16 @@ def test_report_evaluation_retains_every_denominator_and_false_certainty_residua
     assert "SRR-V8-CONFORMANCE-REFERENCE-NONSCIENTIFIC" in {
         item.issue_id for item in result.blockers
     }
+    with pytest.raises(ValidationError, match="not a scientific release authority"):
+        type(result).model_validate(
+            result.model_copy(update={"scientific_use_permitted": True}).model_dump(mode="python")
+        )
+    with pytest.raises(ValidationError, match="evaluation checksum mismatch"):
+        type(result).model_validate(
+            result.model_copy(
+                update={"observed_snapshot_checksum": _digest("mutated-observation")}
+            ).model_dump(mode="python")
+        )
 
 
 def test_missing_query_is_counted_and_never_borrows_another_query_claim() -> None:
@@ -545,6 +555,10 @@ def test_cluster_precision_is_invariant_to_duplicate_rows_inside_cluster() -> No
     assert original == duplicated
     assert original.effective_cluster_count == 3
     assert original.interval.knowledge_state is KnowledgeState.PRESENT
+    with pytest.raises(ValidationError, match="precision result checksum mismatch"):
+        type(original).model_validate(
+            original.model_copy(update={"content_checksum": "0" * 64}).model_dump(mode="python")
+        )
 
     with pytest.raises(ValueError, match="conflicting duplicate cluster estimate"):
         cluster_bootstrap_precision(

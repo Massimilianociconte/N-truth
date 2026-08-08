@@ -227,6 +227,19 @@ class IndependentReportReference(KernelModel):
             KnowledgeState.UNKNOWN,
         }:
             raise ValueError("independent reference must address reference-stability evidence")
+        elif self.partial_claim_equivalences.knowledge_state not in {
+            KnowledgeState.PRESENT,
+            KnowledgeState.ABSENT_EXPLICIT,
+            KnowledgeState.UNKNOWN,
+        }:
+            raise ValueError("independent reference must address partial-claim equivalence")
+        if (
+            self.reference_stability_report_checksum.knowledge_state is KnowledgeState.PRESENT
+            and not set(self.reference_stability_report_checksum.evidence_ids).issubset(
+                set(self.evidence_ids)
+            )
+        ):
+            raise ValueError("reference-stability pin has dangling evidence IDs")
         if self.partial_claim_equivalences.knowledge_state is KnowledgeState.PRESENT:
             known_queries = {
                 query.query_id: {claim.claim_id for claim in query.claims}
@@ -323,6 +336,8 @@ class ResidualEvent(KernelModel):
 
 class EndToEndEvaluationReport(KernelModel):
     evaluation_id: NonBlankStr
+    content_checksum: Sha256
+    report_scope_id: NonBlankStr
     observed_snapshot_checksum: Sha256
     reference_checksum: KnowledgeValue[Sha256]
     status: EvaluationStatus
@@ -335,17 +350,44 @@ class EndToEndEvaluationReport(KernelModel):
 
     @model_validator(mode="after")
     def _blocked_states_are_not_numeric_results(self) -> Self:
+        for label, value in (
+            ("reference_checksum", self.reference_checksum),
+            ("denominators", self.denominators),
+            ("global_report_resolution_match", self.global_report_resolution_match),
+            ("query_results", self.query_results),
+            ("residuals", self.residuals),
+        ):
+            if value.query_scope_id != self.report_scope_id:
+                raise ValueError(f"evaluation {label} has the wrong report scope")
+        blocker_ids = {blocker.issue_id for blocker in self.blockers}
+        if self.scientific_use_permitted:
+            raise ValueError("deterministic evaluation is not a scientific release authority")
         if self.status is EvaluationStatus.BLOCKED:
-            if self.scientific_use_permitted:
-                raise ValueError("blocked evaluation cannot permit scientific use")
             if self.denominators.knowledge_state is KnowledgeState.PRESENT:
                 raise ValueError("blocked evaluation cannot fabricate denominators")
             if self.query_results.knowledge_state is KnowledgeState.PRESENT:
                 raise ValueError("blocked evaluation cannot fabricate query results")
             if self.global_report_resolution_match.knowledge_state is KnowledgeState.PRESENT:
                 raise ValueError("blocked evaluation cannot fabricate report-resolution match")
-        if self.status is EvaluationStatus.CONFORMANCE_ONLY and self.scientific_use_permitted:
-            raise ValueError("conformance-only evaluation is never scientific evidence")
+            if EVALUATION_REFERENCE_REVIEW_ISSUE_ID not in blocker_ids:
+                raise ValueError("blocked evaluation requires the missing-reference blocker")
+        if (
+            self.status is EvaluationStatus.CONFORMANCE_ONLY
+            and CONFORMANCE_REFERENCE_REVIEW_ISSUE_ID not in blocker_ids
+        ):
+            raise ValueError("conformance evaluation requires the nonscientific fixture blocker")
+        if (
+            self.status is EvaluationStatus.EVALUATED_WITH_INDEPENDENT_REFERENCE
+            and EVALUATION_SCIENTIFIC_HOLD_ISSUE_ID not in blocker_ids
+        ):
+            raise ValueError("independent evaluation requires the scientific HOLD blocker")
+        expected = content_checksum(
+            self.model_dump(mode="json", exclude={"evaluation_id", "content_checksum"})
+        )
+        if self.content_checksum != expected:
+            raise ValueError("end-to-end evaluation checksum mismatch")
+        if self.evaluation_id != f"E2E-{expected[:20]}":
+            raise ValueError("end-to-end evaluation ID mismatch")
         return self
 
 

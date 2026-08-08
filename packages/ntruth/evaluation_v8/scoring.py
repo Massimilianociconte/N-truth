@@ -365,6 +365,22 @@ def _false_certainty_residuals(
     return tuple(residuals)
 
 
+def _build_end_to_end_report(fields: dict[str, Any]) -> EndToEndEvaluationReport:
+    draft = EndToEndEvaluationReport.model_construct(
+        evaluation_id="E2E-PENDING",
+        content_checksum="0" * 64,
+        **fields,
+    )
+    checksum = content_checksum(
+        draft.model_dump(mode="json", exclude={"evaluation_id", "content_checksum"})
+    )
+    return EndToEndEvaluationReport(
+        evaluation_id=f"E2E-{checksum[:20]}",
+        content_checksum=checksum,
+        **fields,
+    )
+
+
 def _score_query(
     observed: QueryEvaluationSnapshot | None,
     reference: QueryEvaluationSnapshot,
@@ -474,28 +490,31 @@ def evaluate_end_to_end(
 
     if reference_value.query_scope_id != observed.report_id:
         raise ValueError("reference KnowledgeValue belongs to another report scope")
-    evaluation_id = f"E2E-{content_checksum((observed.content_checksum, reference_value.model_dump(mode='json')))[:20]}"
     if (
         reference_value.knowledge_state is not KnowledgeState.PRESENT
         or reference_value.value is None
     ):
         rationale = "End-to-end evaluation requires an independently reviewed report reference."
-        return EndToEndEvaluationReport(
-            evaluation_id=evaluation_id,
-            observed_snapshot_checksum=observed.content_checksum,
-            reference_checksum=_unknown(scope=observed.report_id, rationale=rationale),
-            status=EvaluationStatus.BLOCKED,
-            scientific_use_permitted=False,
-            denominators=_unknown(scope=observed.report_id, rationale=rationale),
-            global_report_resolution_match=_unknown(scope=observed.report_id, rationale=rationale),
-            query_results=_unknown(scope=observed.report_id, rationale=rationale),
-            residuals=_unknown(scope=observed.report_id, rationale=rationale),
-            blockers=(
-                ScientificReviewRequirement(
-                    issue_id=EVALUATION_REFERENCE_REVIEW_ISSUE_ID,
-                    rationale=rationale,
+        return _build_end_to_end_report(
+            {
+                "report_scope_id": observed.report_id,
+                "observed_snapshot_checksum": observed.content_checksum,
+                "reference_checksum": _unknown(scope=observed.report_id, rationale=rationale),
+                "status": EvaluationStatus.BLOCKED,
+                "scientific_use_permitted": False,
+                "denominators": _unknown(scope=observed.report_id, rationale=rationale),
+                "global_report_resolution_match": _unknown(
+                    scope=observed.report_id, rationale=rationale
                 ),
-            ),
+                "query_results": _unknown(scope=observed.report_id, rationale=rationale),
+                "residuals": _unknown(scope=observed.report_id, rationale=rationale),
+                "blockers": (
+                    ScientificReviewRequirement(
+                        issue_id=EVALUATION_REFERENCE_REVIEW_ISSUE_ID,
+                        rationale=rationale,
+                    ),
+                ),
+            }
         )
 
     reference = reference_value.value
@@ -590,40 +609,42 @@ def evaluate_end_to_end(
             evidence_ids=reference.evidence_ids,
             query_scope_id=observed.report_id,
         )
-    return EndToEndEvaluationReport(
-        evaluation_id=evaluation_id,
-        observed_snapshot_checksum=observed.content_checksum,
-        reference_checksum=KnowledgeValue[str](
-            knowledge_state=KnowledgeState.PRESENT,
-            value=reference.content_checksum,
-            evidence_ids=reference_value.evidence_ids,
-            query_scope_id=observed.report_id,
-        ),
-        status=status,
-        scientific_use_permitted=scientific_use_permitted,
-        denominators=KnowledgeValue[EvaluationDenominators](
-            knowledge_state=KnowledgeState.PRESENT,
-            value=denominators,
-            evidence_ids=reference.evidence_ids,
-            query_scope_id=observed.report_id,
-        ),
-        global_report_resolution_match=KnowledgeValue[bool](
-            knowledge_state=KnowledgeState.PRESENT,
-            value=(
-                observed.global_report_resolution_checksum
-                == reference.snapshot.global_report_resolution_checksum
+    return _build_end_to_end_report(
+        {
+            "report_scope_id": observed.report_id,
+            "observed_snapshot_checksum": observed.content_checksum,
+            "reference_checksum": KnowledgeValue[str](
+                knowledge_state=KnowledgeState.PRESENT,
+                value=reference.content_checksum,
+                evidence_ids=reference_value.evidence_ids,
+                query_scope_id=observed.report_id,
             ),
-            evidence_ids=reference.evidence_ids,
-            query_scope_id=observed.report_id,
-        ),
-        query_results=KnowledgeValue[tuple[QueryEvaluationResult, ...]](
-            knowledge_state=KnowledgeState.PRESENT,
-            value=tuple(query_results),
-            evidence_ids=reference.evidence_ids,
-            query_scope_id=observed.report_id,
-        ),
-        residuals=residual_value,
-        blockers=tuple(blockers),
+            "status": status,
+            "scientific_use_permitted": scientific_use_permitted,
+            "denominators": KnowledgeValue[EvaluationDenominators](
+                knowledge_state=KnowledgeState.PRESENT,
+                value=denominators,
+                evidence_ids=reference.evidence_ids,
+                query_scope_id=observed.report_id,
+            ),
+            "global_report_resolution_match": KnowledgeValue[bool](
+                knowledge_state=KnowledgeState.PRESENT,
+                value=(
+                    observed.global_report_resolution_checksum
+                    == reference.snapshot.global_report_resolution_checksum
+                ),
+                evidence_ids=reference.evidence_ids,
+                query_scope_id=observed.report_id,
+            ),
+            "query_results": KnowledgeValue[tuple[QueryEvaluationResult, ...]](
+                knowledge_state=KnowledgeState.PRESENT,
+                value=tuple(query_results),
+                evidence_ids=reference.evidence_ids,
+                query_scope_id=observed.report_id,
+            ),
+            "residuals": residual_value,
+            "blockers": tuple(blockers),
+        }
     )
 
 

@@ -9,6 +9,7 @@ from typing import Annotated, Self
 
 from pydantic import Field, model_validator
 
+from ntruth.schemas.core import content_checksum
 from ntruth.schemas.kernel import KernelModel, NonBlankStr
 from ntruth.schemas.knowledge import KnowledgeState, KnowledgeValue
 from ntruth.schemas.support import ScientificReviewRequirement
@@ -95,6 +96,9 @@ class PrecisionInterval(KernelModel):
 
 
 class ClusterPrecisionResult(KernelModel):
+    result_id: NonBlankStr
+    content_checksum: Sha256
+    generalization_contract: MetricGeneralizationContract
     metric_id: NonBlankStr
     elementary_unit: GeneralizationUnitKind
     resampling_cluster: GeneralizationUnitKind
@@ -106,12 +110,65 @@ class ClusterPrecisionResult(KernelModel):
 
     @model_validator(mode="after")
     def _blocked_xor_interval(self) -> Self:
+        if (
+            self.metric_id != self.generalization_contract.metric_id
+            or self.elementary_unit is not self.generalization_contract.elementary_unit
+            or self.resampling_cluster is not self.generalization_contract.resampling_cluster
+            or self.declared_cluster_count != len(self.generalization_contract.units)
+            or self.small_cluster_caveat != self.generalization_contract.small_cluster_caveat
+        ):
+            raise ValueError("cluster precision result differs from its pinned metric contract")
         if self.interval.knowledge_state is KnowledgeState.PRESENT:
             if self.blocker is not None:
                 raise ValueError("computed precision cannot carry a missing-cluster blocker")
         elif self.blocker is None or self.blocker.issue_id != CLUSTER_PRECISION_REVIEW_ISSUE_ID:
             raise ValueError("unavailable cluster precision requires its explicit blocker")
+        expected = content_checksum(
+            self.model_dump(mode="json", exclude={"result_id", "content_checksum"})
+        )
+        if self.content_checksum != expected:
+            raise ValueError("cluster precision result checksum mismatch")
+        if self.result_id != f"CLUSTER-PRECISION-{expected[:20]}":
+            raise ValueError("cluster precision result ID mismatch")
         return self
+
+
+def _build_cluster_precision_result(
+    contract: MetricGeneralizationContract,
+    *,
+    effective_cluster_count: int,
+    interval: KnowledgeValue[PrecisionInterval],
+    blocker: ScientificReviewRequirement | None = None,
+) -> ClusterPrecisionResult:
+    draft = ClusterPrecisionResult.model_construct(
+        result_id="CLUSTER-PRECISION-PENDING",
+        content_checksum="0" * 64,
+        generalization_contract=contract,
+        metric_id=contract.metric_id,
+        elementary_unit=contract.elementary_unit,
+        resampling_cluster=contract.resampling_cluster,
+        declared_cluster_count=len(contract.units),
+        effective_cluster_count=effective_cluster_count,
+        interval=interval,
+        small_cluster_caveat=contract.small_cluster_caveat,
+        blocker=blocker,
+    )
+    checksum = content_checksum(
+        draft.model_dump(mode="json", exclude={"result_id", "content_checksum"})
+    )
+    return ClusterPrecisionResult(
+        result_id=f"CLUSTER-PRECISION-{checksum[:20]}",
+        content_checksum=checksum,
+        generalization_contract=contract,
+        metric_id=contract.metric_id,
+        elementary_unit=contract.elementary_unit,
+        resampling_cluster=contract.resampling_cluster,
+        declared_cluster_count=len(contract.units),
+        effective_cluster_count=effective_cluster_count,
+        interval=interval,
+        small_cluster_caveat=contract.small_cluster_caveat,
+        blocker=blocker,
+    )
 
 
 def _draw_index(*, seed: str, iteration: int, draw: int, cluster_count: int) -> int:
@@ -175,18 +232,14 @@ def cluster_bootstrap_precision(
             "A single resampling cluster has no empirical between-cluster distribution; "
             "precision and generalization remain unestimated."
         )
-        return ClusterPrecisionResult(
-            metric_id=contract.metric_id,
-            elementary_unit=contract.elementary_unit,
-            resampling_cluster=contract.resampling_cluster,
-            declared_cluster_count=len(contract.units),
+        return _build_cluster_precision_result(
+            contract,
             effective_cluster_count=cluster_count,
             interval=KnowledgeValue[PrecisionInterval](
                 knowledge_state=KnowledgeState.UNKNOWN,
                 rationale=rationale,
                 query_scope_id=contract.metric_id,
             ),
-            small_cluster_caveat=contract.small_cluster_caveat,
             blocker=ScientificReviewRequirement(
                 issue_id=CLUSTER_PRECISION_REVIEW_ISSUE_ID,
                 rationale=rationale,
@@ -227,11 +280,8 @@ def cluster_bootstrap_precision(
         lower=lower,
         upper=upper,
     )
-    return ClusterPrecisionResult(
-        metric_id=contract.metric_id,
-        elementary_unit=contract.elementary_unit,
-        resampling_cluster=contract.resampling_cluster,
-        declared_cluster_count=len(contract.units),
+    return _build_cluster_precision_result(
+        contract,
         effective_cluster_count=cluster_count,
         interval=KnowledgeValue[PrecisionInterval](
             knowledge_state=KnowledgeState.PRESENT,
@@ -239,7 +289,6 @@ def cluster_bootstrap_precision(
             evidence_ids=evidence_ids,
             query_scope_id=contract.metric_id,
         ),
-        small_cluster_caveat=contract.small_cluster_caveat,
     )
 
 
