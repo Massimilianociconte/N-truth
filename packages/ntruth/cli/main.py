@@ -408,7 +408,11 @@ def quick_design_run_v8(
     import json
 
     from ntruth.derivation_theory.runtime import load_runtime_bundle
-    from ntruth.quick_design.v8 import QuickDesignV8Submission, run_quick_design_v8
+    from ntruth.quick_design.v8 import (
+        QuickDesignV8Submission,
+        run_quick_design_v8,
+        validate_raw_wizard_submission,
+    )
     from ntruth.reporting.v8 import (
         write_report_bundle_html,
         write_report_bundle_json,
@@ -419,6 +423,7 @@ def quick_design_run_v8(
         parsed = QuickDesignV8Submission.model_validate_json(
             submission.expanduser().read_text(encoding="utf-8")
         )
+        validate_raw_wizard_submission(parsed)
         result = run_quick_design_v8(
             parsed,
             conformance_bundle=load_runtime_bundle(),

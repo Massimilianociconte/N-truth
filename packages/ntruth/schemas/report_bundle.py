@@ -10,12 +10,12 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import TYPE_CHECKING, Annotated, Any, Literal, Self
 
-from pydantic import Field, JsonValue, model_validator
+from pydantic import Field, JsonValue, field_validator, model_validator
 
 from ntruth.parser_ai.contract import ParserCandidateOutput
 from ntruth.schemas.adequacy import DesignAdequacyEvaluation
 from ntruth.schemas.authority import AuthorityType
-from ntruth.schemas.claims import DerivedClaimSet
+from ntruth.schemas.claims import DerivedClaimSet, DeterminabilityState
 from ntruth.schemas.core import content_checksum
 from ntruth.schemas.count_registry import CanonicalCountRecord, CanonicalCountRegistry
 from ntruth.schemas.coverage import ProfileCoverageStatement, ScenarioCoverage
@@ -278,6 +278,7 @@ class ConflictRecord(KernelModel):
 
     conflict_id: NonBlankStr
     inferential_query_ids: tuple[NonBlankStr, ...] = Field(min_length=1)
+    affected_claim_ids: KnowledgeValue[tuple[NonBlankStr, ...]]
     evidence_record_ids: tuple[NonBlankStr, ...] = Field(min_length=2)
     retained_values: tuple[JsonValue, ...] = Field(min_length=2)
     rationale: NonBlankStr
@@ -286,8 +287,21 @@ class ConflictRecord(KernelModel):
     def _retains_distinct_supported_alternatives(self) -> Self:
         if len(set(self.inferential_query_ids)) != len(self.inferential_query_ids):
             raise ValueError("conflict query IDs contain duplicates")
+        if self.affected_claim_ids.knowledge_state not in {
+            KnowledgeState.PRESENT,
+            KnowledgeState.ABSENT_EXPLICIT,
+            KnowledgeState.UNKNOWN,
+        }:
+            raise ValueError(
+                "conflict affected claims must be PRESENT, explicitly absent, or UNKNOWN"
+            )
+        affected_claim_ids = self.affected_claim_ids.value or ()
+        if len(set(affected_claim_ids)) != len(affected_claim_ids):
+            raise ValueError("conflict affected claim IDs contain duplicates")
         if len(set(self.evidence_record_ids)) != len(self.evidence_record_ids):
             raise ValueError("conflict evidence IDs contain duplicates")
+        if not set(self.affected_claim_ids.evidence_ids).issubset(self.evidence_record_ids):
+            raise ValueError("conflict affected-claim evidence is outside the conflict record")
         if len({content_checksum(value) for value in self.retained_values}) < 2:
             raise ValueError("conflict requires at least two distinct retained values")
         for value in self.retained_values:
@@ -418,6 +432,59 @@ def _empty_or_scoped_knowledge[T](
     return KnowledgeValue[tuple[T, ...]].model_validate(payload)
 
 
+def _parser_candidate_identity_ids(candidate: ParserCandidateOutput) -> tuple[str, ...]:
+    """Return every identity-bearing parser record ID without deriving science."""
+
+    return (
+        *(item.block_id for item in candidate.experiment_blocks),
+        *(item.evidence_id for item in candidate.evidence_spans),
+        *(item.node_id for item in candidate.candidate_nodes),
+        *(item.edge_id for item in candidate.candidate_edges),
+        *(item.factor_id for item in candidate.factors),
+        *(item.endpoint_id for item in candidate.endpoints),
+        *(item.contrast_id for item in candidate.contrasts),
+        *(item.estimand_id for item in candidate.candidate_estimands),
+        *(item.count_id for item in candidate.candidate_counts),
+        *(item.event_id for item in candidate.candidate_events),
+        *(item.graph_id for item in candidate.candidate_graphs),
+        *(item.alternative_id for item in candidate.alternatives),
+        *(item.question_id for item in candidate.clarification_questions),
+    )
+
+
+def _normalize_query_candidate_sets(
+    value: (
+        KnowledgeValue[tuple[ParserCandidateOutput, ...]]
+        | tuple[KnowledgeValue[tuple[ParserCandidateOutput, ...]], ...]
+    ),
+    *,
+    query_ids: tuple[str, ...],
+) -> tuple[KnowledgeValue[tuple[ParserCandidateOutput, ...]], ...]:
+    """Normalize the legacy single-query wrapper into exact query-keyed records."""
+
+    raw_items = (value,) if isinstance(value, KnowledgeValue) else value
+    checked = tuple(
+        KnowledgeValue[tuple[ParserCandidateOutput, ...]].model_validate(
+            item.model_dump(mode="python")
+        )
+        for item in raw_items
+    )
+    candidate_query_ids = tuple(item.query_scope_id for item in checked)
+    if candidate_query_ids != query_ids:
+        raise ValueError(
+            "AI candidate sets must map one-to-one and in order to every inferential query"
+        )
+    identity_ids = tuple(
+        identity_id
+        for item in checked
+        for candidate in item.value or ()
+        for identity_id in _parser_candidate_identity_ids(candidate)
+    )
+    if len(identity_ids) != len(set(identity_ids)):
+        raise ValueError("candidate IDs must be globally unique across query-scoped outputs")
+    return checked
+
+
 class StatisticalHandoff(KernelModel):
     strategy_module_status: Literal[StrategyModuleStatus.HANDOFF_ONLY] = (
         StrategyModuleStatus.HANDOFF_ONLY
@@ -480,11 +547,17 @@ def resolve_report_claim_sets(
 
     if not claim_sets:
         raise ValueError("report resolution requires at least one claim set")
-    query_ids = [item.inferential_query_id for item in claim_sets]
+    checked_claim_sets = tuple(
+        DerivedClaimSet.model_validate(item.model_dump(mode="python")) for item in claim_sets
+    )
+    query_ids = [item.inferential_query_id for item in checked_claim_sets]
     if len(set(query_ids)) != len(query_ids):
         raise ValueError("report resolution contains duplicate query claim sets")
-    if len(claim_sets) == 1:
-        outcome = TrivialExplicitReportResolutionPolicy().resolve(claim_sets[0])
+    claim_ids = [claim.claim_id for claim_set in checked_claim_sets for claim in claim_set.claims]
+    if len(set(claim_ids)) != len(claim_ids):
+        raise ValueError("report resolution contains globally duplicate claim IDs")
+    if len(checked_claim_sets) == 1:
+        outcome = TrivialExplicitReportResolutionPolicy().resolve(checked_claim_sets[0])
         if outcome.resolution.query_scope_id != query_ids[0]:
             raise ValueError("single-query resolution must retain its exact query scope")
         return outcome
@@ -516,7 +589,9 @@ class ReportBundle(KernelModel):
     prospective_input_ledgers: KnowledgeValue[tuple[ProspectiveInputLedger, ...]]
     source_records: tuple[SourceRecord, ...] = Field(min_length=1)
     evidence_records: tuple[EvidenceRecord, ...] = Field(min_length=1)
-    ai_candidates: KnowledgeValue[tuple[ParserCandidateOutput, ...]]
+    ai_candidates: tuple[KnowledgeValue[tuple[ParserCandidateOutput, ...]], ...] = Field(
+        min_length=1
+    )
     human_confirmations: KnowledgeValue[tuple[ConfirmationEvent, ...]]
     conflicts: KnowledgeValue[tuple[ConflictRecord, ...]]
     confirmed_graph: V8ExperimentGraph
@@ -542,6 +617,17 @@ class ReportBundle(KernelModel):
 
         return self.count_registry.records
 
+    @field_validator("ai_candidates", mode="before")
+    @classmethod
+    def _migrate_single_query_candidate_wrapper(cls, value: object) -> object:
+        """Accept the pre-fix single-query shape only as an explicit one-item migration."""
+
+        if isinstance(value, KnowledgeValue):
+            return (value,)
+        if isinstance(value, dict) and "knowledge_state" in value:
+            return (value,)
+        return value
+
     @model_validator(mode="after")
     def _neutral_cross_contract_integrity(self) -> Self:
         for context in self.verified_pipeline_contexts:
@@ -558,7 +644,6 @@ class ReportBundle(KernelModel):
             raise ValueError("ReportBundle evidence references an unknown source")
         for label, value in (
             ("prospective_input_ledgers", self.prospective_input_ledgers),
-            ("ai_candidates", self.ai_candidates),
             ("human_confirmations", self.human_confirmations),
             ("conflicts", self.conflicts),
             ("sensitivities", self.sensitivities),
@@ -567,6 +652,11 @@ class ReportBundle(KernelModel):
                 raise ValueError(f"ReportBundle {label} has dangling evidence IDs")
             if not set(value.source_scope_ids).issubset(known_sources):
                 raise ValueError(f"ReportBundle {label} has dangling source-scope IDs")
+        for candidate_set in self.ai_candidates:
+            if not set(candidate_set.evidence_ids).issubset(known_evidence):
+                raise ValueError("ReportBundle ai_candidates has dangling evidence IDs")
+            if not set(candidate_set.source_scope_ids).issubset(known_sources):
+                raise ValueError("ReportBundle ai_candidates has dangling source-scope IDs")
         for label, design_value in (
             ("planned_design_record", self.design_record_context.planned_design_record),
             ("executed_design_record", self.design_record_context.executed_design_record),
@@ -736,10 +826,17 @@ class ReportBundle(KernelModel):
         query_ids = [claim_set.inferential_query_id for claim_set in self.claim_sets]
         if len(set(query_ids)) != len(query_ids):
             raise ValueError("ReportBundle contains duplicate claim sets for a query")
+        checked_candidate_sets = _normalize_query_candidate_sets(
+            self.ai_candidates,
+            query_ids=tuple(query_ids),
+        )
+        if checked_candidate_sets != self.ai_candidates:
+            raise ValueError("ReportBundle AI candidate sets are not canonical")
         known_queries = set(query_ids)
-        claims_by_id = {
-            claim.claim_id: claim for claim_set in self.claim_sets for claim in claim_set.claims
-        }
+        all_claims = tuple(claim for claim_set in self.claim_sets for claim in claim_set.claims)
+        claims_by_id = {claim.claim_id: claim for claim in all_claims}
+        if len(claims_by_id) != len(all_claims):
+            raise ValueError("ReportBundle contains globally duplicate claim IDs")
         if self.conflicts.knowledge_state is KnowledgeState.PRESENT and any(
             not set(record.inferential_query_ids).issubset(known_queries)
             for record in self.conflicts.value or ()
@@ -749,6 +846,52 @@ class ReportBundle(KernelModel):
             conflict_ids = [record.conflict_id for record in self.conflicts.value or ()]
             if len(set(conflict_ids)) != len(conflict_ids):
                 raise ValueError("ReportBundle contains duplicate conflict IDs")
+            linked_conflict_claim_ids: set[str] = set()
+            for conflict_record in self.conflicts.value or ():
+                affected_state = conflict_record.affected_claim_ids.knowledge_state
+                if affected_state is KnowledgeState.ABSENT_EXPLICIT:
+                    continue
+                if affected_state is not KnowledgeState.PRESENT:
+                    raise ValueError(
+                        "SCIENTIFIC_REVIEW_REQUIRED: conflict-to-claim materiality is UNKNOWN"
+                    )
+                affected_claim_ids = conflict_record.affected_claim_ids.value or ()
+                unknown_claim_ids = set(affected_claim_ids) - claims_by_id.keys()
+                if unknown_claim_ids:
+                    raise ValueError("ReportBundle conflict references an unknown derived claim")
+                affected_claims = tuple(claims_by_id[claim_id] for claim_id in affected_claim_ids)
+                affected_queries = {claim.inferential_query_id for claim in affected_claims}
+                if affected_queries != set(conflict_record.inferential_query_ids):
+                    raise ValueError(
+                        "ReportBundle conflict query IDs differ from its exact affected-claim "
+                        "projection"
+                    )
+                if any(
+                    claim.determinability_state is not DeterminabilityState.CONFLICTING_INFORMATION
+                    for claim in affected_claims
+                ):
+                    raise ValueError(
+                        "SCIENTIFIC_REVIEW_REQUIRED: material conflicts must drive every "
+                        "affected claim to CONFLICTING_INFORMATION before report resolution"
+                    )
+                linked_conflict_claim_ids.update(affected_claim_ids)
+            conflicting_claim_ids = {
+                claim.claim_id
+                for claim in all_claims
+                if claim.determinability_state is DeterminabilityState.CONFLICTING_INFORMATION
+            }
+            if linked_conflict_claim_ids != conflicting_claim_ids:
+                raise ValueError(
+                    "ReportBundle conflict-to-claim linkage is not exact and bidirectional"
+                )
+        elif any(
+            claim.determinability_state is DeterminabilityState.CONFLICTING_INFORMATION
+            for claim in all_claims
+        ):
+            raise ValueError(
+                "SCIENTIFIC_REVIEW_REQUIRED: conflicting claims require typed ConflictRecord "
+                "lineage"
+            )
         sensitivity_by_id = {
             record.sensitivity_id: record for record in self.sensitivities.value or ()
         }
@@ -822,6 +965,7 @@ class ReportBundle(KernelModel):
             raise ValueError("report adequacy differs from verified pipeline lineage")
         if self.scenario_coverages != expected_scenarios:
             raise ValueError("report scenario coverage differs from verified pipeline lineage")
+        candidates_by_query = {item.query_scope_id: item for item in self.ai_candidates}
         for context, section in zip(
             self.verified_pipeline_contexts, self.query_sections, strict=True
         ):
@@ -829,16 +973,7 @@ class ReportBundle(KernelModel):
             expected_count_ids = tuple(
                 item.count_id for item in self.count_registry.records_for_query(query_id)
             )
-            expected_candidates = _empty_or_scoped_knowledge(
-                self.ai_candidates,
-                query_id=query_id,
-                selected=(
-                    self.ai_candidates.value
-                    if self.ai_candidates.knowledge_state is KnowledgeState.PRESENT
-                    and self.ai_candidates.query_scope_id == query_id
-                    else ()
-                ),
-            )
+            expected_candidates = candidates_by_query[query_id]
             expected_confirmations = _empty_or_scoped_knowledge(
                 self.human_confirmations,
                 query_id=query_id,
@@ -1024,7 +1159,10 @@ def build_report_bundle(
     prospective_input_ledgers: KnowledgeValue[tuple[ProspectiveInputLedger, ...]],
     source_records: tuple[SourceRecord, ...],
     evidence_records: tuple[EvidenceRecord, ...],
-    ai_candidates: KnowledgeValue[tuple[ParserCandidateOutput, ...]],
+    ai_candidates: (
+        KnowledgeValue[tuple[ParserCandidateOutput, ...]]
+        | tuple[KnowledgeValue[tuple[ParserCandidateOutput, ...]], ...]
+    ),
     human_confirmations: KnowledgeValue[tuple[ConfirmationEvent, ...]],
     conflicts: KnowledgeValue[tuple[ConflictRecord, ...]],
     sensitivities: KnowledgeValue[tuple[SensitivityRecord, ...]],
@@ -1043,6 +1181,11 @@ def build_report_bundle(
     query_ids = tuple(context.request.query.id for context in contexts)
     if len(set(query_ids)) != len(query_ids):
         raise ValueError("verified pipeline contexts contain duplicate queries")
+    candidate_sets = _normalize_query_candidate_sets(
+        ai_candidates,
+        query_ids=query_ids,
+    )
+    candidates_by_query = {item.query_scope_id: item for item in candidate_sets}
 
     graph = contexts[0].request.graph
     count_registry = contexts[0].request.count_registry
@@ -1134,16 +1277,7 @@ def build_report_bundle(
             ),
             scenario_coverages=context.result.scenario_coverages,
             profile_coverage=context.result.profile_coverage,
-            ai_candidates=_empty_or_scoped_knowledge(
-                ai_candidates,
-                query_id=context.request.query.id,
-                selected=(
-                    ai_candidates.value
-                    if ai_candidates.knowledge_state is KnowledgeState.PRESENT
-                    and ai_candidates.query_scope_id == context.request.query.id
-                    else ()
-                ),
-            ),
+            ai_candidates=candidates_by_query[context.request.query.id],
             human_confirmations=_empty_or_scoped_knowledge(
                 human_confirmations,
                 query_id=context.request.query.id,
@@ -1206,7 +1340,7 @@ def build_report_bundle(
         "prospective_input_ledgers": prospective_input_ledgers,
         "source_records": source_records,
         "evidence_records": evidence_records,
-        "ai_candidates": ai_candidates,
+        "ai_candidates": candidate_sets,
         "human_confirmations": human_confirmations,
         "conflicts": conflicts,
         "confirmed_graph": graph,

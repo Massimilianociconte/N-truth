@@ -593,7 +593,7 @@ def test_executed_report_rejects_shared_source_id_with_different_context() -> No
         _executed_report(conflicting_source_id=True)
 
 
-def test_support_axes_remain_orthogonal_without_an_invented_crosswalk() -> None:
+def test_support_axes_are_orthogonal_but_source_class_is_exactly_bound() -> None:
     _, submission = quick_design_fixture._submission()
     ledger = submission.input_ledger
     source = ledger.sources[-1].model_copy(update={"source_class": ledger.sources[0].source_class})
@@ -603,24 +603,22 @@ def test_support_axes_remain_orthogonal_without_an_invented_crosswalk() -> None:
         for record in ledger.evidence_records
     )
 
-    rebuilt = build_prospective_input_ledger(
-        request=submission.pipeline_request,
-        sources=sources,
-        evidence_records=evidence_records,
-        confirmation_events=(),
-        artifacts=ledger.artifacts,
-        support_bindings=ledger.support_bindings,
-    )
-
-    assert rebuilt.sources[-1].source_class != rebuilt.support_bindings[0].support.source_class
-    assert rebuilt.evidence_records[0].evidence_type is EvidenceTypeV8.STRUCTURAL_FACT
+    with pytest.raises(ValueError, match=r"source class|source_class"):
+        build_prospective_input_ledger(
+            request=submission.pipeline_request,
+            sources=sources,
+            evidence_records=evidence_records,
+            confirmation_events=(),
+            artifacts=ledger.artifacts,
+            support_bindings=ledger.support_bindings,
+        )
 
 
 def test_query_sections_include_all_query_scoped_epistemic_axes() -> None:
     _, result = _quick_result()
     section = result.report_bundle.query_sections[0]
 
-    assert section.ai_candidates == result.report_bundle.ai_candidates
+    assert section.ai_candidates == result.report_bundle.ai_candidates[0]
     assert section.human_confirmations == result.report_bundle.human_confirmations
     assert section.conflicts == result.report_bundle.conflicts
     assert section.sensitivities == result.report_bundle.sensitivities
@@ -633,6 +631,12 @@ def test_conflicts_and_sensitivities_have_exact_bidirectional_query_closure() ->
     foreign_conflict = ConflictRecord(
         conflict_id="CONFLICT-FOREIGN-QUERY",
         inferential_query_ids=("IQ-NOT-IN-REPORT",),
+        affected_claim_ids=KnowledgeValue[tuple[str, ...]](
+            knowledge_state=KnowledgeState.PRESENT,
+            value=(report.claim_sets[0].claims[0].claim_id,),
+            evidence_ids=evidence_ids,
+            claim_scope_id="CONFLICT-FOREIGN-QUERY",
+        ),
         evidence_record_ids=evidence_ids,
         retained_values=("alpha", "beta"),
         rationale="The values remain unresolved.",
@@ -834,6 +838,12 @@ def test_scientific_values_reject_nested_null_empty_and_blank_artifacts() -> Non
         ConflictRecord(
             conflict_id="CONFLICT-AMBIGUOUS",
             inferential_query_ids=("IQ-RUNTIME-001",),
+            affected_claim_ids=KnowledgeValue[tuple[str, ...]](
+                knowledge_state=KnowledgeState.PRESENT,
+                value=("CLAIM-AMBIGUOUS",),
+                evidence_ids=("EV-1", "EV-2"),
+                claim_scope_id="CONFLICT-AMBIGUOUS",
+            ),
             evidence_record_ids=("EV-1", "EV-2"),
             retained_values=({"nested": None}, {"nested": "known"}),
             rationale="A null is not an open-world state.",
@@ -861,7 +871,7 @@ def test_html_exposes_ledgers_review_requirement_and_all_execution_pins() -> Non
         manifest.evaluator_registry_checksum,
         "SRR-V8-014",
         "Review requirement",
-        "Full source/authority/evidence/support lineage",
+        "Support binding lineage",
     ):
         assert expected in html
 

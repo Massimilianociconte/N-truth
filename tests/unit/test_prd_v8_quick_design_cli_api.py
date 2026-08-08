@@ -80,7 +80,7 @@ def _submission_payload(*, raw_wizard: bool = False) -> dict[str, object]:
 def test_unqualified_quick_design_run_is_v8_and_writes_neutral_bundle(tmp_path: Path) -> None:
     submission_path = tmp_path / "quick-design-v8.json"
     submission_path.write_text(
-        json.dumps(_submission_payload(), ensure_ascii=False),
+        json.dumps(_submission_payload(raw_wizard=True), ensure_ascii=False),
         encoding="utf-8",
     )
     output = tmp_path / "out"

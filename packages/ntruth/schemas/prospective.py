@@ -215,6 +215,11 @@ class ExecutedInputLedger(KernelModel):
             for event in self.confirmation_events
         ):
             raise ValueError("executed confirmation references evidence outside the ledger")
+        if self.confirmation_events:
+            raise ValueError(
+                "SCIENTIFIC_REVIEW_REQUIRED: executed confirmation events require "
+                "typed support bindings and exact semantic targets"
+            )
         sample_sheets = tuple(
             artifact
             for artifact in self.artifacts
@@ -368,6 +373,19 @@ def _require_ledger_closure(
     source_by_id = {source.source_id: source for source in sources}
     evidence_by_id = {record.evidence_id: record for record in evidence_records}
     confirmation_by_id = {event.event_id: event for event in confirmation_events}
+    bound_confirmation_ids = tuple(
+        event_id for binding in support_bindings for event_id in binding.confirmation_event_ids
+    )
+    if set(bound_confirmation_ids) != set(confirmation_ids):
+        raise ValueError(
+            "support binding confirmation closure is not exact; unbound confirmation "
+            "events and dangling binding references are forbidden"
+        )
+    if len(bound_confirmation_ids) != len(set(bound_confirmation_ids)):
+        raise ValueError(
+            "support binding confirmation closure is not bidirectional; each confirmation "
+            "event must be bound exactly once"
+        )
     request_supports = tuple(request.support_by_clause.values())
     confirmation_required = {
         EvidenceBasis.SELF_REPORT,
@@ -398,9 +416,19 @@ def _require_ledger_closure(
                     "the predicate evidence_ids"
                 )
         bound_evidence = tuple(evidence_by_id[item] for item in binding.evidence_record_ids)
-        if any(record.source_id not in binding.source_ids for record in bound_evidence):
+        induced_source_ids = {record.source_id for record in bound_evidence}
+        if set(binding.source_ids) != induced_source_ids:
             raise ValueError(
-                f"support binding {binding.scope_id} evidence/source relation is inconsistent"
+                f"support binding {binding.scope_id} source_ids do not exactly equal the "
+                "source set induced by evidence_record_ids"
+            )
+        if any(
+            source_by_id[source_id].source_class != binding.support.source_class
+            for source_id in binding.source_ids
+        ):
+            raise ValueError(
+                f"support binding {binding.scope_id} source class differs from one or more "
+                "bound SourceRecord source_class values"
             )
         bound_confirmations = tuple(
             confirmation_by_id[item] for item in binding.confirmation_event_ids
@@ -949,6 +977,24 @@ def _derived_count_differences(
     declarations = executed_design.deviations.value or ()
     matched_declaration_ids: set[str] = set()
     differences: list[DeviationRecord] = []
+    planned_scope_ids = tuple(
+        _count_comparison_scope(record) for record in planned_design.count_records
+    )
+    executed_scope_ids = tuple(
+        _count_comparison_scope(record) for record in executed_design.count_records
+    )
+    if len(set(planned_scope_ids)) != len(planned_scope_ids):
+        return (), "planned counts contain an ambiguous duplicate reconciliation scope"
+    if len(set(executed_scope_ids)) != len(executed_scope_ids):
+        return (), "executed counts contain an ambiguous duplicate reconciliation scope"
+    missing_executed = set(planned_scope_ids) - set(executed_scope_ids)
+    executed_only = set(executed_scope_ids) - set(planned_scope_ids)
+    if missing_executed or executed_only:
+        return (), (
+            "planned/executed count semantic scopes are not symmetric; "
+            f"missing_executed={sorted(missing_executed)}, "
+            f"executed_only={sorted(executed_only)}"
+        )
     for planned in planned_design.count_records:
         comparable = tuple(
             executed

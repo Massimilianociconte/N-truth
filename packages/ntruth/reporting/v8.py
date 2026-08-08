@@ -198,6 +198,28 @@ def render_report_bundle_html(report: ReportBundle) -> str:
         "</tr>"
         for ledger in report.prospective_input_ledgers.value or ()
     )
+    support_binding_rows = "".join(
+        "<tr>"
+        f"<td>{_e(ledger.ledger_id)}</td>"
+        f"<td>{_e(binding.scope_kind.value)}</td>"
+        f"<td>{_e(binding.scope_id)}</td>"
+        f"<td>{_e(binding.support.source_class.token)}</td>"
+        f"<td>{_e(binding.support.authority_type.value)}</td>"
+        f"<td>{_e(binding.support.evidence_basis.value)}</td>"
+        f"<td>{_e(binding.support.support_grade.vocabulary_id)}</td>"
+        f"<td>{_e(binding.support.support_grade.token)}</td>"
+        f"<td>{_json_text(binding.source_ids)}</td>"
+        f"<td>{_json_text(binding.evidence_record_ids)}</td>"
+        f"<td>{_json_text(binding.confirmation_event_ids)}</td>"
+        f"<td>{_json_text(binding.confirmation_target.model_dump(mode='json') if binding.confirmation_target else 'NOT_APPLICABLE')}</td>"
+        "</tr>"
+        for ledger in report.prospective_input_ledgers.value or ()
+        for binding in ledger.support_bindings
+    )
+    candidate_rows = "".join(
+        f"<tr><td>{_e(candidate_set.query_scope_id)}</td><td>{_knowledge(candidate_set)}</td></tr>"
+        for candidate_set in report.ai_candidates
+    )
     execution = context.executed_design_record.value
     executed_ledger = execution.executed_input_ledger if execution is not None else None
     executed_ledger_projection = (
@@ -256,13 +278,16 @@ th {{ background:var(--panel); }} pre {{ margin:.25rem 0; white-space:pre-wrap; 
 <table><thead><tr><th>Evidence</th><th>Source</th><th>Type</th><th>Locator</th></tr></thead><tbody>{evidence_rows}</tbody></table>
 <h3>Content-addressed input ledgers</h3>
 <table><thead><tr><th>Ledger ID</th><th>Ledger checksum</th><th>Request checksum</th><th>Artifact pins</th></tr></thead><tbody>{prospective_ledger_rows}</tbody></table>
+<h3>Support binding lineage</h3>
+<table><thead><tr><th>Ledger</th><th>Scope kind</th><th>Scope ID</th><th>Source class</th><th>Authority type</th><th>Evidence basis</th><th>SupportGrade vocabulary</th><th>SupportGrade token</th><th>Exact source IDs</th><th>Exact evidence IDs</th><th>Confirmation event IDs</th><th>Typed confirmation target</th></tr></thead><tbody>{support_binding_rows}</tbody></table>
 <h3>Executed evidence and artifact ledger</h3><pre>{executed_ledger_projection}</pre>
-<p>Full source/authority/evidence/support lineage is retained in the ledgers and records above.</p>
+<p>The support table renders each source/authority/evidence/support relation carried by the prospective ledgers.</p>
 
 <h2>Confirmed graph</h2>
 <pre>{_json_text(report.confirmed_graph.model_dump(mode="json"))}</pre>
 
-<h2>AI candidates</h2>{_knowledge(report.ai_candidates)}
+<h2>AI candidates</h2>
+<table><thead><tr><th>Inferential query</th><th>Candidate-only records</th></tr></thead><tbody>{candidate_rows}</tbody></table>
 
 <h2>Human confirmations and conflicts</h2>
 <h3>Confirmations</h3>{_knowledge(report.human_confirmations)}

@@ -37,7 +37,13 @@ def _second_claim_set(first: DerivedClaimSet) -> DerivedClaimSet:
         claim_set_id="CLAIM-SET-TASK6-REVIEW-002",
         inferential_query_id=query_id,
         claims=tuple(
-            claim.model_copy(update={"inferential_query_id": query_id}) for claim in first.claims
+            claim.model_copy(
+                update={
+                    "claim_id": f"{claim.claim_id}-Q2",
+                    "inferential_query_id": query_id,
+                }
+            )
+            for claim in first.claims
         ),
     )
 
@@ -240,7 +246,10 @@ def _multi_query_report(*, conflicting_shared_source: bool = False) -> object:
         prospective_input_ledgers=ledger_state,
         source_records=submission.input_ledger.sources,
         evidence_records=submission.input_ledger.evidence_records,
-        ai_candidates=submission.ai_candidates,
+        ai_candidates=(
+            submission.ai_candidates,
+            submission.ai_candidates.model_copy(update={"query_scope_id": second_query_id}),
+        ),
         human_confirmations=confirmations,
         conflicts=submission.conflicts,
         sensitivities=submission.sensitivities,

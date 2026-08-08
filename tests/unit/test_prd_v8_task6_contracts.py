@@ -536,7 +536,12 @@ def test_multi_query_report_fails_closed_on_query_local_resolution() -> None:
             "claim_set_id": "CLAIM-SET-TASK6-REPORT-002",
             "inferential_query_id": second_query_id,
             "claims": tuple(
-                claim.model_copy(update={"inferential_query_id": second_query_id})
+                claim.model_copy(
+                    update={
+                        "claim_id": f"{claim.claim_id}-Q2",
+                        "inferential_query_id": second_query_id,
+                    }
+                )
                 for claim in first.claims
             ),
         }
