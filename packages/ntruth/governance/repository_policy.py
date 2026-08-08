@@ -8,8 +8,12 @@ and makes path-escape and symlink behavior testable.
 
 from __future__ import annotations
 
+import os
 import re
+import stat
 import subprocess
+from contextlib import suppress
+from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path, PurePosixPath
 from typing import Annotated, Any, Literal, Self
@@ -54,9 +58,24 @@ _CORPUS_SUFFIXES = frozenset(
     }
 )
 _STRUCTURED_DATA_SUFFIXES = frozenset({".csv", ".json", ".tsv"})
+_RAW_CORPUS_TEXT_SUFFIXES = frozenset(
+    {".bio", ".conll", ".iob", ".iob2", ".tei", ".text", ".txt", ".xml"}
+)
+_CORPUS_NAME_SUFFIXES = _STRUCTURED_DATA_SUFFIXES | _RAW_CORPUS_TEXT_SUFFIXES
+_DOCUMENTATION_SCHEMA_SUFFIX = ".schema.json"
 _ARCHIVE_SUFFIXES = frozenset({".7z", ".bz2", ".gz", ".rar", ".tar", ".tgz", ".xz", ".zip", ".zst"})
 _CORPUS_NAME_MARKERS = frozenset(
-    {"challenge", "corpus", "dataset", "participants", "records", "subjects"}
+    {
+        "challenge",
+        "corpus",
+        "dataset",
+        "participant",
+        "participants",
+        "record",
+        "records",
+        "subject",
+        "subjects",
+    }
 )
 _SECRET_SUFFIXES = frozenset({".key", ".p12", ".pem", ".pfx"})
 _PRIVACY_PAYLOAD_SUFFIXES = frozenset({".csv", ".json", ".jsonl", ".tsv", ".txt", ".xml"})
@@ -140,25 +159,118 @@ def _is_forbidden_corpus_path(path: PurePosixPath) -> bool:
         return True
     if suffix in _ARCHIVE_SUFFIXES:
         return True
+    # Schemas below docs are metadata contracts, not record payloads.  The same
+    # corpus-like name remains forbidden for every non-documentation location.
+    if normalized.startswith("docs/") and path.name.lower().endswith(_DOCUMENTATION_SCHEMA_SUFFIX):
+        return False
     stem_tokens = {token for token in re.split(r"[^a-z0-9]+", path.stem.lower()) if token}
-    return suffix in _STRUCTURED_DATA_SUFFIXES and bool(stem_tokens & _CORPUS_NAME_MARKERS)
+    return suffix in _CORPUS_NAME_SUFFIXES and bool(stem_tokens & _CORPUS_NAME_MARKERS)
 
 
-def _has_symlink_ancestor(root: Path, relative: PurePosixPath) -> bool:
-    current = root
-    for part in relative.parts:
-        current = current / part
-        if current.is_symlink():
-            return True
-    return False
+@dataclass(frozen=True)
+class _TrackedFileInspection:
+    size: int
+    head: bytes
+    text: str | None
 
 
-def _binary_findings(path: Path) -> tuple[RepositoryPolicyFindingKindV8, ...]:
+def _open_flags(*, directory: bool) -> int:
+    no_follow = getattr(os, "O_NOFOLLOW", 0)
+    directory_only = getattr(os, "O_DIRECTORY", 0)
+    if not no_follow or not directory_only:
+        raise OSError("platform lacks required no-follow repository scan support")
+    flags = os.O_RDONLY | no_follow | getattr(os, "O_CLOEXEC", 0)
+    if directory:
+        flags |= directory_only
+    return flags
+
+
+def _open_beneath(root_fd: int, relative: PurePosixPath) -> int:
+    """Open a regular-file candidate below ``root_fd`` without following links."""
+
+    parent_fd = os.dup(root_fd)
     try:
-        with path.open("rb") as stream:
-            head = stream.read(4096)
-    except OSError:
-        return ()
+        for part in relative.parts[:-1]:
+            child_fd = os.open(
+                part,
+                _open_flags(directory=True),
+                dir_fd=parent_fd,
+            )
+            os.close(parent_fd)
+            parent_fd = child_fd
+        return os.open(
+            relative.name,
+            _open_flags(directory=False),
+            dir_fd=parent_fd,
+        )
+    finally:
+        os.close(parent_fd)
+
+
+def _metadata_signature(metadata: os.stat_result) -> tuple[int, int, int, int, int]:
+    return (
+        metadata.st_dev,
+        metadata.st_ino,
+        metadata.st_size,
+        metadata.st_mtime_ns,
+        metadata.st_ctime_ns,
+    )
+
+
+def _read_up_to(file_fd: int, limit: int) -> bytes:
+    chunks: list[bytes] = []
+    remaining = limit
+    while remaining:
+        chunk = os.read(file_fd, min(remaining, 65_536))
+        if not chunk:
+            break
+        chunks.append(chunk)
+        remaining -= len(chunk)
+    return b"".join(chunks)
+
+
+def _inspect_tracked_file(
+    root_fd: int,
+    relative: PurePosixPath,
+    *,
+    max_file_bytes: int,
+) -> _TrackedFileInspection:
+    """Read bytes and metadata from one stable, no-follow descriptor."""
+
+    file_fd = _open_beneath(root_fd, relative)
+    try:
+        initial = os.fstat(file_fd)
+        if not stat.S_ISREG(initial.st_mode):
+            raise OSError("tracked path is not a regular file")
+        read_limit = max_file_bytes + 1 if initial.st_size <= max_file_bytes else 4096
+        payload = _read_up_to(file_fd, read_limit)
+        final = os.fstat(file_fd)
+        if _metadata_signature(initial) != _metadata_signature(final):
+            raise OSError("tracked file changed while it was inspected")
+
+        verification_fd = _open_beneath(root_fd, relative)
+        try:
+            verification = os.fstat(verification_fd)
+        finally:
+            os.close(verification_fd)
+        if _metadata_signature(verification) != _metadata_signature(final):
+            raise OSError("tracked path was replaced while it was inspected")
+
+        observed_size = max(initial.st_size, len(payload))
+        text: str | None = None
+        if observed_size <= max_file_bytes:
+            with suppress(UnicodeDecodeError):
+                text = payload.decode("utf-8")
+        return _TrackedFileInspection(
+            size=observed_size,
+            head=payload[:4096],
+            text=text,
+        )
+    finally:
+        os.close(file_fd)
+
+
+def _binary_findings(head: bytes) -> tuple[RepositoryPolicyFindingKindV8, ...]:
     kinds: list[RepositoryPolicyFindingKindV8] = []
     archive_magic = (
         b"\x1f\x8b",
@@ -199,96 +311,96 @@ def scan_tracked_repository_v8(
     findings: list[RepositoryPolicyFindingV8] = []
     scanned = 0
     canonical_paths = tuple(sorted(dict.fromkeys(tracked_paths)))
-    for raw in canonical_paths:
-        if _unsafe_relative_path(raw):
-            findings.append(
-                _finding(
-                    raw or "<blank>",
-                    RepositoryPolicyFindingKindV8.UNSAFE_PATH,
-                    "path escapes or is not a canonical repository-relative path",
+    try:
+        root_fd = os.open(root, _open_flags(directory=True))
+    except OSError:
+        root_fd = None
+    try:
+        for raw in canonical_paths:
+            if _unsafe_relative_path(raw):
+                findings.append(
+                    _finding(
+                        raw or "<blank>",
+                        RepositoryPolicyFindingKindV8.UNSAFE_PATH,
+                        "path escapes or is not a canonical repository-relative path",
+                    )
                 )
-            )
-            continue
-        relative = PurePosixPath(raw)
-        path = root.joinpath(*relative.parts)
-        if _has_symlink_ancestor(root, relative):
-            findings.append(
-                _finding(
-                    raw,
-                    RepositoryPolicyFindingKindV8.UNSAFE_PATH,
-                    "tracked path contains a symlink leaf or ancestor",
-                )
-            )
-            continue
-        try:
-            resolved = path.resolve(strict=True)
-        except (OSError, RuntimeError):
-            resolved = None
-        if resolved is None or not resolved.is_relative_to(root) or not resolved.is_file():
-            findings.append(
-                _finding(
-                    raw,
-                    RepositoryPolicyFindingKindV8.UNSAFE_PATH,
-                    "tracked path is missing, escapes the root, or is not a regular file",
-                )
-            )
-            continue
-        scanned += 1
-        path = resolved
-        size = path.stat().st_size
-        suffix = relative.suffix.lower()
-        basename = relative.name
-        if size > max_file_bytes:
-            findings.append(
-                _finding(
-                    raw,
-                    RepositoryPolicyFindingKindV8.LARGE_FILE,
-                    f"tracked file exceeds {max_file_bytes} bytes",
-                )
-            )
-        if _is_forbidden_corpus_path(relative):
-            findings.append(
-                _finding(
-                    raw,
-                    RepositoryPolicyFindingKindV8.NO_CORPUS,
-                    "tracked path has corpus payload semantics",
-                )
-            )
-        if suffix in _MODEL_SUFFIXES or relative.as_posix().startswith("models/checkpoints/"):
-            findings.append(
-                _finding(
-                    raw,
-                    RepositoryPolicyFindingKindV8.MODEL_OR_WEIGHT,
-                    "model weights or checkpoints must not be tracked",
-                )
-            )
-        existing_kinds = {item.kind for item in findings if item.path == raw}
-        for binary_kind in _binary_findings(path):
-            if binary_kind not in existing_kinds:
+                continue
+            relative = PurePosixPath(raw)
+            if root_fd is None:
                 findings.append(
                     _finding(
                         raw,
-                        binary_kind,
-                        "forbidden archive, database, model or weight magic detected",
+                        RepositoryPolicyFindingKindV8.UNSAFE_PATH,
+                        "repository root could not be opened for a no-follow policy scan",
                     )
                 )
-        if (
-            suffix in _SECRET_SUFFIXES
-            or basename == ".env"
-            or (basename.startswith(".env.") and basename != ".env.example")
-        ):
-            findings.append(
-                _finding(
-                    raw,
-                    RepositoryPolicyFindingKindV8.SECRET,
-                    "secret-bearing filename is forbidden",
-                )
-            )
-        if size <= max_file_bytes:
+                continue
             try:
-                text = path.read_text(encoding="utf-8")
-            except (OSError, UnicodeDecodeError):
-                text = ""
+                inspection = _inspect_tracked_file(
+                    root_fd,
+                    relative,
+                    max_file_bytes=max_file_bytes,
+                )
+            except (OSError, RuntimeError):
+                findings.append(
+                    _finding(
+                        raw,
+                        RepositoryPolicyFindingKindV8.UNSAFE_PATH,
+                        "tracked file could not be inspected atomically; policy scan fails closed",
+                    )
+                )
+                continue
+            scanned += 1
+            suffix = relative.suffix.lower()
+            basename = relative.name
+            if inspection.size > max_file_bytes:
+                findings.append(
+                    _finding(
+                        raw,
+                        RepositoryPolicyFindingKindV8.LARGE_FILE,
+                        f"tracked file exceeds {max_file_bytes} bytes",
+                    )
+                )
+            if _is_forbidden_corpus_path(relative):
+                findings.append(
+                    _finding(
+                        raw,
+                        RepositoryPolicyFindingKindV8.NO_CORPUS,
+                        "tracked path has corpus payload semantics",
+                    )
+                )
+            if suffix in _MODEL_SUFFIXES or relative.as_posix().startswith("models/checkpoints/"):
+                findings.append(
+                    _finding(
+                        raw,
+                        RepositoryPolicyFindingKindV8.MODEL_OR_WEIGHT,
+                        "model weights or checkpoints must not be tracked",
+                    )
+                )
+            existing_kinds = {item.kind for item in findings if item.path == raw}
+            for binary_kind in _binary_findings(inspection.head):
+                if binary_kind not in existing_kinds:
+                    findings.append(
+                        _finding(
+                            raw,
+                            binary_kind,
+                            "forbidden archive, database, model or weight magic detected",
+                        )
+                    )
+            if (
+                suffix in _SECRET_SUFFIXES
+                or basename == ".env"
+                or (basename.startswith(".env.") and basename != ".env.example")
+            ):
+                findings.append(
+                    _finding(
+                        raw,
+                        RepositoryPolicyFindingKindV8.SECRET,
+                        "secret-bearing filename is forbidden",
+                    )
+                )
+            text = inspection.text
             if text and (_PRIVATE_KEY.search(text) or _HIGH_CONFIDENCE_TOKEN.search(text)):
                 findings.append(
                     _finding(
@@ -305,6 +417,9 @@ def scan_tracked_repository_v8(
                         "direct identifier found in a payload-like tracked file",
                     )
                 )
+    finally:
+        if root_fd is not None:
+            os.close(root_fd)
 
     ordered = tuple(
         sorted(
