@@ -3,6 +3,7 @@ from __future__ import annotations
 import inspect
 import json
 import os
+import stat
 from pathlib import Path
 from typing import Any
 
@@ -411,7 +412,7 @@ def test_validation_consumer_blocks_every_mutation_before_subprocess(
     assert calls == []
 
 
-def test_train_and_validation_consumers_use_directory_fd_and_pass_fds(
+def test_train_and_validation_consumers_use_anonymous_file_fds(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     training_dir, training_view = _staged_training_view(tmp_path)
@@ -420,11 +421,15 @@ def test_train_and_validation_consumers_use_directory_fd_and_pass_fds(
         tmp_path / "validation-view",
         training_view=training_view,
     )
-    calls: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    calls: list[tuple[list[str], dict[str, Any], dict[str, int]]] = []
 
     def fake_stream(command: list[str], **kwargs: Any) -> runtime.CommandResult:
         config = json.loads(Path(command[-1]).read_text(encoding="utf-8"))
-        calls.append((config, kwargs))
+        fd_map = json.loads(kwargs["environment"]["NTRUTH_MLX_JSONL_FDS"])
+        assert kwargs["pass_fds"] == tuple(fd_map.values())
+        assert all(stat.S_ISREG(os.fstat(fd).st_mode) for fd in kwargs["pass_fds"])
+        assert all(os.fstat(fd).st_nlink == 0 for fd in kwargs["pass_fds"])
+        calls.append((command, config, fd_map))
         return runtime.CommandResult(
             command=("fixture",),
             returncode=0,
@@ -444,7 +449,8 @@ def test_train_and_validation_consumers_use_directory_fd_and_pass_fds(
             log_path=tmp_path / f"{name}.log",
         )
     assert len(calls) == 2
-    for config, kwargs in calls:
-        assert str(config["data"]).startswith("/dev/fd/")
-        fd = int(str(config["data"]).rsplit("/", 1)[1])
-        assert kwargs["pass_fds"] == (fd,)
+    for command, config, fd_map in calls:
+        assert command[2] == "ntruth.training.mlx_fd_entrypoint"
+        assert config["data"] == "ntruth://mlx/inherited-jsonl-fds/v1"
+        expected_splits = ("train", "valid") if config["train"] else ("test",)
+        assert tuple(fd_map) == expected_splits

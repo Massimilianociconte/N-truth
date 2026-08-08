@@ -16,10 +16,11 @@ import shutil
 import stat
 import subprocess
 import sys
+import tempfile
 import time
 from collections import Counter
 from collections.abc import Iterator, Mapping
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
@@ -29,6 +30,7 @@ from pydantic import Field, model_validator
 
 from ntruth.governance.lineage import CorpusSplit
 from ntruth.schemas.core import FrozenModel, content_checksum
+from ntruth.training.mlx_fd_entrypoint import FD_ENV, FD_SENTINEL
 from ntruth.training.records import (
     DatasetManifest,
     PreparationReport,
@@ -1563,17 +1565,41 @@ def stage_validation_consumer_view(
     return _validated_validation_consumer_view(target)
 
 
+def _required_anonymous_splits(config: Mapping[str, Any]) -> tuple[str, ...]:
+    train = config.get("train") is True
+    test = config.get("test") is True
+    if train == test:
+        raise MLXPipelineError("sealed MLX consumer requires exactly one train/test mode")
+    return ("train", "valid") if train else ("test",)
+
+
 @contextmanager
-def _open_sealed_consumer_directory(
+def _open_verified_anonymous_files(
     view: Mapping[str, Any],
-) -> Iterator[tuple[str, int]]:
+    *,
+    required_splits: tuple[str, ...],
+) -> Iterator[dict[str, Any]]:
     root_value = view.get("path")
     expected_hashes = view.get("file_hashes")
     if not isinstance(root_value, str) or not isinstance(expected_hashes, Mapping):
         raise MLXPipelineError("sealed consumer view metadata is incomplete")
-    root = Path(root_value).resolve()
-    if root.stat().st_mode & 0o222:
-        raise MLXPipelineError("sealed consumer directory mode changed")
+    required_filenames = tuple(f"{split}.jsonl" for split in required_splits)
+    expected_names = (
+        {"train.jsonl", "valid.jsonl"}
+        if required_splits == ("train", "valid")
+        else {"test.jsonl", "consumer-view-manifest.json"}
+        if required_splits == ("test",)
+        else set()
+    )
+    if not expected_names or set(expected_hashes) != expected_names:
+        raise MLXPipelineError("sealed consumer expected-hash schema mismatch")
+    for filename, expected_hash in expected_hashes.items():
+        if not isinstance(filename, str) or not isinstance(expected_hash, str):
+            raise MLXPipelineError("sealed consumer hash manifest invalid")
+        if _SHA256.fullmatch(expected_hash) is None:
+            raise MLXPipelineError(f"sealed consumer checksum invalid: {filename}")
+
+    root = Path(root_value).absolute()
     flags = os.O_RDONLY
     if hasattr(os, "O_DIRECTORY"):
         flags |= os.O_DIRECTORY
@@ -1583,41 +1609,67 @@ def _open_sealed_consumer_directory(
         directory_fd = os.open(root, flags)
     except OSError as exc:
         raise MLXPipelineError(f"sealed consumer directory open failed: {exc}") from exc
-    try:
-        names = set(os.listdir(directory_fd))
-        if names != set(expected_hashes):
-            raise MLXPipelineError("sealed consumer view allowlist changed")
-        for name, expected_hash in expected_hashes.items():
-            if not isinstance(name, str) or not isinstance(expected_hash, str):
-                raise MLXPipelineError("sealed consumer hash manifest invalid")
-            file_flags = os.O_RDONLY
-            if hasattr(os, "O_NOFOLLOW"):
-                file_flags |= os.O_NOFOLLOW
-            try:
-                file_fd = os.open(name, file_flags, dir_fd=directory_fd)
-            except OSError as exc:
-                raise MLXPipelineError(
-                    f"sealed consumer file symlink/replacement blocked: {name}: {exc}"
-                ) from exc
-            try:
-                metadata = os.fstat(file_fd)
-                if not stat.S_ISREG(metadata.st_mode) or metadata.st_mode & 0o222:
-                    raise MLXPipelineError(f"sealed consumer file mode changed: {name}")
+    with ExitStack() as anonymous_stack:
+        anonymous_by_split: dict[str, Any] = {}
+        try:
+            directory_metadata = os.fstat(directory_fd)
+            if not stat.S_ISDIR(directory_metadata.st_mode):
+                raise MLXPipelineError("sealed consumer root is not a directory")
+            names = set(os.listdir(directory_fd))
+            if names != expected_names:
+                raise MLXPipelineError("sealed consumer view allowlist changed")
+            for name in sorted(expected_names):
+                expected_hash = str(expected_hashes[name])
+                split = name.removesuffix(".jsonl") if name in required_filenames else None
+                anonymous_file = None
+                if split is not None:
+                    anonymous_file = anonymous_stack.enter_context(
+                        tempfile.TemporaryFile(mode="w+b")
+                    )
+                    anonymous_by_split[split] = anonymous_file
+
                 digest = hashlib.sha256()
-                while chunk := os.read(file_fd, 1024 * 1024):
-                    digest.update(chunk)
-            finally:
-                os.close(file_fd)
-            if digest.hexdigest() != expected_hash:
-                raise MLXPipelineError(f"sealed consumer checksum changed: {name}")
-        fd_path = Path("/dev/fd") / str(directory_fd)
-        if not fd_path.is_dir():
-            raise MLXPipelineError(
-                "sealed directory FD handoff unavailable on this platform; fail closed"
-            )
-        yield str(fd_path), directory_fd
-    finally:
-        os.close(directory_fd)
+                byte_count = 0
+                file_flags = os.O_RDONLY
+                if hasattr(os, "O_NOFOLLOW"):
+                    file_flags |= os.O_NOFOLLOW
+                try:
+                    file_fd = os.open(name, file_flags, dir_fd=directory_fd)
+                except OSError as exc:
+                    raise MLXPipelineError(
+                        f"sealed consumer file symlink/replacement blocked: {name}: {exc}"
+                    ) from exc
+                try:
+                    metadata = os.fstat(file_fd)
+                    if not stat.S_ISREG(metadata.st_mode) or metadata.st_mode & 0o222:
+                        raise MLXPipelineError(f"sealed consumer file mode changed: {name}")
+                    while chunk := os.read(file_fd, 1024 * 1024):
+                        digest.update(chunk)
+                        byte_count += len(chunk)
+                        if anonymous_file is not None:
+                            anonymous_file.write(chunk)
+                    if byte_count != metadata.st_size:
+                        raise MLXPipelineError(f"sealed consumer file size changed: {name}")
+                finally:
+                    os.close(file_fd)
+                if digest.hexdigest() != expected_hash:
+                    raise MLXPipelineError(f"sealed consumer checksum changed: {name}")
+                if anonymous_file is not None:
+                    anonymous_file.flush()
+                    anonymous_file.seek(0)
+                    anonymous_metadata = os.fstat(anonymous_file.fileno())
+                    if (
+                        not stat.S_ISREG(anonymous_metadata.st_mode)
+                        or anonymous_metadata.st_nlink != 0
+                        or anonymous_metadata.st_size != byte_count
+                    ):
+                        raise MLXPipelineError(f"anonymous consumer file invariant failed: {name}")
+        finally:
+            os.close(directory_fd)
+
+        if tuple(anonymous_by_split) != required_splits:
+            raise MLXPipelineError("anonymous consumer split mapping is not exact")
+        yield anonymous_by_split
 
 
 def stream_mlx_with_sealed_view(
@@ -1629,23 +1681,38 @@ def stream_mlx_with_sealed_view(
     log_path: Path,
     environment: Mapping[str, str] | None = None,
 ) -> CommandResult:
-    """Pin the verified directory inode into the MLX child with pass_fds."""
+    """Copy verified bytes into anonymous files inherited by the MLX child."""
 
-    with _open_sealed_consumer_directory(view) as (fd_path, directory_fd):
+    required_splits = _required_anonymous_splits(config)
+    if environment is not None and FD_ENV in environment:
+        raise MLXPipelineError("caller cannot override the inherited-FD mapping")
+    with _open_verified_anonymous_files(
+        view,
+        required_splits=required_splits,
+    ) as anonymous_by_split:
         payload = dict(config)
-        payload["data"] = fd_path
+        payload["data"] = FD_SENTINEL
         _write_json(config_path, payload)
+        fd_mapping = {split: anonymous_by_split[split].fileno() for split in required_splits}
+        child_environment = dict(environment or {})
+        child_environment[FD_ENV] = json.dumps(fd_mapping, separators=(",", ":"))
         return _stream_command(
             _mlx_command(config_path),
             cwd=cwd,
             log_path=log_path,
-            environment=environment,
-            pass_fds=(directory_fd,),
+            environment=child_environment,
+            pass_fds=tuple(fd_mapping.values()),
         )
 
 
 def _mlx_command(config_path: Path) -> list[str]:
-    return [sys.executable, "-m", "mlx_lm", "lora", "--config", str(config_path)]
+    return [
+        sys.executable,
+        "-m",
+        "ntruth.training.mlx_fd_entrypoint",
+        "--config",
+        str(config_path),
+    ]
 
 
 def run_training(
