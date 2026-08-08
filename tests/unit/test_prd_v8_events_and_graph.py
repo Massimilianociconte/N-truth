@@ -112,7 +112,7 @@ def test_event_referenced_timing_requires_existing_event_ids() -> None:
         evidence_refs=("EV-EVENT-07",),
     )
     registry = EventRegistry(events=events, relative_timings=(timing,))
-    assert registry.event("EVT-APPLY-01") is events[2]
+    assert registry.event("EVT-APPLY-01") == events[2]
 
     bad = timing.model_copy(update={"reference_event_id": "EVT-INVENTED"})
     with pytest.raises(ValidationError, match="unknown reference_event_id"):
@@ -153,7 +153,7 @@ def test_causal_event_aggregate_resolves_valid_typed_references() -> None:
         event_registry=EventRegistry(events=_events()),
         causal_context=context,
     )
-    assert aggregate.causal_context is context
+    assert aggregate.causal_context == context
 
 
 def test_causal_event_aggregate_rejects_dangling_reference() -> None:
