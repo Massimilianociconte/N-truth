@@ -35,6 +35,7 @@ from ntruth.schemas.prospective import (
     reconcile_plan_execution,
 )
 from ntruth.schemas.report_bundle import (
+    ConflictPredicateProofBinding,
     ConflictRecord,
     HandoffItemCategory,
     HandoffItemOrigin,
@@ -628,6 +629,8 @@ def test_conflicts_and_sensitivities_have_exact_bidirectional_query_closure() ->
     _, result = _quick_result()
     report = result.report_bundle
     evidence_ids = tuple(record.evidence_id for record in report.evidence_records[:2])
+    claim = report.claim_sets[0].claims[0]
+    proof_step = claim.proof_trace[0]
     foreign_conflict = ConflictRecord(
         conflict_id="CONFLICT-FOREIGN-QUERY",
         inferential_query_ids=("IQ-NOT-IN-REPORT",),
@@ -638,6 +641,20 @@ def test_conflicts_and_sensitivities_have_exact_bidirectional_query_closure() ->
             claim_scope_id="CONFLICT-FOREIGN-QUERY",
         ),
         evidence_record_ids=evidence_ids,
+        predicate_bindings=(
+            ConflictPredicateProofBinding(
+                inferential_query_id="IQ-NOT-IN-REPORT",
+                derived_claim_id=claim.claim_id,
+                proof_step_id=proof_step.step_id,
+                predicate_id=proof_step.predicate_references[0].predicate_id,
+                predicate_value=KnowledgeValue(
+                    knowledge_state=KnowledgeState.CONFLICTING,
+                    conflicting_values=("alpha", "beta"),
+                    evidence_ids=evidence_ids,
+                    query_scope_id="IQ-NOT-IN-REPORT",
+                ),
+            ),
+        ),
         retained_values=("alpha", "beta"),
         rationale="The values remain unresolved.",
     )

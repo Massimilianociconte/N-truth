@@ -15,7 +15,7 @@ from pydantic import Field, JsonValue, field_validator, model_validator
 from ntruth.parser_ai.contract import ParserCandidateOutput
 from ntruth.schemas.adequacy import DesignAdequacyEvaluation
 from ntruth.schemas.authority import AuthorityType
-from ntruth.schemas.claims import DerivedClaimSet, DeterminabilityState
+from ntruth.schemas.claims import DerivedClaim, DerivedClaimSet, DeterminabilityState
 from ntruth.schemas.core import content_checksum
 from ntruth.schemas.count_registry import CanonicalCountRecord, CanonicalCountRegistry
 from ntruth.schemas.coverage import ProfileCoverageStatement, ScenarioCoverage
@@ -42,6 +42,7 @@ from ntruth.schemas.report_resolution import (
 from ntruth.schemas.support import (
     ConfirmationEvent,
     EvidenceRecord,
+    ScientificReviewRequirement,
     SensitivityRecord,
     SourceRecord,
 )
@@ -69,6 +70,7 @@ RECONCILED_EPISTEMIC_BOUNDARY = (
     "non prova l'assenza di eventi o deviazioni non registrati."
 )
 MULTI_QUERY_POLICY_VERSION = "ntruth-report-resolution-multi-query-unreviewed-v8-0.1.0"
+CONFLICT_MATERIALITY_REVIEW_ISSUE_ID = "SRR-V8-010"
 
 
 class StrategyModuleStatus(StrEnum):
@@ -273,6 +275,53 @@ class ReportQuestion(KernelModel):
     primary: bool
 
 
+class ConflictScientificReviewRequired(ValueError):
+    """Typed blocker for conflict semantics that lack a reviewed decision artifact."""
+
+    def __init__(self, rationale: str) -> None:
+        self.review_requirement = ScientificReviewRequirement(
+            issue_id=CONFLICT_MATERIALITY_REVIEW_ISSUE_ID,
+            rationale=rationale,
+        )
+        super().__init__(
+            f"SCIENTIFIC_REVIEW_REQUIRED ({CONFLICT_MATERIALITY_REVIEW_ISSUE_ID}): {rationale}"
+        )
+
+
+class ConflictPredicateProofBinding(KernelModel):
+    """Exact conflicting predicate reference bound to one affected claim proof step."""
+
+    inferential_query_id: NonBlankStr
+    derived_claim_id: NonBlankStr
+    proof_step_id: NonBlankStr
+    predicate_id: NonBlankStr
+    predicate_value: KnowledgeValue[JsonValue]
+
+    @model_validator(mode="after")
+    def _conflicting_proof_value(self) -> Self:
+        if self.predicate_value.knowledge_state is not KnowledgeState.CONFLICTING:
+            raise ValueError("conflict predicate proof binding requires a CONFLICTING value")
+        if self.predicate_value.query_scope_id != self.inferential_query_id:
+            raise ValueError("conflict predicate proof binding query scope is not exact")
+        checksums = tuple(
+            content_checksum(value) for value in self.predicate_value.conflicting_values
+        )
+        if len(set(checksums)) != len(checksums):
+            raise ValueError("conflict predicate proof binding contains duplicate values")
+        return self
+
+
+def _conflict_binding_key(
+    binding: ConflictPredicateProofBinding,
+) -> tuple[str, str, str, str]:
+    return (
+        binding.inferential_query_id,
+        binding.derived_claim_id,
+        binding.proof_step_id,
+        binding.predicate_id,
+    )
+
+
 class ConflictRecord(KernelModel):
     """Unresolved evidence conflict retained without selecting a preferred value."""
 
@@ -280,6 +329,7 @@ class ConflictRecord(KernelModel):
     inferential_query_ids: tuple[NonBlankStr, ...] = Field(min_length=1)
     affected_claim_ids: KnowledgeValue[tuple[NonBlankStr, ...]]
     evidence_record_ids: tuple[NonBlankStr, ...] = Field(min_length=2)
+    predicate_bindings: tuple[ConflictPredicateProofBinding, ...] = ()
     retained_values: tuple[JsonValue, ...] = Field(min_length=2)
     rationale: NonBlankStr
 
@@ -302,11 +352,83 @@ class ConflictRecord(KernelModel):
             raise ValueError("conflict evidence IDs contain duplicates")
         if not set(self.affected_claim_ids.evidence_ids).issubset(self.evidence_record_ids):
             raise ValueError("conflict affected-claim evidence is outside the conflict record")
-        if len({content_checksum(value) for value in self.retained_values}) < 2:
+        retained_checksums = tuple(content_checksum(value) for value in self.retained_values)
+        if len(set(retained_checksums)) < 2:
             raise ValueError("conflict requires at least two distinct retained values")
+        if len(set(retained_checksums)) != len(retained_checksums):
+            raise ValueError("conflict retained values contain duplicates")
         for value in self.retained_values:
             ensure_unambiguous_scientific_payload(value)
+        binding_keys = tuple(_conflict_binding_key(item) for item in self.predicate_bindings)
+        if len(set(binding_keys)) != len(binding_keys):
+            raise ValueError("conflict contains duplicate predicate proof bindings")
+        if self.affected_claim_ids.knowledge_state is KnowledgeState.PRESENT:
+            if not self.predicate_bindings:
+                raise ValueError(
+                    "SCIENTIFIC_REVIEW_REQUIRED: conflict PRESENT affected claims require "
+                    "typed predicate proof bindings"
+                )
+            binding_claim_ids = {item.derived_claim_id for item in self.predicate_bindings}
+            if binding_claim_ids != set(affected_claim_ids):
+                raise ValueError("conflict predicate proof bindings differ from affected claim IDs")
+            binding_query_ids = {item.inferential_query_id for item in self.predicate_bindings}
+            if binding_query_ids != set(self.inferential_query_ids):
+                raise ValueError("conflict predicate proof binding query projection is not exact")
+            binding_evidence = {
+                evidence_id
+                for item in self.predicate_bindings
+                for evidence_id in item.predicate_value.evidence_ids
+            }
+            if not binding_evidence.issubset(self.evidence_record_ids):
+                raise ValueError(
+                    "conflict predicate proof binding evidence is outside the conflict record"
+                )
+            bound_value_checksums = {
+                content_checksum(value)
+                for item in self.predicate_bindings
+                for value in item.predicate_value.conflicting_values
+            }
+            if set(retained_checksums) != bound_value_checksums:
+                raise ValueError(
+                    "conflict retained values must exactly equal its typed predicate proof values"
+                )
+        elif self.predicate_bindings:
+            raise ValueError(
+                "conflict predicate proof bindings require PRESENT affected claim materiality"
+            )
         return self
+
+
+def _require_reviewed_conflict_materiality(
+    conflicts: KnowledgeValue[tuple[ConflictRecord, ...]],
+) -> None:
+    if conflicts.knowledge_state is not KnowledgeState.PRESENT:
+        return
+    for record in conflicts.value or ():
+        if record.affected_claim_ids.knowledge_state is KnowledgeState.PRESENT:
+            continue
+        raise ConflictScientificReviewRequired(
+            "Conflict affected-claim materiality is absent or unknown and no "
+            "content-addressed, authority-scoped reviewed materiality artifact is available."
+        )
+
+
+def _expected_conflict_predicate_bindings(
+    affected_claims: tuple[DerivedClaim, ...],
+) -> tuple[ConflictPredicateProofBinding, ...]:
+    return tuple(
+        ConflictPredicateProofBinding(
+            inferential_query_id=claim.inferential_query_id,
+            derived_claim_id=claim.claim_id,
+            proof_step_id=step.step_id,
+            predicate_id=reference.predicate_id,
+            predicate_value=reference.predicate_value,
+        )
+        for claim in affected_claims
+        for step in claim.proof_trace
+        for reference in step.predicate_references
+        if reference.predicate_value.knowledge_state is KnowledgeState.CONFLICTING
+    )
 
 
 class VerifiedPipelineContext(KernelModel):
@@ -848,31 +970,17 @@ class ReportBundle(KernelModel):
         ):
             raise ValueError("ReportBundle conflict references a query outside the report")
         if self.conflicts.knowledge_state is KnowledgeState.PRESENT:
+            _require_reviewed_conflict_materiality(self.conflicts)
             conflict_ids = [record.conflict_id for record in self.conflicts.value or ()]
             if len(set(conflict_ids)) != len(conflict_ids):
                 raise ValueError("ReportBundle contains duplicate conflict IDs")
             linked_conflict_claim_ids: set[str] = set()
             for conflict_record in self.conflicts.value or ():
                 affected_state = conflict_record.affected_claim_ids.knowledge_state
-                if affected_state is KnowledgeState.ABSENT_EXPLICIT:
-                    query_claim_proof_evidence = {
-                        evidence_id
-                        for claim in all_claims
-                        if claim.inferential_query_id in conflict_record.inferential_query_ids
-                        for step in claim.proof_trace
-                        for reference in step.predicate_references
-                        for evidence_id in reference.predicate_value.evidence_ids
-                    }
-                    if set(conflict_record.evidence_record_ids) & query_claim_proof_evidence:
-                        raise ValueError(
-                            "SCIENTIFIC_REVIEW_REQUIRED: conflict evidence overlaps query "
-                            "predicate proof evidence, so affected-claim materiality cannot be "
-                            "declared ABSENT_EXPLICIT without a reviewed materiality artifact"
-                        )
-                    continue
                 if affected_state is not KnowledgeState.PRESENT:
-                    raise ValueError(
-                        "SCIENTIFIC_REVIEW_REQUIRED: conflict-to-claim materiality is UNKNOWN"
+                    raise ConflictScientificReviewRequired(
+                        "Conflict-to-claim materiality is not PRESENT and no reviewed "
+                        "materiality artifact is available."
                     )
                 affected_claim_ids = conflict_record.affected_claim_ids.value or ()
                 unknown_claim_ids = set(affected_claim_ids) - claims_by_id.keys()
@@ -908,6 +1016,19 @@ class ReportBundle(KernelModel):
                     raise ValueError(
                         "ReportBundle conflict evidence must exactly equal the affected-claim "
                         "predicate proof evidence"
+                    )
+                expected_bindings = _expected_conflict_predicate_bindings(affected_claims)
+                expected_by_key = {
+                    _conflict_binding_key(binding): binding for binding in expected_bindings
+                }
+                provided_by_key = {
+                    _conflict_binding_key(binding): binding
+                    for binding in conflict_record.predicate_bindings
+                }
+                if provided_by_key != expected_by_key:
+                    raise ValueError(
+                        "ReportBundle conflict predicate proof bindings must exactly equal "
+                        "the affected-claim conflicting predicate values and proof lineage"
                     )
                 linked_conflict_claim_ids.update(affected_claim_ids)
             conflicting_claim_ids = {
@@ -1286,6 +1407,7 @@ def build_report_bundle(
 
     claim_sets = tuple(context.result.claim_set for context in contexts)
     claims_by_id = {claim.claim_id: claim for claim_set in claim_sets for claim in claim_set.claims}
+    _require_reviewed_conflict_materiality(conflicts)
     if conflicts.knowledge_state is KnowledgeState.PRESENT and any(
         not set(item.inferential_query_ids).issubset(query_ids) for item in conflicts.value or ()
     ):
@@ -1421,12 +1543,15 @@ def explicit_absence[T](
 
 
 __all__ = [
+    "CONFLICT_MATERIALITY_REVIEW_ISSUE_ID",
     "EXECUTED_EPISTEMIC_BOUNDARY",
     "MULTI_QUERY_POLICY_VERSION",
     "PLANNED_EPISTEMIC_BOUNDARY",
     "RECONCILED_EPISTEMIC_BOUNDARY",
     "RETROSPECTIVE_EPISTEMIC_BOUNDARY",
+    "ConflictPredicateProofBinding",
     "ConflictRecord",
+    "ConflictScientificReviewRequired",
     "HandoffItem",
     "HandoffItemCategory",
     "HandoffItemOrigin",

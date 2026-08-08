@@ -49,6 +49,10 @@ COUNT_RECONCILIATION_REVIEW_ISSUE_ID = "SRR-V8-011"
 COUNT_RECONCILIATION_KIND_MATRIX = (
     (CanonicalCountKind.PLANNED_UNIT_COUNT, CanonicalCountKind.OBSERVED_UNIT_COUNT),
 )
+COUNT_RECONCILIATION_LIFECYCLE_MATRIX = {
+    CanonicalCountKind.PLANNED_UNIT_COUNT: CountLifecyclePhase.PLANNED,
+    CanonicalCountKind.OBSERVED_UNIT_COUNT: CountLifecyclePhase.OBSERVED,
+}
 
 
 class ProspectiveArtifactKind(StrEnum):
@@ -968,6 +972,14 @@ def _count_reconciliation_key(
         if pair[0 if planned else 1] is record.kind
     )
     if len(matching_pairs) != 1:
+        return None
+    required_lifecycle = COUNT_RECONCILIATION_LIFECYCLE_MATRIX.get(record.kind)
+    lifecycle = record.scope.lifecycle_phase
+    if (
+        required_lifecycle is None
+        or lifecycle.knowledge_state is not KnowledgeState.PRESENT
+        or lifecycle.value is not required_lifecycle
+    ):
         return None
     scope = _count_reconciliation_scope(record)
     if scope is None:

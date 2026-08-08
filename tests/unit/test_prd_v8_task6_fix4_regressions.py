@@ -32,6 +32,7 @@ from ntruth.schemas.prospective import (
     reconcile_plan_execution,
 )
 from ntruth.schemas.report_bundle import (
+    ConflictPredicateProofBinding,
     ConflictRecord,
     ReportBundle,
     ReportDesignContext,
@@ -372,6 +373,21 @@ def _submission_with_conflicting_predicate() -> tuple[
             for reference in step.predicate_references
             for evidence_id in reference.predicate_value.evidence_ids
         } == set(exact_proof_evidence)
+    predicate_bindings = tuple(
+        ConflictPredicateProofBinding(
+            inferential_query_id=claim.inferential_query_id,
+            derived_claim_id=claim.claim_id,
+            proof_step_id=step.step_id,
+            predicate_id=reference.predicate_id,
+            predicate_value=reference.predicate_value,
+        )
+        for claim in pipeline_result.claim_set.claims
+        if claim.claim_id in affected_claim_ids
+        for step in claim.proof_trace
+        for reference in step.predicate_references
+        if reference.predicate_value.knowledge_state is KnowledgeState.CONFLICTING
+    )
+    assert {binding.derived_claim_id for binding in predicate_bindings} == set(affected_claim_ids)
     conflict = ConflictRecord(
         conflict_id="CONFLICT-TASK6-FIX4-EXACT-PROOF",
         inferential_query_ids=(query_id,),
@@ -382,6 +398,7 @@ def _submission_with_conflicting_predicate() -> tuple[
             claim_scope_id="CONFLICT-TASK6-FIX4-EXACT-PROOF",
         ),
         evidence_record_ids=exact_proof_evidence,
+        predicate_bindings=predicate_bindings,
         retained_values=(True, False),
         rationale="The predicate proof retains both contradictory supported values.",
     )

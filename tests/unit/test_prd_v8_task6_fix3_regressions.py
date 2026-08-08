@@ -26,7 +26,13 @@ from ntruth.schemas.prospective import (
     build_prospective_input_ledger,
     reconcile_plan_execution,
 )
-from ntruth.schemas.report_bundle import ConflictRecord, ReportBundle, build_report_bundle
+from ntruth.schemas.report_bundle import (
+    ConflictPredicateProofBinding,
+    ConflictRecord,
+    ConflictScientificReviewRequired,
+    ReportBundle,
+    build_report_bundle,
+)
 from ntruth.schemas.support import (
     ConfirmationEvent,
     EvidenceRecord,
@@ -296,6 +302,7 @@ def test_material_conflict_without_conflicting_claim_state_fails_closed() -> Non
     _, result = fix2_fixture._quick_result()
     report = result.report_bundle
     claim = report.claim_sets[0].claims[0]
+    proof_step = claim.proof_trace[0]
     evidence_ids = tuple(record.evidence_id for record in report.evidence_records[:2])
     conflict = ConflictRecord(
         conflict_id="CONFLICT-TASK6-FIX3-MATERIAL",
@@ -307,6 +314,23 @@ def test_material_conflict_without_conflicting_claim_state_fails_closed() -> Non
             claim_scope_id="CONFLICT-TASK6-FIX3-MATERIAL",
         ),
         evidence_record_ids=evidence_ids,
+        predicate_bindings=(
+            ConflictPredicateProofBinding(
+                inferential_query_id=claim.inferential_query_id,
+                derived_claim_id=claim.claim_id,
+                proof_step_id=proof_step.step_id,
+                predicate_id=proof_step.predicate_references[0].predicate_id,
+                predicate_value=KnowledgeValue(
+                    knowledge_state=KnowledgeState.CONFLICTING,
+                    conflicting_values=(
+                        "assignment-before-split",
+                        "assignment-after-split",
+                    ),
+                    evidence_ids=evidence_ids,
+                    query_scope_id=claim.inferential_query_id,
+                ),
+            ),
+        ),
         retained_values=("assignment-before-split", "assignment-after-split"),
         rationale="The material assignment timing remains unresolved.",
     )
@@ -321,7 +345,7 @@ def test_material_conflict_without_conflicting_claim_state_fails_closed() -> Non
         _rebuild_report(report, conflicts=conflict_state)
 
 
-def test_explicitly_irrelevant_conflict_is_retained_without_changing_resolution() -> None:
+def test_legacy_caller_declared_irrelevant_conflict_fails_without_reviewed_artifact() -> None:
     _, result = fix2_fixture._quick_result()
     report = result.report_bundle
     query_id = report.claim_sets[0].inferential_query_id
@@ -344,10 +368,11 @@ def test_explicitly_irrelevant_conflict_is_retained_without_changing_resolution(
         query_scope_id=query_id,
     )
 
-    rebuilt = _rebuild_report(report, conflicts=conflict_state)
-
-    assert rebuilt.conflicts.value == (conflict,)
-    assert rebuilt.report_resolution == report.report_resolution
+    with pytest.raises(
+        ConflictScientificReviewRequired,
+        match=r"SRR-V8-010|reviewed materiality artifact",
+    ):
+        _rebuild_report(report, conflicts=conflict_state)
 
 
 def test_public_resolver_revalidates_claim_sets_and_rejects_global_claim_id_reuse() -> None:

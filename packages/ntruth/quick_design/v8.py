@@ -184,14 +184,27 @@ def validate_raw_wizard_submission(submission: QuickDesignV8Submission) -> None:
         item.authority is not RAW_WIZARD_AUTHORITY for item in submission.statistical_handoff.items
     ):
         raise ValueError("raw Quick Design handoff items must retain user authority")
-    if submission.conflicts.knowledge_state is KnowledgeState.PRESENT and any(
-        record.affected_claim_ids.knowledge_state is not KnowledgeState.PRESENT
-        for record in submission.conflicts.value or ()
-    ):
-        raise ValueError(
-            "raw Quick Design conflict materiality cannot self-issue absent or unknown "
-            "affected-claim decisions; a reviewed materiality artifact is required"
-        )
+    if submission.conflicts.knowledge_state is KnowledgeState.PRESENT:
+        for record in submission.conflicts.value or ():
+            if record.affected_claim_ids.knowledge_state is not KnowledgeState.PRESENT:
+                raise ValueError(
+                    "raw Quick Design conflict materiality cannot self-issue absent or "
+                    "unknown affected-claim decisions; a reviewed materiality artifact "
+                    "is required"
+                )
+            for binding in record.predicate_bindings:
+                predicate_value = submission.pipeline_request.predicate_values.get(
+                    binding.predicate_id
+                )
+                if (
+                    binding.inferential_query_id != submission.pipeline_request.query.id
+                    or predicate_value is None
+                    or binding.predicate_value != predicate_value
+                ):
+                    raise ValueError(
+                        "raw Quick Design conflict predicate value must exactly equal the "
+                        "query-scoped request predicate value"
+                    )
 
 
 def run_quick_design_v8(
