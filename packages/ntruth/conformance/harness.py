@@ -10,6 +10,7 @@ from ntruth.derivation_theory.contracts import (
     ConformanceBundle,
     ConformanceFixture,
     ConformanceFixtureSet,
+    EvaluatorArtifactKind,
     FixtureContentPin,
     FixtureKind,
     FixtureOutcome,
@@ -57,6 +58,7 @@ class ConformanceReport(KernelModel):
     theory_checksum: NonBlankStr
     rulebook_checksum: NonBlankStr
     reference_registry_checksum: NonBlankStr
+    evaluator_registry_checksum: NonBlankStr
 
 
 def fixture_content_pins(rulebook: V8Rulebook) -> tuple[FixtureContentPin, ...]:
@@ -285,6 +287,50 @@ def _check_reference_roles(bundle: ConformanceBundle, failures: list[Conformance
                 ownership[key] = slot.role.value
 
 
+def _check_evaluator_registry(
+    bundle: ConformanceBundle,
+    failures: list[ConformanceFailure],
+) -> None:
+    clauses = {clause.clause_id: clause for clause in bundle.theory.clauses}
+    rules = {rule.rule_id: rule for rule in bundle.rulebook.rules}
+    derivation_clause_ids: set[str] = set()
+    for pin in bundle.evaluator_registry.artifact_pins:
+        clause = clauses.get(pin.theory_clause_id)
+        rule = rules.get(pin.rule_id)
+        if pin.evaluator_kind is EvaluatorArtifactKind.DERIVATION:
+            derivation_clause_ids.add(pin.theory_clause_id)
+        if (
+            clause is None
+            or rule is None
+            or rule.theory_clause_id != pin.theory_clause_id
+            or pin.theory_id != bundle.theory.theory_id
+            or pin.theory_version != bundle.theory.theory_version
+            or pin.theory_checksum != bundle.theory.declared_checksum
+            or pin.theory_clause_version != clause.clause_version
+            or pin.rule_version != rule.rule_version
+            or pin.rule_checksum
+            != canonical_checksum(rule.model_dump(mode="json", exclude_unset=True))
+        ):
+            failures.append(
+                ConformanceFailure(
+                    code=ConformanceFailureCode.PIN_MISMATCH,
+                    clause_id=pin.theory_clause_id,
+                    rule_id=pin.rule_id,
+                    message=(
+                        "reviewed evaluator pin differs from exact Theory clause/Rulebook "
+                        "contract bytes"
+                    ),
+                )
+            )
+    if derivation_clause_ids != set(clauses):
+        failures.append(
+            ConformanceFailure(
+                code=ConformanceFailureCode.PIN_MISMATCH,
+                message="reviewed evaluator registry must cover every Theory clause exactly",
+            )
+        )
+
+
 def evaluate_conformance(bundle: ConformanceBundle) -> ConformanceReport:
     failures: list[ConformanceFailure] = []
     theory = bundle.theory
@@ -292,6 +338,7 @@ def evaluate_conformance(bundle: ConformanceBundle) -> ConformanceReport:
     profile = bundle.profile_closure
     registry = bundle.reference_registry
     fixture_set = bundle.fixture_set
+    evaluator_registry = bundle.evaluator_registry
 
     implementation_slots = [
         slot
@@ -320,6 +367,8 @@ def evaluate_conformance(bundle: ConformanceBundle) -> ConformanceReport:
         or rulebook.reference_registry_version != registry.registry_version
         or rulebook.fixture_set_id != fixture_set.fixture_set_id
         or rulebook.fixture_set_version != fixture_set.fixture_set_version
+        or rulebook.evaluator_registry_id != evaluator_registry.registry_id
+        or rulebook.evaluator_registry_version != evaluator_registry.registry_version
         or fixture_registry_asset is None
         or fixture_registry_asset.asset_id != fixture_set.fixture_set_id
         or fixture_registry_asset.asset_version != fixture_set.fixture_set_version
@@ -327,7 +376,9 @@ def evaluate_conformance(bundle: ConformanceBundle) -> ConformanceReport:
         failures.append(
             ConformanceFailure(
                 code=ConformanceFailureCode.PIN_MISMATCH,
-                message="Theory/profile/Rulebook/reference/fixture identity pins do not match",
+                message=(
+                    "Theory/profile/Rulebook/reference/fixture/evaluator identity pins do not match"
+                ),
             )
         )
     if (
@@ -336,6 +387,7 @@ def evaluate_conformance(bundle: ConformanceBundle) -> ConformanceReport:
         or rulebook.profile_closure_checksum != profile.declared_checksum
         or rulebook.reference_registry_checksum != registry.declared_checksum
         or rulebook.fixture_set_checksum != fixture_set.declared_checksum
+        or rulebook.evaluator_registry_checksum != evaluator_registry.declared_checksum
         or fixture_set_checksum(fixture_set) != fixture_set.declared_checksum
         or fixture_set_checksum(rulebook) != fixture_set.declared_checksum
         or fixture_registry_asset is None
@@ -344,7 +396,9 @@ def evaluate_conformance(bundle: ConformanceBundle) -> ConformanceReport:
         failures.append(
             ConformanceFailure(
                 code=ConformanceFailureCode.CHECKSUM_MISMATCH,
-                message="Theory/profile/Rulebook/reference/fixture checksum pins do not match",
+                message=(
+                    "Theory/profile/Rulebook/reference/fixture/evaluator checksum pins do not match"
+                ),
             )
         )
 
@@ -447,6 +501,7 @@ def evaluate_conformance(bundle: ConformanceBundle) -> ConformanceReport:
             )
 
     _check_reference_roles(bundle, failures)
+    _check_evaluator_registry(bundle, failures)
 
     blocker_ids = {item.issue_id for item in rulebook.scientific_review_requirements}
     blocker_ids.add(profile.review_requirement.issue_id)
@@ -467,6 +522,7 @@ def evaluate_conformance(bundle: ConformanceBundle) -> ConformanceReport:
         theory_checksum=theory.declared_checksum,
         rulebook_checksum=rulebook.declared_checksum,
         reference_registry_checksum=registry.declared_checksum,
+        evaluator_registry_checksum=evaluator_registry.declared_checksum,
     )
 
 

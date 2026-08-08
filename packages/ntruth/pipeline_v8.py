@@ -7,6 +7,7 @@ from ntruth.derivation_theory.runtime import (
     V8DerivationInput,
     build_execution_manifest,
     derive_claim_set,
+    require_reviewed_evaluator_bundle,
     verify_runtime_bundle,
 )
 from ntruth.rules.v8_engine import evaluate_design_adequacy
@@ -83,6 +84,7 @@ def run_v8_pipeline(
 
     from ntruth.verifier.v8 import verify_v8_derived_claim_set, verify_v8_pipeline_request
 
+    require_reviewed_evaluator_bundle(conformance_bundle)
     conformance = verify_runtime_bundle(conformance_bundle)
     if not conformance.passed:
         raise V8PipelineConformanceError(conformance)

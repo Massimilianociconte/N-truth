@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tarfile
 from pathlib import Path
 
 import pytest
@@ -21,7 +22,7 @@ def test_built_wheel_installs_and_conforms_from_package_resources(tmp_path: Path
         pytest.fail("uv is required for the distribution conformance gate")
     dist_dir = tmp_path / "dist"
     build = subprocess.run(
-        [uv, "build", "--wheel", "--out-dir", str(dist_dir)],
+        [uv, "build", "--out-dir", str(dist_dir)],
         cwd=ROOT,
         check=False,
         capture_output=True,
@@ -30,6 +31,13 @@ def test_built_wheel_installs_and_conforms_from_package_resources(tmp_path: Path
     assert build.returncode == 0, build.stdout + build.stderr
     wheels = list(dist_dir.glob("ntruth-*.whl"))
     assert len(wheels) == 1
+    sdists = list(dist_dir.glob("ntruth-*.tar.gz"))
+    assert len(sdists) == 1
+    with tarfile.open(sdists[0], "r:gz") as archive:
+        assert any(
+            name.endswith("/theories/reviewed-evaluator-registry-0.1.0.json")
+            for name in archive.getnames()
+        )
 
     target = tmp_path / "installed"
     install = subprocess.run(
@@ -46,13 +54,20 @@ from pathlib import Path
 import ntruth
 from ntruth.conformance import evaluate_conformance
 from ntruth.derivation_theory import load_installed_bundle
+from ntruth.derivation_theory.runtime import build_execution_manifest, verify_runtime_bundle
 
 assert Path(ntruth.__file__).resolve().is_relative_to(Path({str(target)!r}).resolve())
 bundle = load_installed_bundle()
 report = evaluate_conformance(bundle)
 assert report.passed, report.failures
+runtime_report = verify_runtime_bundle(bundle)
+assert runtime_report.passed, runtime_report.failures
+manifest = build_execution_manifest(bundle, runtime_report)
 assert len(bundle.theory.clauses) == 7
 assert len(bundle.fixture_set.fixture_pins) == 21
+assert len(bundle.evaluator_registry.artifact_pins) == 8
+assert len(manifest.implementation_rules) == 7
+assert manifest.evaluator_registry_checksum == bundle.evaluator_registry.declared_checksum
 print(bundle.rulebook.declared_checksum)
 """
     env = os.environ.copy()

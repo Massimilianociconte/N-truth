@@ -17,6 +17,7 @@ from ntruth.derivation_theory.contracts import (
     DerivationTheory,
     ProfilePredicateClosureAsset,
     ReferenceRoleRegistry,
+    ReviewedEvaluatorRegistry,
     V8Rulebook,
 )
 
@@ -25,6 +26,7 @@ PROFILE_CLOSURE_FILENAME = "simple-cell-culture-profile-closure-0.1.0.json"
 RULEBOOK_FILENAME = "ntruth-v8-core-0.1.0.json"
 REFERENCE_REGISTRY_FILENAME = "reference-role-registry-0.1.0.json"
 FIXTURE_SET_FILENAME = "implementation-conformance-fixtures-simple-cell-culture-0.1.0.json"
+EVALUATOR_REGISTRY_FILENAME = "reviewed-evaluator-registry-0.1.0.json"
 
 
 class AssetChecksumError(ValueError):
@@ -71,6 +73,10 @@ def load_conformance_fixture_set_file(resource: Path | Traversable) -> Conforman
     return _load_verified(resource, ConformanceFixtureSet)
 
 
+def load_evaluator_registry_file(resource: Path | Traversable) -> ReviewedEvaluatorRegistry:
+    return _load_verified(resource, ReviewedEvaluatorRegistry)
+
+
 def _load_bundle(
     *,
     theory_resource: Path | Traversable,
@@ -78,6 +84,7 @@ def _load_bundle(
     rulebook_resource: Path | Traversable,
     registry_resource: Path | Traversable,
     fixture_set_resource: Path | Traversable,
+    evaluator_registry_resource: Path | Traversable,
 ) -> ConformanceBundle:
     return ConformanceBundle(
         theory=load_derivation_theory_file(theory_resource),
@@ -85,6 +92,7 @@ def _load_bundle(
         rulebook=load_v8_rulebook_file(rulebook_resource),
         reference_registry=load_reference_registry_file(registry_resource),
         fixture_set=load_conformance_fixture_set_file(fixture_set_resource),
+        evaluator_registry=load_evaluator_registry_file(evaluator_registry_resource),
     )
 
 
@@ -98,6 +106,7 @@ def load_canonical_bundle(repository_root: Path) -> ConformanceBundle:
         rulebook_resource=repository_root / "rulesets" / RULEBOOK_FILENAME,
         registry_resource=conformance_assets / REFERENCE_REGISTRY_FILENAME,
         fixture_set_resource=conformance_assets / FIXTURE_SET_FILENAME,
+        evaluator_registry_resource=(repository_root / "theories" / EVALUATOR_REGISTRY_FILENAME),
     )
 
 
@@ -112,6 +121,9 @@ def load_installed_bundle() -> ConformanceBundle:
         rulebook_resource=package_root.joinpath("_bundled", "rulesets", RULEBOOK_FILENAME),
         registry_resource=conformance_assets.joinpath(REFERENCE_REGISTRY_FILENAME),
         fixture_set_resource=conformance_assets.joinpath(FIXTURE_SET_FILENAME),
+        evaluator_registry_resource=package_root.joinpath(
+            "_bundled", "theories", EVALUATOR_REGISTRY_FILENAME
+        ),
     )
 
 
@@ -121,6 +133,7 @@ __all__ = [
     "load_canonical_bundle",
     "load_conformance_fixture_set_file",
     "load_derivation_theory_file",
+    "load_evaluator_registry_file",
     "load_installed_bundle",
     "load_profile_closure_file",
     "load_reference_registry_file",

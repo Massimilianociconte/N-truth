@@ -59,6 +59,11 @@ class ProfileClosureStatus(StrEnum):
     SCIENTIFIC_REVIEW_REQUIRED = "SCIENTIFIC_REVIEW_REQUIRED"
 
 
+class EvaluatorArtifactKind(StrEnum):
+    DERIVATION = "DERIVATION"
+    ADEQUACY = "ADEQUACY"
+
+
 class PredicateRequirement(KernelModel):
     predicate_id: NonBlankStr
     rationale: NonBlankStr
@@ -224,6 +229,9 @@ class V8Rulebook(KernelModel):
     fixture_set_id: NonBlankStr
     fixture_set_version: NonBlankStr
     fixture_set_checksum: Sha256
+    evaluator_registry_id: NonBlankStr
+    evaluator_registry_version: NonBlankStr
+    evaluator_registry_checksum: Sha256
     rules: tuple[V8ConformanceRule, ...] = Field(min_length=7)
     scientific_review_requirements: tuple[ScientificReviewRequirement, ...] = Field(min_length=1)
     declared_checksum: Sha256
@@ -322,12 +330,67 @@ class ConformanceFixtureSet(KernelModel):
         return self
 
 
+class ReviewedEvaluatorArtifactPin(KernelModel):
+    """One exact scientific executable reviewed against immutable contract bytes."""
+
+    evaluator_kind: EvaluatorArtifactKind
+    artifact_id: NonBlankStr
+    artifact_version: NonBlankStr
+    theory_id: NonBlankStr
+    theory_version: NonBlankStr
+    theory_checksum: Sha256
+    theory_clause_id: NonBlankStr
+    theory_clause_version: NonBlankStr
+    rule_id: NonBlankStr
+    rule_version: NonBlankStr
+    rule_checksum: Sha256
+    implementation_source_digest: Sha256
+
+
+class ReviewedEvaluatorRegistry(KernelModel):
+    """Pre-reviewed expected code digests; live source never updates this asset."""
+
+    registry_id: NonBlankStr
+    registry_version: NonBlankStr
+    artifact_pins: tuple[ReviewedEvaluatorArtifactPin, ...] = Field(
+        min_length=8,
+        max_length=8,
+    )
+    declared_checksum: Sha256
+
+    @model_validator(mode="after")
+    def _exact_artifact_set(self) -> Self:
+        identities = [
+            (pin.evaluator_kind, pin.artifact_id, pin.artifact_version)
+            for pin in self.artifact_pins
+        ]
+        if len(set(identities)) != len(identities):
+            raise ValueError("reviewed evaluator registry contains duplicate artifact pins")
+        derivation_pins = [
+            pin
+            for pin in self.artifact_pins
+            if pin.evaluator_kind is EvaluatorArtifactKind.DERIVATION
+        ]
+        adequacy_pins = [
+            pin
+            for pin in self.artifact_pins
+            if pin.evaluator_kind is EvaluatorArtifactKind.ADEQUACY
+        ]
+        if len(derivation_pins) != 7 or len(adequacy_pins) != 1:
+            raise ValueError("registry requires seven derivation pins and one adequacy pin")
+        clause_ids = [pin.theory_clause_id for pin in derivation_pins]
+        if len(set(clause_ids)) != 7:
+            raise ValueError("each derivation Theory clause requires exactly one artifact pin")
+        return self
+
+
 class ConformanceBundle(KernelModel):
     theory: DerivationTheory
     rulebook: V8Rulebook
     profile_closure: ProfilePredicateClosureAsset
     reference_registry: ReferenceRoleRegistry
     fixture_set: ConformanceFixtureSet
+    evaluator_registry: ReviewedEvaluatorRegistry
 
 
 __all__ = [
@@ -336,6 +399,7 @@ __all__ = [
     "ConformanceFixture",
     "ConformanceFixtureSet",
     "DerivationTheory",
+    "EvaluatorArtifactKind",
     "ExpectedDerivedClaim",
     "ExpectedProofTraceStep",
     "FixtureContentPin",
@@ -350,6 +414,8 @@ __all__ = [
     "ReferenceRole",
     "ReferenceRoleRegistry",
     "ReferenceRoleSlot",
+    "ReviewedEvaluatorArtifactPin",
+    "ReviewedEvaluatorRegistry",
     "RuleExecutionStatus",
     "Sha256",
     "TheoryClause",

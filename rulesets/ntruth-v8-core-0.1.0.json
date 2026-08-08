@@ -16,6 +16,9 @@
   "fixture_set_id": "implementation-conformance-fixtures-simple-cell-culture",
   "fixture_set_version": "0.1.0",
   "fixture_set_checksum": "f7a9b4c0a009fcbf1ae4c7a2bb3b15d8392225cb6e040ec17e2187cb396918e6",
+  "evaluator_registry_id": "ntruth-reviewed-evaluator-registry",
+  "evaluator_registry_version": "0.1.0",
+  "evaluator_registry_checksum": "a8353a1d5743f5fdcbeec7cff389da3bff60908b6d2a609c78a0fd4b6f0a0fff",
   "rules": [
     {
       "schema_version": "8.0.0",
@@ -2521,5 +2524,5 @@
       "rationale": "RuleChallenge outcome-dependent payload and change-versus-migration semantics remain under review."
     }
   ],
-  "declared_checksum": "3eb8de408a8874c099d8a514a9d74ea0534f1ee96f5a71cb5bd3c6896168eca3"
+  "declared_checksum": "84194ecabae815fca34fbe6dd86223b7cffbf126423d0e241cfae3725d2c39be"
 }

@@ -59,6 +59,9 @@ class V8ExecutionManifest(KernelModel):
     fixture_set_id: NonBlankStr
     fixture_set_version: NonBlankStr
     fixture_set_checksum: Sha256
+    evaluator_registry_id: NonBlankStr
+    evaluator_registry_version: NonBlankStr
+    evaluator_registry_checksum: Sha256
     implementation_rules: tuple[ImplementationRulePin, ...] = Field(min_length=7)
     adequacy_evaluator: AdequacyEvaluatorPin
     release_blocker_issue_ids: tuple[NonBlankStr, ...]

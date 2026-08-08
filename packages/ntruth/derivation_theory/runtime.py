@@ -17,6 +17,8 @@ from ntruth.conformance.harness import (
 )
 from ntruth.derivation_theory.contracts import (
     ConformanceBundle,
+    EvaluatorArtifactKind,
+    ReviewedEvaluatorArtifactPin,
     TheoryClause,
     V8ConformanceRule,
 )
@@ -64,7 +66,12 @@ _REVIEWED_THEORY_VERSION = "0.1.0"
 _REVIEWED_THEORY_CHECKSUM = "aa37639893e2ba7732496f2eb6a121291e0aad2d3bae51501c8f1ea9e9b6464f"
 _REVIEWED_RULEBOOK_ID = "ntruth-v8-core"
 _REVIEWED_RULEBOOK_VERSION = "0.1.0"
-_REVIEWED_RULEBOOK_CHECKSUM = "3eb8de408a8874c099d8a514a9d74ea0534f1ee96f5a71cb5bd3c6896168eca3"
+_REVIEWED_RULEBOOK_CHECKSUM = "84194ecabae815fca34fbe6dd86223b7cffbf126423d0e241cfae3725d2c39be"
+_REVIEWED_EVALUATOR_REGISTRY_ID = "ntruth-reviewed-evaluator-registry"
+_REVIEWED_EVALUATOR_REGISTRY_VERSION = "0.1.0"
+_REVIEWED_EVALUATOR_REGISTRY_CHECKSUM = (
+    "a8353a1d5743f5fdcbeec7cff389da3bff60908b6d2a609c78a0fd4b6f0a0fff"
+)
 _REVIEWED_EVALUATOR_VERSION = "0.1.0"
 _REVIEWED_RULE_ID_BY_CLAUSE = {
     "DT-A-ASSIGNMENT-UNIT": "V8-A-ASSIGNMENT-UNIT",
@@ -100,7 +107,8 @@ class V8EvaluatorReviewRequired(ValueError):
             issue_id="SRR-V8-024",
             rationale=(
                 "A Theory/Rulebook successor requires an explicitly reviewed evaluator "
-                "artifact before deterministic re-derivation."
+                "artifact, including exact implementation bytes, before deterministic "
+                "re-derivation."
             ),
         )
         suffix = f" for {clause_id}" if clause_id is not None else ""
@@ -122,6 +130,9 @@ def _reviewed_bundle_identity(bundle: ConformanceBundle) -> bool:
         and bundle.rulebook.rulebook_id == _REVIEWED_RULEBOOK_ID
         and bundle.rulebook.rulebook_version == _REVIEWED_RULEBOOK_VERSION
         and bundle.rulebook.declared_checksum == _REVIEWED_RULEBOOK_CHECKSUM
+        and bundle.evaluator_registry.registry_id == _REVIEWED_EVALUATOR_REGISTRY_ID
+        and bundle.evaluator_registry.registry_version == _REVIEWED_EVALUATOR_REGISTRY_VERSION
+        and bundle.evaluator_registry.declared_checksum == _REVIEWED_EVALUATOR_REGISTRY_CHECKSUM
     )
 
 
@@ -132,10 +143,12 @@ def _derivation_code_checksum(clause_id: str) -> str:
         inspect.getsource(function)
         for function in (
             _selected_count_record,
+            _required_values,
             _state_for,
             _count_payload,
             _resolved_payload,
             _derive_clause_claims,
+            derive_claim_set,
         )
     )
     return canonical_checksum({"clause_id": clause_id, "python_source": source})
@@ -147,6 +160,14 @@ def _reviewed_derivation_artifact(
     rule: V8ConformanceRule,
 ) -> _EvaluatorArtifact:
     expected_rule_id = _REVIEWED_RULE_ID_BY_CLAUSE.get(clause.clause_id)
+    expected_artifact_id = f"ntruth-python-derivation-{clause.clause_id}"
+    pin = _registered_evaluator_pin(
+        bundle,
+        EvaluatorArtifactKind.DERIVATION,
+        clause,
+        rule,
+        expected_artifact_id,
+    )
     if (
         not _reviewed_bundle_identity(bundle)
         or clause.clause_version != _REVIEWED_THEORY_VERSION
@@ -155,13 +176,45 @@ def _reviewed_derivation_artifact(
         or rule.rule_version != _REVIEWED_RULEBOOK_VERSION
         or rule.theory_clause_id != clause.clause_id
         or rule.theory_clause_version != clause.clause_version
+        or pin.implementation_source_digest != _derivation_code_checksum(clause.clause_id)
     ):
         raise V8EvaluatorReviewRequired(clause_id=clause.clause_id)
     return _EvaluatorArtifact(
-        artifact_id=f"ntruth-python-derivation-{clause.clause_id}",
-        artifact_version=_REVIEWED_EVALUATOR_VERSION,
-        artifact_checksum=_derivation_code_checksum(clause.clause_id),
+        artifact_id=pin.artifact_id,
+        artifact_version=pin.artifact_version,
+        artifact_checksum=pin.implementation_source_digest,
     )
+
+
+def _registered_evaluator_pin(
+    bundle: ConformanceBundle,
+    kind: EvaluatorArtifactKind,
+    clause: TheoryClause,
+    rule: V8ConformanceRule,
+    expected_artifact_id: str,
+) -> ReviewedEvaluatorArtifactPin:
+    matches = tuple(
+        pin
+        for pin in bundle.evaluator_registry.artifact_pins
+        if pin.evaluator_kind is kind
+        and pin.theory_clause_id == clause.clause_id
+        and pin.rule_id == rule.rule_id
+    )
+    if len(matches) != 1:
+        raise V8EvaluatorReviewRequired(clause_id=clause.clause_id)
+    pin = matches[0]
+    if (
+        pin.artifact_id != expected_artifact_id
+        or pin.artifact_version != _REVIEWED_EVALUATOR_VERSION
+        or pin.theory_id != bundle.theory.theory_id
+        or pin.theory_version != bundle.theory.theory_version
+        or pin.theory_checksum != bundle.theory.declared_checksum
+        or pin.theory_clause_version != clause.clause_version
+        or pin.rule_version != rule.rule_version
+        or pin.rule_checksum != rule_content_checksum(rule)
+    ):
+        raise V8EvaluatorReviewRequired(clause_id=clause.clause_id)
+    return pin
 
 
 def _reviewed_adequacy_artifact(
@@ -169,6 +222,15 @@ def _reviewed_adequacy_artifact(
     clause: TheoryClause,
     rule: V8ConformanceRule,
 ) -> _EvaluatorArtifact:
+    pin = _registered_evaluator_pin(
+        bundle,
+        EvaluatorArtifactKind.ADEQUACY,
+        clause,
+        rule,
+        "ntruth-python-adequacy-interference-v8",
+    )
+    implementation_path = Path(__file__).resolve().parents[1] / "rules" / "v8_engine.py"
+    current_digest = hashlib.sha256(implementation_path.read_bytes()).hexdigest()
     if (
         not _reviewed_bundle_identity(bundle)
         or clause.clause_id != "DT-E-INTERFERENCE-ESTIMAND"
@@ -176,13 +238,13 @@ def _reviewed_adequacy_artifact(
         or rule.rule_id != "V8-E-INTERFERENCE"
         or _REVIEWED_RULE_CHECKSUM_BY_ID.get(rule.rule_id) != rule_content_checksum(rule)
         or rule.rule_version != _REVIEWED_RULEBOOK_VERSION
+        or pin.implementation_source_digest != current_digest
     ):
         raise V8EvaluatorReviewRequired(clause_id=clause.clause_id)
-    implementation_path = Path(__file__).resolve().parents[1] / "rules" / "v8_engine.py"
     return _EvaluatorArtifact(
-        artifact_id="ntruth-python-adequacy-interference-v8",
-        artifact_version=_REVIEWED_EVALUATOR_VERSION,
-        artifact_checksum=hashlib.sha256(implementation_path.read_bytes()).hexdigest(),
+        artifact_id=pin.artifact_id,
+        artifact_version=pin.artifact_version,
+        artifact_checksum=pin.implementation_source_digest,
     )
 
 
@@ -282,6 +344,11 @@ def _checksum_failures(bundle: ConformanceBundle) -> tuple[ConformanceFailure, .
             bundle.reference_registry.declared_checksum,
         ),
         ("fixture set", bundle.fixture_set, bundle.fixture_set.declared_checksum),
+        (
+            "evaluator registry",
+            bundle.evaluator_registry,
+            bundle.evaluator_registry.declared_checksum,
+        ),
     )
     failures: list[ConformanceFailure] = []
     for label, asset, declared in assets:
@@ -302,6 +369,13 @@ def verify_runtime_bundle(bundle: ConformanceBundle) -> ConformanceReport:
     report = evaluate_conformance(bundle)
     failures = (*report.failures, *_checksum_failures(bundle))
     return report.model_copy(update={"passed": not failures, "failures": failures})
+
+
+def require_reviewed_evaluator_bundle(bundle: ConformanceBundle) -> None:
+    """Reject unregistered contract/registry successors before any runtime manifest exists."""
+
+    if not _reviewed_bundle_identity(bundle):
+        raise V8EvaluatorReviewRequired()
 
 
 def _rule_pins(bundle: ConformanceBundle) -> tuple[ImplementationRulePin, ...]:
@@ -372,6 +446,7 @@ def build_execution_manifest(
         bundle.profile_closure.declared_checksum,
         bundle.reference_registry.declared_checksum,
         bundle.fixture_set.declared_checksum,
+        bundle.evaluator_registry.declared_checksum,
         *(pin.rule_checksum for pin in rule_pins),
         *(pin.implementation_artifact_checksum for pin in rule_pins),
         adequacy_pin.implementation_artifact_checksum,
@@ -393,6 +468,9 @@ def build_execution_manifest(
         fixture_set_id=bundle.fixture_set.fixture_set_id,
         fixture_set_version=bundle.fixture_set.fixture_set_version,
         fixture_set_checksum=bundle.fixture_set.declared_checksum,
+        evaluator_registry_id=bundle.evaluator_registry.registry_id,
+        evaluator_registry_version=bundle.evaluator_registry.registry_version,
+        evaluator_registry_checksum=bundle.evaluator_registry.declared_checksum,
         implementation_rules=rule_pins,
         adequacy_evaluator=adequacy_pin,
         release_blocker_issue_ids=conformance.release_blocker_issue_ids,
@@ -699,6 +777,7 @@ __all__ = [
     "build_execution_manifest",
     "derive_claim_set",
     "load_runtime_bundle",
+    "require_reviewed_evaluator_bundle",
     "rule_content_checksum",
     "verify_runtime_bundle",
 ]

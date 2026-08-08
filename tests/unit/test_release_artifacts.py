@@ -69,7 +69,12 @@ snapshots:
     assert render(payload).endswith("\n")
 
 
-def _write_sdist(path: Path, extra_name: str | None = None) -> None:
+def _write_sdist(
+    path: Path,
+    extra_name: str | None = None,
+    *,
+    include_evaluator_registry: bool = True,
+) -> None:
     required = [
         "ntruth-0.1.0/pyproject.toml",
         "ntruth-0.1.0/apps/desktop/dist/index.html",
@@ -83,6 +88,8 @@ def _write_sdist(path: Path, extra_name: str | None = None) -> None:
             "implementation-conformance-fixtures-simple-cell-culture-0.1.0.json"
         ),
     ]
+    if include_evaluator_registry:
+        required.append("ntruth-0.1.0/theories/reviewed-evaluator-registry-0.1.0.json")
     if extra_name:
         required.append(f"ntruth-0.1.0/{extra_name}")
     with tarfile.open(path, "w:gz") as archive:
@@ -122,6 +129,14 @@ def test_sdist_accepts_public_reproducible_assets(tmp_path: Path) -> None:
     check_sdist(sdist)
 
 
+def test_sdist_rejects_missing_reviewed_evaluator_registry(tmp_path: Path) -> None:
+    sdist = tmp_path / "ntruth.tar.gz"
+    _write_sdist(sdist, include_evaluator_registry=False)
+
+    with pytest.raises(ValueError, match="reviewed-evaluator-registry"):
+        check_sdist(sdist)
+
+
 def test_wheel_rejects_missing_prd_v8_conformance_bundle(tmp_path: Path) -> None:
     """Catches a release wheel that cannot reproduce checkout conformance."""
 
@@ -139,4 +154,29 @@ def test_wheel_rejects_missing_prd_v8_conformance_bundle(tmp_path: Path) -> None
             archive.writestr(name, "fixture")
 
     with pytest.raises(ValueError, match=r"ntruth-derivation-theory-0\.1\.0\.json"):
+        check_wheel(wheel)
+
+
+def test_wheel_rejects_missing_reviewed_evaluator_registry(tmp_path: Path) -> None:
+    wheel = tmp_path / "ntruth-0.1.0-py3-none-any.whl"
+    required_except_registry = (
+        "ntruth/_ui/index.html",
+        "ntruth/_ui/assets/app.js",
+        "ntruth/_ui/assets/app.css",
+        "ntruth/_bundled/models/qwen3-4b-instruct-2507-mlx-qlora.json",
+        "ntruth/_bundled/theories/ntruth-derivation-theory-0.1.0.json",
+        "ntruth/_bundled/theories/simple-cell-culture-profile-closure-0.1.0.json",
+        "ntruth/_bundled/rulesets/ntruth-v8-core-0.1.0.json",
+        "ntruth/_bundled/ontology/ntruth-core-0.1.0.json",
+        "ntruth/conformance/assets/reference-role-registry-0.1.0.json",
+        (
+            "ntruth/conformance/assets/"
+            "implementation-conformance-fixtures-simple-cell-culture-0.1.0.json"
+        ),
+    )
+    with zipfile.ZipFile(wheel, "w") as archive:
+        for name in required_except_registry:
+            archive.writestr(name, "fixture")
+
+    with pytest.raises(ValueError, match="reviewed-evaluator-registry"):
         check_wheel(wheel)
