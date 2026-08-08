@@ -53,6 +53,12 @@ class ReferenceAvailability(StrEnum):
     SCIENTIFIC_REVIEW_REQUIRED = "SCIENTIFIC_REVIEW_REQUIRED"
 
 
+class ProfileClosureStatus(StrEnum):
+    """v0.x cannot claim reviewed predicate closure while SRR-V8-008 is open."""
+
+    SCIENTIFIC_REVIEW_REQUIRED = "SCIENTIFIC_REVIEW_REQUIRED"
+
+
 class PredicateRequirement(KernelModel):
     predicate_id: NonBlankStr
     rationale: NonBlankStr
@@ -86,6 +92,10 @@ class DerivationTheory(KernelModel):
     theory_version: NonBlankStr
     profile_id: NonBlankStr
     profile_version: NonBlankStr
+    profile_closure_asset_id: NonBlankStr
+    profile_closure_asset_version: NonBlankStr
+    profile_closure_checksum: Sha256
+    reference_registry_id: NonBlankStr
     reference_registry_version: NonBlankStr
     clauses: tuple[TheoryClause, ...] = Field(min_length=7, max_length=7)
     declared_checksum: Sha256
@@ -138,6 +148,13 @@ class ConformanceFixture(KernelModel):
             raise ValueError("DERIVED fixture requires expected claims")
         if self.expected_outcome is FixtureOutcome.NOT_APPLICABLE and self.expected_claims:
             raise ValueError("NOT_APPLICABLE fixture cannot carry expected claims")
+        expected_by_kind = {
+            FixtureKind.POSITIVE: FixtureOutcome.DERIVED,
+            FixtureKind.NEGATIVE: FixtureOutcome.NOT_APPLICABLE,
+            FixtureKind.MINIMAL_COUNTERFACTUAL: FixtureOutcome.DERIVED,
+        }
+        if self.expected_outcome is not expected_by_kind[self.kind]:
+            raise ValueError("v0.x fixture kind and expected outcome are inconsistent")
         return self
 
 
@@ -184,6 +201,9 @@ class V8ConformanceRule(KernelModel):
             raise ValueError("rule contains duplicate fixture IDs")
         if len(set(self.output_claim_types)) != len(self.output_claim_types):
             raise ValueError("rule contains duplicate output claim types")
+        fixture_kinds = [fixture.kind for fixture in self.fixtures]
+        if len(self.fixtures) != len(FixtureKind) or set(fixture_kinds) != set(FixtureKind):
+            raise ValueError("v0.x rule requires exactly one fixture of each normative kind")
         return self
 
 
@@ -195,9 +215,14 @@ class V8Rulebook(KernelModel):
     theory_checksum: Sha256
     profile_id: NonBlankStr
     profile_version: NonBlankStr
+    profile_closure_asset_id: NonBlankStr
+    profile_closure_asset_version: NonBlankStr
+    profile_closure_checksum: Sha256
     reference_registry_id: NonBlankStr
     reference_registry_version: NonBlankStr
     reference_registry_checksum: Sha256
+    fixture_set_id: NonBlankStr
+    fixture_set_version: NonBlankStr
     fixture_set_checksum: Sha256
     rules: tuple[V8ConformanceRule, ...] = Field(min_length=7)
     scientific_review_requirements: tuple[ScientificReviewRequirement, ...] = Field(min_length=1)
@@ -249,23 +274,77 @@ class ReferenceRoleRegistry(KernelModel):
         return self
 
 
+class ProfilePredicateClosureAsset(KernelModel):
+    """Versioned candidate closure that remains blocked pending scientific review."""
+
+    asset_id: NonBlankStr
+    asset_version: NonBlankStr
+    profile_id: NonBlankStr
+    profile_version: NonBlankStr
+    closure_status: ProfileClosureStatus
+    candidate_predicate_ids: tuple[NonBlankStr, ...] = Field(min_length=1)
+    known_gaps: tuple[NonBlankStr, ...] = Field(min_length=1)
+    review_requirement: ScientificReviewRequirement
+    declared_checksum: Sha256
+
+    @model_validator(mode="after")
+    def _fail_closed_review_contract(self) -> Self:
+        if len(set(self.candidate_predicate_ids)) != len(self.candidate_predicate_ids):
+            raise ValueError("profile closure contains duplicate candidate predicate IDs")
+        if self.review_requirement.issue_id != "SRR-V8-008":
+            raise ValueError("profile closure must retain blocker SRR-V8-008")
+        return self
+
+
+class FixtureContentPin(KernelModel):
+    rule_id: NonBlankStr
+    fixture_id: NonBlankStr
+    fixture_version: NonBlankStr
+    content_checksum: Sha256
+
+
+class ConformanceFixtureSet(KernelModel):
+    """Content-addressed manifest for fixture bytes embedded in the v8 Rulebook."""
+
+    fixture_set_id: NonBlankStr
+    fixture_set_version: NonBlankStr
+    role: Literal[ReferenceRole.IMPLEMENTATION_CONFORMANCE_FIXTURES] = (
+        ReferenceRole.IMPLEMENTATION_CONFORMANCE_FIXTURES
+    )
+    fixture_pins: tuple[FixtureContentPin, ...] = Field(min_length=1)
+    declared_checksum: Sha256
+
+    @model_validator(mode="after")
+    def _unique_fixture_identity(self) -> Self:
+        identities = [(pin.rule_id, pin.fixture_id) for pin in self.fixture_pins]
+        if len(set(identities)) != len(identities):
+            raise ValueError("fixture set contains duplicate rule/fixture identities")
+        return self
+
+
 class ConformanceBundle(KernelModel):
     theory: DerivationTheory
     rulebook: V8Rulebook
+    profile_closure: ProfilePredicateClosureAsset
     reference_registry: ReferenceRoleRegistry
+    fixture_set: ConformanceFixtureSet
 
 
 __all__ = [
     "ClauseLetter",
     "ConformanceBundle",
     "ConformanceFixture",
+    "ConformanceFixtureSet",
     "DerivationTheory",
     "ExpectedDerivedClaim",
     "ExpectedProofTraceStep",
+    "FixtureContentPin",
     "FixtureKind",
     "FixtureOutcome",
     "KnownGapHandling",
     "PredicateRequirement",
+    "ProfileClosureStatus",
+    "ProfilePredicateClosureAsset",
     "ReferenceAsset",
     "ReferenceAvailability",
     "ReferenceRole",

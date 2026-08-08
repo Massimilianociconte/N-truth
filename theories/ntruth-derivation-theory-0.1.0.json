@@ -4,6 +4,10 @@
   "theory_version": "0.1.0",
   "profile_id": "simple_cell_culture",
   "profile_version": "0.1.0",
+  "profile_closure_asset_id": "simple-cell-culture-profile-predicate-closure",
+  "profile_closure_asset_version": "0.1.0",
+  "profile_closure_checksum": "1080f48e37b719351554c406d85e8cce7c2106f9f01ee5b8168413f57a747698",
+  "reference_registry_id": "ntruth-reference-role-registry",
   "reference_registry_version": "0.1.0",
   "clauses": [
     {
@@ -260,5 +264,5 @@
       ]
     }
   ],
-  "declared_checksum": "3980e9583ac323c3c88570a09dc75e0ce60d9b63daf8be77bf074c7a74f76367"
+  "declared_checksum": "aa37639893e2ba7732496f2eb6a121291e0aad2d3bae51501c8f1ea9e9b6464f"
 }

@@ -1,0 +1,156 @@
+{
+  "schema_version": "8.0.0",
+  "fixture_set_id": "implementation-conformance-fixtures-simple-cell-culture",
+  "fixture_set_version": "0.1.0",
+  "role": "IMPLEMENTATION_CONFORMANCE_FIXTURES",
+  "fixture_pins": [
+    {
+      "schema_version": "8.0.0",
+      "rule_id": "V8-A-ASSIGNMENT-UNIT",
+      "fixture_id": "FIX-A-POSITIVE",
+      "fixture_version": "0.1.0",
+      "content_checksum": "7ce8c5211258df5341c17ff6f2d36b4771d791e76cdcc6ba9c2747c23559dde7"
+    },
+    {
+      "schema_version": "8.0.0",
+      "rule_id": "V8-A-ASSIGNMENT-UNIT",
+      "fixture_id": "FIX-A-NEGATIVE",
+      "fixture_version": "0.1.0",
+      "content_checksum": "af8a0bd24cbfdee7fdbab7bd7d73f767db0440f80d488954f04349c151da5d8e"
+    },
+    {
+      "schema_version": "8.0.0",
+      "rule_id": "V8-A-ASSIGNMENT-UNIT",
+      "fixture_id": "FIX-A-MINIMAL_COUNTERFACTUAL",
+      "fixture_version": "0.1.0",
+      "content_checksum": "c8929d648c730504720e041f441035fb85d78d7b4637b83ad3ac8a674aad8fa3"
+    },
+    {
+      "schema_version": "8.0.0",
+      "rule_id": "V8-B-EXPERIMENTAL-UNIT",
+      "fixture_id": "FIX-B-POSITIVE",
+      "fixture_version": "0.1.0",
+      "content_checksum": "f2f8453a4248e8ac5a6d59f956fd06e94f60973f15ea94cb7822c98ba4f1157f"
+    },
+    {
+      "schema_version": "8.0.0",
+      "rule_id": "V8-B-EXPERIMENTAL-UNIT",
+      "fixture_id": "FIX-B-NEGATIVE",
+      "fixture_version": "0.1.0",
+      "content_checksum": "9b76e0bc3182c3bff3d1b5a50036f14912987608ac7a4887c21db555e990b732"
+    },
+    {
+      "schema_version": "8.0.0",
+      "rule_id": "V8-B-EXPERIMENTAL-UNIT",
+      "fixture_id": "FIX-B-MINIMAL_COUNTERFACTUAL",
+      "fixture_version": "0.1.0",
+      "content_checksum": "02a5f2c348f2ce69128b449a6ecb0e663f8dd190d2394cb0cc595e0cb4c63352"
+    },
+    {
+      "schema_version": "8.0.0",
+      "rule_id": "V8-C-EXPERIMENTAL-UNIT-COUNT",
+      "fixture_id": "FIX-C-POSITIVE",
+      "fixture_version": "0.1.0",
+      "content_checksum": "7baa1e06ef1a439b6192a774a47745cb82189a2768b47683f485d7396e92dcce"
+    },
+    {
+      "schema_version": "8.0.0",
+      "rule_id": "V8-C-EXPERIMENTAL-UNIT-COUNT",
+      "fixture_id": "FIX-C-NEGATIVE",
+      "fixture_version": "0.1.0",
+      "content_checksum": "5f26d8df668ad198f80ee7af957694f0fd49f081fe976f9072b5340b1a6c41dc"
+    },
+    {
+      "schema_version": "8.0.0",
+      "rule_id": "V8-C-EXPERIMENTAL-UNIT-COUNT",
+      "fixture_id": "FIX-C-MINIMAL_COUNTERFACTUAL",
+      "fixture_version": "0.1.0",
+      "content_checksum": "2a27095d5cd8a183a43ca133db1d228ba2e36b10441365752d03dab9a5c80f6b"
+    },
+    {
+      "schema_version": "8.0.0",
+      "rule_id": "V8-D-BIOLOGICAL-SOURCE-COUNT",
+      "fixture_id": "FIX-D-POSITIVE",
+      "fixture_version": "0.1.0",
+      "content_checksum": "38fd6501675391f21ce8fdd54a84827a63be4a0aa63de7abdc3c5ea8ff77d534"
+    },
+    {
+      "schema_version": "8.0.0",
+      "rule_id": "V8-D-BIOLOGICAL-SOURCE-COUNT",
+      "fixture_id": "FIX-D-NEGATIVE",
+      "fixture_version": "0.1.0",
+      "content_checksum": "860dfabb7768c4cea27516bf2c99d100625be666a272dc66821342125eefa37a"
+    },
+    {
+      "schema_version": "8.0.0",
+      "rule_id": "V8-D-BIOLOGICAL-SOURCE-COUNT",
+      "fixture_id": "FIX-D-MINIMAL_COUNTERFACTUAL",
+      "fixture_version": "0.1.0",
+      "content_checksum": "a61865ab0c75067cc9fb5dc3bcae819eda8c1155d2fd9efec6edde23e6e2c844"
+    },
+    {
+      "schema_version": "8.0.0",
+      "rule_id": "V8-E-INTERFERENCE",
+      "fixture_id": "FIX-E-POSITIVE",
+      "fixture_version": "0.1.0",
+      "content_checksum": "82d636e2f71ba2272e7e411530994c15ea3c4724db7fa16e25e4ed1ab20789b2"
+    },
+    {
+      "schema_version": "8.0.0",
+      "rule_id": "V8-E-INTERFERENCE",
+      "fixture_id": "FIX-E-NEGATIVE",
+      "fixture_version": "0.1.0",
+      "content_checksum": "9b85ad185f8025f7ac2c3542edd4726b96e97f80fcf49df4603a570e8b00022a"
+    },
+    {
+      "schema_version": "8.0.0",
+      "rule_id": "V8-E-INTERFERENCE",
+      "fixture_id": "FIX-E-MINIMAL_COUNTERFACTUAL",
+      "fixture_version": "0.1.0",
+      "content_checksum": "beac4ffc9397e1e9b0e4b6b6dd8f1148f68e584f6e557fdd42c280fe80507bc3"
+    },
+    {
+      "schema_version": "8.0.0",
+      "rule_id": "V8-F-ANALYTICAL-DEPENDENCE",
+      "fixture_id": "FIX-F-POSITIVE",
+      "fixture_version": "0.1.0",
+      "content_checksum": "c9be8cb82a7f7a440f7a8916cefcd959f239737eaa934446500a5e7d90581643"
+    },
+    {
+      "schema_version": "8.0.0",
+      "rule_id": "V8-F-ANALYTICAL-DEPENDENCE",
+      "fixture_id": "FIX-F-NEGATIVE",
+      "fixture_version": "0.1.0",
+      "content_checksum": "ae648e1c3c608d6b474e349bb604b6358308cb4916b78a2835d3a8d95a53ed67"
+    },
+    {
+      "schema_version": "8.0.0",
+      "rule_id": "V8-F-ANALYTICAL-DEPENDENCE",
+      "fixture_id": "FIX-F-MINIMAL_COUNTERFACTUAL",
+      "fixture_version": "0.1.0",
+      "content_checksum": "f681a2b498ec9752aa8a25b407812bd322bd816ba76a9451045de0257af81bf2"
+    },
+    {
+      "schema_version": "8.0.0",
+      "rule_id": "V8-G-INFERENCE-SCOPE",
+      "fixture_id": "FIX-G-POSITIVE",
+      "fixture_version": "0.1.0",
+      "content_checksum": "963a6285c6cde0008de66f4031ff87bcd2a7584f9f7fd626435ef525f238c92e"
+    },
+    {
+      "schema_version": "8.0.0",
+      "rule_id": "V8-G-INFERENCE-SCOPE",
+      "fixture_id": "FIX-G-NEGATIVE",
+      "fixture_version": "0.1.0",
+      "content_checksum": "083e8892969874f40b0fa53d93f37a3a4d986ebebb637286d4c98883edb60de1"
+    },
+    {
+      "schema_version": "8.0.0",
+      "rule_id": "V8-G-INFERENCE-SCOPE",
+      "fixture_id": "FIX-G-MINIMAL_COUNTERFACTUAL",
+      "fixture_version": "0.1.0",
+      "content_checksum": "04e3abad64313ed4ac412bba391f626b636f8d1277f17a3b0a6015ea43757470"
+    }
+  ],
+  "declared_checksum": "f7a9b4c0a009fcbf1ae4c7a2bb3b15d8392225cb6e040ec17e2187cb396918e6"
+}

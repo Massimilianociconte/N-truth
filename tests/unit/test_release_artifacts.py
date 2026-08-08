@@ -3,6 +3,7 @@
 import importlib.util
 import io
 import tarfile
+import zipfile
 from pathlib import Path
 from types import ModuleType
 
@@ -20,7 +21,9 @@ def _load_distribution_script() -> ModuleType:
     return module
 
 
-check_sdist = _load_distribution_script().check_sdist
+_distribution_script = _load_distribution_script()
+check_sdist = _distribution_script.check_sdist
+check_wheel = _distribution_script.check_wheel
 
 
 def test_sbom_combines_python_and_frontend_lockfiles(tmp_path: Path) -> None:
@@ -71,6 +74,14 @@ def _write_sdist(path: Path, extra_name: str | None = None) -> None:
         "ntruth-0.1.0/pyproject.toml",
         "ntruth-0.1.0/apps/desktop/dist/index.html",
         "ntruth-0.1.0/apps/desktop/dist/assets/app.js",
+        "ntruth-0.1.0/theories/ntruth-derivation-theory-0.1.0.json",
+        "ntruth-0.1.0/theories/simple-cell-culture-profile-closure-0.1.0.json",
+        "ntruth-0.1.0/rulesets/ntruth-v8-core-0.1.0.json",
+        ("ntruth-0.1.0/packages/ntruth/conformance/assets/reference-role-registry-0.1.0.json"),
+        (
+            "ntruth-0.1.0/packages/ntruth/conformance/assets/"
+            "implementation-conformance-fixtures-simple-cell-culture-0.1.0.json"
+        ),
     ]
     if extra_name:
         required.append(f"ntruth-0.1.0/{extra_name}")
@@ -109,3 +120,23 @@ def test_sdist_accepts_public_reproducible_assets(tmp_path: Path) -> None:
     _write_sdist(sdist)
 
     check_sdist(sdist)
+
+
+def test_wheel_rejects_missing_prd_v8_conformance_bundle(tmp_path: Path) -> None:
+    """Catches a release wheel that cannot reproduce checkout conformance."""
+
+    wheel = tmp_path / "ntruth-0.1.0-py3-none-any.whl"
+    baseline_names = (
+        "ntruth/_ui/index.html",
+        "ntruth/_ui/assets/app.js",
+        "ntruth/_ui/assets/app.css",
+        "ntruth/_bundled/models/qwen3-4b-instruct-2507-mlx-qlora.json",
+        "ntruth/_bundled/rulesets/ntruth-core-0.1.0.json",
+        "ntruth/_bundled/ontology/ntruth-core-0.1.0.json",
+    )
+    with zipfile.ZipFile(wheel, "w") as archive:
+        for name in baseline_names:
+            archive.writestr(name, "fixture")
+
+    with pytest.raises(ValueError, match=r"ntruth-derivation-theory-0\.1\.0\.json"):
+        check_wheel(wheel)

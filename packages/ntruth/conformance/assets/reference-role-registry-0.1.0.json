@@ -25,7 +25,7 @@
           "schema_version": "8.0.0",
           "asset_id": "implementation-conformance-fixtures-simple-cell-culture",
           "asset_version": "0.1.0",
-          "content_checksum": "be1c46734b1c7f952c98a756be7737ee3998de83b6e4d34bf852f997e3be2e7f",
+          "content_checksum": "f7a9b4c0a009fcbf1ae4c7a2bb3b15d8392225cb6e040ec17e2187cb396918e6",
           "purpose": "Positive, negative, and minimal-counterfactual fixtures embedded in the isolated v8 Rulebook."
         }
       ]
@@ -43,5 +43,5 @@
       }
     }
   ],
-  "declared_checksum": "4dcf9cc55ba272c715bac62df10ecff250bb4d02a3cc0a8716998bdc373136be"
+  "declared_checksum": "7e573af256a1365ca0e3892786f80a6a8f62710ce0e4dc39d1dfef24d2089db3"
 }

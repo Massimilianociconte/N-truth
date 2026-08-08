@@ -60,6 +60,7 @@ packages = ["packages/ntruth"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "rulesets" = "ntruth/_bundled/rulesets"
+"theories" = "ntruth/_bundled/theories"
 "ontology" = "ntruth/_bundled/ontology"
 "apps/desktop/dist" = "ntruth/_ui"
 "models/configs/qwen3-4b-instruct-2507-mlx-qlora.json" = "ntruth/_bundled/models/qwen3-4b-instruct-2507-mlx-qlora.json"
@@ -68,6 +69,7 @@ packages = ["packages/ntruth"]
 # Il wheel viene ricostruito dalla sdist: gli asset compilati devono attraversare
 # entrambi i passaggi, pur restando ignorati nel worktree.
 "apps/desktop/dist" = "apps/desktop/dist"
+"theories" = "theories"
 
 [tool.hatch.build.targets.sdist]
 # Una sdist deve essere ricostruibile, ma non deve mai incorporare workspace,

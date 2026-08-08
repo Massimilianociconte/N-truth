@@ -4,13 +4,18 @@
   "rulebook_version": "0.1.0",
   "theory_id": "ntruth-derivation-theory",
   "theory_version": "0.1.0",
-  "theory_checksum": "3980e9583ac323c3c88570a09dc75e0ce60d9b63daf8be77bf074c7a74f76367",
+  "theory_checksum": "aa37639893e2ba7732496f2eb6a121291e0aad2d3bae51501c8f1ea9e9b6464f",
   "profile_id": "simple_cell_culture",
   "profile_version": "0.1.0",
+  "profile_closure_asset_id": "simple-cell-culture-profile-predicate-closure",
+  "profile_closure_asset_version": "0.1.0",
+  "profile_closure_checksum": "1080f48e37b719351554c406d85e8cce7c2106f9f01ee5b8168413f57a747698",
   "reference_registry_id": "ntruth-reference-role-registry",
   "reference_registry_version": "0.1.0",
-  "reference_registry_checksum": "4dcf9cc55ba272c715bac62df10ecff250bb4d02a3cc0a8716998bdc373136be",
-  "fixture_set_checksum": "be1c46734b1c7f952c98a756be7737ee3998de83b6e4d34bf852f997e3be2e7f",
+  "reference_registry_checksum": "7e573af256a1365ca0e3892786f80a6a8f62710ce0e4dc39d1dfef24d2089db3",
+  "fixture_set_id": "implementation-conformance-fixtures-simple-cell-culture",
+  "fixture_set_version": "0.1.0",
+  "fixture_set_checksum": "f7a9b4c0a009fcbf1ae4c7a2bb3b15d8392225cb6e040ec17e2187cb396918e6",
   "rules": [
     {
       "schema_version": "8.0.0",
@@ -35,17 +40,17 @@
         {
           "schema_version": "8.0.0",
           "predicate_id": "assignment_event_or_equivalent_mechanism",
-          "rationale": "Assignment requires an event or explicitly equivalent mechanism."
+          "rationale": "Assignment requires an event or an explicitly equivalent mechanism."
         },
         {
           "schema_version": "8.0.0",
           "predicate_id": "candidate_unit",
-          "rationale": "The candidate unit must be identified."
+          "rationale": "The unit receiving assignment must be identified."
         },
         {
           "schema_version": "8.0.0",
           "predicate_id": "assignment_separability_support",
-          "rationale": "Separability needs evidence beyond keywords or unit labels."
+          "rationale": "Separability must be supported; keywords or a well label are insufficient."
         }
       ],
       "irrelevant_predicates": [
@@ -455,27 +460,27 @@
         {
           "schema_version": "8.0.0",
           "predicate_id": "relevant_treatment_assignment",
-          "rationale": "The treatment assignment relevant to the query must be represented."
+          "rationale": "The query-relevant treatment assignment must be identified."
         },
         {
           "schema_version": "8.0.0",
           "predicate_id": "realized_treatment_application_or_exposure",
-          "rationale": "Realized treatment or exposure must be represented."
+          "rationale": "The realized application or exposure must be represented."
         },
         {
           "schema_version": "8.0.0",
           "predicate_id": "candidate_unit",
-          "rationale": "The candidate unit must be identified."
+          "rationale": "The candidate unit must be identified independently of source lineage."
         },
         {
           "schema_version": "8.0.0",
           "predicate_id": "assignment_separability",
-          "rationale": "Assignment separability must be resolved for the claim."
+          "rationale": "Assignment must be separable at the candidate unit."
         },
         {
           "schema_version": "8.0.0",
           "predicate_id": "realized_exposure_separability",
-          "rationale": "Realized exposure separability must be resolved for the claim."
+          "rationale": "Realized exposure must preserve separability at the candidate unit."
         }
       ],
       "irrelevant_predicates": [
@@ -811,12 +816,12 @@
         {
           "schema_version": "8.0.0",
           "predicate_id": "experimental_unit_instances",
-          "rationale": "Distinct EU instances must be represented."
+          "rationale": "Distinct experimental-unit instances must be identified."
         },
         {
           "schema_version": "8.0.0",
           "predicate_id": "inferential_query",
-          "rationale": "Every output and count must be scoped to an InferentialQuery."
+          "rationale": "The count must be scoped to an InferentialQuery."
         },
         {
           "schema_version": "8.0.0",
@@ -826,12 +831,12 @@
         {
           "schema_version": "8.0.0",
           "predicate_id": "lifecycle_phase",
-          "rationale": "The pertinent lifecycle phase must be explicit."
+          "rationale": "The pertinent planned or executed lifecycle phase must be explicit."
         },
         {
           "schema_version": "8.0.0",
           "predicate_id": "group_or_paired_set",
-          "rationale": "Group or paired-set scope must be explicit."
+          "rationale": "The group or paired-set scope must be explicit."
         }
       ],
       "irrelevant_predicates": [
@@ -1171,7 +1176,7 @@
         {
           "schema_version": "8.0.0",
           "predicate_id": "confirmed_biological_provenance",
-          "rationale": "Biological source provenance must be confirmed."
+          "rationale": "Source lineage must be confirmed rather than inferred from an identifier."
         },
         {
           "schema_version": "8.0.0",
@@ -1181,7 +1186,7 @@
         {
           "schema_version": "8.0.0",
           "predicate_id": "inferential_query",
-          "rationale": "Every output and count must be scoped to an InferentialQuery."
+          "rationale": "The source count must be reported in query scope."
         }
       ],
       "irrelevant_predicates": [
@@ -1444,17 +1449,17 @@
         {
           "schema_version": "8.0.0",
           "predicate_id": "interference_status",
-          "rationale": "Interference status must retain no-known-path, possible, documented, or unknown."
+          "rationale": "Interference must be represented as no-known-path, possible, documented, or unknown."
         },
         {
           "schema_version": "8.0.0",
           "predicate_id": "inferential_query",
-          "rationale": "Every output and count must be scoped to an InferentialQuery."
+          "rationale": "The consequence must be scoped to the query."
         },
         {
           "schema_version": "8.0.0",
           "predicate_id": "claim_no_interference_dependency",
-          "rationale": "The rule must state whether the claim depends on no interference."
+          "rationale": "The rule must state whether the claim depends on a no-interference assumption."
         }
       ],
       "irrelevant_predicates": [
@@ -1721,22 +1726,22 @@
         {
           "schema_version": "8.0.0",
           "predicate_id": "analytical_grouping",
-          "rationale": "Analysis grouping must be represented."
+          "rationale": "Grouping or aggregation used for analysis must be represented."
         },
         {
           "schema_version": "8.0.0",
           "predicate_id": "repeated_measure_status",
-          "rationale": "Repeated or correlated measurements must be represented."
+          "rationale": "Repeated or correlated measurement status must be represented."
         },
         {
           "schema_version": "8.0.0",
           "predicate_id": "measurement_process",
-          "rationale": "The measurement or analytical process must be identified."
+          "rationale": "The measurement or analytical pipeline must be identified."
         },
         {
           "schema_version": "8.0.0",
           "predicate_id": "inferential_query",
-          "rationale": "Every output and count must be scoped to an InferentialQuery."
+          "rationale": "The analytical consequence must be query scoped."
         }
       ],
       "irrelevant_predicates": [
@@ -2094,17 +2099,17 @@
         {
           "schema_version": "8.0.0",
           "predicate_id": "inferential_query",
-          "rationale": "Every output and count must be scoped to an InferentialQuery."
+          "rationale": "Factor, contrast, endpoint, timepoint, estimand, and population define scope."
         },
         {
           "schema_version": "8.0.0",
           "predicate_id": "source_diversity",
-          "rationale": "Confirmed source diversity qualifies generalization."
+          "rationale": "Confirmed source diversity qualifies source-level generalization."
         },
         {
           "schema_version": "8.0.0",
           "predicate_id": "protocol_scope",
-          "rationale": "Protocol scope bounds inference."
+          "rationale": "Protocol and execution context bound inference."
         },
         {
           "schema_version": "8.0.0",
@@ -2119,7 +2124,7 @@
         {
           "schema_version": "8.0.0",
           "predicate_id": "profile_coverage",
-          "rationale": "Profile coverage and known gaps must be declared."
+          "rationale": "Profile predicate coverage and known gaps must be declared."
         }
       ],
       "irrelevant_predicates": [
@@ -2516,5 +2521,5 @@
       "rationale": "RuleChallenge outcome-dependent payload and change-versus-migration semantics remain under review."
     }
   ],
-  "declared_checksum": "7971c50868f36258fde9c283bf2eda7f64782a759c2c7a4882a57a933664c3c3"
+  "declared_checksum": "3eb8de408a8874c099d8a514a9d74ea0534f1ee96f5a71cb5bd3c6896168eca3"
 }

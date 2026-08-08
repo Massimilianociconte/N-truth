@@ -1,0 +1,46 @@
+{
+  "schema_version": "8.0.0",
+  "asset_id": "simple-cell-culture-profile-predicate-closure",
+  "asset_version": "0.1.0",
+  "profile_id": "simple_cell_culture",
+  "profile_version": "0.1.0",
+  "closure_status": "SCIENTIFIC_REVIEW_REQUIRED",
+  "candidate_predicate_ids": [
+    "analytical_grouping",
+    "assignment_event_or_equivalent_mechanism",
+    "assignment_separability",
+    "assignment_separability_support",
+    "biological_source_instances",
+    "candidate_unit",
+    "claim_no_interference_dependency",
+    "confirmed_biological_provenance",
+    "contrast_scope",
+    "experimental_unit_instances",
+    "exposure_interference",
+    "external_replication",
+    "factor",
+    "factor_levels",
+    "group_or_paired_set",
+    "inferential_query",
+    "interference_status",
+    "lifecycle_phase",
+    "measurement_process",
+    "profile_coverage",
+    "protocol_scope",
+    "realized_exposure_separability",
+    "realized_treatment_application_or_exposure",
+    "relevant_treatment_assignment",
+    "repeated_measure_status",
+    "source_diversity"
+  ],
+  "known_gaps": [
+    "ProfileCoverageStatement shape is not consistently instantiated in PRD v8.",
+    "Predicate closure has not received independent scientific review."
+  ],
+  "review_requirement": {
+    "schema_version": "8.0.0",
+    "issue_id": "SRR-V8-008",
+    "rationale": "This is a versioned candidate predicate inventory, not a reviewed closure claim."
+  },
+  "declared_checksum": "1080f48e37b719351554c406d85e8cce7c2106f9f01ee5b8168413f57a747698"
+}

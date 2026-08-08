@@ -5,6 +5,7 @@ from ntruth.conformance.harness import (
     ConformanceFailureCode,
     ConformanceReport,
     evaluate_conformance,
+    fixture_content_pins,
     fixture_set_checksum,
 )
 
@@ -13,5 +14,6 @@ __all__ = [
     "ConformanceFailureCode",
     "ConformanceReport",
     "evaluate_conformance",
+    "fixture_content_pins",
     "fixture_set_checksum",
 ]

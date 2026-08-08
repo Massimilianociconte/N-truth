@@ -41,6 +41,18 @@ assert payload["offline_core"] is True, payload
 print(f"health ok · ntruth {__version__} · schema {SCHEMA_VERSION}")
 """.strip()
 
+V8_CONFORMANCE_SMOKE = """
+from ntruth.conformance import evaluate_conformance
+from ntruth.derivation_theory import load_installed_bundle
+
+bundle = load_installed_bundle()
+report = evaluate_conformance(bundle)
+assert report.passed, report.failures
+assert len(bundle.theory.clauses) == 7
+assert len(bundle.fixture_set.fixture_pins) == 21
+print(f"v8 conformance ok · {bundle.rulebook.rulebook_id}@{bundle.rulebook.rulebook_version}")
+""".strip()
+
 ML_PROFILE_SMOKE = """
 from ntruth.training.cli import DEFAULT_PROFILE
 from ntruth.training.mlx_runtime import load_profile
@@ -258,9 +270,15 @@ def smoke_distribution(
         env=env,
         label=f"Import API e health contract ({distribution.kind})",
     )
+    conformance_output = run_checked(
+        [str(python), "-c", V8_CONFORMANCE_SMOKE],
+        cwd=run_dir,
+        env=env,
+        label=f"PRD v8 package-resource conformance ({distribution.kind})",
+    )
     print(
         f"{distribution.kind}: {version_output} · ML CLI ok · {ml_profile_output} · "
-        f"{ml_runtime_output} · {health_output}"
+        f"{ml_runtime_output} · {health_output} · {conformance_output}"
     )
 
 
