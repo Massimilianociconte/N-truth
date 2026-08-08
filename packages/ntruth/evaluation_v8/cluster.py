@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Mapping
 from decimal import Decimal, localcontext
 from enum import StrEnum
-from typing import Annotated, Literal, Self
+from typing import Annotated, Any, Literal, Self
 
 from pydantic import Field, model_validator
 
@@ -463,7 +464,22 @@ class PrecisionInterval(KernelModel):
         return self
 
 
-class ClusterPrecisionResult(KernelModel):
+class _RevalidatedClusterOutput(KernelModel):
+    """Keep validated cluster outputs valid across the public copy boundary."""
+
+    def model_copy(
+        self,
+        *,
+        update: Mapping[str, Any] | None = None,
+        deep: bool = False,
+    ) -> Self:
+        payload = super().model_copy(deep=deep).model_dump(mode="python", round_trip=True)
+        if update is not None:
+            payload.update(update)
+        return type(self).model_validate(payload)
+
+
+class ClusterPrecisionResult(_RevalidatedClusterOutput):
     result_id: NonBlankStr
     content_checksum: Sha256
     generalization_contract: MetricGeneralizationContract
@@ -540,7 +556,7 @@ class ClusterPrecisionResult(KernelModel):
         return self
 
 
-class ClusterPrecisionConformanceArtifact(KernelModel):
+class ClusterPrecisionConformanceArtifact(_RevalidatedClusterOutput):
     """Deterministic interval sealed as non-authoritative implementation evidence."""
 
     artifact_id: NonBlankStr
