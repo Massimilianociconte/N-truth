@@ -50,6 +50,8 @@ def test_supervised_record_rejects_training_eligible_test_split() -> None:
         license_or_authorization_id="license-1",
         guideline_version="8.0.0",
         reviewer_count=2,
+        reviewer_ids=("reviewer-a", "reviewer-b"),
+        reviewer_roles=("wet-lab", "statistical-methods"),
         adjudication_id="adjudication-1",
     )
 
@@ -78,6 +80,22 @@ def test_supervised_record_rejects_training_eligible_test_split() -> None:
                 adjudication_id="adjudication-1",
                 reviewer_ids=("reviewer-a", "reviewer-b"),
                 adjudication_rationale="Fixture adjudication.",
+                submission_references=(
+                    {
+                        "submission_id": "submission-a",
+                        "submission_sha256": "c" * 64,
+                        "reviewer_id": "reviewer-a",
+                        "reviewer_role": "wet-lab",
+                    },
+                    {
+                        "submission_id": "submission-b",
+                        "submission_sha256": "d" * 64,
+                        "reviewer_id": "reviewer-b",
+                        "reviewer_role": "statistical-methods",
+                    },
+                ),
+                comparison_status="AGREED",
+                material_differences=(),
             ),
             provenance=provenance,
             annotation_status=AnnotationStatus.ADJUDICATED,

@@ -12,6 +12,7 @@ from ntruth.training.records import (
     PreparationConfig,
     PreparationReport,
     PreparedRecord,
+    _family_evidence,
 )
 
 
@@ -41,7 +42,32 @@ def build_manifest_records(records: tuple[PreparedRecord, ...]) -> tuple[Manifes
             model_selection_eligible=prepared.record.model_selection_eligible,
             license_or_authorization_id=(prepared.record.provenance.license_or_authorization_id),
             reviewer_count=prepared.record.provenance.reviewer_count,
+            reviewer_ids=prepared.record.provenance.reviewer_ids,
+            reviewer_roles=prepared.record.provenance.reviewer_roles,
             adjudication_id=prepared.record.provenance.adjudication_id,
+            target_adjudication_id=prepared.record.target.adjudication_id,
+            submission_ids=tuple(
+                reference.submission_id
+                for reference in prepared.record.target.submission_references
+            ),
+            submission_checksums=tuple(
+                reference.submission_sha256
+                for reference in prepared.record.target.submission_references
+            ),
+            comparison_status=prepared.record.target.comparison_status,
+            material_differences_checksum=content_checksum(
+                [
+                    difference.model_dump(mode="json")
+                    for difference in prepared.record.target.material_differences
+                ]
+            ),
+            candidate_count_kinds=tuple(
+                count.kind for count in prepared.record.target.candidate_target.candidate_counts
+            ),
+            family_evidence=_family_evidence(prepared.record.provenance),
+            external_challenge_dependency=(
+                prepared.record.provenance.external_challenge_dependency
+            ),
             synthetic=prepared.record.provenance.synthetic,
         )
         for prepared in sorted(records, key=lambda item: item.record.record_id)

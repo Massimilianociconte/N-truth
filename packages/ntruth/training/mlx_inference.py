@@ -6,6 +6,7 @@ import json
 import math
 import re
 import shutil
+import tempfile
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -30,10 +31,12 @@ from ntruth.training.mlx_runtime import (
     iter_jsonl,
     load_profile,
     sha256_file,
+    stage_verified_training_view,
     utc_now,
     validate_snapshot_integrity,
     verify_model,
 )
+from ntruth.training.protected_evaluation import validate_protected_evaluation_snapshot
 
 EVALUATION_LINEAGE_SCHEMA_VERSION = "8.0.0"
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -206,6 +209,30 @@ def _verify_evaluation_snapshot(
             f"mismatch split/file: {declared_split} richiede il file manifestato {filename}"
         )
 
+    if declared_split in {"test", "external_challenge"}:
+        manifest = validate_protected_evaluation_snapshot(
+            data_dir,
+            declared_split=declared_split,
+        )
+        for key in (
+            "planned_design_artifact_id",
+            "planned_design_artifact_sha256",
+            "executed_design_artifact_id",
+            "executed_design_artifact_sha256",
+        ):
+            expected = run_lineage.get(key)
+            if expected is not None and getattr(manifest.lineage, key) != expected:
+                raise MLXPipelineError(f"protected evaluation lineage mismatch: {key}")
+        return expected_path, {
+            "snapshot_id": manifest.snapshot_id,
+            "snapshot_sha256": manifest.snapshot_sha256,
+            "manifest_sha256": sha256_file(data_dir / "protected-evaluation-manifest.json"),
+            "counts": {declared_split: manifest.record_count},
+            "file_hashes": {manifest.payload_file: manifest.payload_sha256},
+            "runtime_smoke_only": False,
+            "protected_evaluation": manifest.model_dump(mode="json"),
+        }
+
     smoke_test = run_lineage.get("smoke_test") is True
     snapshot = validate_snapshot_integrity(
         data_dir,
@@ -273,9 +300,35 @@ def tokenize_report(
     repo_root: Path,
     data_dir: Path,
     output_path: Path,
+    *,
+    smoke_test: bool = False,
 ) -> dict[str, Any]:
     """Misura le lunghezze reali senza produrre copie tokenizzate permanenti."""
 
+    verified = validate_snapshot_integrity(data_dir, smoke_test=smoke_test)
+    with tempfile.TemporaryDirectory(prefix="ntruth-tokenize-view-") as temporary:
+        staged = stage_verified_training_view(
+            data_dir,
+            Path(temporary) / "verified-training-view",
+            verified_snapshot=verified,
+            smoke_test=smoke_test,
+        )
+        return _tokenize_verified_report(
+            profile_path,
+            repo_root,
+            Path(str(staged["path"])),
+            output_path,
+            verified,
+        )
+
+
+def _tokenize_verified_report(
+    profile_path: Path,
+    repo_root: Path,
+    verified_data_dir: Path,
+    output_path: Path,
+    snapshot: Mapping[str, Any],
+) -> dict[str, Any]:
     profile = load_profile(profile_path)
     model_path = _model_path(repo_root, profile)
     if not (model_path / "model.safetensors").is_file():
@@ -295,12 +348,15 @@ def tokenize_report(
         "created_at": utc_now(),
         "model_path": str(model_path),
         "maximum_sequence_length": maximum,
+        "dataset_snapshot_id": snapshot["snapshot_id"],
+        "dataset_snapshot_sha256": snapshot["snapshot_sha256"],
+        "dataset_manifest_sha256": snapshot["manifest_sha256"],
         "splits": {},
     }
     all_lengths: list[int] = []
     for split in ("train", "valid"):
         lengths: list[int] = []
-        for record in iter_jsonl(data_dir / f"{split}.jsonl"):
+        for record in iter_jsonl(verified_data_dir / f"{split}.jsonl"):
             messages = record.get("messages")
             if not isinstance(messages, list):
                 raise MLXPipelineError(f"record {split} senza messages")

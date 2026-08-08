@@ -495,8 +495,8 @@ class CandidateCount(CandidateFact):
 
     @model_validator(mode="after")
     def _candidate_kind_only(self) -> CandidateCount:
-        if self.kind not in ALLOWED_CANDIDATE_COUNT_KINDS and not self.kind.endswith("_candidate"):
-            raise ValueError(f"count kind is not candidate-only: {self.kind!r}")
+        if self.kind not in ALLOWED_CANDIDATE_COUNT_KINDS:
+            raise ValueError(f"unrecognised candidate count kind: {self.kind!r}")
         return self
 
 
@@ -623,24 +623,72 @@ class ParserCandidateOutput(FrozenModel):
         for contrast in self.contrasts:
             _require_subset(contrast.factor_ids, factors, "factor_id")
             _require_subset(contrast.endpoint_ids, endpoints, "endpoint_id")
+            if any(
+                factors[item_id].block_id != contrast.block_id for item_id in contrast.factor_ids
+            ):
+                raise ValueError("candidate contrast crosses experiment block")
+            if any(
+                endpoints[item_id].block_id != contrast.block_id
+                for item_id in contrast.endpoint_ids
+            ):
+                raise ValueError("candidate contrast crosses experiment block")
         for estimand in self.candidate_estimands:
             _require_subset(estimand.factor_ids, factors, "factor_id")
             _require_subset((estimand.endpoint_id,), endpoints, "endpoint_id")
+            if any(
+                factors[item_id].block_id != estimand.block_id for item_id in estimand.factor_ids
+            ):
+                raise ValueError("candidate estimand crosses experiment block")
+            if endpoints[estimand.endpoint_id].block_id != estimand.block_id:
+                raise ValueError("candidate estimand crosses experiment block")
             if estimand.contrast_id is not None:
                 _require_subset((estimand.contrast_id,), contrasts, "contrast_id")
+                if contrasts[estimand.contrast_id].block_id != estimand.block_id:
+                    raise ValueError("candidate estimand contrast crosses experiment block")
         candidate_ids = set(nodes) | set(edges) | set(factors) | set(endpoints) | set(contrasts)
         candidate_ids |= set(estimands) | set(counts) | set(events) | set(graphs)
+        candidate_blocks = {
+            **{item_id: item.block_id for item_id, item in nodes.items()},
+            **{item_id: item.block_id for item_id, item in edges.items()},
+            **{item_id: item.block_id for item_id, item in factors.items()},
+            **{item_id: item.block_id for item_id, item in endpoints.items()},
+            **{item_id: item.block_id for item_id, item in contrasts.items()},
+            **{item_id: item.block_id for item_id, item in estimands.items()},
+            **{item_id: item.block_id for item_id, item in counts.items()},
+            **{item_id: item.block_id for item_id, item in events.items()},
+            **{item_id: item.block_id for item_id, item in graphs.items()},
+        }
         for event in self.candidate_events:
-            _require_subset(event.participant_candidate_ids, candidate_ids, "candidate_id")
+            _require_subset(event.participant_candidate_ids, nodes, "node candidate_id")
+            if any(
+                nodes[item_id].block_id != event.block_id
+                for item_id in event.participant_candidate_ids
+            ):
+                raise ValueError("candidate event participant has wrong type or experiment block")
         for graph in self.candidate_graphs:
             _require_subset(graph.candidate_node_ids, nodes, "node_id")
             _require_subset(graph.candidate_edge_ids, edges, "edge_id")
             _require_subset(graph.candidate_event_ids, events, "event_id")
+            references = (
+                *graph.candidate_node_ids,
+                *graph.candidate_edge_ids,
+                *graph.candidate_event_ids,
+            )
+            if any(candidate_blocks[item_id] != graph.block_id for item_id in references):
+                raise ValueError("candidate graph crosses experiment block")
         for alternative in self.alternatives:
             _require_subset(alternative.candidate_node_ids, nodes, "node_id")
             _require_subset(alternative.candidate_edge_ids, edges, "edge_id")
+            references = (*alternative.candidate_node_ids, *alternative.candidate_edge_ids)
+            if any(candidate_blocks[item_id] != alternative.block_id for item_id in references):
+                raise ValueError("candidate alternative crosses experiment block")
         for question in self.clarification_questions:
             _require_subset(question.resolves_candidate_ids, candidate_ids, "candidate_id")
+            if any(
+                candidate_blocks[item_id] != question.block_id
+                for item_id in question.resolves_candidate_ids
+            ):
+                raise ValueError("clarification question crosses experiment block")
         for missing in self.missing_predicates:
             _require_subset(missing.evidence_ids, evidence_by_id, "evidence_id")
         if self.model_metadata.contract_version != self.contract_version:
@@ -652,6 +700,35 @@ class ParserCandidateOutput(FrozenModel):
         return self
 
 
+class GoldSubmissionReference(FrozenModel):
+    submission_id: str
+    submission_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    reviewer_id: str
+    reviewer_role: str
+
+    @model_validator(mode="after")
+    def _non_blank(self) -> GoldSubmissionReference:
+        if not all(
+            value.strip() for value in (self.submission_id, self.reviewer_id, self.reviewer_role)
+        ):
+            raise ValueError("gold submission reference fields must not be blank")
+        return self
+
+
+class GoldMaterialDifference(FrozenModel):
+    field_path: str
+    submission_a_value_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    submission_b_value_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    adjudicated_value_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    resolution_rationale: str
+
+    @model_validator(mode="after")
+    def _non_blank(self) -> GoldMaterialDifference:
+        if not self.field_path.strip() or not self.resolution_rationale.strip():
+            raise ValueError("gold material difference requires path and rationale")
+        return self
+
+
 class GoldParserTarget(FrozenModel):
     """Human-adjudicated supervision envelope, distinct from model output."""
 
@@ -660,6 +737,13 @@ class GoldParserTarget(FrozenModel):
     adjudication_id: str
     reviewer_ids: tuple[str, ...] = Field(min_length=2)
     adjudication_rationale: str
+    submission_references: tuple[GoldSubmissionReference, ...]
+    comparison_status: Literal[
+        "AGREED",
+        "MATERIAL_DIFFERENCES_RESOLVED",
+        "CONFLICT_ADJUDICATED",
+    ]
+    material_differences: tuple[GoldMaterialDifference, ...]
 
     @model_validator(mode="before")
     @classmethod
@@ -675,6 +759,20 @@ class GoldParserTarget(FrozenModel):
             raise ValueError("GoldParserTarget reviewer IDs must not be blank")
         if len(self.reviewer_ids) != len(set(self.reviewer_ids)):
             raise ValueError("GoldParserTarget reviewer IDs must be unique")
+        if len(self.submission_references) != 2:
+            raise ValueError("GoldParserTarget requires exactly two submission references")
+        submission_ids = tuple(item.submission_id for item in self.submission_references)
+        if len(set(submission_ids)) != 2:
+            raise ValueError("GoldParserTarget submission IDs must be distinct")
+        submission_reviewers = tuple(item.reviewer_id for item in self.submission_references)
+        if submission_reviewers != self.reviewer_ids:
+            raise ValueError(
+                "GoldParserTarget reviewer IDs must match submission reviewers exactly"
+            )
+        if self.comparison_status == "AGREED" and self.material_differences:
+            raise ValueError("AGREED submissions cannot retain material differences")
+        if self.comparison_status != "AGREED" and not self.material_differences:
+            raise ValueError("non-agreed submissions require material differences")
         return self
 
 

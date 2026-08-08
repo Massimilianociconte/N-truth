@@ -20,9 +20,13 @@ from typing import Any, Literal
 from pydantic import Field, JsonValue, ValidationError, field_validator, model_validator
 
 from ntruth.governance.lineage import CorpusSplit
-from ntruth.mvt_a.stage_schema import assert_no_final_scientific_fields
+from ntruth.mvt_a.stage_schema import (
+    ALLOWED_CANDIDATE_COUNT_KINDS,
+    assert_no_final_scientific_fields,
+)
 from ntruth.parser_ai.contract import GoldParserTarget
 from ntruth.schemas.core import FrozenModel, content_checksum
+from ntruth.training.custody import ExternalChallengeDependency
 
 TRAINING_RECORD_SCHEMA_VERSION = "8.0.0"
 NORMALIZATION_VERSION = "1.0.0"
@@ -73,8 +77,10 @@ class SupervisionProvenance(FrozenModel):
     license_or_authorization_id: str | None = None
     guideline_version: str
     reviewer_count: int = Field(default=0, ge=0)
+    reviewer_ids: tuple[str, ...] = ()
     reviewer_roles: tuple[str, ...] = ()
     adjudication_id: str | None = None
+    external_challenge_dependency: ExternalChallengeDependency | None = None
     synthetic: bool = False
 
     @field_validator(
@@ -112,6 +118,41 @@ class SupervisionProvenance(FrozenModel):
         if any(not role for role in normalized):
             raise ValueError("reviewer_roles non puo contenere ruoli vuoti")
         return normalized
+
+    @field_validator("reviewer_ids")
+    @classmethod
+    def _non_blank_reviewer_ids(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        normalized = tuple(reviewer.strip() for reviewer in value)
+        if any(not reviewer for reviewer in normalized):
+            raise ValueError("reviewer_ids cannot contain blanks")
+        if len(normalized) != len(set(normalized)):
+            raise ValueError("reviewer_ids must be unique")
+        return normalized
+
+
+def _family_evidence(provenance: SupervisionProvenance) -> dict[str, str]:
+    fields = (
+        "publication_id",
+        "study_family_id",
+        "document_lineage_id",
+        "preprint_family_id",
+        "supplement_family_id",
+        "dataset_family_id",
+        "translation_family_id",
+        "paraphrase_family_id",
+        "project_id",
+        "bundle_id",
+        "laboratory_id",
+        "facility_id",
+        "corresponding_author_id",
+        "synthetic_family_id",
+        "counterfactual_family_id",
+    )
+    return {
+        field_name: value
+        for field_name in fields
+        if (value := getattr(provenance, field_name)) is not None
+    }
 
 
 class SupervisedRecord(FrozenModel):
@@ -167,6 +208,19 @@ class SupervisedRecord(FrozenModel):
                 raise ValueError("adjudicated richiede almeno due revisioni")
             if self.provenance.adjudication_id is None:
                 raise ValueError("adjudicated richiede adjudication_id")
+        if self.annotation_status in {
+            AnnotationStatus.DOUBLE_REVIEWED,
+            AnnotationStatus.ADJUDICATED,
+        }:
+            if self.target.adjudication_id != self.provenance.adjudication_id:
+                raise ValueError("target/provenance adjudication mismatch")
+            if self.target.reviewer_ids != self.provenance.reviewer_ids:
+                raise ValueError("target/provenance reviewer identity mismatch")
+            target_roles = tuple(item.reviewer_role for item in self.target.submission_references)
+            if target_roles != self.provenance.reviewer_roles:
+                raise ValueError("target/provenance reviewer role mismatch")
+            if self.provenance.reviewer_count != len(self.provenance.reviewer_ids):
+                raise ValueError("reviewer_count must match reviewer identities")
         eligible_statuses = {
             AnnotationStatus.DOUBLE_REVIEWED,
             AnnotationStatus.ADJUDICATED,
@@ -201,6 +255,24 @@ class SupervisedRecord(FrozenModel):
             CorpusSplit.TRAIN,
         }:
             raise ValueError("i record sintetici possono essere assegnati soltanto a train")
+        if self.split is CorpusSplit.EXTERNAL_CHALLENGE:
+            if (
+                self.provenance.study_family_id is None
+                or self.provenance.document_lineage_id is None
+            ):
+                raise ValueError(
+                    "EXTERNAL_CHALLENGE requires known study family and document lineage"
+                )
+            if self.provenance.external_challenge_dependency is None:
+                raise ValueError(
+                    "EXTERNAL_CHALLENGE requires Task 7 contamination/custody dependency pins"
+                )
+            if self.evaluation_eligible or self.release_eligible:
+                raise ValueError(
+                    "EXTERNAL_CHALLENGE remains SCIENTIFIC_REVIEW_REQUIRED until Task 7"
+                )
+        elif self.provenance.external_challenge_dependency is not None:
+            raise ValueError("External Challenge dependency is allowed only on its custodial split")
         return self
 
 
@@ -291,6 +363,12 @@ class PreparedRecord(FrozenModel):
 
     @model_validator(mode="after")
     def _split_and_eligibility(self) -> PreparedRecord:
+        try:
+            canonical = GoldParserTarget.model_validate_json(self.canonical_target)
+        except ValueError as exc:
+            raise ValueError(f"canonical target is not a GoldParserTarget: {exc}") from exc
+        if canonical != self.record.target:
+            raise ValueError("canonical target does not match supervised GoldParserTarget")
         if self.record.provenance.synthetic and self.split is not CorpusSplit.TRAIN:
             raise ValueError("i record sintetici possono apparire soltanto in train")
         if self.record.split is not CorpusSplit.UNASSIGNED and self.record.split is not self.split:
@@ -328,11 +406,23 @@ class ManifestRecord(FrozenModel):
     model_selection_eligible: bool = False
     license_or_authorization_id: str | None = None
     reviewer_count: int = Field(ge=0)
+    reviewer_ids: tuple[str, ...] = ()
+    reviewer_roles: tuple[str, ...] = ()
     adjudication_id: str | None = None
+    target_adjudication_id: str | None = None
+    submission_ids: tuple[str, ...] = ()
+    submission_checksums: tuple[str, ...] = ()
+    comparison_status: str | None = None
+    material_differences_checksum: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    candidate_count_kinds: tuple[str, ...] = ()
+    family_evidence: dict[str, str] = Field(default_factory=dict)
+    external_challenge_dependency: ExternalChallengeDependency | None = None
     synthetic: bool = False
 
     @model_validator(mode="after")
     def _validate_training_authorization(self) -> ManifestRecord:
+        if any(kind not in ALLOWED_CANDIDATE_COUNT_KINDS for kind in self.candidate_count_kinds):
+            raise ValueError("manifest contains an unreviewed candidate count kind")
         if self.split in {CorpusSplit.TEST, CorpusSplit.EXTERNAL_CHALLENGE} and (
             self.training_eligible
         ):
@@ -343,6 +433,31 @@ class ManifestRecord(FrozenModel):
             raise ValueError(
                 f"{self.split.name} manifest record cannot be model-selection eligible"
             )
+        if self.split is CorpusSplit.EXTERNAL_CHALLENGE:
+            if not self.family_evidence.get("study_family_id") or not self.family_evidence.get(
+                "document_lineage_id"
+            ):
+                raise ValueError("EXTERNAL_CHALLENGE manifest family evidence is incomplete")
+            if self.external_challenge_dependency is None:
+                raise ValueError("EXTERNAL_CHALLENGE manifest lacks Task 7 dependency pins")
+            if self.evaluation_eligible or self.release_eligible:
+                raise ValueError("EXTERNAL_CHALLENGE manifest remains review-required")
+        elif self.external_challenge_dependency is not None:
+            raise ValueError("external dependency on non-challenge manifest record")
+        if self.annotation_status in {
+            AnnotationStatus.DOUBLE_REVIEWED,
+            AnnotationStatus.ADJUDICATED,
+        }:
+            if self.target_adjudication_id != self.adjudication_id:
+                raise ValueError("manifest target/provenance adjudication mismatch")
+            if len(self.submission_ids) != 2 or len(self.submission_checksums) != 2:
+                raise ValueError("manifest requires exactly two gold submission pins")
+            if len(self.reviewer_ids) != 2 or self.reviewer_count != len(self.reviewer_ids):
+                raise ValueError("manifest reviewer identity pins are incomplete")
+            if len(self.reviewer_roles) != 2:
+                raise ValueError("manifest reviewer role pins are incomplete")
+            if self.comparison_status is None or self.material_differences_checksum is None:
+                raise ValueError("manifest gold comparison pins are incomplete")
         if not self.training_eligible:
             return self
         if self.annotation_status not in {
@@ -490,7 +605,19 @@ class PreparedDataset(FrozenModel):
                     != entry.license_or_authorization_id
                 )
                 or prepared.record.provenance.reviewer_count != entry.reviewer_count
+                or prepared.record.provenance.reviewer_ids != entry.reviewer_ids
+                or prepared.record.provenance.reviewer_roles != entry.reviewer_roles
                 or prepared.record.provenance.adjudication_id != entry.adjudication_id
+                or prepared.record.target.adjudication_id != entry.target_adjudication_id
+                or tuple(
+                    count.kind for count in prepared.record.target.candidate_target.candidate_counts
+                )
+                != entry.candidate_count_kinds
+                or _family_evidence(prepared.record.provenance) != entry.family_evidence
+                or (
+                    prepared.record.provenance.external_challenge_dependency
+                    != entry.external_challenge_dependency
+                )
             ):
                 raise ValueError(f"manifest incoerente per record {record_id}")
         if self.report.kept_count != len(self.records):

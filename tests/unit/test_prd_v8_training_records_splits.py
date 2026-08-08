@@ -44,6 +44,22 @@ def _gold_target() -> dict[str, object]:
         "adjudication_id": "adj-1",
         "reviewer_ids": ["reviewer-a", "reviewer-b"],
         "adjudication_rationale": "Submissions reconciled.",
+        "submission_references": [
+            {
+                "submission_id": "submission-a",
+                "submission_sha256": "a" * 64,
+                "reviewer_id": "reviewer-a",
+                "reviewer_role": "wet-lab",
+            },
+            {
+                "submission_id": "submission-b",
+                "submission_sha256": "b" * 64,
+                "reviewer_id": "reviewer-b",
+                "reviewer_role": "biostatistician",
+            },
+        ],
+        "comparison_status": "AGREED",
+        "material_differences": [],
     }
 
 
@@ -70,14 +86,36 @@ def _record(
             license_or_authorization_id="license-1",
             guideline_version="8.0.0",
             reviewer_count=2,
+            reviewer_ids=("reviewer-a", "reviewer-b"),
             reviewer_roles=("wet-lab", "biostatistician"),
             adjudication_id="adj-1",
             study_family_id=f"study-{record_id}",
             document_lineage_id=f"document-{record_id}",
+            external_challenge_dependency=(
+                {
+                    "review_status": "SCIENTIFIC_REVIEW_REQUIRED",
+                    "task7_contamination_attestation_reference": {
+                        "artifact_id": f"attestation-{record_id}",
+                        "sha256": "c" * 64,
+                    },
+                    "custody_reference": {
+                        "artifact_id": f"custody-{record_id}",
+                        "sha256": "d" * 64,
+                    },
+                    "family_evidence_references": [
+                        {
+                            "artifact_id": f"family-{record_id}",
+                            "sha256": "e" * 64,
+                        }
+                    ],
+                }
+                if split is CorpusSplit.EXTERNAL_CHALLENGE
+                else None
+            ),
         ),
         annotation_status=AnnotationStatus.ADJUDICATED,
         training_eligible=training,
-        evaluation_eligible=evaluation,
+        evaluation_eligible=evaluation and split is not CorpusSplit.EXTERNAL_CHALLENGE,
         model_selection_eligible=model_selection,
         split=split,
     )
@@ -124,7 +162,7 @@ def test_prepared_and_manifest_boundaries_recheck_protected_training(split: Corp
         PreparedRecord(
             record=corrupted,
             normalized_input="fixture",
-            canonical_target="{}",
+            canonical_target=corrupted.target.model_dump_json(),
             exact_fingerprint="a" * 64,
             near_fingerprint="b" * 64,
             leakage_group_id="leakage-1",
@@ -166,7 +204,7 @@ def test_prepared_and_manifest_boundaries_recheck_protected_model_selection(
         PreparedRecord(
             record=corrupted_record,
             normalized_input="fixture",
-            canonical_target="{}",
+            canonical_target=corrupted_record.target.model_dump_json(),
             exact_fingerprint="a" * 64,
             near_fingerprint="b" * 64,
             leakage_group_id="leakage-1",
@@ -191,7 +229,14 @@ def test_prepared_and_manifest_boundaries_recheck_protected_model_selection(
         model_selection_eligible=True,
         license_or_authorization_id="license",
         reviewer_count=2,
+        reviewer_ids=("reviewer-a", "reviewer-b"),
+        reviewer_roles=("wet-lab", "biostatistician"),
         adjudication_id="adj",
+        target_adjudication_id="adj",
+        submission_ids=("submission-a", "submission-b"),
+        submission_checksums=("a" * 64, "b" * 64),
+        comparison_status="AGREED",
+        material_differences_checksum="c" * 64,
     )
     corrupted_manifest_record = valid_manifest_record.model_copy(update={"split": split})
     with pytest.raises(ValueError, match=r"model[_-]selection"):

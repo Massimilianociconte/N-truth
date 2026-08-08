@@ -42,6 +42,22 @@ def _gold_target(marker: dict[str, str]) -> GoldParserTarget:
         adjudication_id="gold-fixture",
         reviewer_ids=("wet-lab", "biostatistics"),
         adjudication_rationale="Candidate facts were reconciled for this fixture.",
+        submission_references=(
+            {
+                "submission_id": "submission-wet-lab",
+                "submission_sha256": "a" * 64,
+                "reviewer_id": "wet-lab",
+                "reviewer_role": "wet-lab",
+            },
+            {
+                "submission_id": "submission-biostatistics",
+                "submission_sha256": "b" * 64,
+                "reviewer_id": "biostatistics",
+                "reviewer_role": "biostatistics",
+            },
+        ),
+        comparison_status="AGREED",
+        material_differences=(),
     )
 
 
@@ -72,12 +88,38 @@ def _record(
             license_or_authorization_id=f"authorization-{source}",
             guideline_version="test-v1",
             reviewer_count=2,
+            reviewer_ids=("wet-lab", "biostatistics"),
             reviewer_roles=("wet-lab", "biostatistics"),
+            adjudication_id="gold-fixture",
+            study_family_id=(
+                f"study-{source}" if requested_split is CorpusSplit.EXTERNAL_CHALLENGE else None
+            ),
+            document_lineage_id=(
+                f"document-{source}" if requested_split is CorpusSplit.EXTERNAL_CHALLENGE else None
+            ),
+            external_challenge_dependency=(
+                {
+                    "review_status": "SCIENTIFIC_REVIEW_REQUIRED",
+                    "task7_contamination_attestation_reference": {
+                        "artifact_id": f"attestation-{source}",
+                        "sha256": "c" * 64,
+                    },
+                    "custody_reference": {
+                        "artifact_id": f"custody-{source}",
+                        "sha256": "d" * 64,
+                    },
+                    "family_evidence_references": [
+                        {"artifact_id": f"family-{source}", "sha256": "e" * 64}
+                    ],
+                }
+                if requested_split is CorpusSplit.EXTERNAL_CHALLENGE
+                else None
+            ),
         ),
-        annotation_status=AnnotationStatus.DOUBLE_REVIEWED,
+        annotation_status=AnnotationStatus.ADJUDICATED,
         training_eligible=eligible
         and requested_split not in {CorpusSplit.TEST, CorpusSplit.EXTERNAL_CHALLENGE},
-        evaluation_eligible=requested_split in {CorpusSplit.TEST, CorpusSplit.EXTERNAL_CHALLENGE},
+        evaluation_eligible=requested_split is CorpusSplit.TEST,
         split=requested_split or CorpusSplit.UNASSIGNED,
     )
 
@@ -278,11 +320,8 @@ def test_near_duplicate_propagates_external_constraint_through_laboratory_identi
     )
     config = PreparationConfig(shingle_size=2, near_duplicate_threshold=0.8)
 
-    dataset = prepare_dataset(records, config=config)
-    prepared = {item.record.record_id: item for item in dataset.records}
-
-    assert set(prepared) == {"a-canonical", "m-same-laboratory"}
-    assert {item.split for item in prepared.values()} == {CorpusSplit.EXTERNAL_CHALLENGE}
-    assert len({item.leakage_group_id for item in prepared.values()}) == 1
-    assert dataset.report.near_duplicate_count == 1
-    assert dataset.report.duplicate_decisions[0].duplicate_record_id == "z-duplicate-external"
+    with pytest.raises(
+        DatasetValidationError,
+        match="external_challenge_custody_dependency_missing",
+    ):
+        prepare_dataset(records, config=config)

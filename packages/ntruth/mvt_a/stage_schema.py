@@ -12,7 +12,7 @@ import unicodedata
 from enum import StrEnum
 from typing import Any, Literal, Self
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 
 from ntruth.schemas.core import FrozenModel
 
@@ -116,6 +116,18 @@ class StageCoverage(FrozenModel):
 
 ALLOWED_CANDIDATE_COUNT_KINDS: frozenset[str] = frozenset(
     {
+        "reported_count_candidate",
+        "sample_mention_count_candidate",
+        "measurement_mention_count_candidate",
+        "row_mention_count_candidate",
+        "source_mention_count_candidate",
+        "unit_mention_count_candidate",
+        "exclusion_mention_count_candidate",
+    }
+)
+
+LEGACY_V7_CANDIDATE_COUNT_KINDS: frozenset[str] = frozenset(
+    {
         "declared_n",
         "observational_n",
         "n_analyzed",
@@ -148,6 +160,8 @@ class FactorCandidate(FrozenModel):
 
 
 class CountCandidate(FrozenModel):
+    """Deprecated v7 candidate vocabulary, input-only."""
+
     kind: str
     value: int | None = Field(default=None, ge=0)
     raw_text: str = ""
@@ -155,10 +169,10 @@ class CountCandidate(FrozenModel):
 
     @model_validator(mode="after")
     def _candidate_only(self) -> Self:
-        if self.kind in FORBIDDEN_FINAL_FIELDS or self.kind == "independent_n":
-            raise ValueError(f"parser must not emit final count kind {self.kind!r}")
-        if self.kind not in ALLOWED_CANDIDATE_COUNT_KINDS and not self.kind.endswith("_candidate"):
-            raise ValueError(f"unrecognised candidate count kind: {self.kind!r}")
+        if self.kind not in LEGACY_V7_CANDIDATE_COUNT_KINDS and not self.kind.endswith(
+            "_candidate"
+        ):
+            raise ValueError(f"unrecognised legacy candidate count kind: {self.kind!r}")
         return self
 
 
@@ -250,7 +264,7 @@ class MvtAStageOutput(FrozenModel):
     stage_id: str
     input_kind: str = "methods_or_caption"
     status: StageCompletionStatus
-    candidates: ParserCandidateBundle
+    candidates: Any | None
     errors: tuple[StageIssue, ...] = ()
     warnings: tuple[StageIssue, ...] = ()
     coverage: StageCoverage
@@ -261,14 +275,33 @@ class MvtAStageOutput(FrozenModel):
     model_id: str | None = None
     model_role: str = "unqualified_challenger"
 
+    @field_validator("candidates", mode="before")
+    @classmethod
+    def _canonical_active_candidate(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        # Local import breaks the schema dependency cycle while retaining a
+        # single active ParserCandidateOutput payload on validation/round-trip.
+        from ntruth.parser_ai.contract import ParserCandidateOutput
+
+        if isinstance(value, ParserCandidateOutput):
+            return value
+        return ParserCandidateOutput.model_validate(value)
+
     @model_validator(mode="after")
     def _status_matches_diagnostics(self) -> Self:
         if self.status is StageCompletionStatus.COMPLETE and self.errors:
             raise ValueError("COMPLETE stage cannot contain errors")
         if self.status is StageCompletionStatus.FAILED and not self.errors:
             raise ValueError("FAILED stage requires a typed error")
+        if self.candidates is None and self.status is not StageCompletionStatus.FAILED:
+            raise ValueError("only a FAILED stage may omit candidate artifacts")
         if self.coverage.status is not self.status:
             raise ValueError("stage status and coverage status must match")
+        if self.verifier_passed is False and self.status is not StageCompletionStatus.FAILED:
+            raise ValueError("failed verifier requires FAILED stage status")
+        if self.verifier_passed is True and self.verifier_errors:
+            raise ValueError("passed verifier cannot retain verifier errors")
         if len(self.preserved_artifact_ids) != len(set(self.preserved_artifact_ids)):
             raise ValueError("preserved artifact IDs must be unique")
         return self

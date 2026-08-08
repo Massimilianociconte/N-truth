@@ -91,6 +91,22 @@ def _record(
             adjudication_id=f"adjudication-{record_id}",
             reviewer_ids=("wet-lab", "biostatistician"),
             adjudication_rationale="Candidate facts were reconciled.",
+            submission_references=(
+                {
+                    "submission_id": f"submission-wet-{record_id}",
+                    "submission_sha256": "a" * 64,
+                    "reviewer_id": "wet-lab",
+                    "reviewer_role": "wet-lab",
+                },
+                {
+                    "submission_id": f"submission-stat-{record_id}",
+                    "submission_sha256": "b" * 64,
+                    "reviewer_id": "biostatistician",
+                    "reviewer_role": "biostatistician",
+                },
+            ),
+            comparison_status="AGREED",
+            material_differences=(),
         ),
         provenance=SupervisionProvenance(
             source_id=f"source-{record_id}",
@@ -100,10 +116,12 @@ def _record(
             license_or_authorization_id=f"license-{record_id}",
             guideline_version="snapshot-integrity-test",
             reviewer_count=2 if training_eligible else 0,
+            reviewer_ids=("wet-lab", "biostatistician") if training_eligible else (),
             reviewer_roles=("wet-lab", "biostatistician") if training_eligible else (),
+            adjudication_id=(f"adjudication-{record_id}" if training_eligible else None),
         ),
         annotation_status=(
-            AnnotationStatus.DOUBLE_REVIEWED if training_eligible else AnnotationStatus.CANDIDATE
+            AnnotationStatus.ADJUDICATED if training_eligible else AnnotationStatus.CANDIDATE
         ),
         training_eligible=training_eligible
         and split in {CorpusSplit.TRAIN, CorpusSplit.VALIDATION},

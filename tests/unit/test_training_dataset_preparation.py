@@ -52,6 +52,22 @@ def _gold_target(marker: dict[str, object]) -> GoldParserTarget:
         adjudication_id="gold-fixture",
         reviewer_ids=("biologist", "biostatistician"),
         adjudication_rationale="Candidate facts were reconciled for this fixture.",
+        submission_references=(
+            {
+                "submission_id": "submission-biologist",
+                "submission_sha256": "a" * 64,
+                "reviewer_id": "biologist",
+                "reviewer_role": "biologist",
+            },
+            {
+                "submission_id": "submission-biostatistician",
+                "submission_sha256": "b" * 64,
+                "reviewer_id": "biostatistician",
+                "reviewer_role": "biostatistician",
+            },
+        ),
+        comparison_status="AGREED",
+        material_differences=(),
     )
 
 
@@ -65,6 +81,7 @@ def _provenance(
     corresponding_author_id: str | None = None,
     synthetic: bool = False,
     adjudication_id: str | None = None,
+    external: bool = False,
 ) -> SupervisionProvenance:
     return SupervisionProvenance(
         source_id=source_id,
@@ -79,8 +96,29 @@ def _provenance(
         license_or_authorization_id=f"authorization-{source_id}",
         guideline_version="3.0",
         reviewer_count=2,
+        reviewer_ids=("biologist", "biostatistician"),
         reviewer_roles=("biologist", "biostatistician"),
-        adjudication_id=adjudication_id,
+        adjudication_id=adjudication_id or "gold-fixture",
+        study_family_id=f"study-{source_id}" if external else None,
+        document_lineage_id=f"document-{source_id}" if external else None,
+        external_challenge_dependency=(
+            {
+                "review_status": "SCIENTIFIC_REVIEW_REQUIRED",
+                "task7_contamination_attestation_reference": {
+                    "artifact_id": f"attestation-{source_id}",
+                    "sha256": "c" * 64,
+                },
+                "custody_reference": {
+                    "artifact_id": f"custody-{source_id}",
+                    "sha256": "d" * 64,
+                },
+                "family_evidence_references": [
+                    {"artifact_id": f"family-{source_id}", "sha256": "e" * 64}
+                ],
+            }
+            if external
+            else None
+        ),
         synthetic=synthetic,
     )
 
@@ -103,7 +141,9 @@ def _record(
 ) -> SupervisedRecord:
     source = source_id or record_id
     adjudication_id = (
-        f"adjudication-{record_id}" if status is AnnotationStatus.ADJUDICATED else None
+        "gold-fixture"
+        if status in {AnnotationStatus.DOUBLE_REVIEWED, AnnotationStatus.ADJUDICATED}
+        else None
     )
     return SupervisedRecord(
         record_id=record_id,
@@ -121,11 +161,12 @@ def _record(
             corresponding_author_id=corresponding_author_id,
             synthetic=synthetic,
             adjudication_id=adjudication_id,
+            external=requested_split is CorpusSplit.EXTERNAL_CHALLENGE,
         ),
         annotation_status=status,
         training_eligible=eligible
         and requested_split not in {CorpusSplit.TEST, CorpusSplit.EXTERNAL_CHALLENGE},
-        evaluation_eligible=requested_split in {CorpusSplit.TEST, CorpusSplit.EXTERNAL_CHALLENGE},
+        evaluation_eligible=requested_split is CorpusSplit.TEST,
         split=requested_split or CorpusSplit.UNASSIGNED,
     )
 
@@ -151,7 +192,7 @@ def test_supervised_record_enforces_curation_and_authorization() -> None:
             language="it",
             input_text="testo",
             target=_gold_target({"label": "x"}),
-            provenance=_provenance("adjudicated"),
+            provenance=_provenance("adjudicated").model_copy(update={"adjudication_id": None}),
             annotation_status=AnnotationStatus.ADJUDICATED,
             training_eligible=True,
         )

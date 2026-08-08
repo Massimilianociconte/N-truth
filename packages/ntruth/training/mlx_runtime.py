@@ -71,7 +71,12 @@ class TrainingRealityGateV8Request(FrozenModel):
 
 
 class TrainingRealityGateV8Artifact(FrozenModel):
-    """Content-addressed authorization artifact supplied by the future Task-7 gate."""
+    """Untrusted Task-5 proposal; never an authorization capability.
+
+    Task 7 owns the authoritative decision contract.  Keeping this DTO allows
+    old callers and tests to serialize their proposal without letting Task 5
+    mint a grant that production would accept.
+    """
 
     gate_version: Literal["8.0.0"] = "8.0.0"
     purpose: Literal["TRAIN"] = "TRAIN"
@@ -83,6 +88,7 @@ class TrainingRealityGateV8Artifact(FrozenModel):
     issued_by: str
     artifact_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     artifact_id: str
+    trust_state: Literal["UNTRUSTED_TASK5_PROPOSAL"] = "UNTRUSTED_TASK5_PROPOSAL"
 
     def identity_payload(self) -> dict[str, object]:
         return self.model_dump(
@@ -132,7 +138,12 @@ def build_training_reality_gate_v8_artifact(
     authorized: bool,
     issued_by: str,
 ) -> TrainingRealityGateV8Artifact:
-    """Encode a gate decision; this helper does not decide scientific readiness."""
+    """Encode an explicitly untrusted Task-5 proposal.
+
+    The returned object is useful for compatibility and negative tests.  The
+    production verifier deliberately rejects it until Task 7 supplies the
+    independently reviewed authoritative decision interface.
+    """
 
     payload: dict[str, object] = {
         "gate_version": "8.0.0",
@@ -143,6 +154,7 @@ def build_training_reality_gate_v8_artifact(
         "no_corpus_attestation_sha256": no_corpus_attestation_sha256,
         "authorized": authorized,
         "issued_by": issued_by,
+        "trust_state": "UNTRUSTED_TASK5_PROPOSAL",
     }
     checksum = content_checksum(payload)
     return TrainingRealityGateV8Artifact.model_validate(
@@ -174,7 +186,45 @@ def verify_training_reality_gate_v8(
         raise MLXPipelineError("Reality Gate v8 snapshot hash mismatch")
     if not artifact.authorized:
         raise MLXPipelineError("Reality Gate v8 blocked purpose TRAIN")
-    return artifact
+    raise MLXPipelineError(
+        "Reality Gate v8 Task 7 authoritative decision unavailable; SCIENTIFIC_REVIEW_REQUIRED"
+    )
+
+
+class RealityGatePinTuple(FrozenModel):
+    """Complete audit tuple that a future authoritative gate must reconcile."""
+
+    artifact_id: str
+    artifact_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    privacy_attestation_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    no_corpus_attestation_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @classmethod
+    def from_artifact(cls, artifact: TrainingRealityGateV8Artifact) -> RealityGatePinTuple:
+        return cls(
+            artifact_id=artifact.artifact_id,
+            artifact_sha256=artifact.artifact_sha256,
+            privacy_attestation_sha256=artifact.privacy_attestation_sha256,
+            no_corpus_attestation_sha256=artifact.no_corpus_attestation_sha256,
+        )
+
+
+def reconcile_reality_gate_pins(
+    recorded: Mapping[str, Any],
+    expected: RealityGatePinTuple,
+) -> None:
+    """Reject a resume state when any independently recorded gate pin drifts."""
+
+    aliases = {
+        "artifact_id": "reality_gate_artifact_id",
+        "artifact_sha256": "reality_gate_artifact_sha256",
+        "privacy_attestation_sha256": "reality_gate_privacy_attestation_sha256",
+        "no_corpus_attestation_sha256": "reality_gate_no_corpus_attestation_sha256",
+    }
+    for field_name, state_name in aliases.items():
+        actual = recorded.get(field_name, recorded.get(state_name))
+        if actual != getattr(expected, field_name):
+            raise MLXPipelineError(f"Reality Gate v8 {field_name} changed: cannot resume the run")
 
 
 @dataclass(frozen=True)
@@ -657,6 +707,25 @@ def _verify_snapshot_files(
     if "snapshot-manifest.json" in entries:
         raise MLXPipelineError("snapshot-manifest.json non puo auto-includersi in files")
 
+    allowed_physical = set(entries) | {"snapshot-manifest.json"}
+    try:
+        physical_entries = tuple(data_dir.iterdir())
+    except OSError as exc:
+        raise MLXPipelineError(f"directory snapshot non leggibile: {exc}") from exc
+    physical_names = {entry.name for entry in physical_entries}
+    extras = sorted(physical_names - allowed_physical)
+    missing_physical = sorted(allowed_physical - physical_names)
+    if extras or missing_physical:
+        raise MLXPipelineError(
+            "snapshot physical allowlist mismatch: "
+            f"unmanifested={extras}, missing={missing_physical}"
+        )
+    for physical in physical_entries:
+        if physical.is_symlink() or not physical.is_file():
+            raise MLXPipelineError(
+                f"snapshot entry must be a regular non-symlink file: {physical.name}"
+            )
+
     root = data_dir.resolve()
     hashes: dict[str, str] = {}
     sizes: dict[str, int] = {}
@@ -699,6 +768,41 @@ def _verify_snapshot_files(
         hashes[filename] = actual_hash
         sizes[filename] = actual_size
     return hashes, sizes
+
+
+def read_training_snapshot_envelope(
+    data_dir: Path,
+    *,
+    smoke_test: bool = False,
+) -> dict[str, Any]:
+    """Read only the content-addressed manifest needed before a gate decision.
+
+    This function intentionally never opens train/valid or source payloads.
+    """
+
+    root = data_dir.resolve()
+    manifest_path = root / "snapshot-manifest.json"
+    if manifest_path.is_symlink() or not manifest_path.is_file():
+        raise MLXPipelineError("snapshot-manifest.json absent or symlink not allowed")
+    manifest = _load_json_object(manifest_path, label="snapshot manifest envelope")
+    if manifest.get("schema_version") != SNAPSHOT_SCHEMA_VERSION:
+        raise MLXPipelineError("training snapshot envelope schema mismatch")
+    runtime_smoke_only = manifest.get("runtime_smoke_only") is True
+    if runtime_smoke_only != smoke_test:
+        raise MLXPipelineError("training snapshot envelope smoke purpose mismatch")
+    expected_hash, expected_id = _snapshot_identity(manifest)
+    if manifest.get("snapshot_sha256") != expected_hash:
+        raise MLXPipelineError("training snapshot envelope hash mismatch")
+    if manifest.get("snapshot_id") != expected_id:
+        raise MLXPipelineError("training snapshot envelope id mismatch")
+    return {
+        "path": str(root),
+        "manifest_path": str(manifest_path),
+        "manifest_sha256": sha256_file(manifest_path),
+        "snapshot_id": expected_id,
+        "snapshot_sha256": expected_hash,
+        "runtime_smoke_only": runtime_smoke_only,
+    }
 
 
 def _verify_snapshot_counts(
@@ -1053,6 +1157,70 @@ def validate_mlx_dataset(data_dir: Path, *, smoke_test: bool = False) -> dict[st
     }
 
 
+def stage_verified_training_view(
+    data_dir: Path,
+    target_dir: Path,
+    *,
+    verified_snapshot: Mapping[str, Any],
+    smoke_test: bool = False,
+) -> dict[str, Any]:
+    """Copy only pinned train/valid bytes into a run-owned immutable view."""
+
+    try:
+        current = validate_snapshot_integrity(data_dir, smoke_test=smoke_test)
+    except MLXPipelineError as exc:
+        raise MLXPipelineError(f"training snapshot changed after validation: {exc}") from exc
+    for key in ("snapshot_id", "snapshot_sha256", "manifest_sha256"):
+        if current.get(key) != verified_snapshot.get(key):
+            raise MLXPipelineError(f"training snapshot changed after validation ({key})")
+    expected_hashes = current["file_hashes"]
+    if target_dir.exists() and any(target_dir.iterdir()):
+        entries = tuple(target_dir.iterdir())
+        if {entry.name for entry in entries} != {"train.jsonl", "valid.jsonl"}:
+            raise MLXPipelineError("run-owned training view allowlist mismatch")
+        for entry in entries:
+            if entry.is_symlink() or not entry.is_file():
+                raise MLXPipelineError("run-owned training view contains non-regular content")
+            if sha256_file(entry) != expected_hashes[entry.name]:
+                raise MLXPipelineError(f"staged training checksum changed: {entry.name}")
+        return {
+            "path": str(target_dir.resolve()),
+            "snapshot_id": current["snapshot_id"],
+            "snapshot_sha256": current["snapshot_sha256"],
+            "manifest_sha256": current["manifest_sha256"],
+            "file_hashes": {
+                entry.name: sha256_file(entry)
+                for entry in sorted(entries, key=lambda item: item.name)
+            },
+        }
+    target_dir.mkdir(parents=True, exist_ok=True)
+    staged_hashes: dict[str, str] = {}
+    for filename in ("train.jsonl", "valid.jsonl"):
+        source = data_dir.resolve() / filename
+        target = target_dir / filename
+        if source.is_symlink() or not source.is_file():
+            raise MLXPipelineError(f"training source replacement detected: {filename}")
+        before = sha256_file(source)
+        if before != expected_hashes[filename]:
+            raise MLXPipelineError(f"training source checksum changed: {filename}")
+        shutil.copyfile(source, target)
+        after = sha256_file(source)
+        staged = sha256_file(target)
+        if after != before or staged != before:
+            raise MLXPipelineError(f"training source changed while staging: {filename}")
+        target.chmod(0o444)
+        staged_hashes[filename] = staged
+    if {path.name for path in target_dir.iterdir()} != {"train.jsonl", "valid.jsonl"}:
+        raise MLXPipelineError("run-owned training view allowlist mismatch")
+    return {
+        "path": str(target_dir.resolve()),
+        "snapshot_id": current["snapshot_id"],
+        "snapshot_sha256": current["snapshot_sha256"],
+        "manifest_sha256": current["manifest_sha256"],
+        "file_hashes": staged_hashes,
+    }
+
+
 def _copy_validation_as_test(data_dir: Path, target: Path) -> None:
     target.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(data_dir / "valid.jsonl", target / "test.jsonl")
@@ -1080,14 +1248,17 @@ def run_training(
     il controller interrompe dopo ``patience`` fasi senza miglioramento.
     """
 
-    dataset = validate_mlx_dataset(data_dir, smoke_test=smoke_test)
+    envelope = read_training_snapshot_envelope(data_dir, smoke_test=smoke_test)
     gate_artifact = verify_training_reality_gate_v8(
         reality_gate,
         TrainingRealityGateV8Request(
-            snapshot_id=str(dataset["snapshot_id"]),
-            snapshot_sha256=str(dataset["snapshot_sha256"]),
+            snapshot_id=str(envelope["snapshot_id"]),
+            snapshot_sha256=str(envelope["snapshot_sha256"]),
         ),
     )
+    dataset = validate_mlx_dataset(data_dir, smoke_test=smoke_test)
+    if dataset["manifest_sha256"] != envelope["manifest_sha256"]:
+        raise MLXPipelineError("training snapshot manifest changed after gate decision")
     profile = load_profile(profile_path)
     machine = doctor(profile_path, repo_root)
     if not machine["ready_to_train"]:
@@ -1104,8 +1275,15 @@ def run_training(
     if run_dir.exists() and any(run_dir.iterdir()) and not resume:
         raise MLXPipelineError("run directory non vuota; usare --resume o una nuova directory")
     run_dir.mkdir(parents=True, exist_ok=True)
+    training_view = stage_verified_training_view(
+        data_dir,
+        run_dir / "_verified-training-view",
+        verified_snapshot=dataset,
+        smoke_test=smoke_test,
+    )
+    training_view_dir = Path(str(training_view["path"]))
     validation_dir = run_dir / "_validation-as-test"
-    _copy_validation_as_test(data_dir, validation_dir)
+    _copy_validation_as_test(training_view_dir, validation_dir)
 
     maximum_phases = 1 if smoke_test else int(training["maximum_phases"])
     iterations_per_phase = (
@@ -1131,8 +1309,7 @@ def run_training(
             raise MLXPipelineError("identita snapshot cambiata: impossibile riprendere il run")
         if state.get("dataset_manifest_sha256") != dataset["manifest_sha256"]:
             raise MLXPipelineError("manifest snapshot cambiato: impossibile riprendere il run")
-        if state.get("reality_gate_artifact_sha256") != gate_artifact.artifact_sha256:
-            raise MLXPipelineError("Reality Gate v8 cambiato: impossibile riprendere il run")
+        reconcile_reality_gate_pins(state, RealityGatePinTuple.from_artifact(gate_artifact))
         previous_environment = state.get("environment")
         if not isinstance(previous_environment, dict):
             raise MLXPipelineError("record ambiente assente: impossibile riprendere il run")
@@ -1196,7 +1373,7 @@ def run_training(
             "test": False,
             "fine_tune_type": training["fine_tune_type"],
             "optimizer": training["optimizer"],
-            "data": str(data_dir.resolve()),
+            "data": str(training_view_dir),
             "seed": seed + phase - 1,
             "num_layers": int(training["num_layers"]),
             "batch_size": int(training["batch_size"]),

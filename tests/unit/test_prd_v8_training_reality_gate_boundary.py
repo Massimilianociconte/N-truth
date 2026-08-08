@@ -72,10 +72,11 @@ def test_run_training_rejects_stale_gate_before_any_command_runner(
     command_calls: list[tuple[Any, ...]] = []
     monkeypatch.setattr(
         runtime,
-        "validate_mlx_dataset",
+        "read_training_snapshot_envelope",
         lambda *_args, **_kwargs: {
             "snapshot_id": "snapshot-current",
             "snapshot_sha256": "a" * 64,
+            "manifest_sha256": "b" * 64,
         },
     )
     monkeypatch.setattr(

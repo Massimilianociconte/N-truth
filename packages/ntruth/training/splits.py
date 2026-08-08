@@ -302,11 +302,30 @@ def assign_group_aware_splits(
         assignments,
         related_record_pairs=related_record_pairs,
     )
+    assigned_by_id = {assignment.record_id: assignment for assignment in assignments}
+    custody_issues = tuple(
+        ValidationIssue(
+            code="external_challenge_custody_dependency_missing",
+            severity=IssueSeverity.ERROR,
+            detail=(
+                "EXTERNAL_CHALLENGE membership requires known study/document family "
+                "and unresolved Task 7 contamination/custody dependency pins"
+            ),
+            record_ids=(record.record.record_id,),
+        )
+        for record in records
+        if assigned_by_id[record.record.record_id].split is CorpusSplit.EXTERNAL_CHALLENGE
+        and (
+            record.record.provenance.study_family_id is None
+            or record.record.provenance.document_lineage_id is None
+            or record.record.provenance.external_challenge_dependency is None
+        )
+    )
     return SplitResult(
         assignments=assignments,
         issues=tuple(
             sorted(
-                (*issues, *leakage_issues),
+                (*issues, *leakage_issues, *custody_issues),
                 key=lambda issue: (issue.code, issue.record_ids),
             )
         ),

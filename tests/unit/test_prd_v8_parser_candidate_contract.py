@@ -72,6 +72,22 @@ def test_active_parser_and_gold_are_distinct_candidate_only_types() -> None:
             "adjudication_id": "adj-1",
             "reviewer_ids": ["reviewer-a", "reviewer-b"],
             "adjudication_rationale": "Two submissions were reconciled.",
+            "submission_references": [
+                {
+                    "submission_id": "submission-a",
+                    "submission_sha256": "a" * 64,
+                    "reviewer_id": "reviewer-a",
+                    "reviewer_role": "wet-lab",
+                },
+                {
+                    "submission_id": "submission-b",
+                    "submission_sha256": "b" * 64,
+                    "reviewer_id": "reviewer-b",
+                    "reviewer_role": "statistical-methods",
+                },
+            ],
+            "comparison_status": "AGREED",
+            "material_differences": [],
         }
     )
 
