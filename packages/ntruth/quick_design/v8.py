@@ -184,6 +184,14 @@ def validate_raw_wizard_submission(submission: QuickDesignV8Submission) -> None:
         item.authority is not RAW_WIZARD_AUTHORITY for item in submission.statistical_handoff.items
     ):
         raise ValueError("raw Quick Design handoff items must retain user authority")
+    if submission.conflicts.knowledge_state is KnowledgeState.PRESENT and any(
+        record.affected_claim_ids.knowledge_state is not KnowledgeState.PRESENT
+        for record in submission.conflicts.value or ()
+    ):
+        raise ValueError(
+            "raw Quick Design conflict materiality cannot self-issue absent or unknown "
+            "affected-claim decisions; a reviewed materiality artifact is required"
+        )
 
 
 def run_quick_design_v8(

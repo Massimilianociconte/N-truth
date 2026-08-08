@@ -670,6 +670,11 @@ class ReportBundle(KernelModel):
         if self.design_record_context.mode is ReportDesignContext.UNVERIFIED_RETROSPECTIVE:
             if self.prospective_input_ledgers.knowledge_state is not KnowledgeState.NOT_APPLICABLE:
                 raise ValueError("retrospective report cannot imply a prospective input ledger")
+            if self.human_confirmations.knowledge_state is KnowledgeState.PRESENT:
+                raise ValueError(
+                    "SCIENTIFIC_REVIEW_REQUIRED: retrospective confirmations require "
+                    "query-scoped typed support bindings and exact semantic targets"
+                )
         else:
             if self.prospective_input_ledgers.knowledge_state is not KnowledgeState.PRESENT:
                 raise ValueError("planned/executed report requires addressed input ledgers")
@@ -850,6 +855,20 @@ class ReportBundle(KernelModel):
             for conflict_record in self.conflicts.value or ():
                 affected_state = conflict_record.affected_claim_ids.knowledge_state
                 if affected_state is KnowledgeState.ABSENT_EXPLICIT:
+                    query_claim_proof_evidence = {
+                        evidence_id
+                        for claim in all_claims
+                        if claim.inferential_query_id in conflict_record.inferential_query_ids
+                        for step in claim.proof_trace
+                        for reference in step.predicate_references
+                        for evidence_id in reference.predicate_value.evidence_ids
+                    }
+                    if set(conflict_record.evidence_record_ids) & query_claim_proof_evidence:
+                        raise ValueError(
+                            "SCIENTIFIC_REVIEW_REQUIRED: conflict evidence overlaps query "
+                            "predicate proof evidence, so affected-claim materiality cannot be "
+                            "declared ABSENT_EXPLICIT without a reviewed materiality artifact"
+                        )
                     continue
                 if affected_state is not KnowledgeState.PRESENT:
                     raise ValueError(
@@ -873,6 +892,22 @@ class ReportBundle(KernelModel):
                     raise ValueError(
                         "SCIENTIFIC_REVIEW_REQUIRED: material conflicts must drive every "
                         "affected claim to CONFLICTING_INFORMATION before report resolution"
+                    )
+                exact_predicate_proof_evidence = {
+                    evidence_id
+                    for claim in affected_claims
+                    for step in claim.proof_trace
+                    for reference in step.predicate_references
+                    for evidence_id in reference.predicate_value.evidence_ids
+                }
+                if (
+                    set(conflict_record.evidence_record_ids) != exact_predicate_proof_evidence
+                    or set(conflict_record.affected_claim_ids.evidence_ids)
+                    != exact_predicate_proof_evidence
+                ):
+                    raise ValueError(
+                        "ReportBundle conflict evidence must exactly equal the affected-claim "
+                        "predicate proof evidence"
                     )
                 linked_conflict_claim_ids.update(affected_claim_ids)
             conflicting_claim_ids = {

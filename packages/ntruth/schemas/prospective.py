@@ -43,6 +43,13 @@ Sha256 = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
 INPUT_CLOSURE_REVIEW_ISSUE_ID = "QD-V8-INPUT-EVIDENCE-CLOSURE"
 COUNT_RECONCILIATION_REVIEW_ISSUE_ID = "SRR-V8-011"
 
+# This is the only reviewed lifecycle comparison implemented by the current
+# plan/execution contract.  Other count kinds remain independently meaningful
+# registry records; they must never stand in for observed execution units.
+COUNT_RECONCILIATION_KIND_MATRIX = (
+    (CanonicalCountKind.PLANNED_UNIT_COUNT, CanonicalCountKind.OBSERVED_UNIT_COUNT),
+)
+
 
 class ProspectiveArtifactKind(StrEnum):
     SAMPLE_SHEET = "SAMPLE_SHEET"
@@ -938,8 +945,35 @@ def build_executed_design(
     )
 
 
-def _count_comparison_scope(record: CanonicalCountRecord) -> str:
-    return content_checksum(record.scope.model_dump(mode="json", exclude={"lifecycle_phase"}))
+def _count_reconciliation_scope(record: CanonicalCountRecord) -> tuple[object, ...] | None:
+    """Return a provenance-free semantic scope with lifecycle compared by kind policy."""
+
+    identity = record.scope.identity()
+    if not identity.comparison_ready:
+        return None
+    return (
+        identity.query_id,
+        *(component for component in identity.components if component[0] != "lifecycle_phase"),
+    )
+
+
+def _count_reconciliation_key(
+    record: CanonicalCountRecord,
+    *,
+    planned: bool,
+) -> tuple[object, ...] | None:
+    matching_pairs = tuple(
+        pair
+        for pair in COUNT_RECONCILIATION_KIND_MATRIX
+        if pair[0 if planned else 1] is record.kind
+    )
+    if len(matching_pairs) != 1:
+        return None
+    scope = _count_reconciliation_scope(record)
+    if scope is None:
+        return None
+    planned_kind, executed_kind = matching_pairs[0]
+    return (planned_kind.value, executed_kind.value, *scope)
 
 
 def _count_value_for_deviation(
@@ -977,11 +1011,31 @@ def _derived_count_differences(
     declarations = executed_design.deviations.value or ()
     matched_declaration_ids: set[str] = set()
     differences: list[DeviationRecord] = []
+    unsupported_planned_kinds = tuple(
+        record.kind.value
+        for record in planned_design.count_records
+        if _count_reconciliation_key(record, planned=True) is None
+    )
+    if unsupported_planned_kinds:
+        return (), (
+            "planned count kind or semantic scope is outside the reviewed reconciliation "
+            f"matrix: {sorted(unsupported_planned_kinds)}"
+        )
+    unsupported_executed_kinds = tuple(
+        record.kind.value
+        for record in executed_design.count_records
+        if _count_reconciliation_key(record, planned=False) is None
+    )
+    if unsupported_executed_kinds:
+        return (), (
+            "executed count kind or semantic scope is outside the reviewed reconciliation "
+            f"matrix: {sorted(unsupported_executed_kinds)}"
+        )
     planned_scope_ids = tuple(
-        _count_comparison_scope(record) for record in planned_design.count_records
+        _count_reconciliation_key(record, planned=True) for record in planned_design.count_records
     )
     executed_scope_ids = tuple(
-        _count_comparison_scope(record) for record in executed_design.count_records
+        _count_reconciliation_key(record, planned=False) for record in executed_design.count_records
     )
     if len(set(planned_scope_ids)) != len(planned_scope_ids):
         return (), "planned counts contain an ambiguous duplicate reconciliation scope"
@@ -992,15 +1046,15 @@ def _derived_count_differences(
     if missing_executed or executed_only:
         return (), (
             "planned/executed count semantic scopes are not symmetric; "
-            f"missing_executed={sorted(missing_executed)}, "
-            f"executed_only={sorted(executed_only)}"
+            f"missing_executed={sorted(map(repr, missing_executed))}, "
+            f"executed_only={sorted(map(repr, executed_only))}"
         )
     for planned in planned_design.count_records:
         comparable = tuple(
             executed
             for executed in executed_design.count_records
-            if executed.scope.query_id == planned.scope.query_id
-            and _count_comparison_scope(executed) == _count_comparison_scope(planned)
+            if _count_reconciliation_key(executed, planned=False)
+            == _count_reconciliation_key(planned, planned=True)
         )
         if not comparable:
             return (), (f"no execution count is comparable with planned count {planned.count_id}")
