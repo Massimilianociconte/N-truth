@@ -5,6 +5,7 @@ import importlib
 from decimal import Decimal
 
 import pytest
+from prd_v8_cluster_authority_fixtures import reviewed_cluster_authority
 from pydantic import ValidationError
 
 import ntruth.evaluation_v8 as evaluation
@@ -579,8 +580,17 @@ def test_cluster_bootstrap_aggregates_elementary_rows_and_seals_numeric_inputs()
         for row, value in enumerate(values, start=1)
     )
 
-    original = evaluation.cluster_bootstrap_precision(contract, rows)
-    duplicated = evaluation.cluster_bootstrap_precision(contract, rows + (rows[0],) * 50)
+    authority = reviewed_cluster_authority(contract, rows)
+    original = evaluation.cluster_bootstrap_precision(
+        contract,
+        rows,
+        authority_resolution=authority,
+    )
+    duplicated = evaluation.cluster_bootstrap_precision(
+        contract,
+        rows + (rows[0],) * 50,
+        authority_resolution=authority,
+    )
 
     assert original == duplicated
     assert original.input_manifest.observation_count == 6

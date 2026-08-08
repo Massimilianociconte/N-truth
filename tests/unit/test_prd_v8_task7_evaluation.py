@@ -5,6 +5,7 @@ import importlib
 from decimal import Decimal
 
 import pytest
+from prd_v8_cluster_authority_fixtures import reviewed_cluster_authority
 from pydantic import ValidationError
 
 from ntruth.derivation_theory.loader import load_canonical_bundle
@@ -622,8 +623,17 @@ def test_cluster_precision_is_invariant_to_duplicate_rows_inside_cluster() -> No
         ),
     )
 
-    original = cluster_bootstrap_precision(contract, base)
-    duplicated = cluster_bootstrap_precision(contract, base + (base[0],) * 50)
+    authority = reviewed_cluster_authority(contract, base)
+    original = cluster_bootstrap_precision(
+        contract,
+        base,
+        authority_resolution=authority,
+    )
+    duplicated = cluster_bootstrap_precision(
+        contract,
+        base + (base[0],) * 50,
+        authority_resolution=authority,
+    )
 
     assert original == duplicated
     assert original.effective_cluster_count == 3
@@ -664,19 +674,22 @@ def test_one_cluster_returns_unknown_precision_instead_of_a_spurious_interval() 
         {**base.model_dump(mode="python"), "units": (base.units[0],)}
     )
 
+    rows = (
+        build_cluster_metric_observation(
+            metric_id=contract.metric_id,
+            elementary_source_id="SOURCE-SF-1",
+            generalization_unit_id="SF-1",
+            value=Decimal("0.5"),
+            stratum_values={"complexity-tier": "T1", "profile": "P1"},
+            evidence_ids=("E-SF-1",),
+        ),
+    )
     result = cluster_bootstrap_precision(
         contract,
-        (
-            build_cluster_metric_observation(
-                metric_id=contract.metric_id,
-                elementary_source_id="SOURCE-SF-1",
-                generalization_unit_id="SF-1",
-                value=Decimal("0.5"),
-                stratum_values={"complexity-tier": "T1", "profile": "P1"},
-                evidence_ids=("E-SF-1",),
-            ),
-        ),
+        rows,
+        authority_resolution=reviewed_cluster_authority(contract, rows),
     )
 
     assert result.interval.knowledge_state is KnowledgeState.UNKNOWN
+    assert result.authority_resolution.knowledge_state is KnowledgeState.PRESENT
     assert "SRR-V8-CLUSTER-PRECISION" in {item.issue_id for item in result.blockers}

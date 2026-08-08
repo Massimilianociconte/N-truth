@@ -4,6 +4,7 @@ import importlib
 from decimal import Decimal
 
 import pytest
+from prd_v8_cluster_authority_fixtures import reviewed_cluster_authority
 from pydantic import ValidationError
 
 import ntruth.evaluation_v8 as evaluation
@@ -361,7 +362,11 @@ def _readdress_cluster_payload(payload: dict) -> dict:
 
 def test_cluster_result_recomputes_interval_from_sealed_inputs() -> None:
     contract, rows = _cluster_fixture()
-    result = evaluation.cluster_bootstrap_precision(contract, rows)
+    result = evaluation.cluster_bootstrap_precision(
+        contract,
+        rows,
+        authority_resolution=reviewed_cluster_authority(contract, rows),
+    )
     payload = result.model_dump(mode="python")
     payload["interval"]["value"].update(
         {
