@@ -40,6 +40,8 @@ jobs:
         run: uv run mypy packages
       - name: Tests
         run: uv run pytest --disable-warnings
+      - name: Enforce tracked-tree NO_CORPUS privacy secret and size policy
+        run: uv run python scripts/check_repository_policy.py
       - name: Build wheel and source distribution
         run: uv build
       - name: Verify packaged UI and scientific assets

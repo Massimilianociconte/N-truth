@@ -29,6 +29,18 @@ from typing import Any, Literal, Protocol, runtime_checkable
 from pydantic import Field, model_validator
 
 from ntruth.governance.lineage import CorpusSplit
+from ntruth.reality_gate.v8 import (
+    DetachedGateSignatureV8,
+    GateBlockerRegistryV8,
+    GateTrustRegistryV8,
+    RealityGateAssessmentV8,
+    RealityGateEvidenceLedgerV8,
+    RealityGateTrainingPinTupleV8,
+    RealityGateTrainingTargetV8,
+    StageGateDecisionRecordV8,
+    evaluate_training_authorization_v8,
+    reconcile_training_authorization_pins_v8,
+)
 from ntruth.schemas.core import FrozenModel, content_checksum
 from ntruth.training.mlx_fd_entrypoint import FD_ENV, FD_SENTINEL
 from ntruth.training.records import (
@@ -261,6 +273,32 @@ class RealityGateV8Protocol(Protocol):
 
 
 @dataclass(frozen=True)
+class CanonicalRealityGateAuthorizationResolutionV8:
+    """Externally resolved Task 7 components plus a separately declared pin tuple.
+
+    The runtime revalidates every component, recomputes the authorization
+    evaluation and derives the pin tuple itself.  This transport object is not
+    an authorization capability.
+    """
+
+    target: RealityGateTrainingTargetV8
+    evidence_ledger: RealityGateEvidenceLedgerV8
+    blocker_registry: GateBlockerRegistryV8
+    assessment: RealityGateAssessmentV8
+    decision: StageGateDecisionRecordV8
+    trust_registry: GateTrustRegistryV8
+    detached_signature: DetachedGateSignatureV8
+    declared_pins: RealityGateTrainingPinTupleV8
+
+
+@runtime_checkable
+class CanonicalRealityGateV8Protocol(Protocol):
+    def resolve_training_authorization(
+        self, request: TrainingRealityGateV8Request
+    ) -> CanonicalRealityGateAuthorizationResolutionV8: ...
+
+
+@dataclass(frozen=True)
 class FileRealityGateV8Protocol:
     artifact_path: Path
 
@@ -312,10 +350,73 @@ def build_training_reality_gate_v8_artifact(
 
 
 def verify_training_reality_gate_v8(
-    gate: RealityGateV8Protocol,
+    gate: RealityGateV8Protocol | CanonicalRealityGateV8Protocol,
     request: TrainingRealityGateV8Request,
-) -> TrainingRealityGateV8Artifact:
+) -> RealityGateTrainingPinTupleV8:
     """Fail closed on absent, unparseable, stale, blocked or mismatched decisions."""
+
+    if isinstance(gate, CanonicalRealityGateV8Protocol):
+        try:
+            raw = gate.resolve_training_authorization(request)
+            if not isinstance(raw, CanonicalRealityGateAuthorizationResolutionV8):
+                raise TypeError("canonical resolver returned an untyped transport")
+            target = RealityGateTrainingTargetV8.model_validate(
+                raw.target.model_dump(mode="python")
+            )
+            evidence_ledger = RealityGateEvidenceLedgerV8.model_validate(
+                raw.evidence_ledger.model_dump(mode="python")
+            )
+            blocker_registry = GateBlockerRegistryV8.model_validate(
+                raw.blocker_registry.model_dump(mode="python")
+            )
+            assessment = RealityGateAssessmentV8.model_validate(
+                raw.assessment.model_dump(mode="python")
+            )
+            decision = StageGateDecisionRecordV8.model_validate(
+                raw.decision.model_dump(mode="python")
+            )
+            trust_registry = GateTrustRegistryV8.model_validate(
+                raw.trust_registry.model_dump(mode="python")
+            )
+            detached_signature = DetachedGateSignatureV8.model_validate(
+                raw.detached_signature.model_dump(mode="python")
+            )
+            declared_pins = RealityGateTrainingPinTupleV8.model_validate(
+                raw.declared_pins.model_dump(mode="python")
+            )
+            authorization = evaluate_training_authorization_v8(
+                target=target,
+                evidence_ledger=evidence_ledger,
+                blocker_registry=blocker_registry,
+                assessment=assessment,
+                decision=decision,
+                trust_registry=trust_registry,
+                detached_signature=detached_signature,
+            )
+            derived_pins = RealityGateTrainingPinTupleV8.from_components(
+                authorization=authorization,
+                target=target,
+                evidence_ledger=evidence_ledger,
+                blocker_registry=blocker_registry,
+                assessment=assessment,
+                decision=decision,
+                trust_registry=trust_registry,
+                detached_signature=detached_signature,
+            )
+            declared_state: dict[str, object] = dict(declared_pins.state_payload())
+            reconcile_training_authorization_pins_v8(declared_state, derived_pins)
+        except (AttributeError, TypeError, ValueError) as exc:
+            raise MLXPipelineError(
+                f"canonical Reality Gate v8 resolution or pin mismatch: {exc}"
+            ) from exc
+        if target.snapshot.artifact_id != request.snapshot_id:
+            raise MLXPipelineError("canonical Reality Gate v8 target is stale for this snapshot")
+        if target.snapshot.sha256 != request.snapshot_sha256:
+            raise MLXPipelineError("canonical Reality Gate v8 snapshot hash mismatch")
+        raise MLXPipelineError(
+            "Reality Gate v8 production trust remains HOLD; SCIENTIFIC_REVIEW_REQUIRED: "
+            + "; ".join(authorization.blockers)
+        )
 
     if not isinstance(gate, RealityGateV8Protocol):
         raise MLXPipelineError("Reality Gate v8 protocol missing or invalid")
@@ -1722,7 +1823,7 @@ def run_training(
     run_dir: Path,
     *,
     seed: int,
-    reality_gate: RealityGateV8Protocol,
+    reality_gate: RealityGateV8Protocol | CanonicalRealityGateV8Protocol,
     design_lineage_pins: TrainingDesignLineagePins | None,
     design_lineage_artifact_path: Path | None,
     protected_source_manifest_path: Path | None,
@@ -1742,7 +1843,7 @@ def run_training(
         protected_source_manifest_path=protected_source_manifest_path,
     )
     envelope = read_training_snapshot_envelope(data_dir, smoke_test=smoke_test)
-    gate_artifact = verify_training_reality_gate_v8(
+    gate_pins = verify_training_reality_gate_v8(
         reality_gate,
         TrainingRealityGateV8Request(
             snapshot_id=str(envelope["snapshot_id"]),
@@ -1807,7 +1908,10 @@ def run_training(
             raise MLXPipelineError("identita snapshot cambiata: impossibile riprendere il run")
         if state.get("dataset_manifest_sha256") != dataset["manifest_sha256"]:
             raise MLXPipelineError("manifest snapshot cambiato: impossibile riprendere il run")
-        reconcile_reality_gate_pins(state, RealityGatePinTuple.from_artifact(gate_artifact))
+        try:
+            reconcile_training_authorization_pins_v8(state, gate_pins)
+        except ValueError as exc:
+            raise MLXPipelineError(str(exc)) from exc
         reconcile_training_lineage_pins(state, training_lineage)
         previous_environment = state.get("environment")
         if not isinstance(previous_environment, dict):
@@ -1826,12 +1930,7 @@ def run_training(
             "dataset_snapshot_sha256": dataset["snapshot_sha256"],
             "dataset_snapshot_id": dataset["snapshot_id"],
             "dataset_manifest_sha256": dataset["manifest_sha256"],
-            "reality_gate_artifact_id": gate_artifact.artifact_id,
-            "reality_gate_artifact_sha256": gate_artifact.artifact_sha256,
-            "reality_gate_privacy_attestation_sha256": (gate_artifact.privacy_attestation_sha256),
-            "reality_gate_no_corpus_attestation_sha256": (
-                gate_artifact.no_corpus_attestation_sha256
-            ),
+            **gate_pins.state_payload(),
             **training_lineage.state_payload(),
             "model_provenance_sha256": model_check["provenance_sha256"],
             "environment": environment_record,

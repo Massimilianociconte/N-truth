@@ -8,11 +8,13 @@ that decision remains blocked on Task 7's reviewed ContaminationAttestation.
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Literal, Self
+from typing import Any, Literal, Protocol, Self, runtime_checkable
 
 from pydantic import Field, model_validator
 
+from ntruth.governance.contamination import ExternalChallengeUseEvaluationV8
 from ntruth.schemas.core import FrozenModel, content_checksum
 from ntruth.training.custody import ExternalChallengeDependency
 from ntruth.training.mlx_runtime import MLXPipelineError, sha256_file
@@ -87,6 +89,67 @@ class ExternalChallengeReviewRequired(ProtectedEvaluationReviewRequired):
     """Task 7 authority/custody review is a mandatory unresolved dependency."""
 
 
+@runtime_checkable
+class ExternalChallengeUseAuthorityV8Protocol(Protocol):
+    """Read-only resolver configured outside the custodial payload directory."""
+
+    def resolve_external_challenge_use(
+        self, manifest: ProtectedEvaluationSnapshotManifest
+    ) -> ExternalChallengeUseEvaluationV8 | Mapping[str, Any]: ...
+
+
+def _require_external_challenge_authority_before_payload(
+    manifest: ProtectedEvaluationSnapshotManifest,
+    authority: ExternalChallengeUseAuthorityV8Protocol | None,
+) -> None:
+    if authority is None or not isinstance(authority, ExternalChallengeUseAuthorityV8Protocol):
+        raise ExternalChallengeReviewRequired(
+            "SCIENTIFIC_REVIEW_REQUIRED: external Task 7 use authority is absent"
+        )
+    try:
+        evaluation = ExternalChallengeUseEvaluationV8.model_validate(
+            authority.resolve_external_challenge_use(manifest)
+        )
+    except (TypeError, ValueError) as exc:
+        raise ExternalChallengeReviewRequired(
+            f"SCIENTIFIC_REVIEW_REQUIRED: external Task 7 use authority invalid: {exc}"
+        ) from exc
+    dependency = manifest.external_challenge_dependency
+    if dependency is None:
+        raise ExternalChallengeReviewRequired(
+            "SCIENTIFIC_REVIEW_REQUIRED: External Challenge dependency pins are absent"
+        )
+    expected = {
+        "snapshot_id": manifest.snapshot_id,
+        "snapshot_sha256": manifest.snapshot_sha256,
+        "source_manifest_id": manifest.lineage.source_manifest_id,
+        "source_manifest_sha256": manifest.lineage.source_manifest_sha256,
+        "record_ids_checksum": manifest.record_ids_checksum,
+        "attestation_id": dependency.task7_contamination_attestation_reference.artifact_id,
+        "attestation_sha256": dependency.task7_contamination_attestation_reference.sha256,
+        "access_ledger_id": dependency.custody_reference.artifact_id,
+        "access_ledger_sha256": dependency.custody_reference.sha256,
+    }
+    mismatches = tuple(
+        field_name
+        for field_name, expected_value in expected.items()
+        if getattr(evaluation, field_name) != expected_value
+    )
+    if mismatches:
+        raise ExternalChallengeReviewRequired(
+            "SCIENTIFIC_REVIEW_REQUIRED: External Challenge authority pin mismatch: "
+            + repr(mismatches)
+        )
+    # The v8 contract deliberately has no repository-local grant capability.
+    if not evaluation.use_authorized:
+        raise ExternalChallengeReviewRequired(
+            "SCIENTIFIC_REVIEW_REQUIRED: External Challenge use remains HOLD"
+        )
+    raise ExternalChallengeReviewRequired(
+        "SCIENTIFIC_REVIEW_REQUIRED: repository-local External Challenge grants are forbidden"
+    )
+
+
 def validate_protected_source_manifest(
     source_manifest_path: Path,
     manifest: ProtectedEvaluationSnapshotManifest,
@@ -116,6 +179,7 @@ def validate_protected_evaluation_snapshot(
     *,
     declared_split: str,
     source_manifest_path: Path | None = None,
+    external_challenge_authority: ExternalChallengeUseAuthorityV8Protocol | None = None,
 ) -> ProtectedEvaluationSnapshotManifest:
     root = data_dir.resolve()
     manifest_path = root / "protected-evaluation-manifest.json"
@@ -129,6 +193,8 @@ def validate_protected_evaluation_snapshot(
     canonical_split = declared_split.upper()
     if canonical_split != manifest.split:
         raise MLXPipelineError("protected evaluation declared split mismatch")
+    if manifest.split == "EXTERNAL_CHALLENGE":
+        _require_external_challenge_authority_before_payload(manifest, external_challenge_authority)
     expected_names = {"protected-evaluation-manifest.json", manifest.payload_file}
     entries = tuple(root.iterdir())
     if {entry.name for entry in entries} != expected_names:
@@ -180,11 +246,17 @@ def validate_protected_evaluation_snapshot(
         raise MLXPipelineError("protected evaluation source membership is training-eligible")
     if any(record.model_selection_eligible for record in source_members):
         raise MLXPipelineError("protected evaluation source membership can select a model")
-    if manifest.split == "EXTERNAL_CHALLENGE":
-        raise ExternalChallengeReviewRequired(
-            "SCIENTIFIC_REVIEW_REQUIRED: Task 7 ContaminationAttestation and custody "
-            "decision are not authoritative in Task 5"
-        )
     if any(not record.evaluation_eligible for record in source_members):
         raise MLXPipelineError("protected evaluation source membership is not evaluation-eligible")
     return manifest
+
+
+__all__ = [
+    "ExternalChallengeReviewRequired",
+    "ExternalChallengeUseAuthorityV8Protocol",
+    "ProtectedEvaluationLineage",
+    "ProtectedEvaluationReviewRequired",
+    "ProtectedEvaluationSnapshotManifest",
+    "validate_protected_evaluation_snapshot",
+    "validate_protected_source_manifest",
+]

@@ -4,21 +4,48 @@ from __future__ import annotations
 
 import pytest
 
-from ntruth.reality_gate import (
-    DataReadiness,
-    GatePredicateName,
-    GatePurpose,
-    GateValue,
-    PredicateEvidence,
-    RealityGatePredicate,
-    ScientificValidation,
-    ScientificValidationEvidence,
-    evaluate_reality_gate,
-    human_blocker_report,
-    machine_readable_result,
+from ntruth.reality_gate.v7 import (
+    EXPECTED_CURRENT_STATE_V7 as EXPECTED_CURRENT_STATE,
 )
-from ntruth.reality_gate.gate import EXPECTED_CURRENT_STATE
-from ntruth.reality_gate.predicates import normalize_predicate_name, predicate_for_mvt_a
+from ntruth.reality_gate.v7 import (
+    DataReadinessV7 as DataReadiness,
+)
+from ntruth.reality_gate.v7 import (
+    GatePredicateNameV7 as GatePredicateName,
+)
+from ntruth.reality_gate.v7 import (
+    GatePurposeV7 as GatePurpose,
+)
+from ntruth.reality_gate.v7 import (
+    GateValueV7 as GateValue,
+)
+from ntruth.reality_gate.v7 import (
+    PredicateEvidenceV7 as PredicateEvidence,
+)
+from ntruth.reality_gate.v7 import (
+    RealityGatePredicateV7 as RealityGatePredicate,
+)
+from ntruth.reality_gate.v7 import (
+    ScientificValidationEvidenceV7 as ScientificValidationEvidence,
+)
+from ntruth.reality_gate.v7 import (
+    ScientificValidationV7 as ScientificValidation,
+)
+from ntruth.reality_gate.v7 import (
+    evaluate_reality_gate_v7 as evaluate_reality_gate,
+)
+from ntruth.reality_gate.v7 import (
+    human_blocker_report_v7 as human_blocker_report,
+)
+from ntruth.reality_gate.v7 import (
+    machine_readable_result_v7 as machine_readable_result,
+)
+from ntruth.reality_gate.v7 import (
+    normalize_predicate_name_v7 as normalize_predicate_name,
+)
+from ntruth.reality_gate.v7 import (
+    predicate_for_mvt_a_v7 as predicate_for_mvt_a,
+)
 
 
 def _p(name: GatePredicateName, value: GateValue) -> RealityGatePredicate:

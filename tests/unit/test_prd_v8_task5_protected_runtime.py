@@ -238,6 +238,96 @@ def test_10_external_challenge_stays_review_required_without_task7_attestation(
         )
 
 
+def test_external_challenge_deny_precedes_every_payload_model_and_subprocess_access(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    dependency = {
+        "review_status": "SCIENTIFIC_REVIEW_REQUIRED",
+        "task7_contamination_attestation_reference": {
+            "artifact_id": "attestation-1",
+            "sha256": "a" * 64,
+        },
+        "custody_reference": {"artifact_id": "custody-1", "sha256": "b" * 64},
+        "family_evidence_references": [{"artifact_id": "family-1", "sha256": "c" * 64}],
+    }
+    payload_path, source_path, _manifest = _write_protected_snapshot(
+        tmp_path,
+        split="EXTERNAL_CHALLENGE",
+        external_dependency=dependency,
+    )
+    protected = _protected_module()
+    root_text = str(payload_path.parent.resolve())
+    payload_text = str(payload_path.resolve())
+    source_text = str(source_path.resolve())
+    calls = {
+        "directory_iteration": 0,
+        "payload_stat": 0,
+        "payload_hash": 0,
+        "payload_read_text": 0,
+        "payload_open": 0,
+        "source_read": 0,
+        "model": 0,
+        "subprocess": 0,
+    }
+    original_iterdir = Path.iterdir
+    original_stat = Path.stat
+    original_read_text = Path.read_text
+    original_open = Path.open
+    original_hash = protected.sha256_file
+
+    def counted_iterdir(path: Path):
+        if str(path) == root_text:
+            calls["directory_iteration"] += 1
+        return original_iterdir(path)
+
+    def counted_stat(path: Path, *args: Any, **kwargs: Any):
+        if str(path) == payload_text:
+            calls["payload_stat"] += 1
+        return original_stat(path, *args, **kwargs)
+
+    def counted_read_text(path: Path, *args: Any, **kwargs: Any) -> str:
+        if str(path) == payload_text:
+            calls["payload_read_text"] += 1
+        elif str(path) == source_text:
+            calls["source_read"] += 1
+        return original_read_text(path, *args, **kwargs)
+
+    def counted_open(path: Path, *args: Any, **kwargs: Any):
+        if str(path) == payload_text:
+            calls["payload_open"] += 1
+        return original_open(path, *args, **kwargs)
+
+    def counted_hash(path: Path) -> str:
+        if str(path) == payload_text:
+            calls["payload_hash"] += 1
+        elif str(path) == source_text:
+            calls["source_read"] += 1
+        return original_hash(path)
+
+    monkeypatch.setattr(Path, "iterdir", counted_iterdir)
+    monkeypatch.setattr(Path, "stat", counted_stat)
+    monkeypatch.setattr(Path, "read_text", counted_read_text)
+    monkeypatch.setattr(Path, "open", counted_open)
+    monkeypatch.setattr(protected, "sha256_file", counted_hash)
+    monkeypatch.setattr(runtime, "_model_path", lambda *_a, **_k: calls.__setitem__("model", 1))
+    monkeypatch.setattr(
+        runtime,
+        "_stream_command",
+        lambda *_a, **_k: calls.__setitem__("subprocess", 1),
+    )
+
+    with pytest.raises(
+        protected.ExternalChallengeReviewRequired, match="SCIENTIFIC_REVIEW_REQUIRED"
+    ):
+        protected.validate_protected_evaluation_snapshot(
+            payload_path.parent,
+            declared_split="EXTERNAL_CHALLENGE",
+            source_manifest_path=source_path,
+        )
+
+    assert calls == {key: 0 for key in calls}
+
+
 def test_11_historical_v7_lineage_uses_typed_one_way_migration() -> None:
     asset_payload = {
         "asset_id": "asset-1",
