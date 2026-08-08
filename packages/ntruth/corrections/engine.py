@@ -41,6 +41,16 @@ _PROTECTED_ROOTS: frozenset[str] = frozenset(
         "alerts",
         "questions",
         "data_sufficiency",
+        "claims",
+        "claim_sets",
+        "derived_claim",
+        "derived_claims",
+        "derived_claim_set",
+        "derived_claim_sets",
+        "design_adequacy_findings",
+        "profile_coverage",
+        "report_resolution",
+        "scenario_coverages",
     }
 )
 _RULE_INPUT_ROOTS: frozenset[str] = frozenset(

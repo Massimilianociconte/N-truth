@@ -1,7 +1,8 @@
-"""Orchestrazione locale: progetto -> Document IR -> grafo -> regole -> report.
+"""PRD v8 entry point plus the explicit deprecated v7 project adapter.
 
-Il flusso e quello della Figura 2 del PRD. Ogni passaggio e deterministico e
-offline: nessuna chiamata di rete, nessun upload (PRD NFR-01, FR-035).
+``run_deterministic_pipeline`` is the facts -> theory -> claims v8 lane.  The
+project/parser workflow remains available as ``analyze_project_v7_adapter`` for
+legacy inputs; it is not the v8 scientific derivation contract.
 """
 
 from __future__ import annotations
@@ -28,6 +29,7 @@ from ntruth.graph.validation import (
 from ntruth.ingest.project import Project
 from ntruth.ingest.safety import SafetyError
 from ntruth.parsers.registry import build_document_ir
+from ntruth.pipeline_v8 import V8PipelineRequest, V8PipelineResult, run_v8_pipeline
 from ntruth.reporting.positive import build_positive_output
 from ntruth.rules.engine import apply_rules
 from ntruth.rules.loader import load_ruleset
@@ -363,3 +365,24 @@ def severity_order(severity: Severity | None) -> int:
         Severity.INFO: 4,
     }
     return order.get(severity, 5) if severity else 5
+
+
+# v7 remains an immutable input adapter; the unqualified deterministic lane is v8.
+LEGACY_PIPELINE_CONTRACT = "ntruth-v7-deprecated-adapter"
+analyze_project_v7_adapter = analyze_project
+run_deterministic_pipeline = run_v8_pipeline
+
+
+__all__ = [
+    "LEGACY_PIPELINE_CONTRACT",
+    "AnalysisResult",
+    "BlockAnalysis",
+    "V8PipelineRequest",
+    "V8PipelineResult",
+    "analyze_project",
+    "analyze_project_v7_adapter",
+    "replace_block_analysis",
+    "run_deterministic_pipeline",
+    "run_v8_pipeline",
+    "severity_order",
+]

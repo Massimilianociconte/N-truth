@@ -30,6 +30,14 @@ from ntruth.corrections.recalculate import (
     CorrectionRecalculation,
     recalculate_corrected_block,
 )
+from ntruth.corrections.v8 import (
+    DirectDerivedClaimPatchError,
+    ReDerivationEvent,
+    RuleChallengeOutcomeReviewRequired,
+    V8ReDerivationResult,
+    rederive_after_rule_challenge,
+    reject_direct_derived_claim_patch,
+)
 
 __all__ = [
     "CANDIDATE_ARTIFACT_TYPE",
@@ -41,6 +49,7 @@ __all__ = [
     "CorrectionRecord",
     "CorrectionSequenceError",
     "CorrectionValidationError",
+    "DirectDerivedClaimPatchError",
     "DuplicateCorrection",
     "JsonPatchError",
     "JsonPatchOperation",
@@ -49,9 +58,14 @@ __all__ = [
     "NothingToRedo",
     "NothingToUndo",
     "ProtectedCorrectionPath",
+    "ReDerivationEvent",
+    "RuleChallengeOutcomeReviewRequired",
+    "V8ReDerivationResult",
     "apply_json_patch",
     "candidate_annotations_payload",
     "parse_json_patch",
     "recalculate_corrected_block",
+    "rederive_after_rule_challenge",
+    "reject_direct_derived_claim_patch",
     "write_candidate_annotations",
 ]

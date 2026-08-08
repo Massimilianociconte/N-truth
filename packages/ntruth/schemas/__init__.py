@@ -1,5 +1,6 @@
 """Contratti dati di N-Truth. Tutto il resto del sistema dipende solo da qui."""
 
+from ntruth.schemas.adequacy import DesignAdequacyFinding
 from ntruth.schemas.causal_context import QueryCausalContext, QueryCausalEventAggregate
 from ntruth.schemas.claims import (
     DerivedClaim,
@@ -41,6 +42,11 @@ from ntruth.schemas.count_registry import (
     canonical_count_kind,
     count_compatibility,
     independent_n_presentation_alias,
+)
+from ntruth.schemas.coverage import (
+    ProfileCoverageStatement,
+    ScenarioCoverage,
+    ScenarioCoverageStatus,
 )
 from ntruth.schemas.document import (
     DESIGN_RELEVANT_SECTIONS,
@@ -143,6 +149,12 @@ from ntruth.schemas.report import (
     DomainValidationStatus,
     Report,
 )
+from ntruth.schemas.report_resolution import (
+    ReportResolutionOutcome,
+    ReportResolutionPolicy,
+    ReportResolutionState,
+    TrivialExplicitReportResolutionPolicy,
+)
 from ntruth.schemas.rules import (
     Rule,
     RuleEvaluation,
@@ -216,6 +228,7 @@ __all__ = [
     "DataSufficiency",
     "DerivedClaim",
     "DerivedClaimSet",
+    "DesignAdequacyFinding",
     "DesignEvent",
     "Determinability",
     "DeterminabilityState",
@@ -267,6 +280,7 @@ __all__ = [
     "PredicateProofReference",
     "ProcessFact",
     "ProfileCoverageReference",
+    "ProfileCoverageStatement",
     "ProjectFile",
     "ProjectManifest",
     "ProofTraceStep",
@@ -278,6 +292,9 @@ __all__ = [
     "RelationType",
     "RelativeTiming",
     "Report",
+    "ReportResolutionOutcome",
+    "ReportResolutionPolicy",
+    "ReportResolutionState",
     "RiskLabel",
     "Rule",
     "RuleChallenge",
@@ -289,6 +306,8 @@ __all__ = [
     "RuleFixtureKind",
     "RuleOutcome",
     "Ruleset",
+    "ScenarioCoverage",
+    "ScenarioCoverageStatus",
     "ScientificReviewRequirement",
     "ScientificReviewStatus",
     "Section",
@@ -308,6 +327,7 @@ __all__ = [
     "SupportGrade",
     "Table",
     "TemporalRelation",
+    "TrivialExplicitReportResolutionPolicy",
     "UnitAssessment",
     "V8ExperimentGraph",
     "V8GraphNode",
