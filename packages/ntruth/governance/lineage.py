@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import Field, model_validator
 
@@ -270,17 +271,39 @@ class ModelRunMigrationV7ToV8(FrozenModel):
     diagnostics: tuple[LineageMigrationDiagnostic, ...] = Field(min_length=1)
 
 
+class LineageMigrationReviewRequired(FrozenModel):
+    """Typed fail-closed result for scientifically ambiguous legacy membership."""
+
+    status: Literal["SCIENTIFIC_REVIEW_REQUIRED"] = "SCIENTIFIC_REVIEW_REQUIRED"
+    source_checksum: str = Field(pattern=r"^[0-9a-f]{64}$")
+    blocked_splits: tuple[Literal["EXTERNAL"], ...] = Field(min_length=1)
+    diagnostics: tuple[LineageMigrationDiagnostic, ...] = Field(min_length=1)
+
+
 _V7_SPLIT_TO_V8 = {
     CorpusSplitV7.TRAIN: CorpusSplit.TRAIN,
     CorpusSplitV7.VALIDATION: CorpusSplit.VALIDATION,
     CorpusSplitV7.TEST: CorpusSplit.TEST,
-    CorpusSplitV7.EXTERNAL: CorpusSplit.EXTERNAL_CHALLENGE,
 }
 
 
 def migrate_corpus_snapshot_manifest_v7_to_v8(
     source: CorpusSnapshotManifestV7,
-) -> CorpusSnapshotMigrationV7ToV8:
+) -> CorpusSnapshotMigrationV7ToV8 | LineageMigrationReviewRequired:
+    if any(asset.split is CorpusSplitV7.EXTERNAL for asset in source.assets):
+        return LineageMigrationReviewRequired(
+            source_checksum=source.snapshot_checksum(),
+            blocked_splits=("EXTERNAL",),
+            diagnostics=(
+                LineageMigrationDiagnostic(
+                    code="SCIENTIFIC_REVIEW_REQUIRED",
+                    detail=(
+                        "Historical EXTERNAL membership does not establish the v8 "
+                        "External Challenge contamination and custody contract."
+                    ),
+                ),
+            ),
+        )
     target = CorpusSnapshotManifest(
         parent_snapshot_ids=source.parent_snapshot_ids,
         schema_version="8.0.0",
@@ -310,7 +333,21 @@ def migrate_corpus_snapshot_manifest_v7_to_v8(
 
 def migrate_model_run_lineage_v7_to_v8(
     source: ModelRunLineageV7,
-) -> ModelRunMigrationV7ToV8:
+) -> ModelRunMigrationV7ToV8 | LineageMigrationReviewRequired:
+    if CorpusSplitV7.EXTERNAL in source.input_splits:
+        return LineageMigrationReviewRequired(
+            source_checksum=source.lineage_checksum(),
+            blocked_splits=("EXTERNAL",),
+            diagnostics=(
+                LineageMigrationDiagnostic(
+                    code="SCIENTIFIC_REVIEW_REQUIRED",
+                    detail=(
+                        "Historical EXTERNAL run input cannot be promoted to the v8 "
+                        "External Challenge without Task 7 review."
+                    ),
+                ),
+            ),
+        )
     target = ModelRunLineage(
         **source.model_dump(mode="json", exclude={"input_splits", "schema_version"}),
         input_splits=tuple(_V7_SPLIT_TO_V8[split] for split in source.input_splits),

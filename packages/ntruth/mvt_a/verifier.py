@@ -32,10 +32,15 @@ class HardVerifierResult(FrozenModel):
 
 
 def hard_verify_candidates(
-    bundle: ParserCandidateOutput | ParserCandidateBundle | None,
+    bundle: ParserCandidateOutput | None,
 ) -> HardVerifierResult:
-    if isinstance(bundle, ParserCandidateBundle):
-        return hard_verify_candidates_v7(bundle)
+    from ntruth.parser_ai.contract import ParserCandidateOutput
+
+    if bundle is not None and not isinstance(bundle, ParserCandidateOutput):
+        raise TypeError(
+            "hard_verify_candidates is the v8 ParserCandidateOutput verifier; "
+            "use hard_verify_candidates_v7 for ParserCandidateBundle"
+        )
     errors: list[StageIssue] = []
     checks = (
         "forbidden_final_fields",
@@ -107,7 +112,7 @@ def attach_verifier(stage: MvtAStageOutput) -> MvtAStageOutput:
                 "status": StageCompletionStatus.FAILED,
                 "coverage": StageCoverage(
                     status=StageCompletionStatus.FAILED,
-                    missing_artifact_ids=stage.coverage.missing_artifact_ids,
+                    missing_artifact_ids=stage.provenance.input_artifact_ids,
                     rationale="Hard verifier failed; candidate artifacts were preserved.",
                 ).model_dump(mode="json"),
                 "errors": [error.model_dump(mode="json") for error in result.errors],

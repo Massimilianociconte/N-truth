@@ -13,6 +13,7 @@ import os
 import platform
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import time
@@ -215,14 +216,22 @@ def reconcile_reality_gate_pins(
 ) -> None:
     """Reject a resume state when any independently recorded gate pin drifts."""
 
-    aliases = {
+    canonical_state_names = {
         "artifact_id": "reality_gate_artifact_id",
         "artifact_sha256": "reality_gate_artifact_sha256",
         "privacy_attestation_sha256": "reality_gate_privacy_attestation_sha256",
         "no_corpus_attestation_sha256": "reality_gate_no_corpus_attestation_sha256",
     }
-    for field_name, state_name in aliases.items():
-        actual = recorded.get(field_name, recorded.get(state_name))
+    present_aliases = sorted(set(canonical_state_names) & set(recorded))
+    if present_aliases:
+        raise MLXPipelineError(
+            f"non-canonical Reality Gate v8 aliases/duplicate pins present: {present_aliases}"
+        )
+    missing = sorted(set(canonical_state_names.values()) - set(recorded))
+    if missing:
+        raise MLXPipelineError(f"canonical Reality Gate v8 pins missing: {missing}")
+    for field_name, state_name in canonical_state_names.items():
+        actual = recorded[state_name]
         if actual != getattr(expected, field_name):
             raise MLXPipelineError(f"Reality Gate v8 {field_name} changed: cannot resume the run")
 
@@ -701,13 +710,17 @@ def _verify_snapshot_files(
     entries = manifest.get("files")
     if not isinstance(entries, dict):
         raise MLXPipelineError("files deve essere un mapping nel manifest snapshot")
-    missing = sorted(required_files - entries.keys())
-    if missing:
-        raise MLXPipelineError(f"file obbligatori assenti dal manifest snapshot: {missing}")
+    manifest_names = set(entries)
+    missing = sorted(required_files - manifest_names)
+    unexpected = sorted(manifest_names - required_files)
+    if missing or unexpected:
+        raise MLXPipelineError(
+            f"snapshot schema file set mismatch: missing={missing}, unexpected={unexpected}"
+        )
     if "snapshot-manifest.json" in entries:
         raise MLXPipelineError("snapshot-manifest.json non puo auto-includersi in files")
 
-    allowed_physical = set(entries) | {"snapshot-manifest.json"}
+    allowed_physical = set(required_files) | {"snapshot-manifest.json"}
     try:
         physical_entries = tuple(data_dir.iterdir())
     except OSError as exc:
@@ -1183,6 +1196,7 @@ def stage_verified_training_view(
                 raise MLXPipelineError("run-owned training view contains non-regular content")
             if sha256_file(entry) != expected_hashes[entry.name]:
                 raise MLXPipelineError(f"staged training checksum changed: {entry.name}")
+        target_dir.chmod(0o555)
         return {
             "path": str(target_dir.resolve()),
             "snapshot_id": current["snapshot_id"],
@@ -1212,6 +1226,7 @@ def stage_verified_training_view(
         staged_hashes[filename] = staged
     if {path.name for path in target_dir.iterdir()} != {"train.jsonl", "valid.jsonl"}:
         raise MLXPipelineError("run-owned training view allowlist mismatch")
+    target_dir.chmod(0o555)
     return {
         "path": str(target_dir.resolve()),
         "snapshot_id": current["snapshot_id"],
@@ -1219,6 +1234,78 @@ def stage_verified_training_view(
         "manifest_sha256": current["manifest_sha256"],
         "file_hashes": staged_hashes,
     }
+
+
+def verify_staged_training_view(
+    target_dir: Path,
+    expected_hashes: Mapping[str, Any],
+) -> dict[str, str]:
+    """Re-verify the schema-owned view immediately at a local consumer boundary."""
+
+    required = {"train.jsonl", "valid.jsonl"}
+    if set(expected_hashes) != required:
+        raise MLXPipelineError("staged training expected-hash schema mismatch")
+    root = target_dir.resolve()
+    try:
+        entries = tuple(root.iterdir())
+    except OSError as exc:
+        raise MLXPipelineError(f"staged training view unreadable: {exc}") from exc
+    if {entry.name for entry in entries} != required:
+        raise MLXPipelineError("staged training view allowlist changed")
+    verified: dict[str, str] = {}
+    for entry in entries:
+        if entry.is_symlink() or not entry.is_file():
+            raise MLXPipelineError(f"staged training replacement detected: {entry.name}")
+        expected = expected_hashes.get(entry.name)
+        if not isinstance(expected, str) or _SHA256.fullmatch(expected) is None:
+            raise MLXPipelineError(f"staged training expected checksum invalid: {entry.name}")
+        actual = sha256_file(entry)
+        if actual != expected:
+            raise MLXPipelineError(f"staged training checksum changed: {entry.name}")
+        verified[entry.name] = actual
+    return verified
+
+
+def iter_verified_jsonl(path: Path, *, expected_sha256: str) -> Iterator[dict[str, Any]]:
+    """Open, hash and parse one pinned JSONL file through the same file descriptor."""
+
+    if _SHA256.fullmatch(expected_sha256) is None:
+        raise MLXPipelineError("verified JSONL expected checksum is invalid")
+    flags = os.O_RDONLY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        raise MLXPipelineError(f"verified JSONL open failed: {path.name}: {exc}") from exc
+    try:
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise MLXPipelineError(f"verified JSONL is not regular: {path.name}")
+        with os.fdopen(descriptor, "rb", closefd=False) as handle:
+            payload = handle.read()
+    finally:
+        os.close(descriptor)
+    if hashlib.sha256(payload).hexdigest() != expected_sha256:
+        raise MLXPipelineError(f"verified JSONL checksum changed: {path.name}")
+    try:
+        text = payload.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise MLXPipelineError(f"verified JSONL is not UTF-8: {path.name}") from exc
+    for line_number, line in enumerate(text.splitlines(), 1):
+        if not line.strip():
+            continue
+        try:
+            value = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise MLXPipelineError(
+                f"verified JSONL invalid at {path.name}:{line_number}: {exc}"
+            ) from exc
+        if not isinstance(value, dict):
+            raise MLXPipelineError(
+                f"verified JSONL row is not an object: {path.name}:{line_number}"
+            )
+        yield value
 
 
 def _copy_validation_as_test(data_dir: Path, target: Path) -> None:
@@ -1282,6 +1369,7 @@ def run_training(
         smoke_test=smoke_test,
     )
     training_view_dir = Path(str(training_view["path"]))
+    verify_staged_training_view(training_view_dir, training_view["file_hashes"])
     validation_dir = run_dir / "_validation-as-test"
     _copy_validation_as_test(training_view_dir, validation_dir)
 
@@ -1396,6 +1484,7 @@ def run_training(
         }
         config_path = run_dir / "configs" / f"phase-{phase:04d}.json"
         _write_json(config_path, phase_config)
+        verify_staged_training_view(training_view_dir, training_view["file_hashes"])
         train_result = _stream_command(
             _mlx_command(config_path),
             cwd=repo_root,

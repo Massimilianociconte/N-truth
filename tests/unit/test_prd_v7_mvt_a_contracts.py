@@ -17,7 +17,7 @@ from ntruth.mvt_a import (
     MvtAStageOutputV7,
     ParserCandidateBundle,
     assert_no_final_scientific_fields,
-    hard_verify_candidates,
+    hard_verify_candidates_v7,
 )
 from ntruth.mvt_a.stage_schema import CountCandidate, EntityCandidate
 
@@ -37,12 +37,12 @@ def test_hard_verifier_passes_candidates() -> None:
         entities=(EntityCandidate(text="well", entity_type="unit"),),
         counts=(CountCandidate(kind="declared_n", value=3),),
     )
-    result = hard_verify_candidates(bundle)
+    result = hard_verify_candidates_v7(bundle)
     assert result.passed is True
 
 
 def test_empty_bundle_without_notes_fails() -> None:
-    result = hard_verify_candidates(ParserCandidateBundle())
+    result = hard_verify_candidates_v7(ParserCandidateBundle())
     assert result.passed is False
 
 

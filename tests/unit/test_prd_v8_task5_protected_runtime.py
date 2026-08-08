@@ -13,6 +13,7 @@ from ntruth.governance import lineage
 from ntruth.schemas.core import content_checksum
 from ntruth.training.mlx_dataset import create_runtime_smoke_dataset
 from ntruth.training.mlx_inference import _verify_evaluation_snapshot, tokenize_report
+from ntruth.training.records import AnnotationStatus, DatasetManifest, ManifestRecord
 
 
 def _protected_module() -> Any:
@@ -27,7 +28,7 @@ def _write_protected_snapshot(
     split: str = "TEST",
     rows: tuple[dict[str, Any], ...] | None = None,
     external_dependency: dict[str, Any] | None = None,
-) -> tuple[Path, Any]:
+) -> tuple[Path, Path, Any]:
     protected = _protected_module()
     data_dir = tmp_path / f"protected-{split.lower()}"
     data_dir.mkdir()
@@ -36,6 +37,51 @@ def _write_protected_snapshot(
     payload_path = data_dir / filename
     payload_path.write_text(
         "".join(json.dumps(row, sort_keys=True) + "\n" for row in payload_rows),
+        encoding="utf-8",
+    )
+    source_records = tuple(
+        ManifestRecord(
+            record_id=str(row["record_id"]),
+            record_checksum="1" * 64,
+            input_checksum="2" * 64,
+            candidate_target_checksum="3" * 64,
+            exact_fingerprint="4" * 64,
+            near_fingerprint="5" * 64,
+            split=split,
+            leakage_group_id=f"group-{row['record_id']}",
+            source_id="source-1",
+            source_asset_id=str(row["record_id"]),
+            source_sha256="6" * 64,
+            governance_hash="7" * 64,
+            annotation_status=AnnotationStatus.CANDIDATE,
+            training_eligible=False,
+            evaluation_eligible=split == "TEST",
+            release_eligible=split == "TEST",
+            model_selection_eligible=False,
+            reviewer_count=0,
+            family_evidence=(
+                {}
+                if split == "TEST"
+                else {
+                    "study_family_id": "study-1",
+                    "document_lineage_id": "document-1",
+                }
+            ),
+            external_challenge_dependency=(None if split == "TEST" else external_dependency),
+        )
+        for row in payload_rows
+    )
+    source_manifest = DatasetManifest(
+        record_schema_version="8.0.0",
+        normalization_version="1.0.0",
+        config_checksum="8" * 64,
+        decisions_checksum="9" * 64,
+        report_checksum="a" * 64,
+        records=source_records,
+    )
+    source_path = tmp_path / f"source-{split.lower()}-dataset-manifest.json"
+    source_path.write_text(
+        json.dumps(source_manifest.model_dump(mode="json"), sort_keys=True),
         encoding="utf-8",
     )
     manifest = protected.ProtectedEvaluationSnapshotManifest(
@@ -47,8 +93,8 @@ def _write_protected_snapshot(
         record_count=len(payload_rows),
         record_ids_checksum=content_checksum(sorted(str(row["record_id"]) for row in payload_rows)),
         lineage={
-            "source_manifest_id": "source-manifest-1",
-            "source_manifest_sha256": "a" * 64,
+            "source_manifest_id": source_manifest.dataset_id,
+            "source_manifest_sha256": runtime.sha256_file(source_path),
             "planned_design_artifact_id": "planned-1",
             "planned_design_artifact_sha256": "b" * 64,
             "executed_design_artifact_id": "executed-1",
@@ -62,18 +108,19 @@ def _write_protected_snapshot(
         json.dumps(manifest.model_dump(mode="json"), sort_keys=True),
         encoding="utf-8",
     )
-    return payload_path, manifest
+    return payload_path, source_path, manifest
 
 
 def test_07_real_custodial_test_snapshot_validator_is_distinct_from_training(
     tmp_path: Path,
 ) -> None:
-    payload_path, manifest = _write_protected_snapshot(tmp_path)
+    payload_path, source_path, manifest = _write_protected_snapshot(tmp_path)
     protected = _protected_module()
 
     verified = protected.validate_protected_evaluation_snapshot(
         payload_path.parent,
         declared_split="TEST",
+        source_manifest_path=source_path,
     )
     assert verified.snapshot_id == manifest.snapshot_id
     assert verified.record_count == 1
@@ -88,6 +135,7 @@ def test_07_real_custodial_test_snapshot_validator_is_distinct_from_training(
         "planned_design_artifact_sha256": "b" * 64,
         "executed_design_artifact_id": "executed-1",
         "executed_design_artifact_sha256": "c" * 64,
+        "protected_source_manifest_path": str(source_path),
         "smoke_test": False,
     }
     resolved, runtime_verified = _verify_evaluation_snapshot(
@@ -171,7 +219,7 @@ def test_10_external_challenge_stays_review_required_without_task7_attestation(
         "custody_reference": {"artifact_id": "custody-1", "sha256": "b" * 64},
         "family_evidence_references": [{"artifact_id": "family-1", "sha256": "c" * 64}],
     }
-    payload_path, _manifest = _write_protected_snapshot(
+    payload_path, source_path, _manifest = _write_protected_snapshot(
         tmp_path,
         split="EXTERNAL_CHALLENGE",
         external_dependency=dependency,
@@ -184,6 +232,7 @@ def test_10_external_challenge_stays_review_required_without_task7_attestation(
         protected.validate_protected_evaluation_snapshot(
             payload_path.parent,
             declared_split="EXTERNAL_CHALLENGE",
+            source_manifest_path=source_path,
         )
 
 
@@ -233,10 +282,9 @@ def test_11_historical_v7_lineage_uses_typed_one_way_migration() -> None:
     }
     legacy_run = lineage.ModelRunLineageV7.model_validate(run_payload)
     migrated_run = lineage.migrate_model_run_lineage_v7_to_v8(legacy_run)
-    assert migrated_run.target.input_splits == (
-        lineage.CorpusSplit.TRAIN,
-        lineage.CorpusSplit.EXTERNAL_CHALLENGE,
-    )
+    assert isinstance(migrated_run, lineage.LineageMigrationReviewRequired)
+    assert migrated_run.status == "SCIENTIFIC_REVIEW_REQUIRED"
+    assert migrated_run.blocked_splits == ("EXTERNAL",)
 
 
 def test_12_denied_gate_causes_zero_training_payload_opens(

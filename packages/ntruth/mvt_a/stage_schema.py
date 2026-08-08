@@ -105,12 +105,23 @@ class StageCoverage(FrozenModel):
     def _coherent(self) -> Self:
         if not self.rationale.strip():
             raise ValueError("coverage rationale must not be blank")
+        all_ids = (*self.covered_artifact_ids, *self.missing_artifact_ids)
+        if any(not artifact_id.strip() for artifact_id in all_ids):
+            raise ValueError("coverage artifact IDs must not be blank")
+        if len(all_ids) != len(set(all_ids)):
+            raise ValueError("coverage artifact IDs must be unique")
         if set(self.covered_artifact_ids) & set(self.missing_artifact_ids):
             raise ValueError("coverage artifact cannot be both covered and missing")
         if self.status is StageCompletionStatus.COMPLETE and self.missing_artifact_ids:
             raise ValueError("COMPLETE coverage cannot list missing artifacts")
+        if self.status is StageCompletionStatus.COMPLETE and not self.covered_artifact_ids:
+            raise ValueError("COMPLETE coverage requires at least one covered artifact")
+        if self.status is StageCompletionStatus.PARTIAL and not self.missing_artifact_ids:
+            raise ValueError("PARTIAL coverage requires at least one missing artifact")
         if self.status is StageCompletionStatus.FAILED and self.covered_artifact_ids:
             raise ValueError("FAILED coverage cannot claim covered artifacts")
+        if self.status is StageCompletionStatus.FAILED and not self.missing_artifact_ids:
+            raise ValueError("FAILED coverage requires explicit missing input artifacts")
         return self
 
 
@@ -298,6 +309,11 @@ class MvtAStageOutput(FrozenModel):
             raise ValueError("only a FAILED stage may omit candidate artifacts")
         if self.coverage.status is not self.status:
             raise ValueError("stage status and coverage status must match")
+        reported_artifacts = set(self.coverage.covered_artifact_ids) | set(
+            self.coverage.missing_artifact_ids
+        )
+        if reported_artifacts != set(self.provenance.input_artifact_ids):
+            raise ValueError("stage coverage must exactly reconcile provenance input artifacts")
         if self.verifier_passed is False and self.status is not StageCompletionStatus.FAILED:
             raise ValueError("failed verifier requires FAILED stage status")
         if self.verifier_passed is True and self.verifier_errors:

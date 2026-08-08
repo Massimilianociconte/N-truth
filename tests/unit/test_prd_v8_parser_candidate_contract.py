@@ -4,6 +4,21 @@ from importlib import import_module
 
 import pytest
 
+from ntruth.mvt_a.stage_schema import FORBIDDEN_FINAL_FIELDS
+
+
+def _recursive_keys(value: object) -> set[str]:
+    keys: set[str] = set()
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if isinstance(key, str):
+                keys.add(key.casefold())
+            keys.update(_recursive_keys(item))
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            keys.update(_recursive_keys(item))
+    return keys
+
 
 def _contract_api() -> tuple[object, object, object]:
     contract = import_module("ntruth.parser_ai.contract")
@@ -93,19 +108,7 @@ def test_active_parser_and_gold_are_distinct_candidate_only_types() -> None:
 
     assert type(gold) is not type(candidate)
     dumped = gold.model_dump(mode="json")
-    forbidden = {
-        "n",
-        "independent_n",
-        "experimental_unit",
-        "experimental_unit_count",
-        "determinability",
-        "design_adequacy",
-        "design_verdict",
-        "pseudoreplication",
-        "rule_result",
-        "RuleResult",
-    }
-    assert forbidden.isdisjoint(str(dumped).split())
+    assert _recursive_keys(dumped).isdisjoint(FORBIDDEN_FINAL_FIELDS)
 
 
 def test_parser_candidate_output_rejects_nested_final_aliases() -> None:

@@ -83,12 +83,46 @@ def run_parser_adapter(adapter: ParserAIAdapter, request: ParserAIInput) -> MvtA
             model_id=f"{adapter.name}@{adapter.version}",
         )
 
+    expected_artifacts = set(artifact_ids)
+    covered_artifacts = set(response.coverage.covered_artifact_ids)
+    reported_artifacts = covered_artifacts | set(response.coverage.missing_artifact_ids)
+    if reported_artifacts != expected_artifacts:
+        issue = StageIssue(
+            code=StageErrorCode.CHUNK_COVERAGE_INCOMPLETE,
+            detail=("Parser coverage does not exactly reconcile the immutable request artifacts."),
+            artifact_ids=tuple(sorted(expected_artifacts ^ reported_artifacts)),
+        )
+        return MvtAStageOutput(
+            stage_id=f"parser-stage-{provenance.input_checksum[:20]}",
+            status=StageCompletionStatus.FAILED,
+            candidates=response,
+            errors=(issue,),
+            coverage=StageCoverage(
+                status=StageCompletionStatus.FAILED,
+                missing_artifact_ids=tuple(sorted(expected_artifacts)),
+                rationale="Request coverage failed exact reconciliation.",
+            ),
+            provenance=provenance,
+            preserved_artifact_ids=tuple(sorted(covered_artifacts & expected_artifacts)),
+            verifier_passed=False,
+            verifier_errors=(issue,),
+            model_id=f"{response.model_metadata.model_name}@{response.model_metadata.model_version}",
+        )
+
     stage_errors: tuple[StageIssue, ...] = ()
     if response.coverage.status is StageCompletionStatus.FAILED:
         stage_errors = (
             StageIssue(
                 code=StageErrorCode.MISSING_REQUIRED_EVIDENCE,
                 detail="Parser reported FAILED coverage.",
+                artifact_ids=response.coverage.missing_artifact_ids,
+            ),
+        )
+    elif response.coverage.status is StageCompletionStatus.PARTIAL:
+        stage_errors = (
+            StageIssue(
+                code=StageErrorCode.CHUNK_COVERAGE_INCOMPLETE,
+                detail="Parser reported PARTIAL request coverage.",
                 artifact_ids=response.coverage.missing_artifact_ids,
             ),
         )

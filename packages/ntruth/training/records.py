@@ -609,6 +609,26 @@ class PreparedDataset(FrozenModel):
                 or prepared.record.provenance.reviewer_roles != entry.reviewer_roles
                 or prepared.record.provenance.adjudication_id != entry.adjudication_id
                 or prepared.record.target.adjudication_id != entry.target_adjudication_id
+                or content_checksum(prepared.record.target.candidate_target.model_dump(mode="json"))
+                != entry.candidate_target_checksum
+                or tuple(
+                    reference.submission_id
+                    for reference in prepared.record.target.submission_references
+                )
+                != entry.submission_ids
+                or tuple(
+                    reference.submission_sha256
+                    for reference in prepared.record.target.submission_references
+                )
+                != entry.submission_checksums
+                or prepared.record.target.comparison_status != entry.comparison_status
+                or content_checksum(
+                    [
+                        difference.model_dump(mode="json")
+                        for difference in prepared.record.target.material_differences
+                    ]
+                )
+                != entry.material_differences_checksum
                 or tuple(
                     count.kind for count in prepared.record.target.candidate_target.candidate_counts
                 )

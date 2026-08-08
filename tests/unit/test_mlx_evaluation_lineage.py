@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from ntruth.governance.lineage import CorpusSplit
 from ntruth.parser_ai.contract import ParserAIInput, ParserCandidateOutput
 from ntruth.training.calibration import ConfidenceObservation
 from ntruth.training.cli import DEFAULT_PROFILE
@@ -17,6 +18,39 @@ from ntruth.training.mlx_inference import (
     predict_and_score,
 )
 from ntruth.training.mlx_runtime import MLXPipelineError, sha256_file
+from ntruth.training.records import AnnotationStatus, DatasetManifest, ManifestRecord
+
+
+def _protected_release_source_manifest() -> DatasetManifest:
+    return DatasetManifest(
+        record_schema_version="8.0.0",
+        normalization_version="1.0.0",
+        config_checksum="1" * 64,
+        decisions_checksum="2" * 64,
+        report_checksum="3" * 64,
+        records=(
+            ManifestRecord(
+                record_id="protected-1",
+                record_checksum="4" * 64,
+                input_checksum="5" * 64,
+                candidate_target_checksum="6" * 64,
+                exact_fingerprint="7" * 64,
+                near_fingerprint="8" * 64,
+                split=CorpusSplit.TEST,
+                leakage_group_id="protected-group-1",
+                source_id="source-1",
+                source_asset_id="asset-1",
+                source_sha256="9" * 64,
+                governance_hash="a" * 64,
+                annotation_status=AnnotationStatus.CANDIDATE,
+                training_eligible=False,
+                evaluation_eligible=True,
+                release_eligible=True,
+                model_selection_eligible=False,
+                reviewer_count=0,
+            ),
+        ),
+    )
 
 
 def _parser_output(*, confidence: float = 0.7) -> ParserCandidateOutput:
@@ -235,7 +269,7 @@ def test_predict_cannot_relabel_test_as_validation(
     assert not (tmp_path / "predictions").exists()
 
 
-def test_export_rejects_test_metrics_from_another_snapshot(
+def test_export_rejects_test_metrics_without_protected_snapshot_contract(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     run_lineage = {
@@ -281,7 +315,7 @@ def test_export_rejects_test_metrics_from_another_snapshot(
         lambda *_args, **_kwargs: {"source_metrics": calibration_source},
     )
 
-    with pytest.raises(MLXPipelineError, match="snapshot test"):
+    with pytest.raises(MLXPipelineError, match="custodial/source manifest"):
         export_adapter_bundle(
             DEFAULT_PROFILE,
             Path(".").resolve(),
@@ -490,13 +524,37 @@ def test_export_happy_path_copies_verified_bundle(
         "run_dataset_snapshot_sha256": training_snapshot["snapshot_sha256"],
         "run_dataset_manifest_sha256": training_snapshot["manifest_sha256"],
         "adapter_sha256": sha256_file(adapter),
+        "planned_design_artifact_id": "planned-1",
+        "planned_design_artifact_sha256": "d" * 64,
+        "executed_design_artifact_id": "executed-1",
+        "executed_design_artifact_sha256": "e" * 64,
+    }
+    source_manifest = _protected_release_source_manifest()
+    protected_snapshot = {
+        "snapshot_id": "protected-test-1",
+        "snapshot_sha256": "f" * 64,
+        "manifest_sha256": "0" * 64,
+        "protected_evaluation": {
+            "split": "TEST",
+            "snapshot_id": "protected-test-1",
+            "snapshot_sha256": "f" * 64,
+            "lineage": {
+                "source_manifest_id": source_manifest.dataset_id,
+                "source_manifest_sha256": "b" * 64,
+                "planned_design_artifact_id": "planned-1",
+                "planned_design_artifact_sha256": "d" * 64,
+                "executed_design_artifact_id": "executed-1",
+                "executed_design_artifact_sha256": "e" * 64,
+            },
+        },
+        "source_dataset_manifest": source_manifest.model_dump(mode="json"),
     }
     metrics_context = {
         "path": metrics_path.resolve(),
         "sha256": sha256_file(metrics_path),
         "metrics": {"declared_split": "test"},
         "run_lineage": run_lineage,
-        "snapshot": training_snapshot,
+        "snapshot": protected_snapshot,
     }
     calibration_source = {
         "sha256": "c" * 64,

@@ -35,6 +35,7 @@ from ntruth.mvt_a.verifier import (
     attach_verifier,
     attach_verifier_v7,
     hard_verify_candidates,
+    hard_verify_candidates_v7,
 )
 
 __all__ = [
@@ -63,5 +64,6 @@ __all__ = [
     "attach_verifier",
     "attach_verifier_v7",
     "hard_verify_candidates",
+    "hard_verify_candidates_v7",
     "normalize_candidate_syntax",
 ]

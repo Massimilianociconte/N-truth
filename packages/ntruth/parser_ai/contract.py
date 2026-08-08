@@ -581,6 +581,21 @@ class ParserCandidateOutput(FrozenModel):
         alternatives = _unique_map(self.alternatives, "alternative_id")
         questions = _unique_map(self.clarification_questions, "question_id")
 
+        globally_scoped_candidate_ids = (
+            *nodes,
+            *edges,
+            *factors,
+            *endpoints,
+            *contrasts,
+            *estimands,
+            *counts,
+            *events,
+            *graphs,
+            *alternatives,
+        )
+        if len(globally_scoped_candidate_ids) != len(set(globally_scoped_candidate_ids)):
+            raise ValueError("candidate IDs must be globally unique across active types")
+
         candidates: tuple[CandidateFact, ...] = (
             *self.experiment_blocks,
             *self.candidate_nodes,

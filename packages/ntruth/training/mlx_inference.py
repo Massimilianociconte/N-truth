@@ -11,6 +11,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from ntruth.governance.lineage import CorpusSplit
 from ntruth.parser_ai.contract import (
     ParserAIInput,
     ParserCandidateOutput,
@@ -29,14 +30,21 @@ from ntruth.training.mlx_runtime import (
     _model_path,
     _write_json,
     iter_jsonl,
+    iter_verified_jsonl,
     load_profile,
     sha256_file,
     stage_verified_training_view,
     utc_now,
     validate_snapshot_integrity,
     verify_model,
+    verify_staged_training_view,
 )
-from ntruth.training.protected_evaluation import validate_protected_evaluation_snapshot
+from ntruth.training.protected_evaluation import (
+    ProtectedEvaluationReviewRequired,
+    validate_protected_evaluation_snapshot,
+    validate_protected_source_manifest,
+)
+from ntruth.training.records import DatasetManifest
 
 EVALUATION_LINEAGE_SCHEMA_VERSION = "8.0.0"
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -210,19 +218,37 @@ def _verify_evaluation_snapshot(
         )
 
     if declared_split in {"test", "external_challenge"}:
-        manifest = validate_protected_evaluation_snapshot(
-            data_dir,
-            declared_split=declared_split,
-        )
-        for key in (
+        required_design_pins = (
             "planned_design_artifact_id",
             "planned_design_artifact_sha256",
             "executed_design_artifact_id",
             "executed_design_artifact_sha256",
-        ):
+        )
+        missing_design_pins = tuple(
+            key for key in required_design_pins if run_lineage.get(key) is None
+        )
+        if missing_design_pins:
+            raise ProtectedEvaluationReviewRequired(
+                "SCIENTIFIC_REVIEW_REQUIRED: protected evaluation requires authoritative "
+                "planned_design/executed_design run pins: " + repr(missing_design_pins)
+            )
+        source_manifest_value = run_lineage.get("protected_source_manifest_path")
+        if not isinstance(source_manifest_value, str) or not source_manifest_value.strip():
+            raise ProtectedEvaluationReviewRequired(
+                "SCIENTIFIC_REVIEW_REQUIRED: protected evaluation requires an "
+                "authoritative source DatasetManifest path"
+            )
+        source_manifest_path = Path(source_manifest_value).resolve()
+        manifest = validate_protected_evaluation_snapshot(
+            data_dir,
+            declared_split=declared_split,
+            source_manifest_path=source_manifest_path,
+        )
+        for key in required_design_pins:
             expected = run_lineage.get(key)
-            if expected is not None and getattr(manifest.lineage, key) != expected:
+            if getattr(manifest.lineage, key) != expected:
                 raise MLXPipelineError(f"protected evaluation lineage mismatch: {key}")
+        source_manifest = validate_protected_source_manifest(source_manifest_path, manifest)
         return expected_path, {
             "snapshot_id": manifest.snapshot_id,
             "snapshot_sha256": manifest.snapshot_sha256,
@@ -231,6 +257,7 @@ def _verify_evaluation_snapshot(
             "file_hashes": {manifest.payload_file: manifest.payload_sha256},
             "runtime_smoke_only": False,
             "protected_evaluation": manifest.model_dump(mode="json"),
+            "source_dataset_manifest": source_manifest.model_dump(mode="json"),
         }
 
     smoke_test = run_lineage.get("smoke_test") is True
@@ -282,6 +309,76 @@ def _evaluation_lineage(
     }
 
 
+def validate_protected_release_lineage(
+    *,
+    metrics_snapshot: Mapping[str, Any],
+    calibration_snapshot: Mapping[str, Any],
+    run_lineage: Mapping[str, Any],
+) -> dict[str, str]:
+    """Reconcile final TEST pins without conflating TEST with the training view."""
+
+    protected = metrics_snapshot.get("protected_evaluation")
+    source_raw = metrics_snapshot.get("source_dataset_manifest")
+    if not isinstance(protected, dict) or not isinstance(source_raw, dict):
+        raise MLXPipelineError("protected release lacks custodial/source manifest pins")
+    try:
+        source = DatasetManifest.model_validate(source_raw)
+    except ValueError as exc:
+        raise MLXPipelineError(f"protected release source manifest invalid: {exc}") from exc
+    if protected.get("split") != "TEST":
+        raise MLXPipelineError(
+            "SCIENTIFIC_REVIEW_REQUIRED: External Challenge release requires Task 7"
+        )
+    lineage = protected.get("lineage")
+    if not isinstance(lineage, dict):
+        raise MLXPipelineError("protected release lineage is absent")
+    for key in (
+        "planned_design_artifact_id",
+        "planned_design_artifact_sha256",
+        "executed_design_artifact_id",
+        "executed_design_artifact_sha256",
+    ):
+        _require_equal(lineage.get(key), run_lineage.get(key), label=f"protected release {key}")
+    _require_equal(
+        protected.get("snapshot_id"),
+        metrics_snapshot.get("snapshot_id"),
+        label="protected metrics snapshot id",
+    )
+    _require_equal(
+        protected.get("snapshot_sha256"),
+        metrics_snapshot.get("snapshot_sha256"),
+        label="protected metrics snapshot hash",
+    )
+    _require_equal(
+        lineage.get("source_manifest_id"),
+        source.dataset_id,
+        label="protected source manifest id",
+    )
+    test_members = tuple(record for record in source.records if record.split is CorpusSplit.TEST)
+    if not test_members or any(not record.release_eligible for record in test_members):
+        raise MLXPipelineError("protected TEST source membership is not release-eligible")
+    training_hash = run_lineage.get("run_dataset_snapshot_sha256")
+    _require_equal(
+        calibration_snapshot.get("snapshot_sha256"),
+        training_hash,
+        label="calibration snapshot rispetto al training snapshot",
+    )
+    protected_hash = metrics_snapshot.get("snapshot_sha256")
+    if protected_hash == training_hash:
+        raise MLXPipelineError("protected TEST snapshot must remain distinct from training")
+    return {
+        "protected_snapshot_id": str(metrics_snapshot["snapshot_id"]),
+        "protected_snapshot_sha256": str(protected_hash),
+        "training_snapshot_sha256": str(training_hash),
+        "source_manifest_id": source.dataset_id,
+        "source_manifest_sha256": str(lineage["source_manifest_sha256"]),
+        "planned_design_artifact_id": str(lineage["planned_design_artifact_id"]),
+        "planned_design_artifact_sha256": str(lineage["planned_design_artifact_sha256"]),
+        "executed_design_artifact_id": str(lineage["executed_design_artifact_id"]),
+        "executed_design_artifact_sha256": str(lineage["executed_design_artifact_sha256"]),
+    }
+
+
 def _percentile(values: list[int], fraction: float) -> float:
     if not values:
         raise ValueError("percentile su insieme vuoto")
@@ -329,6 +426,10 @@ def _tokenize_verified_report(
     output_path: Path,
     snapshot: Mapping[str, Any],
 ) -> dict[str, Any]:
+    expected_hashes = {
+        name: snapshot["file_hashes"][name] for name in ("train.jsonl", "valid.jsonl")
+    }
+    verify_staged_training_view(verified_data_dir, expected_hashes)
     profile = load_profile(profile_path)
     model_path = _model_path(repo_root, profile)
     if not (model_path / "model.safetensors").is_file():
@@ -356,7 +457,11 @@ def _tokenize_verified_report(
     all_lengths: list[int] = []
     for split in ("train", "valid"):
         lengths: list[int] = []
-        for record in iter_jsonl(verified_data_dir / f"{split}.jsonl"):
+        filename = f"{split}.jsonl"
+        for record in iter_verified_jsonl(
+            verified_data_dir / filename,
+            expected_sha256=str(expected_hashes[filename]),
+        ):
             messages = record.get("messages")
             if not isinstance(messages, list):
                 raise MLXPipelineError(f"record {split} senza messages")
@@ -1082,11 +1187,12 @@ def export_adapter_bundle(
         snapshot["snapshot_sha256"],
         label="snapshot calibrazione rispetto al training snapshot",
     )
-    if metrics_split == "test":
-        _require_equal(
-            metrics_context["snapshot"]["snapshot_sha256"],
-            snapshot["snapshot_sha256"],
-            label="snapshot test rispetto al training snapshot",
+    protected_release_pins: dict[str, str] | None = None
+    if metrics_split in {"test", "external_challenge"}:
+        protected_release_pins = validate_protected_release_lineage(
+            metrics_snapshot=metrics_context["snapshot"],
+            calibration_snapshot=calibration_context["source_metrics"]["snapshot"],
+            run_lineage=run_lineage,
         )
 
     best = run_dir.resolve() / "best"
@@ -1134,6 +1240,7 @@ def export_adapter_bundle(
             "evaluation_manifest_sha256": metrics_context["snapshot"]["manifest_sha256"],
             "calibration_sha256": calibration_context["sha256"],
             "calibration_source_metrics_sha256": calibration_context["source_metrics"]["sha256"],
+            "protected_evaluation": protected_release_pins,
         },
         "files": files,
     }

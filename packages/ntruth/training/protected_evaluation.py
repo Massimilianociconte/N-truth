@@ -16,6 +16,7 @@ from pydantic import Field, model_validator
 from ntruth.schemas.core import FrozenModel, content_checksum
 from ntruth.training.custody import ExternalChallengeDependency
 from ntruth.training.mlx_runtime import MLXPipelineError, sha256_file
+from ntruth.training.records import DatasetManifest
 
 
 class ProtectedEvaluationLineage(FrozenModel):
@@ -78,14 +79,43 @@ class ProtectedEvaluationSnapshotManifest(FrozenModel):
         return self
 
 
-class ExternalChallengeReviewRequired(MLXPipelineError):
+class ProtectedEvaluationReviewRequired(MLXPipelineError):
+    """An authoritative custodial dependency is missing or unresolved."""
+
+
+class ExternalChallengeReviewRequired(ProtectedEvaluationReviewRequired):
     """Task 7 authority/custody review is a mandatory unresolved dependency."""
+
+
+def validate_protected_source_manifest(
+    source_manifest_path: Path,
+    manifest: ProtectedEvaluationSnapshotManifest,
+) -> DatasetManifest:
+    """Resolve the independently content-addressed source DatasetManifest."""
+
+    source_manifest_path = source_manifest_path.resolve()
+    if source_manifest_path.is_symlink() or not source_manifest_path.is_file():
+        raise MLXPipelineError("protected evaluation source DatasetManifest is absent")
+    if sha256_file(source_manifest_path) != manifest.lineage.source_manifest_sha256:
+        raise MLXPipelineError("protected evaluation source DatasetManifest checksum mismatch")
+    try:
+        source_manifest = DatasetManifest.model_validate_json(
+            source_manifest_path.read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError) as exc:
+        raise MLXPipelineError(
+            f"protected evaluation source DatasetManifest invalid: {exc}"
+        ) from exc
+    if source_manifest.dataset_id != manifest.lineage.source_manifest_id:
+        raise MLXPipelineError("protected evaluation source DatasetManifest identity mismatch")
+    return source_manifest
 
 
 def validate_protected_evaluation_snapshot(
     data_dir: Path,
     *,
     declared_split: str,
+    source_manifest_path: Path | None = None,
 ) -> ProtectedEvaluationSnapshotManifest:
     root = data_dir.resolve()
     manifest_path = root / "protected-evaluation-manifest.json"
@@ -110,6 +140,17 @@ def validate_protected_evaluation_snapshot(
         raise MLXPipelineError("protected evaluation payload size mismatch")
     if sha256_file(payload_path) != manifest.payload_sha256:
         raise MLXPipelineError("protected evaluation payload checksum mismatch")
+    if source_manifest_path is None:
+        raise ProtectedEvaluationReviewRequired(
+            "SCIENTIFIC_REVIEW_REQUIRED: authoritative source DatasetManifest path is required"
+        )
+    resolved_source = source_manifest_path.resolve()
+    if resolved_source.is_relative_to(root):
+        raise ProtectedEvaluationReviewRequired(
+            "SCIENTIFIC_REVIEW_REQUIRED: source DatasetManifest must be resolved "
+            "independently from the custodial payload directory"
+        )
+    source_manifest = validate_protected_source_manifest(resolved_source, manifest)
     record_ids: list[str] = []
     try:
         for line_number, line in enumerate(
@@ -127,9 +168,23 @@ def validate_protected_evaluation_snapshot(
         raise MLXPipelineError("protected evaluation record count/identity mismatch")
     if content_checksum(sorted(record_ids)) != manifest.record_ids_checksum:
         raise MLXPipelineError("protected evaluation record ids checksum mismatch")
+    source_members = tuple(
+        record for record in source_manifest.records if record.split.value == manifest.split
+    )
+    source_record_ids = {record.record_id for record in source_members}
+    if source_record_ids != set(record_ids):
+        raise MLXPipelineError(
+            "protected evaluation membership does not exactly match source DatasetManifest"
+        )
+    if any(record.training_eligible for record in source_members):
+        raise MLXPipelineError("protected evaluation source membership is training-eligible")
+    if any(record.model_selection_eligible for record in source_members):
+        raise MLXPipelineError("protected evaluation source membership can select a model")
     if manifest.split == "EXTERNAL_CHALLENGE":
         raise ExternalChallengeReviewRequired(
             "SCIENTIFIC_REVIEW_REQUIRED: Task 7 ContaminationAttestation and custody "
             "decision are not authoritative in Task 5"
         )
+    if any(not record.evaluation_eligible for record in source_members):
+        raise MLXPipelineError("protected evaluation source membership is not evaluation-eligible")
     return manifest
