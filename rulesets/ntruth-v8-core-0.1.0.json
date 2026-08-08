@@ -1,0 +1,2520 @@
+{
+  "schema_version": "8.0.0",
+  "rulebook_id": "ntruth-v8-core",
+  "rulebook_version": "0.1.0",
+  "theory_id": "ntruth-derivation-theory",
+  "theory_version": "0.1.0",
+  "theory_checksum": "3980e9583ac323c3c88570a09dc75e0ce60d9b63daf8be77bf074c7a74f76367",
+  "profile_id": "simple_cell_culture",
+  "profile_version": "0.1.0",
+  "reference_registry_id": "ntruth-reference-role-registry",
+  "reference_registry_version": "0.1.0",
+  "reference_registry_checksum": "4dcf9cc55ba272c715bac62df10ecff250bb4d02a3cc0a8716998bdc373136be",
+  "fixture_set_checksum": "be1c46734b1c7f952c98a756be7737ee3998de83b6e4d34bf852f997e3be2e7f",
+  "rules": [
+    {
+      "schema_version": "8.0.0",
+      "rule_id": "V8-A-ASSIGNMENT-UNIT",
+      "rule_version": "0.1.0",
+      "theory_clause_id": "DT-A-ASSIGNMENT-UNIT",
+      "theory_clause_version": "0.1.0",
+      "profile_id": "simple_cell_culture",
+      "profile_version": "0.1.0",
+      "execution_status": "EXECUTABLE",
+      "required_predicates": [
+        {
+          "schema_version": "8.0.0",
+          "predicate_id": "factor",
+          "rationale": "A factor relevant to the inferential query must be identified."
+        },
+        {
+          "schema_version": "8.0.0",
+          "predicate_id": "factor_levels",
+          "rationale": "At least two factor levels must be defined for the contrast."
+        },
+        {
+          "schema_version": "8.0.0",
+          "predicate_id": "assignment_event_or_equivalent_mechanism",
+          "rationale": "Assignment requires an event or explicitly equivalent mechanism."
+        },
+        {
+          "schema_version": "8.0.0",
+          "predicate_id": "candidate_unit",
+          "rationale": "The candidate unit must be identified."
+        },
+        {
+          "schema_version": "8.0.0",
+          "predicate_id": "assignment_separability_support",
+          "rationale": "Separability needs evidence beyond keywords or unit labels."
+        }
+      ],
+      "irrelevant_predicates": [
+        {
+          "schema_version": "8.0.0",
+          "id": "biological_source_independence",
+          "rationale": "Biological-source independence is not a proxy for assignment independence."
+        }
+      ],
+      "output_claim_types": [
+        "ASSIGNMENT_UNIT",
+        "EXPERIMENTAL_UNIT_CANDIDATE"
+      ],
+      "fixtures": [
+        {
+          "schema_version": "8.0.0",
+          "fixture_id": "FIX-A-POSITIVE",
+          "fixture_version": "0.1.0",
+          "role": "IMPLEMENTATION_CONFORMANCE_FIXTURES",
+          "kind": "POSITIVE",
+          "decisive_predicate_id": "assignment_separability_support",
+          "predicate_values": {
+            "factor": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "treatment",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-A-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "factor_levels": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": [
+                "control",
+                "treated"
+              ],
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-A-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "assignment_event_or_equivalent_mechanism": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "EVT-ASSIGN-01",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-A-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "candidate_unit": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "well",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-A-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "assignment_separability_support": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": true,
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-A-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            }
+          },
+          "expected_outcome": "DERIVED",
+          "expected_claims": [
+            {
+              "schema_version": "8.0.0",
+              "claim_type": "ASSIGNMENT_UNIT",
+              "determinability_state": "DETERMINATE",
+              "value": {
+                "schema_version": "8.0.0",
+                "knowledge_state": "PRESENT",
+                "value": "well",
+                "conflicting_values": [],
+                "evidence_ids": [
+                  "EV-FIX-A-POSITIVE-CLAIM"
+                ],
+                "source_scope_ids": [],
+                "rationale": null,
+                "claim_scope_id": null,
+                "query_scope_id": null
+              },
+              "proof_trace": [
+                {
+                  "schema_version": "8.0.0",
+                  "step_id": "PROOF-A-POSITIVE",
+                  "theory_clause_id": "DT-A-ASSIGNMENT-UNIT",
+                  "rule_id": "V8-A-ASSIGNMENT-UNIT",
+                  "predicate_ids": [
+                    "factor",
+                    "factor_levels",
+                    "assignment_event_or_equivalent_mechanism",
+                    "candidate_unit",
+                    "assignment_separability_support"
+                  ]
+                }
+              ]
+            },
+            {
+              "schema_version": "8.0.0",
+              "claim_type": "EXPERIMENTAL_UNIT_CANDIDATE",
+              "determinability_state": "DETERMINATE",
+              "value": {
+                "schema_version": "8.0.0",
+                "knowledge_state": "PRESENT",
+                "value": "well",
+                "conflicting_values": [],
+                "evidence_ids": [
+                  "EV-FIX-A-POSITIVE-CLAIM"
+                ],
+                "source_scope_ids": [],
+                "rationale": null,
+                "claim_scope_id": null,
+                "query_scope_id": null
+              },
+              "proof_trace": [
+                {
+                  "schema_version": "8.0.0",
+                  "step_id": "PROOF-A-POSITIVE",
+                  "theory_clause_id": "DT-A-ASSIGNMENT-UNIT",
+                  "rule_id": "V8-A-ASSIGNMENT-UNIT",
+                  "predicate_ids": [
+                    "factor",
+                    "factor_levels",
+                    "assignment_event_or_equivalent_mechanism",
+                    "candidate_unit",
+                    "assignment_separability_support"
+                  ]
+                }
+              ]
+            }
+          ],
+          "rationale": "Canonical positive conformance case for PRD clause A."
+        },
+        {
+          "schema_version": "8.0.0",
+          "fixture_id": "FIX-A-NEGATIVE",
+          "fixture_version": "0.1.0",
+          "role": "IMPLEMENTATION_CONFORMANCE_FIXTURES",
+          "kind": "NEGATIVE",
+          "decisive_predicate_id": "assignment_separability_support",
+          "predicate_values": {
+            "factor": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": false,
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-A-NEG"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "factor_levels": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": [
+                "control",
+                "treated"
+              ],
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-A-NEG"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "assignment_event_or_equivalent_mechanism": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "EVT-ASSIGN-01",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-A-NEG"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "candidate_unit": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "well",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-A-NEG"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "assignment_separability_support": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": true,
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-A-NEG"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            }
+          },
+          "expected_outcome": "NOT_APPLICABLE",
+          "expected_claims": [],
+          "rationale": "A required precondition is false, so clause A does not emit a claim."
+        },
+        {
+          "schema_version": "8.0.0",
+          "fixture_id": "FIX-A-MINIMAL_COUNTERFACTUAL",
+          "fixture_version": "0.1.0",
+          "role": "IMPLEMENTATION_CONFORMANCE_FIXTURES",
+          "kind": "MINIMAL_COUNTERFACTUAL",
+          "decisive_predicate_id": "assignment_separability_support",
+          "predicate_values": {
+            "factor": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "treatment",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-A-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "factor_levels": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": [
+                "control",
+                "treated"
+              ],
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-A-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "assignment_event_or_equivalent_mechanism": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "EVT-ASSIGN-01",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-A-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "candidate_unit": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "well",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-A-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "assignment_separability_support": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "UNKNOWN",
+              "value": null,
+              "conflicting_values": [],
+              "evidence_ids": [],
+              "source_scope_ids": [],
+              "rationale": "The decisive predicate assignment_separability_support is not resolved.",
+              "claim_scope_id": null,
+              "query_scope_id": "IQ-FIX-001"
+            }
+          },
+          "expected_outcome": "DERIVED",
+          "expected_claims": [
+            {
+              "schema_version": "8.0.0",
+              "claim_type": "ASSIGNMENT_UNIT",
+              "determinability_state": "INSUFFICIENT_INFORMATION",
+              "value": {
+                "schema_version": "8.0.0",
+                "knowledge_state": "UNKNOWN",
+                "value": null,
+                "conflicting_values": [],
+                "evidence_ids": [],
+                "source_scope_ids": [],
+                "rationale": "The decisive predicate assignment_separability_support is unresolved in this minimal counterfactual.",
+                "claim_scope_id": null,
+                "query_scope_id": "IQ-FIX-001"
+              },
+              "proof_trace": [
+                {
+                  "schema_version": "8.0.0",
+                  "step_id": "PROOF-A-MINIMAL_COUNTERFACTUAL",
+                  "theory_clause_id": "DT-A-ASSIGNMENT-UNIT",
+                  "rule_id": "V8-A-ASSIGNMENT-UNIT",
+                  "predicate_ids": [
+                    "factor",
+                    "factor_levels",
+                    "assignment_event_or_equivalent_mechanism",
+                    "candidate_unit",
+                    "assignment_separability_support"
+                  ]
+                }
+              ]
+            },
+            {
+              "schema_version": "8.0.0",
+              "claim_type": "EXPERIMENTAL_UNIT_CANDIDATE",
+              "determinability_state": "INSUFFICIENT_INFORMATION",
+              "value": {
+                "schema_version": "8.0.0",
+                "knowledge_state": "UNKNOWN",
+                "value": null,
+                "conflicting_values": [],
+                "evidence_ids": [],
+                "source_scope_ids": [],
+                "rationale": "The decisive predicate assignment_separability_support is unresolved in this minimal counterfactual.",
+                "claim_scope_id": null,
+                "query_scope_id": "IQ-FIX-001"
+              },
+              "proof_trace": [
+                {
+                  "schema_version": "8.0.0",
+                  "step_id": "PROOF-A-MINIMAL_COUNTERFACTUAL",
+                  "theory_clause_id": "DT-A-ASSIGNMENT-UNIT",
+                  "rule_id": "V8-A-ASSIGNMENT-UNIT",
+                  "predicate_ids": [
+                    "factor",
+                    "factor_levels",
+                    "assignment_event_or_equivalent_mechanism",
+                    "candidate_unit",
+                    "assignment_separability_support"
+                  ]
+                }
+              ]
+            }
+          ],
+          "rationale": "Minimal pair for clause A; only assignment_separability_support becomes UNKNOWN."
+        }
+      ],
+      "known_gap_issue_ids": [],
+      "known_gap_handling": [],
+      "required_reviewer_role": "external_biostatistician_and_wet_lab_reviewer",
+      "release_review_requirement": {
+        "schema_version": "8.0.0",
+        "issue_id": "SRR-V8-021",
+        "rationale": "External theory references, real cases, and independent scientific review are not yet available."
+      },
+      "changelog_entry": "Initial isolated PRD v8 clause A conformance mapping; no legacy rule behavior migrated."
+    },
+    {
+      "schema_version": "8.0.0",
+      "rule_id": "V8-B-EXPERIMENTAL-UNIT",
+      "rule_version": "0.1.0",
+      "theory_clause_id": "DT-B-EXPERIMENTAL-UNIT",
+      "theory_clause_version": "0.1.0",
+      "profile_id": "simple_cell_culture",
+      "profile_version": "0.1.0",
+      "execution_status": "EXECUTABLE",
+      "required_predicates": [
+        {
+          "schema_version": "8.0.0",
+          "predicate_id": "relevant_treatment_assignment",
+          "rationale": "The treatment assignment relevant to the query must be represented."
+        },
+        {
+          "schema_version": "8.0.0",
+          "predicate_id": "realized_treatment_application_or_exposure",
+          "rationale": "Realized treatment or exposure must be represented."
+        },
+        {
+          "schema_version": "8.0.0",
+          "predicate_id": "candidate_unit",
+          "rationale": "The candidate unit must be identified."
+        },
+        {
+          "schema_version": "8.0.0",
+          "predicate_id": "assignment_separability",
+          "rationale": "Assignment separability must be resolved for the claim."
+        },
+        {
+          "schema_version": "8.0.0",
+          "predicate_id": "realized_exposure_separability",
+          "rationale": "Realized exposure separability must be resolved for the claim."
+        }
+      ],
+      "irrelevant_predicates": [
+        {
+          "schema_version": "8.0.0",
+          "id": "analytical_dependence",
+          "rationale": "Analytical dependence does not create or eliminate an experimental unit."
+        }
+      ],
+      "output_claim_types": [
+        "EXPERIMENTAL_UNIT"
+      ],
+      "fixtures": [
+        {
+          "schema_version": "8.0.0",
+          "fixture_id": "FIX-B-POSITIVE",
+          "fixture_version": "0.1.0",
+          "role": "IMPLEMENTATION_CONFORMANCE_FIXTURES",
+          "kind": "POSITIVE",
+          "decisive_predicate_id": "realized_exposure_separability",
+          "predicate_values": {
+            "relevant_treatment_assignment": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": true,
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-B-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "realized_treatment_application_or_exposure": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "EVT-APPLY-01",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-B-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "candidate_unit": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "well",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-B-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "assignment_separability": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": true,
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-B-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "realized_exposure_separability": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": true,
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-B-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            }
+          },
+          "expected_outcome": "DERIVED",
+          "expected_claims": [
+            {
+              "schema_version": "8.0.0",
+              "claim_type": "EXPERIMENTAL_UNIT",
+              "determinability_state": "DETERMINATE",
+              "value": {
+                "schema_version": "8.0.0",
+                "knowledge_state": "PRESENT",
+                "value": "well",
+                "conflicting_values": [],
+                "evidence_ids": [
+                  "EV-FIX-B-POSITIVE-CLAIM"
+                ],
+                "source_scope_ids": [],
+                "rationale": null,
+                "claim_scope_id": null,
+                "query_scope_id": null
+              },
+              "proof_trace": [
+                {
+                  "schema_version": "8.0.0",
+                  "step_id": "PROOF-B-POSITIVE",
+                  "theory_clause_id": "DT-B-EXPERIMENTAL-UNIT",
+                  "rule_id": "V8-B-EXPERIMENTAL-UNIT",
+                  "predicate_ids": [
+                    "relevant_treatment_assignment",
+                    "realized_treatment_application_or_exposure",
+                    "candidate_unit",
+                    "assignment_separability",
+                    "realized_exposure_separability"
+                  ]
+                }
+              ]
+            }
+          ],
+          "rationale": "Canonical positive conformance case for PRD clause B."
+        },
+        {
+          "schema_version": "8.0.0",
+          "fixture_id": "FIX-B-NEGATIVE",
+          "fixture_version": "0.1.0",
+          "role": "IMPLEMENTATION_CONFORMANCE_FIXTURES",
+          "kind": "NEGATIVE",
+          "decisive_predicate_id": "realized_exposure_separability",
+          "predicate_values": {
+            "relevant_treatment_assignment": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": false,
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-B-NEG"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "realized_treatment_application_or_exposure": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "EVT-APPLY-01",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-B-NEG"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "candidate_unit": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "well",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-B-NEG"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "assignment_separability": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": true,
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-B-NEG"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "realized_exposure_separability": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": true,
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-B-NEG"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            }
+          },
+          "expected_outcome": "NOT_APPLICABLE",
+          "expected_claims": [],
+          "rationale": "A required precondition is false, so clause B does not emit a claim."
+        },
+        {
+          "schema_version": "8.0.0",
+          "fixture_id": "FIX-B-MINIMAL_COUNTERFACTUAL",
+          "fixture_version": "0.1.0",
+          "role": "IMPLEMENTATION_CONFORMANCE_FIXTURES",
+          "kind": "MINIMAL_COUNTERFACTUAL",
+          "decisive_predicate_id": "realized_exposure_separability",
+          "predicate_values": {
+            "relevant_treatment_assignment": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": true,
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-B-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "realized_treatment_application_or_exposure": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "EVT-APPLY-01",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-B-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "candidate_unit": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "well",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-B-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "assignment_separability": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": true,
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-B-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "realized_exposure_separability": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "UNKNOWN",
+              "value": null,
+              "conflicting_values": [],
+              "evidence_ids": [],
+              "source_scope_ids": [],
+              "rationale": "The decisive predicate realized_exposure_separability is not resolved.",
+              "claim_scope_id": null,
+              "query_scope_id": "IQ-FIX-001"
+            }
+          },
+          "expected_outcome": "DERIVED",
+          "expected_claims": [
+            {
+              "schema_version": "8.0.0",
+              "claim_type": "EXPERIMENTAL_UNIT",
+              "determinability_state": "CONDITIONALLY_DETERMINATE",
+              "value": {
+                "schema_version": "8.0.0",
+                "knowledge_state": "UNKNOWN",
+                "value": null,
+                "conflicting_values": [],
+                "evidence_ids": [],
+                "source_scope_ids": [],
+                "rationale": "The decisive predicate realized_exposure_separability is unresolved in this minimal counterfactual.",
+                "claim_scope_id": null,
+                "query_scope_id": "IQ-FIX-001"
+              },
+              "proof_trace": [
+                {
+                  "schema_version": "8.0.0",
+                  "step_id": "PROOF-B-MINIMAL_COUNTERFACTUAL",
+                  "theory_clause_id": "DT-B-EXPERIMENTAL-UNIT",
+                  "rule_id": "V8-B-EXPERIMENTAL-UNIT",
+                  "predicate_ids": [
+                    "relevant_treatment_assignment",
+                    "realized_treatment_application_or_exposure",
+                    "candidate_unit",
+                    "assignment_separability",
+                    "realized_exposure_separability"
+                  ]
+                }
+              ]
+            }
+          ],
+          "rationale": "Minimal pair for clause B; only realized_exposure_separability becomes UNKNOWN."
+        }
+      ],
+      "known_gap_issue_ids": [],
+      "known_gap_handling": [],
+      "required_reviewer_role": "external_biostatistician_and_wet_lab_reviewer",
+      "release_review_requirement": {
+        "schema_version": "8.0.0",
+        "issue_id": "SRR-V8-021",
+        "rationale": "External theory references, real cases, and independent scientific review are not yet available."
+      },
+      "changelog_entry": "Initial isolated PRD v8 clause B conformance mapping; no legacy rule behavior migrated."
+    },
+    {
+      "schema_version": "8.0.0",
+      "rule_id": "V8-C-EXPERIMENTAL-UNIT-COUNT",
+      "rule_version": "0.1.0",
+      "theory_clause_id": "DT-C-EXPERIMENTAL-UNIT-COUNT",
+      "theory_clause_version": "0.1.0",
+      "profile_id": "simple_cell_culture",
+      "profile_version": "0.1.0",
+      "execution_status": "EXECUTABLE",
+      "required_predicates": [
+        {
+          "schema_version": "8.0.0",
+          "predicate_id": "experimental_unit_instances",
+          "rationale": "Distinct EU instances must be represented."
+        },
+        {
+          "schema_version": "8.0.0",
+          "predicate_id": "inferential_query",
+          "rationale": "Every output and count must be scoped to an InferentialQuery."
+        },
+        {
+          "schema_version": "8.0.0",
+          "predicate_id": "contrast_scope",
+          "rationale": "The factor contrast must be explicit."
+        },
+        {
+          "schema_version": "8.0.0",
+          "predicate_id": "lifecycle_phase",
+          "rationale": "The pertinent lifecycle phase must be explicit."
+        },
+        {
+          "schema_version": "8.0.0",
+          "predicate_id": "group_or_paired_set",
+          "rationale": "Group or paired-set scope must be explicit."
+        }
+      ],
+      "irrelevant_predicates": [
+        {
+          "schema_version": "8.0.0",
+          "id": "observational_measurement_count",
+          "rationale": "Cells, fields, repeated measures, and analytical rows do not multiply EU count."
+        }
+      ],
+      "output_claim_types": [
+        "EXPERIMENTAL_UNIT_COUNT"
+      ],
+      "fixtures": [
+        {
+          "schema_version": "8.0.0",
+          "fixture_id": "FIX-C-POSITIVE",
+          "fixture_version": "0.1.0",
+          "role": "IMPLEMENTATION_CONFORMANCE_FIXTURES",
+          "kind": "POSITIVE",
+          "decisive_predicate_id": "experimental_unit_instances",
+          "predicate_values": {
+            "experimental_unit_instances": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": [
+                "W1",
+                "W2",
+                "W3"
+              ],
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-C-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "inferential_query": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "IQ-FIX-001",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-C-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "contrast_scope": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "treatment_vs_control",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-C-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "lifecycle_phase": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "treated",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-C-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "group_or_paired_set": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "treated",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-C-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            }
+          },
+          "expected_outcome": "DERIVED",
+          "expected_claims": [
+            {
+              "schema_version": "8.0.0",
+              "claim_type": "EXPERIMENTAL_UNIT_COUNT",
+              "determinability_state": "DETERMINATE",
+              "value": {
+                "schema_version": "8.0.0",
+                "knowledge_state": "PRESENT",
+                "value": 3,
+                "conflicting_values": [],
+                "evidence_ids": [
+                  "EV-FIX-C-POSITIVE-CLAIM"
+                ],
+                "source_scope_ids": [],
+                "rationale": null,
+                "claim_scope_id": null,
+                "query_scope_id": null
+              },
+              "proof_trace": [
+                {
+                  "schema_version": "8.0.0",
+                  "step_id": "PROOF-C-POSITIVE",
+                  "theory_clause_id": "DT-C-EXPERIMENTAL-UNIT-COUNT",
+                  "rule_id": "V8-C-EXPERIMENTAL-UNIT-COUNT",
+                  "predicate_ids": [
+                    "experimental_unit_instances",
+                    "inferential_query",
+                    "contrast_scope",
+                    "lifecycle_phase",
+                    "group_or_paired_set"
+                  ]
+                }
+              ]
+            }
+          ],
+          "rationale": "Canonical positive conformance case for PRD clause C."
+        },
+        {
+          "schema_version": "8.0.0",
+          "fixture_id": "FIX-C-NEGATIVE",
+          "fixture_version": "0.1.0",
+          "role": "IMPLEMENTATION_CONFORMANCE_FIXTURES",
+          "kind": "NEGATIVE",
+          "decisive_predicate_id": "experimental_unit_instances",
+          "predicate_values": {
+            "experimental_unit_instances": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": false,
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-C-NEG"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "inferential_query": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "IQ-FIX-001",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-C-NEG"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "contrast_scope": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "treatment_vs_control",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-C-NEG"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "lifecycle_phase": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "treated",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-C-NEG"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "group_or_paired_set": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "treated",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-C-NEG"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            }
+          },
+          "expected_outcome": "NOT_APPLICABLE",
+          "expected_claims": [],
+          "rationale": "A required precondition is false, so clause C does not emit a claim."
+        },
+        {
+          "schema_version": "8.0.0",
+          "fixture_id": "FIX-C-MINIMAL_COUNTERFACTUAL",
+          "fixture_version": "0.1.0",
+          "role": "IMPLEMENTATION_CONFORMANCE_FIXTURES",
+          "kind": "MINIMAL_COUNTERFACTUAL",
+          "decisive_predicate_id": "experimental_unit_instances",
+          "predicate_values": {
+            "experimental_unit_instances": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "UNKNOWN",
+              "value": null,
+              "conflicting_values": [],
+              "evidence_ids": [],
+              "source_scope_ids": [],
+              "rationale": "The decisive predicate experimental_unit_instances is not resolved.",
+              "claim_scope_id": null,
+              "query_scope_id": "IQ-FIX-001"
+            },
+            "inferential_query": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "IQ-FIX-001",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-C-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "contrast_scope": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "treatment_vs_control",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-C-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "lifecycle_phase": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "treated",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-C-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "group_or_paired_set": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "treated",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-C-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            }
+          },
+          "expected_outcome": "DERIVED",
+          "expected_claims": [
+            {
+              "schema_version": "8.0.0",
+              "claim_type": "EXPERIMENTAL_UNIT_COUNT",
+              "determinability_state": "INSUFFICIENT_INFORMATION",
+              "value": {
+                "schema_version": "8.0.0",
+                "knowledge_state": "UNKNOWN",
+                "value": null,
+                "conflicting_values": [],
+                "evidence_ids": [],
+                "source_scope_ids": [],
+                "rationale": "The decisive predicate experimental_unit_instances is unresolved in this minimal counterfactual.",
+                "claim_scope_id": null,
+                "query_scope_id": "IQ-FIX-001"
+              },
+              "proof_trace": [
+                {
+                  "schema_version": "8.0.0",
+                  "step_id": "PROOF-C-MINIMAL_COUNTERFACTUAL",
+                  "theory_clause_id": "DT-C-EXPERIMENTAL-UNIT-COUNT",
+                  "rule_id": "V8-C-EXPERIMENTAL-UNIT-COUNT",
+                  "predicate_ids": [
+                    "experimental_unit_instances",
+                    "inferential_query",
+                    "contrast_scope",
+                    "lifecycle_phase",
+                    "group_or_paired_set"
+                  ]
+                }
+              ]
+            }
+          ],
+          "rationale": "Minimal pair for clause C; only experimental_unit_instances becomes UNKNOWN."
+        }
+      ],
+      "known_gap_issue_ids": [],
+      "known_gap_handling": [],
+      "required_reviewer_role": "external_biostatistician_and_wet_lab_reviewer",
+      "release_review_requirement": {
+        "schema_version": "8.0.0",
+        "issue_id": "SRR-V8-021",
+        "rationale": "External theory references, real cases, and independent scientific review are not yet available."
+      },
+      "changelog_entry": "Initial isolated PRD v8 clause C conformance mapping; no legacy rule behavior migrated."
+    },
+    {
+      "schema_version": "8.0.0",
+      "rule_id": "V8-D-BIOLOGICAL-SOURCE-COUNT",
+      "rule_version": "0.1.0",
+      "theory_clause_id": "DT-D-BIOLOGICAL-SOURCE-COUNT",
+      "theory_clause_version": "0.1.0",
+      "profile_id": "simple_cell_culture",
+      "profile_version": "0.1.0",
+      "execution_status": "EXECUTABLE",
+      "required_predicates": [
+        {
+          "schema_version": "8.0.0",
+          "predicate_id": "confirmed_biological_provenance",
+          "rationale": "Biological source provenance must be confirmed."
+        },
+        {
+          "schema_version": "8.0.0",
+          "predicate_id": "biological_source_instances",
+          "rationale": "Distinct biological-source instances must be represented."
+        },
+        {
+          "schema_version": "8.0.0",
+          "predicate_id": "inferential_query",
+          "rationale": "Every output and count must be scoped to an InferentialQuery."
+        }
+      ],
+      "irrelevant_predicates": [
+        {
+          "schema_version": "8.0.0",
+          "id": "assignment_separability",
+          "rationale": "Assignment separability does not establish the number of biological sources."
+        }
+      ],
+      "output_claim_types": [
+        "BIOLOGICAL_SOURCE_COUNT"
+      ],
+      "fixtures": [
+        {
+          "schema_version": "8.0.0",
+          "fixture_id": "FIX-D-POSITIVE",
+          "fixture_version": "0.1.0",
+          "role": "IMPLEMENTATION_CONFORMANCE_FIXTURES",
+          "kind": "POSITIVE",
+          "decisive_predicate_id": "confirmed_biological_provenance",
+          "predicate_values": {
+            "confirmed_biological_provenance": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": true,
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-D-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "biological_source_instances": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": [
+                "D1",
+                "D2"
+              ],
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-D-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "inferential_query": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "IQ-FIX-001",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-D-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            }
+          },
+          "expected_outcome": "DERIVED",
+          "expected_claims": [
+            {
+              "schema_version": "8.0.0",
+              "claim_type": "BIOLOGICAL_SOURCE_COUNT",
+              "determinability_state": "DETERMINATE",
+              "value": {
+                "schema_version": "8.0.0",
+                "knowledge_state": "PRESENT",
+                "value": 2,
+                "conflicting_values": [],
+                "evidence_ids": [
+                  "EV-FIX-D-POSITIVE-CLAIM"
+                ],
+                "source_scope_ids": [],
+                "rationale": null,
+                "claim_scope_id": null,
+                "query_scope_id": null
+              },
+              "proof_trace": [
+                {
+                  "schema_version": "8.0.0",
+                  "step_id": "PROOF-D-POSITIVE",
+                  "theory_clause_id": "DT-D-BIOLOGICAL-SOURCE-COUNT",
+                  "rule_id": "V8-D-BIOLOGICAL-SOURCE-COUNT",
+                  "predicate_ids": [
+                    "confirmed_biological_provenance",
+                    "biological_source_instances",
+                    "inferential_query"
+                  ]
+                }
+              ]
+            }
+          ],
+          "rationale": "Canonical positive conformance case for PRD clause D."
+        },
+        {
+          "schema_version": "8.0.0",
+          "fixture_id": "FIX-D-NEGATIVE",
+          "fixture_version": "0.1.0",
+          "role": "IMPLEMENTATION_CONFORMANCE_FIXTURES",
+          "kind": "NEGATIVE",
+          "decisive_predicate_id": "confirmed_biological_provenance",
+          "predicate_values": {
+            "confirmed_biological_provenance": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": false,
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-D-NEG"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "biological_source_instances": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": [
+                "D1",
+                "D2"
+              ],
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-D-NEG"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "inferential_query": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "IQ-FIX-001",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-D-NEG"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            }
+          },
+          "expected_outcome": "NOT_APPLICABLE",
+          "expected_claims": [],
+          "rationale": "A required precondition is false, so clause D does not emit a claim."
+        },
+        {
+          "schema_version": "8.0.0",
+          "fixture_id": "FIX-D-MINIMAL_COUNTERFACTUAL",
+          "fixture_version": "0.1.0",
+          "role": "IMPLEMENTATION_CONFORMANCE_FIXTURES",
+          "kind": "MINIMAL_COUNTERFACTUAL",
+          "decisive_predicate_id": "confirmed_biological_provenance",
+          "predicate_values": {
+            "confirmed_biological_provenance": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "UNKNOWN",
+              "value": null,
+              "conflicting_values": [],
+              "evidence_ids": [],
+              "source_scope_ids": [],
+              "rationale": "The decisive predicate confirmed_biological_provenance is not resolved.",
+              "claim_scope_id": null,
+              "query_scope_id": "IQ-FIX-001"
+            },
+            "biological_source_instances": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": [
+                "D1",
+                "D2"
+              ],
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-D-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "inferential_query": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "IQ-FIX-001",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-D-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            }
+          },
+          "expected_outcome": "DERIVED",
+          "expected_claims": [
+            {
+              "schema_version": "8.0.0",
+              "claim_type": "BIOLOGICAL_SOURCE_COUNT",
+              "determinability_state": "INSUFFICIENT_INFORMATION",
+              "value": {
+                "schema_version": "8.0.0",
+                "knowledge_state": "UNKNOWN",
+                "value": null,
+                "conflicting_values": [],
+                "evidence_ids": [],
+                "source_scope_ids": [],
+                "rationale": "The decisive predicate confirmed_biological_provenance is unresolved in this minimal counterfactual.",
+                "claim_scope_id": null,
+                "query_scope_id": "IQ-FIX-001"
+              },
+              "proof_trace": [
+                {
+                  "schema_version": "8.0.0",
+                  "step_id": "PROOF-D-MINIMAL_COUNTERFACTUAL",
+                  "theory_clause_id": "DT-D-BIOLOGICAL-SOURCE-COUNT",
+                  "rule_id": "V8-D-BIOLOGICAL-SOURCE-COUNT",
+                  "predicate_ids": [
+                    "confirmed_biological_provenance",
+                    "biological_source_instances",
+                    "inferential_query"
+                  ]
+                }
+              ]
+            }
+          ],
+          "rationale": "Minimal pair for clause D; only confirmed_biological_provenance becomes UNKNOWN."
+        }
+      ],
+      "known_gap_issue_ids": [],
+      "known_gap_handling": [],
+      "required_reviewer_role": "external_biostatistician_and_wet_lab_reviewer",
+      "release_review_requirement": {
+        "schema_version": "8.0.0",
+        "issue_id": "SRR-V8-021",
+        "rationale": "External theory references, real cases, and independent scientific review are not yet available."
+      },
+      "changelog_entry": "Initial isolated PRD v8 clause D conformance mapping; no legacy rule behavior migrated."
+    },
+    {
+      "schema_version": "8.0.0",
+      "rule_id": "V8-E-INTERFERENCE",
+      "rule_version": "0.1.0",
+      "theory_clause_id": "DT-E-INTERFERENCE-ESTIMAND",
+      "theory_clause_version": "0.1.0",
+      "profile_id": "simple_cell_culture",
+      "profile_version": "0.1.0",
+      "execution_status": "EXECUTABLE",
+      "required_predicates": [
+        {
+          "schema_version": "8.0.0",
+          "predicate_id": "interference_status",
+          "rationale": "Interference status must retain no-known-path, possible, documented, or unknown."
+        },
+        {
+          "schema_version": "8.0.0",
+          "predicate_id": "inferential_query",
+          "rationale": "Every output and count must be scoped to an InferentialQuery."
+        },
+        {
+          "schema_version": "8.0.0",
+          "predicate_id": "claim_no_interference_dependency",
+          "rationale": "The rule must state whether the claim depends on no interference."
+        }
+      ],
+      "irrelevant_predicates": [
+        {
+          "schema_version": "8.0.0",
+          "id": "analytical_dependence",
+          "rationale": "Analytical dependence does not determine the exposure or interference topology."
+        }
+      ],
+      "output_claim_types": [
+        "INTERFERENCE_ESTIMAND_SUPPORT"
+      ],
+      "fixtures": [
+        {
+          "schema_version": "8.0.0",
+          "fixture_id": "FIX-E-POSITIVE",
+          "fixture_version": "0.1.0",
+          "role": "IMPLEMENTATION_CONFORMANCE_FIXTURES",
+          "kind": "POSITIVE",
+          "decisive_predicate_id": "interference_status",
+          "predicate_values": {
+            "interference_status": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "no_known_path",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-E-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "inferential_query": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "IQ-FIX-001",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-E-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "claim_no_interference_dependency": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": true,
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-E-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            }
+          },
+          "expected_outcome": "DERIVED",
+          "expected_claims": [
+            {
+              "schema_version": "8.0.0",
+              "claim_type": "INTERFERENCE_ESTIMAND_SUPPORT",
+              "determinability_state": "DETERMINATE",
+              "value": {
+                "schema_version": "8.0.0",
+                "knowledge_state": "PRESENT",
+                "value": "NO_KNOWN_PATH_IS_NOT_PROOF_OF_ABSENCE",
+                "conflicting_values": [],
+                "evidence_ids": [
+                  "EV-FIX-E-POSITIVE-CLAIM"
+                ],
+                "source_scope_ids": [],
+                "rationale": null,
+                "claim_scope_id": null,
+                "query_scope_id": null
+              },
+              "proof_trace": [
+                {
+                  "schema_version": "8.0.0",
+                  "step_id": "PROOF-E-POSITIVE",
+                  "theory_clause_id": "DT-E-INTERFERENCE-ESTIMAND",
+                  "rule_id": "V8-E-INTERFERENCE",
+                  "predicate_ids": [
+                    "interference_status",
+                    "inferential_query",
+                    "claim_no_interference_dependency"
+                  ]
+                }
+              ]
+            }
+          ],
+          "rationale": "Canonical positive conformance case for PRD clause E."
+        },
+        {
+          "schema_version": "8.0.0",
+          "fixture_id": "FIX-E-NEGATIVE",
+          "fixture_version": "0.1.0",
+          "role": "IMPLEMENTATION_CONFORMANCE_FIXTURES",
+          "kind": "NEGATIVE",
+          "decisive_predicate_id": "interference_status",
+          "predicate_values": {
+            "interference_status": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": false,
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-E-NEG"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "inferential_query": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "IQ-FIX-001",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-E-NEG"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "claim_no_interference_dependency": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": true,
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-E-NEG"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            }
+          },
+          "expected_outcome": "NOT_APPLICABLE",
+          "expected_claims": [],
+          "rationale": "A required precondition is false, so clause E does not emit a claim."
+        },
+        {
+          "schema_version": "8.0.0",
+          "fixture_id": "FIX-E-MINIMAL_COUNTERFACTUAL",
+          "fixture_version": "0.1.0",
+          "role": "IMPLEMENTATION_CONFORMANCE_FIXTURES",
+          "kind": "MINIMAL_COUNTERFACTUAL",
+          "decisive_predicate_id": "interference_status",
+          "predicate_values": {
+            "interference_status": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "UNKNOWN",
+              "value": null,
+              "conflicting_values": [],
+              "evidence_ids": [],
+              "source_scope_ids": [],
+              "rationale": "The decisive predicate interference_status is not resolved.",
+              "claim_scope_id": null,
+              "query_scope_id": "IQ-FIX-001"
+            },
+            "inferential_query": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "IQ-FIX-001",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-E-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "claim_no_interference_dependency": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": true,
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-E-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            }
+          },
+          "expected_outcome": "DERIVED",
+          "expected_claims": [
+            {
+              "schema_version": "8.0.0",
+              "claim_type": "INTERFERENCE_ESTIMAND_SUPPORT",
+              "determinability_state": "CONDITIONALLY_DETERMINATE",
+              "value": {
+                "schema_version": "8.0.0",
+                "knowledge_state": "UNKNOWN",
+                "value": null,
+                "conflicting_values": [],
+                "evidence_ids": [],
+                "source_scope_ids": [],
+                "rationale": "The decisive predicate interference_status is unresolved in this minimal counterfactual.",
+                "claim_scope_id": null,
+                "query_scope_id": "IQ-FIX-001"
+              },
+              "proof_trace": [
+                {
+                  "schema_version": "8.0.0",
+                  "step_id": "PROOF-E-MINIMAL_COUNTERFACTUAL",
+                  "theory_clause_id": "DT-E-INTERFERENCE-ESTIMAND",
+                  "rule_id": "V8-E-INTERFERENCE",
+                  "predicate_ids": [
+                    "interference_status",
+                    "inferential_query",
+                    "claim_no_interference_dependency"
+                  ]
+                }
+              ]
+            }
+          ],
+          "rationale": "Minimal pair for clause E; only interference_status becomes UNKNOWN."
+        }
+      ],
+      "known_gap_issue_ids": [
+        "SRR-V8-017"
+      ],
+      "known_gap_handling": [
+        {
+          "schema_version": "8.0.0",
+          "issue_id": "SRR-V8-017",
+          "affected_predicates": [
+            "interference_status"
+          ],
+          "behavior": "BLOCK_AND_EMIT_SCIENTIFIC_REVIEW_REQUIRED",
+          "rationale": "Unsupported or unknown exposure topology cannot select an effective exposure unit or change EU automatically.",
+          "required_reviewer_role": "domain_and_causal_method_reviewer"
+        }
+      ],
+      "required_reviewer_role": "external_methodological_reviewer",
+      "release_review_requirement": {
+        "schema_version": "8.0.0",
+        "issue_id": "SRR-V8-021",
+        "rationale": "External theory references, real cases, and independent scientific review are not yet available."
+      },
+      "changelog_entry": "Initial isolated PRD v8 clause E conformance mapping; no legacy rule behavior migrated."
+    },
+    {
+      "schema_version": "8.0.0",
+      "rule_id": "V8-F-ANALYTICAL-DEPENDENCE",
+      "rule_version": "0.1.0",
+      "theory_clause_id": "DT-F-ANALYTICAL-DEPENDENCE",
+      "theory_clause_version": "0.1.0",
+      "profile_id": "simple_cell_culture",
+      "profile_version": "0.1.0",
+      "execution_status": "EXECUTABLE",
+      "required_predicates": [
+        {
+          "schema_version": "8.0.0",
+          "predicate_id": "analytical_grouping",
+          "rationale": "Analysis grouping must be represented."
+        },
+        {
+          "schema_version": "8.0.0",
+          "predicate_id": "repeated_measure_status",
+          "rationale": "Repeated or correlated measurements must be represented."
+        },
+        {
+          "schema_version": "8.0.0",
+          "predicate_id": "measurement_process",
+          "rationale": "The measurement or analytical process must be identified."
+        },
+        {
+          "schema_version": "8.0.0",
+          "predicate_id": "inferential_query",
+          "rationale": "Every output and count must be scoped to an InferentialQuery."
+        }
+      ],
+      "irrelevant_predicates": [
+        {
+          "schema_version": "8.0.0",
+          "id": "experimental_unit_identity",
+          "rationale": "Analytical grouping does not modify the experimental-unit identity."
+        }
+      ],
+      "output_claim_types": [
+        "ANALYTICAL_UNIT",
+        "STATISTICAL_HANDOFF_REQUIREMENTS"
+      ],
+      "fixtures": [
+        {
+          "schema_version": "8.0.0",
+          "fixture_id": "FIX-F-POSITIVE",
+          "fixture_version": "0.1.0",
+          "role": "IMPLEMENTATION_CONFORMANCE_FIXTURES",
+          "kind": "POSITIVE",
+          "decisive_predicate_id": "repeated_measure_status",
+          "predicate_values": {
+            "analytical_grouping": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "subject_or_cluster",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-F-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "repeated_measure_status": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "repeated",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-F-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "measurement_process": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "pipeline-v1",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-F-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "inferential_query": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "IQ-FIX-001",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-F-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            }
+          },
+          "expected_outcome": "DERIVED",
+          "expected_claims": [
+            {
+              "schema_version": "8.0.0",
+              "claim_type": "ANALYTICAL_UNIT",
+              "determinability_state": "DETERMINATE",
+              "value": {
+                "schema_version": "8.0.0",
+                "knowledge_state": "PRESENT",
+                "value": "subject_or_cluster",
+                "conflicting_values": [],
+                "evidence_ids": [
+                  "EV-FIX-F-POSITIVE-CLAIM"
+                ],
+                "source_scope_ids": [],
+                "rationale": null,
+                "claim_scope_id": null,
+                "query_scope_id": null
+              },
+              "proof_trace": [
+                {
+                  "schema_version": "8.0.0",
+                  "step_id": "PROOF-F-POSITIVE",
+                  "theory_clause_id": "DT-F-ANALYTICAL-DEPENDENCE",
+                  "rule_id": "V8-F-ANALYTICAL-DEPENDENCE",
+                  "predicate_ids": [
+                    "analytical_grouping",
+                    "repeated_measure_status",
+                    "measurement_process",
+                    "inferential_query"
+                  ]
+                }
+              ]
+            },
+            {
+              "schema_version": "8.0.0",
+              "claim_type": "STATISTICAL_HANDOFF_REQUIREMENTS",
+              "determinability_state": "DETERMINATE",
+              "value": {
+                "schema_version": "8.0.0",
+                "knowledge_state": "PRESENT",
+                "value": "HANDOFF_ONLY",
+                "conflicting_values": [],
+                "evidence_ids": [
+                  "EV-FIX-F-POSITIVE-CLAIM"
+                ],
+                "source_scope_ids": [],
+                "rationale": null,
+                "claim_scope_id": null,
+                "query_scope_id": null
+              },
+              "proof_trace": [
+                {
+                  "schema_version": "8.0.0",
+                  "step_id": "PROOF-F-POSITIVE",
+                  "theory_clause_id": "DT-F-ANALYTICAL-DEPENDENCE",
+                  "rule_id": "V8-F-ANALYTICAL-DEPENDENCE",
+                  "predicate_ids": [
+                    "analytical_grouping",
+                    "repeated_measure_status",
+                    "measurement_process",
+                    "inferential_query"
+                  ]
+                }
+              ]
+            }
+          ],
+          "rationale": "Canonical positive conformance case for PRD clause F."
+        },
+        {
+          "schema_version": "8.0.0",
+          "fixture_id": "FIX-F-NEGATIVE",
+          "fixture_version": "0.1.0",
+          "role": "IMPLEMENTATION_CONFORMANCE_FIXTURES",
+          "kind": "NEGATIVE",
+          "decisive_predicate_id": "repeated_measure_status",
+          "predicate_values": {
+            "analytical_grouping": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": false,
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-F-NEG"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "repeated_measure_status": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "repeated",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-F-NEG"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "measurement_process": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "pipeline-v1",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-F-NEG"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "inferential_query": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "IQ-FIX-001",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-F-NEG"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            }
+          },
+          "expected_outcome": "NOT_APPLICABLE",
+          "expected_claims": [],
+          "rationale": "A required precondition is false, so clause F does not emit a claim."
+        },
+        {
+          "schema_version": "8.0.0",
+          "fixture_id": "FIX-F-MINIMAL_COUNTERFACTUAL",
+          "fixture_version": "0.1.0",
+          "role": "IMPLEMENTATION_CONFORMANCE_FIXTURES",
+          "kind": "MINIMAL_COUNTERFACTUAL",
+          "decisive_predicate_id": "repeated_measure_status",
+          "predicate_values": {
+            "analytical_grouping": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "subject_or_cluster",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-F-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "repeated_measure_status": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "UNKNOWN",
+              "value": null,
+              "conflicting_values": [],
+              "evidence_ids": [],
+              "source_scope_ids": [],
+              "rationale": "The decisive predicate repeated_measure_status is not resolved.",
+              "claim_scope_id": null,
+              "query_scope_id": "IQ-FIX-001"
+            },
+            "measurement_process": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "pipeline-v1",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-F-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "inferential_query": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "IQ-FIX-001",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-F-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            }
+          },
+          "expected_outcome": "DERIVED",
+          "expected_claims": [
+            {
+              "schema_version": "8.0.0",
+              "claim_type": "ANALYTICAL_UNIT",
+              "determinability_state": "INSUFFICIENT_INFORMATION",
+              "value": {
+                "schema_version": "8.0.0",
+                "knowledge_state": "UNKNOWN",
+                "value": null,
+                "conflicting_values": [],
+                "evidence_ids": [],
+                "source_scope_ids": [],
+                "rationale": "The decisive predicate repeated_measure_status is unresolved in this minimal counterfactual.",
+                "claim_scope_id": null,
+                "query_scope_id": "IQ-FIX-001"
+              },
+              "proof_trace": [
+                {
+                  "schema_version": "8.0.0",
+                  "step_id": "PROOF-F-MINIMAL_COUNTERFACTUAL",
+                  "theory_clause_id": "DT-F-ANALYTICAL-DEPENDENCE",
+                  "rule_id": "V8-F-ANALYTICAL-DEPENDENCE",
+                  "predicate_ids": [
+                    "analytical_grouping",
+                    "repeated_measure_status",
+                    "measurement_process",
+                    "inferential_query"
+                  ]
+                }
+              ]
+            },
+            {
+              "schema_version": "8.0.0",
+              "claim_type": "STATISTICAL_HANDOFF_REQUIREMENTS",
+              "determinability_state": "INSUFFICIENT_INFORMATION",
+              "value": {
+                "schema_version": "8.0.0",
+                "knowledge_state": "UNKNOWN",
+                "value": null,
+                "conflicting_values": [],
+                "evidence_ids": [],
+                "source_scope_ids": [],
+                "rationale": "The decisive predicate repeated_measure_status is unresolved in this minimal counterfactual.",
+                "claim_scope_id": null,
+                "query_scope_id": "IQ-FIX-001"
+              },
+              "proof_trace": [
+                {
+                  "schema_version": "8.0.0",
+                  "step_id": "PROOF-F-MINIMAL_COUNTERFACTUAL",
+                  "theory_clause_id": "DT-F-ANALYTICAL-DEPENDENCE",
+                  "rule_id": "V8-F-ANALYTICAL-DEPENDENCE",
+                  "predicate_ids": [
+                    "analytical_grouping",
+                    "repeated_measure_status",
+                    "measurement_process",
+                    "inferential_query"
+                  ]
+                }
+              ]
+            }
+          ],
+          "rationale": "Minimal pair for clause F; only repeated_measure_status becomes UNKNOWN."
+        }
+      ],
+      "known_gap_issue_ids": [],
+      "known_gap_handling": [],
+      "required_reviewer_role": "external_methodological_reviewer",
+      "release_review_requirement": {
+        "schema_version": "8.0.0",
+        "issue_id": "SRR-V8-021",
+        "rationale": "External theory references, real cases, and independent scientific review are not yet available."
+      },
+      "changelog_entry": "Initial isolated PRD v8 clause F conformance mapping; no legacy rule behavior migrated."
+    },
+    {
+      "schema_version": "8.0.0",
+      "rule_id": "V8-G-INFERENCE-SCOPE",
+      "rule_version": "0.1.0",
+      "theory_clause_id": "DT-G-INFERENCE-SCOPE",
+      "theory_clause_version": "0.1.0",
+      "profile_id": "simple_cell_culture",
+      "profile_version": "0.1.0",
+      "execution_status": "EXECUTABLE",
+      "required_predicates": [
+        {
+          "schema_version": "8.0.0",
+          "predicate_id": "inferential_query",
+          "rationale": "Every output and count must be scoped to an InferentialQuery."
+        },
+        {
+          "schema_version": "8.0.0",
+          "predicate_id": "source_diversity",
+          "rationale": "Confirmed source diversity qualifies generalization."
+        },
+        {
+          "schema_version": "8.0.0",
+          "predicate_id": "protocol_scope",
+          "rationale": "Protocol scope bounds inference."
+        },
+        {
+          "schema_version": "8.0.0",
+          "predicate_id": "external_replication",
+          "rationale": "External replication status must be explicit."
+        },
+        {
+          "schema_version": "8.0.0",
+          "predicate_id": "exposure_interference",
+          "rationale": "Exposure and interference consequences must be retained."
+        },
+        {
+          "schema_version": "8.0.0",
+          "predicate_id": "profile_coverage",
+          "rationale": "Profile coverage and known gaps must be declared."
+        }
+      ],
+      "irrelevant_predicates": [
+        {
+          "schema_version": "8.0.0",
+          "id": "raw_numerosity",
+          "rationale": "Inference scope is not inferred from numerosity alone."
+        }
+      ],
+      "output_claim_types": [
+        "INFERENCE_SCOPE"
+      ],
+      "fixtures": [
+        {
+          "schema_version": "8.0.0",
+          "fixture_id": "FIX-G-POSITIVE",
+          "fixture_version": "0.1.0",
+          "role": "IMPLEMENTATION_CONFORMANCE_FIXTURES",
+          "kind": "POSITIVE",
+          "decisive_predicate_id": "source_diversity",
+          "predicate_values": {
+            "inferential_query": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "IQ-FIX-001",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-G-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "source_diversity": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "single_source",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-G-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "protocol_scope": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "single_protocol",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-G-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "external_replication": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": false,
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-G-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "exposure_interference": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "possible",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-G-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "profile_coverage": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "covered_with_known_gaps",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-G-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            }
+          },
+          "expected_outcome": "DERIVED",
+          "expected_claims": [
+            {
+              "schema_version": "8.0.0",
+              "claim_type": "INFERENCE_SCOPE",
+              "determinability_state": "DETERMINATE",
+              "value": {
+                "schema_version": "8.0.0",
+                "knowledge_state": "PRESENT",
+                "value": "LIMITED_TO_DECLARED_QUERY_PROTOCOL_AND_SOURCE_SCOPE",
+                "conflicting_values": [],
+                "evidence_ids": [
+                  "EV-FIX-G-POSITIVE-CLAIM"
+                ],
+                "source_scope_ids": [],
+                "rationale": null,
+                "claim_scope_id": null,
+                "query_scope_id": null
+              },
+              "proof_trace": [
+                {
+                  "schema_version": "8.0.0",
+                  "step_id": "PROOF-G-POSITIVE",
+                  "theory_clause_id": "DT-G-INFERENCE-SCOPE",
+                  "rule_id": "V8-G-INFERENCE-SCOPE",
+                  "predicate_ids": [
+                    "inferential_query",
+                    "source_diversity",
+                    "protocol_scope",
+                    "external_replication",
+                    "exposure_interference",
+                    "profile_coverage"
+                  ]
+                }
+              ]
+            }
+          ],
+          "rationale": "Canonical positive conformance case for PRD clause G."
+        },
+        {
+          "schema_version": "8.0.0",
+          "fixture_id": "FIX-G-NEGATIVE",
+          "fixture_version": "0.1.0",
+          "role": "IMPLEMENTATION_CONFORMANCE_FIXTURES",
+          "kind": "NEGATIVE",
+          "decisive_predicate_id": "source_diversity",
+          "predicate_values": {
+            "inferential_query": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": false,
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-G-NEG"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "source_diversity": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "single_source",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-G-NEG"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "protocol_scope": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "single_protocol",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-G-NEG"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "external_replication": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": false,
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-G-NEG"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "exposure_interference": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "possible",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-G-NEG"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "profile_coverage": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "covered_with_known_gaps",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-G-NEG"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            }
+          },
+          "expected_outcome": "NOT_APPLICABLE",
+          "expected_claims": [],
+          "rationale": "A required precondition is false, so clause G does not emit a claim."
+        },
+        {
+          "schema_version": "8.0.0",
+          "fixture_id": "FIX-G-MINIMAL_COUNTERFACTUAL",
+          "fixture_version": "0.1.0",
+          "role": "IMPLEMENTATION_CONFORMANCE_FIXTURES",
+          "kind": "MINIMAL_COUNTERFACTUAL",
+          "decisive_predicate_id": "source_diversity",
+          "predicate_values": {
+            "inferential_query": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "IQ-FIX-001",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-G-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "source_diversity": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "UNKNOWN",
+              "value": null,
+              "conflicting_values": [],
+              "evidence_ids": [],
+              "source_scope_ids": [],
+              "rationale": "The decisive predicate source_diversity is not resolved.",
+              "claim_scope_id": null,
+              "query_scope_id": "IQ-FIX-001"
+            },
+            "protocol_scope": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "single_protocol",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-G-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "external_replication": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": false,
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-G-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "exposure_interference": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "possible",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-G-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            },
+            "profile_coverage": {
+              "schema_version": "8.0.0",
+              "knowledge_state": "PRESENT",
+              "value": "covered_with_known_gaps",
+              "conflicting_values": [],
+              "evidence_ids": [
+                "EV-FIX-G-PAIR"
+              ],
+              "source_scope_ids": [],
+              "rationale": null,
+              "claim_scope_id": null,
+              "query_scope_id": null
+            }
+          },
+          "expected_outcome": "DERIVED",
+          "expected_claims": [
+            {
+              "schema_version": "8.0.0",
+              "claim_type": "INFERENCE_SCOPE",
+              "determinability_state": "INSUFFICIENT_INFORMATION",
+              "value": {
+                "schema_version": "8.0.0",
+                "knowledge_state": "UNKNOWN",
+                "value": null,
+                "conflicting_values": [],
+                "evidence_ids": [],
+                "source_scope_ids": [],
+                "rationale": "The decisive predicate source_diversity is unresolved in this minimal counterfactual.",
+                "claim_scope_id": null,
+                "query_scope_id": "IQ-FIX-001"
+              },
+              "proof_trace": [
+                {
+                  "schema_version": "8.0.0",
+                  "step_id": "PROOF-G-MINIMAL_COUNTERFACTUAL",
+                  "theory_clause_id": "DT-G-INFERENCE-SCOPE",
+                  "rule_id": "V8-G-INFERENCE-SCOPE",
+                  "predicate_ids": [
+                    "inferential_query",
+                    "source_diversity",
+                    "protocol_scope",
+                    "external_replication",
+                    "exposure_interference",
+                    "profile_coverage"
+                  ]
+                }
+              ]
+            }
+          ],
+          "rationale": "Minimal pair for clause G; only source_diversity becomes UNKNOWN."
+        }
+      ],
+      "known_gap_issue_ids": [],
+      "known_gap_handling": [],
+      "required_reviewer_role": "external_methodological_reviewer",
+      "release_review_requirement": {
+        "schema_version": "8.0.0",
+        "issue_id": "SRR-V8-021",
+        "rationale": "External theory references, real cases, and independent scientific review are not yet available."
+      },
+      "changelog_entry": "Initial isolated PRD v8 clause G conformance mapping; no legacy rule behavior migrated."
+    }
+  ],
+  "scientific_review_requirements": [
+    {
+      "schema_version": "8.0.0",
+      "issue_id": "SRR-V8-012",
+      "rationale": "Partial graph-scoring weights and tolerances remain unavailable."
+    },
+    {
+      "schema_version": "8.0.0",
+      "issue_id": "SRR-V8-014",
+      "rationale": "Report aggregation precedence remains unavailable."
+    },
+    {
+      "schema_version": "8.0.0",
+      "issue_id": "SRR-V8-017",
+      "rationale": "Unknown interference topology cannot select EU or exposure unit automatically."
+    },
+    {
+      "schema_version": "8.0.0",
+      "issue_id": "SRR-V8-021",
+      "rationale": "Reviewed theory references, DRIVER snapshot, real cases, and Derivation Gold are absent."
+    },
+    {
+      "schema_version": "8.0.0",
+      "issue_id": "SRR-V8-023",
+      "rationale": "Positive payload contracts for non-determinate states remain under review."
+    },
+    {
+      "schema_version": "8.0.0",
+      "issue_id": "SRR-V8-024",
+      "rationale": "RuleChallenge outcome-dependent payload and change-versus-migration semantics remain under review."
+    }
+  ],
+  "declared_checksum": "7971c50868f36258fde9c283bf2eda7f64782a759c2c7a4882a57a933664c3c3"
+}
