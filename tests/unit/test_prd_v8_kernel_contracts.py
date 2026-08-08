@@ -77,6 +77,41 @@ def _derived_claim(*, claim_id: str = "CLAIM-EU-001", query_id: str = "IQ-001") 
         theory_clauses=("DT-EU-01",),
         ruleset_version="ntruth-core-0.3.0",
         rule_trace=("EU-ALLOC-001",),
+        proof_trace=(
+            claims.ProofTraceStep(
+                step_id="PROOF-001",
+                predicate_references=(
+                    claims.PredicateProofReference(
+                        predicate_id="assignment_unit",
+                        predicate_value=_knowledge().KnowledgeValue[bool](
+                            knowledge_state=_knowledge().KnowledgeState.PRESENT,
+                            value=True,
+                            evidence_ids=("EV-PRED-001",),
+                        ),
+                    ),
+                    claims.PredicateProofReference(
+                        predicate_id="assignment_separability",
+                        predicate_value=_knowledge().KnowledgeValue[bool](
+                            knowledge_state=_knowledge().KnowledgeState.PRESENT,
+                            value=True,
+                            evidence_ids=("EV-PRED-002",),
+                        ),
+                    ),
+                ),
+                theory_clause_id="DT-EU-01",
+                rule_id="EU-ALLOC-001",
+            ),
+        ),
+        profile_coverage=claims.ProfileCoverageReference(
+            statement_id="PCS-001",
+            profile_id="simple_cell_culture",
+            profile_version="0.1.0",
+            predicate_closure_argument_id="PCA-SCC-001",
+            contract_review=claims.ScientificReviewRequirement(
+                issue_id="SRR-V8-008",
+                rationale="ProfileCoverageStatement shape requires Task 4 review.",
+            ),
+        ),
     )
 
 
@@ -251,6 +286,11 @@ def test_source_evidence_and_confirmation_preserve_source_to_reality_context() -
         ),
         evidence_refs=(evidence.evidence_id,),
         scope_id="PRED-ASSIGN-SEPARABLE",
+        confirmed_value=_knowledge().KnowledgeValue[bool](
+            knowledge_state=_knowledge().KnowledgeState.PRESENT,
+            value=True,
+            evidence_ids=(evidence.evidence_id,),
+        ),
         actor_role="experiment_owner",
         review_independent=False,
         sensitivity_record_ids=("SENS-001",),
@@ -272,6 +312,11 @@ def test_confirmation_cannot_treat_rule_derivation_as_factual_authority() -> Non
             support=descriptor,
             evidence_refs=("EV-RULE-001",),
             scope_id="PRED-ASSIGN-SEPARABLE",
+            confirmed_value=_knowledge().KnowledgeValue[bool](
+                knowledge_state=_knowledge().KnowledgeState.PRESENT,
+                value=True,
+                evidence_ids=("EV-RULE-001",),
+            ),
             actor_role="rule_engine",
             review_independent=False,
             created_at=datetime(2026, 8, 8, 12, 0, tzinfo=UTC),
@@ -296,7 +341,9 @@ def test_sensitivity_rule_challenge_and_ledger_are_append_only() -> None:
         challenge_id="CHAL-001",
         derived_claim_id="CLAIM-N-001",
         frozen_claim_checksum="a" * 64,
+        theory_version="derivation-theory-0.1.0",
         theory_clause_ids=("DT-EU-01",),
+        ruleset_version="ntruth-core-0.3.0",
         rule_ids=("EU-ALLOC-001",),
         rationale="The assignment-separability premise is not supported.",
         actor_role="domain_expert",

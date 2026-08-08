@@ -40,6 +40,8 @@ def test_v7_null_uses_only_explicit_field_specific_policy() -> None:
         source_contract="ntruth-v7-unit-assessment",
         null_semantics=knowledge.KnowledgeState.UNKNOWN,
         migration_rule_id="MIG-V7-EU-NULL-UNKNOWN",
+        rationale="The v7 field does not preserve enough information to resolve the value.",
+        claim_scope_id="CLAIM-EU-001",
     )
     assert result.requires_scientific_review is False
     assert result.value is not None

@@ -8,8 +8,8 @@ from typing import Self
 from pydantic import Field, JsonValue, model_validator
 
 from ntruth.schemas.kernel import KernelModel, NonBlankStr
-from ntruth.schemas.knowledge import KnowledgeValue
-from ntruth.schemas.support import SupportGrade
+from ntruth.schemas.knowledge import KnowledgeState, KnowledgeValue
+from ntruth.schemas.support import ScientificReviewStatus, SupportGrade
 
 
 class DeterminabilityState(StrEnum):
@@ -25,6 +25,47 @@ class DeterminabilityState(StrEnum):
 class IrrelevantPredicate(KernelModel):
     id: NonBlankStr
     rationale: NonBlankStr
+
+
+class ScientificReviewRequirement(KernelModel):
+    status: ScientificReviewStatus = ScientificReviewStatus.SCIENTIFIC_REVIEW_REQUIRED
+    issue_id: NonBlankStr
+    rationale: NonBlankStr
+
+
+class ProfileCoverageReference(KernelModel):
+    """Pinned reference only; Task 4 must close the inconsistent statement shape."""
+
+    statement_id: NonBlankStr
+    profile_id: NonBlankStr
+    profile_version: NonBlankStr
+    predicate_closure_argument_id: NonBlankStr
+    contract_review: ScientificReviewRequirement
+
+    @model_validator(mode="after")
+    def _known_profile_contract_gap(self) -> ProfileCoverageReference:
+        if self.contract_review.issue_id != "SRR-V8-008":
+            raise ValueError("ProfileCoverageReference must retain blocker SRR-V8-008")
+        return self
+
+
+class PredicateProofReference(KernelModel):
+    predicate_id: NonBlankStr
+    predicate_value: KnowledgeValue[JsonValue]
+
+
+class ProofTraceStep(KernelModel):
+    step_id: NonBlankStr
+    predicate_references: tuple[PredicateProofReference, ...] = Field(min_length=1)
+    theory_clause_id: NonBlankStr
+    rule_id: NonBlankStr
+
+    @model_validator(mode="after")
+    def _unique_predicate_references(self) -> ProofTraceStep:
+        predicate_ids = [reference.predicate_id for reference in self.predicate_references]
+        if len(set(predicate_ids)) != len(predicate_ids):
+            raise ValueError("proof step contains duplicate predicate references")
+        return self
 
 
 class DerivedClaim(KernelModel):
@@ -44,6 +85,9 @@ class DerivedClaim(KernelModel):
     theory_clauses: tuple[NonBlankStr, ...] = Field(min_length=1)
     ruleset_version: NonBlankStr
     rule_trace: tuple[NonBlankStr, ...] = Field(min_length=1)
+    proof_trace: tuple[ProofTraceStep, ...] = Field(min_length=1)
+    profile_coverage: ProfileCoverageReference
+    state_contract_review: ScientificReviewRequirement | None = None
 
     @model_validator(mode="after")
     def _predicate_and_trace_integrity(self) -> DerivedClaim:
@@ -62,6 +106,59 @@ class DerivedClaim(KernelModel):
             raise ValueError("theory_clauses contains duplicates")
         if len(set(self.rule_trace)) != len(self.rule_trace):
             raise ValueError("rule_trace contains duplicates")
+        proof_ids = [step.step_id for step in self.proof_trace]
+        if len(set(proof_ids)) != len(proof_ids):
+            raise ValueError("proof_trace contains duplicate step_id values")
+        traced_predicates = {
+            reference.predicate_id
+            for step in self.proof_trace
+            for reference in step.predicate_references
+        }
+        missing_proof = required - traced_predicates
+        if missing_proof:
+            raise ValueError(
+                f"proof_trace does not cover required predicates: {sorted(missing_proof)}"
+            )
+        for step in self.proof_trace:
+            if step.theory_clause_id not in self.theory_clauses:
+                raise ValueError("proof_trace references an undeclared theory clause")
+            if step.rule_id not in self.rule_trace:
+                raise ValueError("proof_trace references an undeclared rule")
+
+        state = self.determinability_state
+        knowledge_state = self.value.knowledge_state
+        determinate_value_states = {
+            KnowledgeState.PRESENT,
+            KnowledgeState.ABSENT_EXPLICIT,
+            KnowledgeState.NOT_APPLICABLE,
+        }
+        if state is DeterminabilityState.DETERMINATE:
+            if knowledge_state not in determinate_value_states:
+                raise ValueError("DETERMINATE forbids this scientific value state")
+            required_proof_states = {
+                reference.predicate_value.knowledge_state
+                for step in self.proof_trace
+                for reference in step.predicate_references
+                if reference.predicate_id in required
+            }
+            if not required_proof_states.issubset(determinate_value_states):
+                raise ValueError("DETERMINATE requires resolved required predicates in proof_trace")
+        elif self.state_contract_review is None:
+            raise ValueError(
+                f"{state.value} requires SCIENTIFIC_REVIEW_REQUIRED until Task 4 closes its "
+                "state/output payload contract"
+            )
+
+        if (
+            state
+            in {
+                DeterminabilityState.OUT_OF_SCOPE,
+                DeterminabilityState.INVALID_GRAPH,
+                DeterminabilityState.CONFLICTING_INFORMATION,
+            }
+            and knowledge_state is KnowledgeState.PRESENT
+        ):
+            raise ValueError(f"{state.value} forbids this scientific value state")
         return self
 
 
@@ -85,4 +182,8 @@ __all__ = [
     "DerivedClaimSet",
     "DeterminabilityState",
     "IrrelevantPredicate",
+    "PredicateProofReference",
+    "ProfileCoverageReference",
+    "ProofTraceStep",
+    "ScientificReviewRequirement",
 ]

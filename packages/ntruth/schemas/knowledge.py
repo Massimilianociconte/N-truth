@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping, Sequence
 from enum import StrEnum
 
 from pydantic import model_validator
@@ -29,6 +30,47 @@ def _blank_or_empty(value: object) -> bool:
     return False
 
 
+def _ambiguous_scientific_path(value: object, path: str = "$") -> str | None:
+    if value is None:
+        return path
+    if isinstance(value, str):
+        return path if not value.strip() else None
+    if isinstance(value, Mapping):
+        if not value:
+            return path
+        for key, item in value.items():
+            if isinstance(key, str) and not key.strip():
+                return f"{path}.<blank-key>"
+            issue = _ambiguous_scientific_path(item, f"{path}.{key}")
+            if issue is not None:
+                return issue
+        return None
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        if not value:
+            return path
+        for index, item in enumerate(value):
+            issue = _ambiguous_scientific_path(item, f"{path}[{index}]")
+            if issue is not None:
+                return issue
+        return None
+    if isinstance(value, (set, frozenset)):
+        if not value:
+            return path
+        for index, item in enumerate(value):
+            issue = _ambiguous_scientific_path(item, f"{path}[{index}]")
+            if issue is not None:
+                return issue
+    return None
+
+
+def ensure_unambiguous_scientific_payload(value: object) -> None:
+    """Reject any nested bare null, blank string or empty scientific container."""
+
+    issue = _ambiguous_scientific_path(value)
+    if issue is not None:
+        raise ValueError(f"ambiguous scientific payload at {issue}")
+
+
 def _canonical(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
 
@@ -49,8 +91,7 @@ class KnowledgeValue[T](KernelModel):
     def _open_world_invariants(self) -> KnowledgeValue[T]:
         state = self.knowledge_state
         if state is KnowledgeState.PRESENT:
-            if _blank_or_empty(self.value):
-                raise ValueError("PRESENT requires a non-null, non-blank, non-empty value")
+            ensure_unambiguous_scientific_payload(self.value)
             if not self.evidence_ids:
                 raise ValueError("PRESENT requires evidence_ids")
             if self.conflicting_values:
@@ -65,8 +106,8 @@ class KnowledgeValue[T](KernelModel):
                 raise ValueError("CONFLICTING retains alternatives, not one preferred value")
             if len(self.conflicting_values) < 2:
                 raise ValueError("CONFLICTING requires at least two retained values")
-            if any(_blank_or_empty(item) for item in self.conflicting_values):
-                raise ValueError("CONFLICTING values must be non-blank and non-empty")
+            for item in self.conflicting_values:
+                ensure_unambiguous_scientific_payload(item)
             if len({_canonical(item) for item in self.conflicting_values}) < 2:
                 raise ValueError("CONFLICTING requires at least two distinct values")
             if not self.evidence_ids:
@@ -80,6 +121,13 @@ class KnowledgeValue[T](KernelModel):
 
         if state is KnowledgeState.ABSENT_EXPLICIT and not self.evidence_ids:
             raise ValueError("ABSENT_EXPLICIT requires evidence_ids")
+        if state is KnowledgeState.NOT_REPORTED and not self.source_scope_ids:
+            raise ValueError("NOT_REPORTED requires source_scope_ids")
+        if state is KnowledgeState.UNKNOWN:
+            if self.rationale is None:
+                raise ValueError("UNKNOWN requires rationale")
+            if self.claim_scope_id is None and self.query_scope_id is None:
+                raise ValueError("UNKNOWN requires claim_scope_id or query_scope_id")
         if state is KnowledgeState.NOT_APPLICABLE:
             if self.rationale is None:
                 raise ValueError("NOT_APPLICABLE requires rationale")
@@ -90,4 +138,9 @@ class KnowledgeValue[T](KernelModel):
 
 ScientificKnowledgeValue = KnowledgeValue[object]
 
-__all__ = ["KnowledgeState", "KnowledgeValue", "ScientificKnowledgeValue"]
+__all__ = [
+    "KnowledgeState",
+    "KnowledgeValue",
+    "ScientificKnowledgeValue",
+    "ensure_unambiguous_scientific_payload",
+]

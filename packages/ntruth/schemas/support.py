@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Any
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, JsonValue, field_validator, model_validator
 
 from ntruth.schemas.authority import AuthorityType
 from ntruth.schemas.kernel import KernelModel, NonBlankStr
+from ntruth.schemas.knowledge import KnowledgeValue, ensure_unambiguous_scientific_payload
 
 SUPPORT_GRADE_VOCABULARY_SECTION_0_4 = "ntruth-prd-v8.0-section-0.4"
 SUPPORT_GRADE_VOCABULARY_APPENDIX_R_1 = "ntruth-prd-v8.0-appendix-r.1"
@@ -98,6 +98,11 @@ class RuleChallengeStatus(StrEnum):
     REJECTED = "REJECTED"
 
 
+class RuleChallengeDecisionOutcome(StrEnum):
+    ACCEPTED = "ACCEPTED"
+    REJECTED = "REJECTED"
+
+
 class SourceClassRef(KernelModel):
     """Registry-pinned source-class token; the PRD vocabulary is not yet closed."""
 
@@ -164,21 +169,12 @@ def _require_timezone(value: datetime) -> datetime:
     return value
 
 
-def _blank_or_empty(value: object) -> bool:
-    if value is None:
-        return True
-    if isinstance(value, str):
-        return not value.strip()
-    if isinstance(value, (tuple, list, dict, set, frozenset)):
-        return not value
-    return False
-
-
 class ConfirmationEvent(KernelModel):
     event_id: NonBlankStr
     support: SupportDescriptor
     evidence_refs: tuple[NonBlankStr, ...] = Field(min_length=1)
     scope_id: NonBlankStr
+    confirmed_value: KnowledgeValue[JsonValue]
     actor_role: NonBlankStr
     review_independent: bool
     sensitivity_record_ids: tuple[NonBlankStr, ...] = ()
@@ -198,6 +194,8 @@ class ConfirmationEvent(KernelModel):
             raise ValueError(
                 f"{self.support.authority_type.value} cannot be factual confirmation authority"
             )
+        if not set(self.confirmed_value.evidence_ids).issubset(self.evidence_refs):
+            raise ValueError("confirmed_value evidence must be declared in evidence_refs")
         return self
 
 
@@ -206,18 +204,18 @@ class SensitivityRecord(KernelModel):
     derived_claim_id: NonBlankStr
     decisive_predicate_id: NonBlankStr
     current_support_grade: SupportGrade
-    current_value: Any
-    counterfactual_value: Any
-    current_output: dict[str, Any]
-    counterfactual_output: dict[str, Any]
+    current_value: JsonValue
+    counterfactual_value: JsonValue
+    current_output: dict[str, JsonValue]
+    counterfactual_output: dict[str, JsonValue]
     interpretation: NonBlankStr
 
     @model_validator(mode="after")
     def _material_counterfactual(self) -> SensitivityRecord:
-        if _blank_or_empty(self.current_value) or _blank_or_empty(self.counterfactual_value):
-            raise ValueError("sensitivity values cannot be null, blank or empty")
-        if not self.current_output or not self.counterfactual_output:
-            raise ValueError("sensitivity outputs cannot be empty")
+        ensure_unambiguous_scientific_payload(self.current_value)
+        ensure_unambiguous_scientific_payload(self.counterfactual_value)
+        ensure_unambiguous_scientific_payload(self.current_output)
+        ensure_unambiguous_scientific_payload(self.counterfactual_output)
         if self.current_value == self.counterfactual_value:
             raise ValueError("sensitivity requires a distinct counterfactual value")
         return self
@@ -227,13 +225,22 @@ class RuleChallenge(KernelModel):
     challenge_id: NonBlankStr
     derived_claim_id: NonBlankStr
     frozen_claim_checksum: str = Field(pattern=r"^[0-9a-f]{64}$")
+    theory_version: NonBlankStr
     theory_clause_ids: tuple[NonBlankStr, ...] = ()
+    ruleset_version: NonBlankStr
     rule_ids: tuple[NonBlankStr, ...] = ()
     rationale: NonBlankStr
     actor_role: NonBlankStr
     status: RuleChallengeStatus = RuleChallengeStatus.OPEN
     review_status: ScientificReviewStatus = ScientificReviewStatus.SCIENTIFIC_REVIEW_REQUIRED
     created_at: datetime
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def _born_open(cls, value: object) -> object:
+        if value not in {RuleChallengeStatus.OPEN, RuleChallengeStatus.OPEN.value}:
+            raise ValueError("RuleChallenge must be born OPEN")
+        return value
 
     @field_validator("created_at")
     @classmethod
@@ -247,31 +254,118 @@ class RuleChallenge(KernelModel):
         return self
 
 
+class RuleChallengeDecision(KernelModel):
+    decision_id: NonBlankStr
+    challenge_id: NonBlankStr
+    outcome: RuleChallengeDecisionOutcome
+    reviewer_role: NonBlankStr
+    rationale: NonBlankStr
+    resulting_theory_version: NonBlankStr
+    resulting_ruleset_version: NonBlankStr
+    rederivation_record_id: NonBlankStr
+    created_at: datetime
+
+    @field_validator("created_at")
+    @classmethod
+    def _timezone_aware(cls, value: datetime) -> datetime:
+        return _require_timezone(value)
+
+
 class EpistemicEventLedger(KernelModel):
     """Immutable event collection; append operations return a new ledger."""
 
     ledger_id: NonBlankStr
+    evidence_records: tuple[EvidenceRecord, ...] = ()
     confirmation_events: tuple[ConfirmationEvent, ...] = ()
     sensitivity_records: tuple[SensitivityRecord, ...] = ()
     rule_challenges: tuple[RuleChallenge, ...] = ()
+    rule_challenge_decisions: tuple[RuleChallengeDecision, ...] = ()
 
-    def append_confirmation(self, event: ConfirmationEvent) -> EpistemicEventLedger:
-        self._reject_duplicate(event.event_id)
-        return self.model_copy(update={"confirmation_events": (*self.confirmation_events, event)})
-
-    def append_sensitivity(self, record: SensitivityRecord) -> EpistemicEventLedger:
-        self._reject_duplicate(record.sensitivity_id)
-        return self.model_copy(update={"sensitivity_records": (*self.sensitivity_records, record)})
-
-    def append_rule_challenge(self, challenge: RuleChallenge) -> EpistemicEventLedger:
-        self._reject_duplicate(challenge.challenge_id)
-        return self.model_copy(update={"rule_challenges": (*self.rule_challenges, challenge)})
-
-    def _reject_duplicate(self, identifier: str) -> None:
-        identifiers = {
+    @model_validator(mode="after")
+    def _persisted_ledger_invariants(self) -> EpistemicEventLedger:
+        identifiers = [
+            *(record.evidence_id for record in self.evidence_records),
             *(event.event_id for event in self.confirmation_events),
             *(record.sensitivity_id for record in self.sensitivity_records),
             *(challenge.challenge_id for challenge in self.rule_challenges),
+            *(decision.decision_id for decision in self.rule_challenge_decisions),
+        ]
+        if len(set(identifiers)) != len(identifiers):
+            raise ValueError("ledger object IDs must be globally unique")
+
+        evidence_by_id = {record.evidence_id: record for record in self.evidence_records}
+        forbidden = {EvidenceTypeV8.MODEL_INFERENCE, EvidenceTypeV8.RULE_DERIVATION}
+        for event in self.confirmation_events:
+            missing = set(event.evidence_refs) - evidence_by_id.keys()
+            if missing:
+                raise ValueError(f"confirmation references unknown evidence IDs: {sorted(missing)}")
+            prohibited = [
+                evidence_by_id[evidence_id].evidence_type
+                for evidence_id in event.evidence_refs
+                if evidence_by_id[evidence_id].evidence_type in forbidden
+            ]
+            if prohibited:
+                raise ValueError(f"{prohibited[0].value} cannot be factual confirmation evidence")
+
+        challenge_ids = {challenge.challenge_id for challenge in self.rule_challenges}
+        decided_challenges: set[str] = set()
+        for decision in self.rule_challenge_decisions:
+            if decision.challenge_id not in challenge_ids:
+                raise ValueError(
+                    f"decision {decision.decision_id} references unknown RuleChallenge "
+                    f"{decision.challenge_id}"
+                )
+            if decision.challenge_id in decided_challenges:
+                raise ValueError(f"RuleChallenge {decision.challenge_id} already has a decision")
+            decided_challenges.add(decision.challenge_id)
+        return self
+
+    def append_evidence(self, record: EvidenceRecord) -> EpistemicEventLedger:
+        self._reject_duplicate(record.evidence_id)
+        return self._copy_with(evidence_records=(*self.evidence_records, record))
+
+    def append_confirmation(self, event: ConfirmationEvent) -> EpistemicEventLedger:
+        self._reject_duplicate(event.event_id)
+        return self._copy_with(confirmation_events=(*self.confirmation_events, event))
+
+    def append_sensitivity(self, record: SensitivityRecord) -> EpistemicEventLedger:
+        self._reject_duplicate(record.sensitivity_id)
+        return self._copy_with(sensitivity_records=(*self.sensitivity_records, record))
+
+    def append_rule_challenge(self, challenge: RuleChallenge) -> EpistemicEventLedger:
+        self._reject_duplicate(challenge.challenge_id)
+        return self._copy_with(rule_challenges=(*self.rule_challenges, challenge))
+
+    def append_rule_challenge_decision(
+        self, decision: RuleChallengeDecision
+    ) -> EpistemicEventLedger:
+        self._reject_duplicate(decision.decision_id)
+        if any(
+            existing.challenge_id == decision.challenge_id
+            for existing in self.rule_challenge_decisions
+        ):
+            raise ValueError(f"RuleChallenge {decision.challenge_id} already has a decision")
+        return self._copy_with(rule_challenge_decisions=(*self.rule_challenge_decisions, decision))
+
+    def _copy_with(self, **updates: object) -> EpistemicEventLedger:
+        values = {
+            "ledger_id": self.ledger_id,
+            "evidence_records": self.evidence_records,
+            "confirmation_events": self.confirmation_events,
+            "sensitivity_records": self.sensitivity_records,
+            "rule_challenges": self.rule_challenges,
+            "rule_challenge_decisions": self.rule_challenge_decisions,
+            **updates,
+        }
+        return EpistemicEventLedger.model_validate(values)
+
+    def _reject_duplicate(self, identifier: str) -> None:
+        identifiers = {
+            *(record.evidence_id for record in self.evidence_records),
+            *(event.event_id for event in self.confirmation_events),
+            *(record.sensitivity_id for record in self.sensitivity_records),
+            *(challenge.challenge_id for challenge in self.rule_challenges),
+            *(decision.decision_id for decision in self.rule_challenge_decisions),
         }
         if identifier in identifiers:
             raise ValueError(f"event {identifier} already exists: append-only")
@@ -290,6 +384,8 @@ __all__ = [
     "EvidenceRecord",
     "EvidenceTypeV8",
     "RuleChallenge",
+    "RuleChallengeDecision",
+    "RuleChallengeDecisionOutcome",
     "RuleChallengeStatus",
     "ScientificReviewStatus",
     "SensitivityRecord",
