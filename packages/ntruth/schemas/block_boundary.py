@@ -81,6 +81,7 @@ def _verify_merge_closure(
     """Require each merge to close one unambiguous prior split exactly."""
 
     prior_splits: list[ExperimentBlockBoundaryChangeRecord] = []
+    consumed_split_ids: set[str] = set()
     for change in changes:
         if change.change_kind is BlockBoundaryChangeKind.SPLIT:
             prior_splits.append(change)
@@ -97,6 +98,11 @@ def _verify_merge_closure(
         if len(matching_splits) != 1:
             raise ValueError("MERGE has an ambiguous prior SPLIT mapping")
         split = matching_splits[0]
+        if split.change_id in consumed_split_ids:
+            raise ValueError(
+                "MERGE cannot consume a prior SPLIT more than once without an explicit "
+                "revision contract"
+            )
         decisive_split_criteria = {
             predicate.criterion
             for predicate in split.boundary_basis
@@ -108,6 +114,7 @@ def _verify_merge_closure(
             raise ValueError(
                 "MERGE criterion closure must exactly resolve the decisive prior SPLIT criteria"
             )
+        consumed_split_ids.add(split.change_id)
 
 
 class BlockBoundaryStatus(StrEnum):
@@ -401,6 +408,7 @@ def verify_candidate_experiment_block_boundaries(
 
     from ntruth.parser_ai.contract import ParserCandidateOutput
 
+    ParserCandidateOutput.assert_raw_candidate_only(bundle)
     bundle = ParserCandidateOutput.model_validate(
         bundle.model_dump(mode="python", round_trip=True, warnings="none")
     )

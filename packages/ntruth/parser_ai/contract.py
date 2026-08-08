@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any, Literal, cast
 
-from pydantic import Field, JsonValue, model_validator
+from pydantic import BaseModel, Field, JsonValue, model_validator
 
 from ntruth.mvt_a.stage_schema import (
     ALLOWED_CANDIDATE_COUNT_KINDS,
@@ -25,6 +25,46 @@ PARSER_AI_CONTRACT_VERSION = "8.0.0"
 PARSER_AI_V3_CONTRACT_VERSION = "2.0.0"
 
 type ConfidenceScore = float
+
+
+def _raw_candidate_contract_tree(
+    value: object,
+    *,
+    seen: set[int] | None = None,
+) -> object:
+    """Expose public raw model state before Pydantic can omit invalid extras."""
+
+    if seen is None:
+        seen = set()
+    if isinstance(value, (BaseModel, Mapping, list, tuple, set, frozenset)):
+        identity = id(value)
+        if identity in seen:
+            return "<recursive-reference>"
+        seen.add(identity)
+    if isinstance(value, BaseModel):
+        raw_values = value.__dict__
+        declared_fields = type(value).model_fields
+        payload: dict[object, object] = {
+            field_name: _raw_candidate_contract_tree(raw_values[field_name], seen=seen)
+            for field_name in declared_fields
+            if field_name in raw_values
+        }
+        for field_name, item in raw_values.items():
+            if field_name in declared_fields or field_name.startswith("_"):
+                continue
+            payload[field_name] = _raw_candidate_contract_tree(item, seen=seen)
+        extra_values = value.__pydantic_extra__
+        if isinstance(extra_values, Mapping):
+            for field_name, item in extra_values.items():
+                if field_name.startswith("_"):
+                    continue
+                payload[field_name] = _raw_candidate_contract_tree(item, seen=seen)
+        return payload
+    if isinstance(value, Mapping):
+        return {key: _raw_candidate_contract_tree(item, seen=seen) for key, item in value.items()}
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return tuple(_raw_candidate_contract_tree(item, seen=seen) for item in value)
+    return value
 
 
 class ParserAISectionInput(FrozenModel):
@@ -579,6 +619,11 @@ class ParserCandidateOutput(FrozenModel):
     missing_predicates: tuple[MissingPredicateCandidate, ...] = ()
     coverage: StageCoverage
     model_metadata: ParserModelMetadata
+
+    def assert_raw_candidate_only(self) -> None:
+        """Reject forbidden final fields retained outside canonical serialization."""
+
+        assert_no_final_scientific_fields(_raw_candidate_contract_tree(self))
 
     @model_validator(mode="before")
     @classmethod
