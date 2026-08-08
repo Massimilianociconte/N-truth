@@ -11,10 +11,10 @@ from threading import Barrier
 import pytest
 
 from ntruth.api.sessions import AnalysisSession, SessionRegistry
-from ntruth.application import DomainAcknowledgementRequired, execute_analysis
+from ntruth.application import DomainAcknowledgementRequired, execute_analysis_v7_adapter
 from ntruth.corrections import CorrectionLedger
 from ntruth.ingest.project import Project
-from ntruth.pipeline import analyze_project
+from ntruth.pipeline import analyze_project_v7_adapter
 from ntruth.reporting import read_json, report_to_dict, write_all
 from ntruth.schemas.core import stable_id
 from ntruth.schemas.experiment import Correction, CorrectionReason
@@ -56,7 +56,7 @@ def test_unknown_domain_is_marked_out_of_scope() -> None:
 def test_report_records_ontology_and_domain_transparency(
     make_project: ProjectFactory,
 ) -> None:
-    result = analyze_project(make_project({"m.md": METHODS}))
+    result = analyze_project_v7_adapter(make_project({"m.md": METHODS}))
     assert result.report.versions.ontology_version == "0.1.0"
     assert result.report.domain_transparency.declared_domain == "quantitative_microscopy"
     assert result.report.domain_transparency.warning in result.report.limits
@@ -65,7 +65,7 @@ def test_report_records_ontology_and_domain_transparency(
 def test_ro_crate_is_json_ld_and_references_every_export(
     make_project: ProjectFactory, tmp_path: Path
 ) -> None:
-    result = analyze_project(make_project({"m.md": METHODS}))
+    result = analyze_project_v7_adapter(make_project({"m.md": METHODS}))
     written = write_all(result.report, tmp_path / "out")
     crate = json.loads(written["ro_crate"].read_text(encoding="utf-8"))
 
@@ -86,7 +86,7 @@ def test_ro_crate_is_json_ld_and_references_every_export(
 def test_exported_report_can_be_reopened_with_checksum_validation(
     make_project: ProjectFactory, tmp_path: Path
 ) -> None:
-    result = analyze_project(make_project({"m.md": METHODS}))
+    result = analyze_project_v7_adapter(make_project({"m.md": METHODS}))
     written = write_all(result.report, tmp_path / "out")
     reopened = read_json(written["json"])
     assert report_to_dict(reopened) == report_to_dict(result.report)
@@ -97,7 +97,7 @@ def test_shared_application_is_the_cli_contract(
 ) -> None:
     project = make_project({"m.md": METHODS}, name="shared", project_name="shared")
     source = project.path_of(project.manifest.files[0])
-    execution = execute_analysis(
+    execution = execute_analysis_v7_adapter(
         source,
         out=tmp_path / "application-out",
         project_dir=tmp_path / "application-project",
@@ -113,7 +113,7 @@ def test_application_can_require_domain_acknowledgement(tmp_path: Path) -> None:
     source = tmp_path / "m.md"
     source.write_text(METHODS, encoding="utf-8")
     with pytest.raises(DomainAcknowledgementRequired):
-        execute_analysis(
+        execute_analysis_v7_adapter(
             source,
             out=tmp_path / "blocked-out",
             project_dir=tmp_path / "blocked-project",
@@ -129,7 +129,10 @@ def test_cli_requires_domain_acknowledgement_before_analysis(tmp_path: Path) -> 
 
     source = tmp_path / "cli.md"
     source.write_text(METHODS, encoding="utf-8")
-    result = CliRunner().invoke(app, ["analyze", str(source), "--out", str(tmp_path / "cli-out")])
+    result = CliRunner().invoke(
+        app,
+        ["analyze-v7", str(source), "--out", str(tmp_path / "cli-out")],
+    )
     assert result.exit_code == 2, result.output
     assert "ATTENZIONE DOMINIO" in result.output
     assert "--acknowledge-unvalidated-domain" in result.output
@@ -146,7 +149,7 @@ def test_cli_continues_after_explicit_domain_acknowledgement(tmp_path: Path) -> 
     result = CliRunner().invoke(
         app,
         [
-            "analyze",
+            "analyze-v7",
             str(source),
             "--out",
             str(tmp_path / "cli-out"),
@@ -160,7 +163,7 @@ def test_cli_continues_after_explicit_domain_acknowledgement(tmp_path: Path) -> 
 def test_application_and_ro_crate_preserve_multiple_blocks(tmp_path: Path) -> None:
     source = tmp_path / "multi.md"
     source.write_text(MULTI_METHODS, encoding="utf-8")
-    execution = execute_analysis(
+    execution = execute_analysis_v7_adapter(
         source,
         out=tmp_path / "multi-out",
         project_dir=tmp_path / "multi-project",
@@ -183,10 +186,10 @@ def test_default_runs_are_isolated_and_previous_outputs_are_never_overwritten(
     second_source.write_text(METHODS.replace("three", "four"), encoding="utf-8")
     output_root = tmp_path / "shared-output-root"
 
-    first = execute_analysis(first_source, out=output_root)
+    first = execute_analysis_v7_adapter(first_source, out=output_root)
     first_report = first.written["json"].read_bytes()
     first_manifest = (first.run_dir / "project" / "manifest.json").read_bytes()
-    second = execute_analysis(second_source, out=output_root)
+    second = execute_analysis_v7_adapter(second_source, out=output_root)
 
     assert first.run_id != second.run_id
     assert first.run_dir != second.run_dir
@@ -205,7 +208,7 @@ def test_concurrent_corrections_are_serialized_into_atomic_immutable_revisions(
 ) -> None:
     source = tmp_path / "concurrent.md"
     source.write_text(METHODS, encoding="utf-8")
-    execution = execute_analysis(source, out=tmp_path / "concurrent-out")
+    execution = execute_analysis_v7_adapter(source, out=tmp_path / "concurrent-out")
     session = SessionRegistry().create(execution)
     block = execution.result.report.blocks[0]
     original_value = block.n_statements[0].value
@@ -318,7 +321,7 @@ def test_failed_session_revision_is_not_published_or_made_current(
 
     source = tmp_path / "atomic-failure.md"
     source.write_text(METHODS, encoding="utf-8")
-    execution = execute_analysis(source, out=tmp_path / "atomic-failure-out")
+    execution = execute_analysis_v7_adapter(source, out=tmp_path / "atomic-failure-out")
     session = AnalysisSession(id="failure-test", execution=execution)
     block = execution.result.report.blocks[0]
 
@@ -362,7 +365,7 @@ def test_fastapi_health_acknowledgement_report_and_parity(tmp_path: Path) -> Non
     source.mkdir()
     (source / "m.md").write_text(METHODS, encoding="utf-8")
 
-    direct = execute_analysis(
+    direct = execute_analysis_v7_adapter(
         source,
         out=tmp_path / "direct-out",
         project_dir=tmp_path / "direct-project",
@@ -382,14 +385,15 @@ def test_fastapi_health_acknowledgement_report_and_parity(tmp_path: Path) -> Non
         "language": "it",
         "domain": "quantitative_microscopy",
     }
-    blocked = client.post("/v1/analyze", json=payload)
+    blocked = client.post("/v7/analyze", json=payload)
     assert blocked.status_code == 409
     assert blocked.json()["detail"]["code"] == "domain_acknowledgement_required"
 
     payload["acknowledge_unvalidated_domain"] = True
-    response = client.post("/v1/analyze", json=payload)
+    response = client.post("/v7/analyze", json=payload)
     assert response.status_code == 200
     body = response.json()
+    assert body["contract"] == {"code": "DEPRECATED_V7_ADAPTER", "version": "v7"}
     assert body["report"] == report_to_dict(direct.result.report)
     assert "ro_crate" in body["artifacts"]
     assert body["revision"] == 0
