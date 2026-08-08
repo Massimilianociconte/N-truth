@@ -8,6 +8,8 @@ and makes path-escape and symlink behavior testable.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import re
 import stat
@@ -68,6 +70,7 @@ _CORPUS_NAME_MARKERS = frozenset(
     {
         "challenge",
         "corpus",
+        "corpora",
         "dataset",
         "participant",
         "participants",
@@ -75,6 +78,89 @@ _CORPUS_NAME_MARKERS = frozenset(
         "records",
         "subject",
         "subjects",
+    }
+)
+_GOVERNED_SOURCE_ROOTS = ("packages/", "scripts/", "tests/")
+_GOVERNED_SOURCE_SUFFIXES = frozenset(
+    {".c", ".cpp", ".go", ".js", ".jsx", ".mjs", ".py", ".pyi", ".rs", ".sh", ".ts", ".tsx"}
+)
+_GOVERNED_METADATA_PREFIXES = (
+    "data/manifests/",
+    "packages/ntruth/task_corpora/",
+    "scripts/task_corpora/",
+    "tests/integration/task_corpora/",
+    "tests/unit/task_corpora/",
+)
+_GOVERNED_MANIFEST_SUFFIXES = frozenset({".json", ".md", ".toml", ".yaml", ".yml"})
+_GOVERNED_DOCUMENTATION_SUFFIXES = frozenset({".md", ".rst"})
+_GOVERNED_DOCUMENTATION_SCHEMA_PATHS = frozenset(
+    {
+        "docs/task_corpora/build_manifest.schema.json",
+        "docs/task_corpora/license_use_decision.schema.json",
+        "docs/task_corpora/task_record.schema.json",
+    }
+)
+_REVIEWED_DOCUMENTATION_ASSET_SHA256 = {
+    "docs/audits/dataset-pipeline-20260803/idempotency-summary.json": (
+        "c7db93671152579563c38a01d652bab0aa5baa58ff219772ef523dac7ff3d889"
+    ),
+    "docs/audits/dataset-pipeline-20260803/merkle-lineage.json": (
+        "4b8868455c92321c71d110b283fda58bbaf46848b4d462bfeea32f8ad689ea02"
+    ),
+    "docs/audits/dataset-pipeline-20260803/source-and-license-summary.json": (
+        "4ef4ae2a910b25a5c39b5d1c8968cfb603b9527e908d8eca560b21145a0cdf80"
+    ),
+    "docs/audits/dataset-pipeline-20260803/split-authority-summary.json": (
+        "ac19f7334bdbdd62d6a7e437d1474703c43cbb5d7f2c98d29e91a9d444f9507e"
+    ),
+    "docs/task_corpora/c1.1-sourcedata-upstream-assets.yaml": (
+        "f6b62ce6bf0df697dd4ac1efe531255faa4b3f1f3d3a44e186ca40de60daaa0e"
+    ),
+}
+_JSON_SCHEMA_KEYWORDS = frozenset(
+    {
+        "$anchor",
+        "$comment",
+        "$defs",
+        "$id",
+        "$ref",
+        "$schema",
+        "additionalProperties",
+        "allOf",
+        "anyOf",
+        "const",
+        "contains",
+        "default",
+        "dependentSchemas",
+        "description",
+        "else",
+        "enum",
+        "exclusiveMaximum",
+        "exclusiveMinimum",
+        "format",
+        "if",
+        "items",
+        "maxItems",
+        "maxLength",
+        "maxProperties",
+        "maximum",
+        "minItems",
+        "minLength",
+        "minProperties",
+        "minimum",
+        "multipleOf",
+        "not",
+        "oneOf",
+        "pattern",
+        "patternProperties",
+        "prefixItems",
+        "properties",
+        "propertyNames",
+        "required",
+        "then",
+        "title",
+        "type",
+        "uniqueItems",
     }
 )
 _SECRET_SUFFIXES = frozenset({".key", ".p12", ".pem", ".pfx"})
@@ -110,7 +196,9 @@ class RepositoryPolicyReportV8(KernelModel):
         "NO_FINDING_DETECTED_NOT_AN_ATTESTATION"
     )
     tracked_paths_checksum: Sha256
+    tracked_path_count: int = Field(ge=0)
     scanned_file_count: int = Field(ge=0)
+    inspection_complete: bool
     max_file_bytes: int = Field(gt=0)
     findings: KnowledgeValue[tuple[RepositoryPolicyFindingV8, ...]]
 
@@ -120,6 +208,16 @@ class RepositoryPolicyReportV8(KernelModel):
 
     @model_validator(mode="after")
     def _addressed(self) -> Self:
+        expected_complete = self.scanned_file_count == self.tracked_path_count
+        if self.scanned_file_count > self.tracked_path_count:
+            raise ValueError("repository policy scanned count exceeds tracked path count")
+        if self.inspection_complete is not expected_complete:
+            raise ValueError("repository policy inspection completeness mismatch")
+        if not self.inspection_complete and not any(
+            finding.kind is RepositoryPolicyFindingKindV8.UNSAFE_PATH
+            for finding in self.findings.value or ()
+        ):
+            raise ValueError("incomplete repository policy scan lacks an unsafe-path finding")
         expected = content_checksum(
             self.model_dump(mode="json", exclude={"report_id", "content_checksum"})
         )
@@ -143,7 +241,102 @@ def _unsafe_relative_path(raw: str) -> bool:
     return path.is_absolute() or ".." in path.parts or "." in path.parts
 
 
-def _is_forbidden_corpus_path(path: PurePosixPath) -> bool:
+def _path_marker_tokens(path: PurePosixPath) -> frozenset[str]:
+    tokens: set[str] = set()
+    for component in path.parts:
+        tokens.update(token for token in re.split(r"[^a-z0-9]+", component.lower()) if token)
+    return frozenset(tokens)
+
+
+def _is_json_schema_node(value: object) -> bool:
+    if isinstance(value, bool):
+        return True
+    if not isinstance(value, dict) or not set(value).issubset(_JSON_SCHEMA_KEYWORDS):
+        return False
+
+    for key in ("$defs", "dependentSchemas", "patternProperties", "properties"):
+        nested = value.get(key)
+        if nested is not None and (
+            not isinstance(nested, dict)
+            or not all(_is_json_schema_node(item) for item in nested.values())
+        ):
+            return False
+    for key in (
+        "additionalProperties",
+        "contains",
+        "else",
+        "if",
+        "items",
+        "not",
+        "propertyNames",
+        "then",
+    ):
+        nested = value.get(key)
+        if nested is not None and not _is_json_schema_node(nested):
+            return False
+    for key in ("allOf", "anyOf", "oneOf", "prefixItems"):
+        nested = value.get(key)
+        if nested is not None and (
+            not isinstance(nested, list) or not all(_is_json_schema_node(item) for item in nested)
+        ):
+            return False
+    required = value.get("required")
+    if required is not None and (
+        not isinstance(required, list) or not all(isinstance(item, str) for item in required)
+    ):
+        return False
+    enum = value.get("enum")
+    if enum is not None and (
+        not isinstance(enum, list) or any(isinstance(item, (dict, list)) for item in enum)
+    ):
+        return False
+    if isinstance(value.get("default"), (dict, list)):
+        return False
+    return not isinstance(value.get("const"), (dict, list))
+
+
+def _is_reviewed_documentation_schema(path: PurePosixPath, text: str | None) -> bool:
+    normalized = path.as_posix().lower()
+    if normalized not in _GOVERNED_DOCUMENTATION_SCHEMA_PATHS or text is None:
+        return False
+    try:
+        candidate = json.loads(text)
+    except (TypeError, json.JSONDecodeError):
+        return False
+    if not _is_json_schema_node(candidate):
+        return False
+    if not isinstance(candidate, dict):
+        return False
+    dialect = candidate.get("$schema")
+    has_explicit_dialect = isinstance(dialect, str) and dialect.startswith(
+        "https://json-schema.org/"
+    )
+    has_object_contract = candidate.get("type") == "object" and isinstance(
+        candidate.get("properties"), dict
+    )
+    return has_explicit_dialect or has_object_contract
+
+
+def _is_governed_metadata_path(path: PurePosixPath, text: str | None) -> bool:
+    normalized = path.as_posix().lower()
+    suffix = path.suffix.lower()
+    if normalized.startswith(_GOVERNED_METADATA_PREFIXES):
+        if normalized.startswith("data/manifests/"):
+            return suffix in _GOVERNED_MANIFEST_SUFFIXES
+        return True
+    if normalized.startswith(_GOVERNED_SOURCE_ROOTS) and suffix in _GOVERNED_SOURCE_SUFFIXES:
+        return True
+    if normalized.startswith("docs/") and suffix in _GOVERNED_DOCUMENTATION_SUFFIXES:
+        return True
+    expected_sha256 = _REVIEWED_DOCUMENTATION_ASSET_SHA256.get(normalized)
+    if expected_sha256 is not None and text is not None:
+        return hashlib.sha256(text.encode("utf-8")).hexdigest() == expected_sha256
+    if path.name.lower().endswith(_DOCUMENTATION_SCHEMA_SUFFIX):
+        return _is_reviewed_documentation_schema(path, text)
+    return False
+
+
+def _is_forbidden_corpus_path(path: PurePosixPath, text: str | None) -> bool:
     normalized = path.as_posix().lower()
     forbidden_prefixes = (
         "data/raw/",
@@ -159,12 +352,12 @@ def _is_forbidden_corpus_path(path: PurePosixPath) -> bool:
         return True
     if suffix in _ARCHIVE_SUFFIXES:
         return True
-    # Schemas below docs are metadata contracts, not record payloads.  The same
-    # corpus-like name remains forbidden for every non-documentation location.
     if normalized.startswith("docs/") and path.name.lower().endswith(_DOCUMENTATION_SCHEMA_SUFFIX):
+        return not _is_reviewed_documentation_schema(path, text)
+    marker_semantics = bool(_path_marker_tokens(path) & _CORPUS_NAME_MARKERS)
+    if not marker_semantics or _is_governed_metadata_path(path, text):
         return False
-    stem_tokens = {token for token in re.split(r"[^a-z0-9]+", path.stem.lower()) if token}
-    return suffix in _CORPUS_NAME_SUFFIXES and bool(stem_tokens & _CORPUS_NAME_MARKERS)
+    return text is not None or suffix in _CORPUS_NAME_SUFFIXES
 
 
 @dataclass(frozen=True)
@@ -207,23 +400,24 @@ def _open_beneath(root_fd: int, relative: PurePosixPath) -> int:
         os.close(parent_fd)
 
 
-def _metadata_signature(metadata: os.stat_result) -> tuple[int, int, int, int, int]:
+def _metadata_signature(metadata: os.stat_result) -> tuple[int, int, int, int, int, int]:
     return (
         metadata.st_dev,
         metadata.st_ino,
+        metadata.st_nlink,
         metadata.st_size,
         metadata.st_mtime_ns,
         metadata.st_ctime_ns,
     )
 
 
-def _read_up_to(file_fd: int, limit: int) -> bytes:
+def _read_exact(file_fd: int, expected_bytes: int) -> bytes:
     chunks: list[bytes] = []
-    remaining = limit
+    remaining = expected_bytes
     while remaining:
         chunk = os.read(file_fd, min(remaining, 65_536))
         if not chunk:
-            break
+            raise OSError("tracked file ended before the expected bounded byte count")
         chunks.append(chunk)
         remaining -= len(chunk)
     return b"".join(chunks)
@@ -242,8 +436,12 @@ def _inspect_tracked_file(
         initial = os.fstat(file_fd)
         if not stat.S_ISREG(initial.st_mode):
             raise OSError("tracked path is not a regular file")
+        if initial.st_nlink != 1:
+            raise OSError(
+                "tracked path has multiple hard links; repository provenance is ambiguous"
+            )
         read_limit = max_file_bytes + 1 if initial.st_size <= max_file_bytes else 4096
-        payload = _read_up_to(file_fd, read_limit)
+        payload = _read_exact(file_fd, min(initial.st_size, read_limit))
         final = os.fstat(file_fd)
         if _metadata_signature(initial) != _metadata_signature(final):
             raise OSError("tracked file changed while it was inspected")
@@ -362,7 +560,7 @@ def scan_tracked_repository_v8(
                         f"tracked file exceeds {max_file_bytes} bytes",
                     )
                 )
-            if _is_forbidden_corpus_path(relative):
+            if _is_forbidden_corpus_path(relative, inspection.text):
                 findings.append(
                     _finding(
                         raw,
@@ -445,7 +643,9 @@ def scan_tracked_repository_v8(
         "external_datasets_inspected": False,
         "detection_semantics": "NO_FINDING_DETECTED_NOT_AN_ATTESTATION",
         "tracked_paths_checksum": content_checksum(canonical_paths),
+        "tracked_path_count": len(canonical_paths),
         "scanned_file_count": scanned,
+        "inspection_complete": scanned == len(canonical_paths),
         "max_file_bytes": max_file_bytes,
         "findings": knowledge,
     }
@@ -472,7 +672,16 @@ def tracked_paths_from_git_v8(repository_root: Path) -> tuple[str, ...]:
         check=True,
         capture_output=True,
     )
-    return tuple(item.decode("utf-8") for item in completed.stdout.split(b"\0") if item)
+    payload = completed.stdout
+    if payload and not payload.endswith(b"\0"):
+        raise RuntimeError("incomplete tracked-path enumeration: missing terminal NUL")
+    encoded_paths = payload[:-1].split(b"\0") if payload else []
+    if any(not item for item in encoded_paths):
+        raise RuntimeError("incomplete tracked-path enumeration: empty path entry")
+    try:
+        return tuple(item.decode("utf-8") for item in encoded_paths)
+    except UnicodeDecodeError as exc:
+        raise RuntimeError("incomplete tracked-path enumeration: invalid UTF-8 path") from exc
 
 
 __all__ = [
