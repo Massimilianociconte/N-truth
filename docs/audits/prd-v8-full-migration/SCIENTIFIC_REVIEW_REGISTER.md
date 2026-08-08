@@ -1,0 +1,37 @@
+# PRD v8.0 scientific review register
+
+**Policy:** unresolved scientific choices are represented as
+`SCIENTIFIC_REVIEW_REQUIRED`. They must not be converted into defaults, implicit aliases,
+derived claims, release evidence or training eligibility. A closure requires a dated decision,
+reviewer role, rationale, affected theory/schema versions and re-derivation scope.
+
+| ID | PRD locations | Unresolved issue | Fail-closed implementation contract | Required human review |
+|---|---|---|---|---|
+| SRR-V8-001 | §0.4, §9.6, App. R.1 | `SupportGrade` vocabularies conflict. §0.4 has `ADJUDICATED`, `CORROBORATED_DIRECT`, `DIRECT_SINGLE_SOURCE`, `AUTHOR_CLARIFIED`, `SELF_REPORT_ONLY`, `ASSERTION_ONLY`, `MODEL_CANDIDATE`, `CONFLICTED`; App. R uses different tokens and adds `DOMAIN_EXPERT_INTERPRETATION`. | Preserve vocabulary identifier and exact token; reject cross-vocabulary conversion unless a reviewed mapping is supplied. | Scientific governance plus domain-method reviewer. |
+| SRR-V8-002 | §10.2, App. AF, App. A | `DerivedClaim` uses `inferential_query_id` in §10.2 but `query_id` in AF; A uses a third, legacy-shaped example. | Canonical internal field `inferential_query_id`; accept `query_id` only through an explicit migration result that records the source contract. | Schema owner confirms public canonical name. |
+| SRR-V8-003 | §10.2, App. AF | Required and irrelevant predicates with rationale are mandatory in §10.2 but omitted by AF. | Require them for executable claims; an AF-shaped input remains unqualified and cannot close profile coverage. | Derivation Theory reviewers. |
+| SRR-V8-004 | §10.2, App. A | A uses `determinability`; normative claim contract uses `determinability_state`. | `determinability_state` is canonical; legacy key requires versioned adapter and produces migration evidence. | Schema owner. |
+| SRR-V8-005 | §10.4, App. A | A assigns claim-level `MULTIPLE_PLAUSIBLE_GRAPHS` to `report_resolution_state`; §10.4 defines `MULTI_SCENARIO`. | Reject the raw example as normatively inconsistent; do not guess a report-level replacement. Maintain a corrected conformance fixture only after review. | Scientific product owner. |
+| SRR-V8-006 | §10.5, App. A | A embeds `DESIGN_ADEQUACY_FINDING` among derived claims and attaches a determinability state, contradicting the mandated separation. | Reject mixed representation; store adequacy only in its independent collection. | Scientific product owner. |
+| SRR-V8-007 | §10.7, App. A | A uses `scenario_set.exhaustive`, `coverage_basis` and scalar caveat; §10.7 requires structured `ScenarioCoverage`. | No silent conversion from boolean exhaustiveness. Emit migration blocker unless all structured fields can be evidenced. | Theory/profile reviewers. |
+| SRR-V8-008 | §7.17, §8.11, §10.2, App. AF/A/X | Profile coverage appears both as a scalar and as an object; predicate-closure semantics are not consistently instantiated. | Use a structured `ProfileCoverageStatement`; scalar inputs are legacy-only and cannot assert closure. | Profile governance group. |
+| SRR-V8-009 | §9.5, §10.2, App. M.2 | `NOT_APPLICABLE_TO_CLAIM` is used as a predicate relevance token while KnowledgeState defines `NOT_APPLICABLE`. | Keep predicate relevance and knowledge state as distinct enums; no alias until reviewed. | Schema and theory reviewers. |
+| SRR-V8-010 | §8.7, §9.5 examples | An unresolved `ConflictRecord` example contains an N/A resolution event, while `CONFLICTING` requires retained unresolved evidence. | An unresolved conflict cannot carry a resolution event; preserve source example as known PRD inconsistency. | Governance owner. |
+| SRR-V8-011 | §7.9, §15.10, App. P | Count vocabulary and lifecycle labels are not perfectly aligned across the normative tables. | Pin the Canonical Count Registry version and reject unknown labels; legacy aliases are input-only and recorded. No inferred many-to-one mapping. | Count/theory reviewers. |
+| SRR-V8-012 | §8.8, §18.5, §24 | Exact graph equality and partial-scoring weights/tolerances are intentionally underspecified. | Implement identifier-invariant exact structural equality only; partial scientific score remains unavailable with `SCIENTIFIC_REVIEW_REQUIRED`. | Evaluation/statistical review panel. |
+| SRR-V8-013 | §11.5, §24.13 | The PRD forbids a universal few-cluster numerical threshold and supplies no validated floor. | Strategy status stays `HANDOFF_ONLY`; no numeric threshold or strategy recommendation is emitted. | External statistical validation. |
+| SRR-V8-014 | §10.4, App. AF | Aggregation precedence from heterogeneous claim states to `ReportResolutionState` is not specified. | Require an explicit versioned aggregation policy. Without it, mixed nontrivial claim sets resolve to a review-required report outcome rather than guessed precedence. | Theory and product reviewers. |
+| SRR-V8-015 | §0.4, §9, §14 | `SourceClass` examples do not constitute a single closed enumeration across all sections. | Accept only tokens in a versioned registry; unknown source classes remain `UNKNOWN_WITH_REASON`, never auto-ranked. | Data governance. |
+| SRR-V8-016 | §8.6 | Boundary confidence scale and calibration are not numerically specified. | Record evidence and qualitative status; do not invent calibrated probabilities or thresholds. | Annotation/reference-stability reviewers. |
+| SRR-V8-017 | §2.7, §7.2, App. Y | Exposure/interference topology is non-exhaustive and no universal mapping to effective exposure units is provided. | Emit only consequences supported by a named theory clause; unknown topology cannot change EU automatically. | Domain and causal-method reviewers. |
+| SRR-V8-018 | §26.9, App. AG | AG contains `probes_run: []` and placeholder `release_date: 2026-XX-XX`, conflicting with schema-valid/no-bare-empty semantics. | Treat the published sample as an expected-negative fixture until reviewed; challenge release remains blocked. | Contamination protocol owner. |
+| SRR-V8-019 | §10.7 example, App. AC | Example uses `ABSENT_EXPLICIT` without evidence and `NOT_APPLICABLE` without rationale. | Reject as closure evidence; open-world validators require evidence/rationale. | Epistemic schema reviewers. |
+| SRR-V8-020 | App. K T06, PDF p.131 | PDF rendering truncates the action at an unescaped pipe. | Use the intact Markdown wording and retain the PDF-rendering erratum in source reconciliation. | Editorial confirmation only. |
+| SRR-V8-021 | §34, App. D/N | DRIVER snapshot/reference freeze, retrieval hash and clause mapping are required but not supplied as reviewed repository assets. | Theory/reference-stability gate remains blocked; no claim of DRIVER conformance. | Independent scientific reviewers and reference custodian. |
+| SRR-V8-022 | §14–18, §24 | Real Anchor, Derivation Gold, reference-stability and residual-audit evidence do not yet exist. | Engineering may implement schemas and gates only; data/science readiness remains `NOT_STARTED`/`BLOCKED`. | Data custodian, annotators, adjudicators and independent reviewers. |
+
+## Closure rule
+
+Closing an entry requires a new append-only decision record. Historical rows are not deleted.
+Every affected `DerivedClaimSet` must be re-derived under the new theory/rule/support-policy
+versions; direct patching of derived output is prohibited.
