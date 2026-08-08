@@ -38,19 +38,23 @@ def _scope(
     query_id: str = "IQ-001",
     cohort_id: str = "COHORT-01",
     lifecycle_phase: CountLifecyclePhase = CountLifecyclePhase.ANALYZED,
+    population_scope: str = "cultures_under_protocol_x",
+    condition: str = "confirmed_independent_cultures",
+    evidence_id: str = "EV-COUNT-01",
+    cohort_value: KnowledgeValue[str] | None = None,
 ) -> CountScope:
     return CountScope(
         query_id=query_id,
-        unit_type=_present("culture"),
-        factor_id=_present("treatment"),
-        contrast_id=_present("vehicle_vs_drug"),
-        group_id=_present("drug"),
-        endpoint_id=_present("viability"),
-        timepoint_id=_present("T48H"),
-        cohort_id=_present(cohort_id),
-        lifecycle_phase=_present(lifecycle_phase),
-        population_scope=_present("cultures_under_protocol_x"),
-        condition=_present("confirmed_independent_cultures"),
+        unit_type=_present("culture", evidence_id=evidence_id),
+        factor_id=_present("treatment", evidence_id=evidence_id),
+        contrast_id=_present("vehicle_vs_drug", evidence_id=evidence_id),
+        group_id=_present("drug", evidence_id=evidence_id),
+        endpoint_id=_present("viability", evidence_id=evidence_id),
+        timepoint_id=_present("T48H", evidence_id=evidence_id),
+        cohort_id=cohort_value or _present(cohort_id, evidence_id=evidence_id),
+        lifecycle_phase=_present(lifecycle_phase, evidence_id=evidence_id),
+        population_scope=_present(population_scope, evidence_id=evidence_id),
+        condition=_present(condition, evidence_id=evidence_id),
     )
 
 
@@ -63,6 +67,11 @@ def _record(
     query_id: str = "IQ-001",
     cohort_id: str = "COHORT-01",
     lifecycle_phase: CountLifecyclePhase = CountLifecyclePhase.ANALYZED,
+    population_scope: str = "cultures_under_protocol_x",
+    condition: str = "confirmed_independent_cultures",
+    scope_evidence_id: str = "EV-COUNT-01",
+    cohort_value: KnowledgeValue[str] | None = None,
+    value_query_id: str | None = None,
 ) -> CanonicalCountRecord:
     origin = (
         CountOrigin.RULE_DERIVATION
@@ -72,12 +81,21 @@ def _record(
     return CanonicalCountRecord(
         count_id=count_id,
         kind=kind,
-        value=_present(value),
+        value=KnowledgeValue[int | CountInterval](
+            knowledge_state=KnowledgeState.PRESENT,
+            value=value,
+            evidence_ids=("EV-COUNT-01",),
+            query_scope_id=value_query_id,
+        ),
         quantifier=quantifier,
         scope=_scope(
             query_id=query_id,
             cohort_id=cohort_id,
             lifecycle_phase=lifecycle_phase,
+            population_scope=population_scope,
+            condition=condition,
+            evidence_id=scope_evidence_id,
+            cohort_value=cohort_value,
         ),
         source_evidence=("EV-COUNT-01",),
         origin=origin,
@@ -125,6 +143,95 @@ def test_same_scope_collision_is_rejected_not_silently_aggregated() -> None:
     second = _record(count_id="CNT-002", value=6)
     with pytest.raises(ValidationError, match="ConflictRecord"):
         CanonicalCountRegistry(records=(first, second))
+
+
+def test_same_scientific_scope_collides_even_when_provenance_differs() -> None:
+    first = _record(count_id="CNT-001", value=5, scope_evidence_id="EV-SCOPE-A")
+    second = _record(count_id="CNT-002", value=6, scope_evidence_id="EV-SCOPE-B")
+    with pytest.raises(ValidationError, match="ConflictRecord"):
+        CanonicalCountRegistry(records=(first, second))
+
+
+@pytest.mark.parametrize(
+    ("changed_field", "left_value", "right_value"),
+    (
+        ("population_scope", "population_a", "population_b"),
+        ("condition", "condition_a", "condition_b"),
+    ),
+)
+def test_population_and_condition_are_decisive_comparison_scope(
+    changed_field: str,
+    left_value: str,
+    right_value: str,
+) -> None:
+    left = _record(count_id="CNT-A", value=5, **{changed_field: left_value})
+    right = _record(count_id="CNT-B", value=6, **{changed_field: right_value})
+    assert count_compatibility(left, right) is CountCompatibility.NOT_COMPARABLE
+
+
+def test_unresolved_decisive_scope_requires_review() -> None:
+    unresolved_cohort = KnowledgeValue[str](
+        knowledge_state=KnowledgeState.UNKNOWN,
+        rationale="the lifecycle cohort cannot be reconstructed",
+        query_scope_id="IQ-001",
+    )
+    count = _record(
+        count_id="CNT-UNKNOWN-SCOPE",
+        cohort_value=unresolved_cohort,
+    )
+    assert count_compatibility(count, count) is CountCompatibility.REVIEW_REQUIRED
+
+
+def test_count_value_query_scope_must_match_record_scope() -> None:
+    with pytest.raises(ValidationError, match=r"value\.query_scope_id"):
+        _record(count_id="CNT-WRONG-QUERY", value_query_id="IQ-OTHER")
+
+
+@pytest.mark.parametrize(
+    ("kind", "expected_phase", "wrong_phase"),
+    (
+        (
+            CanonicalCountKind.PLANNED_UNIT_COUNT,
+            CountLifecyclePhase.PLANNED,
+            CountLifecyclePhase.ANALYZED,
+        ),
+        (
+            CanonicalCountKind.ALLOCATED_UNIT_COUNT,
+            CountLifecyclePhase.ALLOCATED,
+            CountLifecyclePhase.ANALYZED,
+        ),
+        (
+            CanonicalCountKind.TREATED_UNIT_COUNT,
+            CountLifecyclePhase.TREATED,
+            CountLifecyclePhase.ANALYZED,
+        ),
+        (
+            CanonicalCountKind.OBSERVED_UNIT_COUNT,
+            CountLifecyclePhase.OBSERVED,
+            CountLifecyclePhase.ANALYZED,
+        ),
+        (
+            CanonicalCountKind.EXCLUDED_UNIT_COUNT,
+            CountLifecyclePhase.EXCLUDED,
+            CountLifecyclePhase.ANALYZED,
+        ),
+        (
+            CanonicalCountKind.ANALYZED_UNIT_COUNT,
+            CountLifecyclePhase.ANALYZED,
+            CountLifecyclePhase.PLANNED,
+        ),
+    ),
+)
+def test_lifecycle_count_kind_requires_its_exact_phase(
+    kind: CanonicalCountKind,
+    expected_phase: CountLifecyclePhase,
+    wrong_phase: CountLifecyclePhase,
+) -> None:
+    valid = _record(count_id="CNT-VALID", kind=kind, lifecycle_phase=expected_phase)
+    assert valid.scope.lifecycle_phase.value is expected_phase
+
+    with pytest.raises(ValidationError, match="lifecycle_phase"):
+        _record(count_id="CNT-WRONG-PHASE", kind=kind, lifecycle_phase=wrong_phase)
 
 
 def test_biological_source_and_eu_are_distinct_at_equal_numeric_value() -> None:

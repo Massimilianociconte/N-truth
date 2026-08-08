@@ -92,18 +92,6 @@ class NodeType(StrEnum):
     AGGREGATION_RULE = "AggregationRule"
     STATISTICAL_MODEL = "StatisticalModel"
 
-    # PRD v8 Core Semantic Kernel / Full Scientific Record
-    INFERENTIAL_QUERY = "InferentialQuery"
-    ASSIGNMENT_EVENT = "AssignmentEvent"
-    APPLICATION_EVENT = "ApplicationEvent"
-    EXPOSURE_EVENT = "ExposureEvent"
-    SPLIT_EVENT = "SplitEvent"
-    POOL_EVENT = "PoolEvent"
-    OBSERVATION = "Observation"
-    ANALYSIS_AGGREGATE = "AnalysisAggregate"
-    COUNT_RECORD = "CountRecord"
-    EXCLUSION_RECORD = "ExclusionRecord"
-
     # Governance
     MODEL_VERSION = "ModelVersion"
     RULE_VERSION = "RuleVersion"
@@ -160,18 +148,6 @@ class RelationType(StrEnum):
     SUPPORTS = "supports"
     SUPPORTED_BY_EVIDENCE = "supported_by_evidence"
     DECLARES_CLUSTERING = "declares_clustering"
-
-    # PRD v8 relations. These remain distinct from v7 near-synonyms.
-    CONTAINED_IN = "contained_in"
-    EXPOSED_AS = "exposed_as"
-    OBSERVED_IN = "observed_in"
-    ACQUIRED_FROM = "acquired_from"
-    AGGREGATED_TO = "aggregated_to"
-    SHARES_EXPOSURE_WITH = "shares_exposure_with"
-    MAY_INTERFERE_WITH = "may_interfere_with"
-    GENERATED_BY = "generated_by"
-    COMPUTED_FROM = "computed_from"
-    SEGMENTED_INTO = "segmented_into"
 
 
 #: Ordine di annidamento: rank piu basso = livello piu alto (piu vicino alla sorgente

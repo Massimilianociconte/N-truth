@@ -1,6 +1,6 @@
 """Contratti dati di N-Truth. Tutto il resto del sistema dipende solo da qui."""
 
-from ntruth.schemas.causal_context import QueryCausalContext
+from ntruth.schemas.causal_context import QueryCausalContext, QueryCausalEventAggregate
 from ntruth.schemas.claims import (
     DerivedClaim,
     DerivedClaimSet,
@@ -37,6 +37,7 @@ from ntruth.schemas.count_registry import (
     CountOrigin,
     CountQuantifier,
     CountScope,
+    CountScopeIdentity,
     canonical_count_kind,
     count_compatibility,
     independent_n_presentation_alias,
@@ -108,6 +109,13 @@ from ntruth.schemas.graph import (
     make_node_id,
     make_relation_id,
     rank_of,
+)
+from ntruth.schemas.graph_v8 import (
+    V8ExperimentGraph,
+    V8GraphNode,
+    V8GraphNodeType,
+    V8GraphRelation,
+    V8GraphRelationType,
 )
 from ntruth.schemas.kernel import (
     KERNEL_SCHEMA_VERSION,
@@ -204,6 +212,7 @@ __all__ = [
     "CountOrigin",
     "CountQuantifier",
     "CountScope",
+    "CountScopeIdentity",
     "DataSufficiency",
     "DerivedClaim",
     "DerivedClaimSet",
@@ -264,6 +273,7 @@ __all__ = [
     "Provenance",
     "ProvenanceKind",
     "QueryCausalContext",
+    "QueryCausalEventAggregate",
     "Question",
     "RelationType",
     "RelativeTiming",
@@ -299,6 +309,11 @@ __all__ = [
     "Table",
     "TemporalRelation",
     "UnitAssessment",
+    "V8ExperimentGraph",
+    "V8GraphNode",
+    "V8GraphNodeType",
+    "V8GraphRelation",
+    "V8GraphRelationType",
     "Versions",
     "canonical_count_kind",
     "content_checksum",

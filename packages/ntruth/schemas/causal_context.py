@@ -16,8 +16,15 @@ from typing import Self
 from pydantic import Field, model_validator
 
 from ntruth.schemas.core import FrozenModel
+from ntruth.schemas.events import (
+    ApplicationEvent,
+    AssignmentEvent,
+    EventRecord,
+    EventRegistry,
+    ExposureEvent,
+)
 from ntruth.schemas.kernel import KernelModel, NonBlankStr
-from ntruth.schemas.knowledge import KnowledgeValue
+from ntruth.schemas.knowledge import KnowledgeState, KnowledgeValue
 
 
 class AssignmentLevel(StrEnum):
@@ -201,4 +208,40 @@ class QueryCausalContext(KernelModel):
                 and value.query_scope_id != self.inferential_query_id
             ):
                 raise ValueError(f"{field_name}.query_scope_id must match inferential query")
+        return self
+
+
+class QueryCausalEventAggregate(KernelModel):
+    """Resolve causal event references and block boundaries without deriving consequences."""
+
+    experiment_block_id: NonBlankStr
+    event_registry: EventRegistry
+    causal_context: QueryCausalContext
+
+    @model_validator(mode="after")
+    def _resolve_typed_event_references(self) -> Self:
+        expected_types: tuple[
+            tuple[str, type[EventRecord]],
+            ...,
+        ] = (
+            ("assignment_event_id", AssignmentEvent),
+            ("application_event_id", ApplicationEvent),
+            ("exposure_event_id", ExposureEvent),
+        )
+        for field_name, expected_type in expected_types:
+            reference = getattr(self.causal_context, field_name)
+            if reference.knowledge_state is not KnowledgeState.PRESENT:
+                continue
+            event_id = reference.value
+            try:
+                event = self.event_registry.event(event_id)
+            except KeyError as error:
+                raise ValueError(f"dangling {field_name}: {event_id}") from error
+            if not isinstance(event, expected_type):
+                raise ValueError(f"{field_name} requires {expected_type.__name__}")
+            if event.experiment_block_id != self.experiment_block_id:
+                raise ValueError(
+                    f"cross-block {field_name}: {event.experiment_block_id} != "
+                    f"{self.experiment_block_id}"
+                )
         return self

@@ -11,6 +11,8 @@ from pydantic import model_validator
 from ntruth.schemas.claims import DeterminabilityState
 from ntruth.schemas.count_registry import CanonicalCountKind, canonical_count_kind
 from ntruth.schemas.events import RelativeTiming, TemporalRelation
+from ntruth.schemas.graph import NodeType, RelationType
+from ntruth.schemas.graph_v8 import V8GraphNodeType, V8GraphRelationType
 from ntruth.schemas.kernel import KernelModel, NonBlankStr
 from ntruth.schemas.knowledge import (
     KnowledgeState,
@@ -476,6 +478,66 @@ def migrate_v7_global_timing(
     )
 
 
+def migrate_v7_graph_node_type(
+    node_type: NodeType,
+) -> MigrationResult[V8GraphNodeType]:
+    """Cross the immutable v7/v8 graph boundary by exact token identity only."""
+
+    lineage = MigrationLineage(
+        source_contract="ntruth-experiment-graph/v7",
+        target_contract="ntruth-experiment-graph/8.0.0",
+        field_name="node_type",
+        migration_rule_id="PRD-V8-8.4-exact-node-token",
+    )
+    try:
+        migrated = V8GraphNodeType(node_type.value)
+    except ValueError:
+        return MigrationResult(
+            diagnostics=(
+                _review_required(
+                    issue_id="PRD-V8-8.4",
+                    field_name="node_type",
+                    message=(
+                        f"v7 node token {node_type.value!r} has no exact v8 minimum-node "
+                        "identity; no semantic mapping was inferred"
+                    ),
+                ),
+            ),
+            lineage=(lineage,),
+        )
+    return MigrationResult(value=migrated, lineage=(lineage,))
+
+
+def migrate_v7_graph_relation_type(
+    relation_type: RelationType,
+) -> MigrationResult[V8GraphRelationType]:
+    """Cross the immutable v7/v8 relation boundary by exact token identity only."""
+
+    lineage = MigrationLineage(
+        source_contract="ntruth-experiment-graph/v7",
+        target_contract="ntruth-experiment-graph/8.0.0",
+        field_name="relation_type",
+        migration_rule_id="PRD-V8-8.5-exact-relation-token",
+    )
+    try:
+        migrated = V8GraphRelationType(relation_type.value)
+    except ValueError:
+        return MigrationResult(
+            diagnostics=(
+                _review_required(
+                    issue_id="PRD-V8-8.5",
+                    field_name="relation_type",
+                    message=(
+                        f"v7 relation token {relation_type.value!r} has no exact v8 relation "
+                        "identity; no semantic mapping was inferred"
+                    ),
+                ),
+            ),
+            lineage=(lineage,),
+        )
+    return MigrationResult(value=migrated, lineage=(lineage,))
+
+
 __all__ = [
     "MigrationDiagnostic",
     "MigrationDiagnosticCode",
@@ -485,5 +547,7 @@ __all__ = [
     "migrate_v7_claim_field_names",
     "migrate_v7_count_kind",
     "migrate_v7_global_timing",
+    "migrate_v7_graph_node_type",
+    "migrate_v7_graph_relation_type",
     "migrate_v7_scientific_field",
 ]

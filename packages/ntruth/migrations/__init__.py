@@ -9,6 +9,8 @@ from ntruth.migrations.v7_to_v8 import (
     migrate_v7_claim_field_names,
     migrate_v7_count_kind,
     migrate_v7_global_timing,
+    migrate_v7_graph_node_type,
+    migrate_v7_graph_relation_type,
     migrate_v7_scientific_field,
 )
 
@@ -21,5 +23,7 @@ __all__ = [
     "migrate_v7_claim_field_names",
     "migrate_v7_count_kind",
     "migrate_v7_global_timing",
+    "migrate_v7_graph_node_type",
+    "migrate_v7_graph_relation_type",
     "migrate_v7_scientific_field",
 ]

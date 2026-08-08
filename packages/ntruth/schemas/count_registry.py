@@ -83,6 +83,42 @@ class CountInterval(KernelModel):
         return self
 
 
+def _normalized_scope_component[T](
+    field_name: str,
+    value: KnowledgeValue[T],
+) -> tuple[str, KnowledgeState, tuple[str, ...]]:
+    normalized_values: tuple[str, ...] = ()
+    if value.knowledge_state is KnowledgeState.PRESENT:
+        normalized_values = (
+            json.dumps(value.value, ensure_ascii=False, sort_keys=True, default=str),
+        )
+    elif value.knowledge_state is KnowledgeState.CONFLICTING:
+        normalized_values = tuple(
+            sorted(
+                json.dumps(item, ensure_ascii=False, sort_keys=True, default=str)
+                for item in value.conflicting_values
+            )
+        )
+    return (field_name, value.knowledge_state, normalized_values)
+
+
+class CountScopeIdentity(KernelModel):
+    """Provenance-free scientific identity shared by every count comparison gate."""
+
+    query_id: NonBlankStr
+    components: tuple[tuple[NonBlankStr, KnowledgeState, tuple[NonBlankStr, ...]], ...] = Field(
+        min_length=10,
+        max_length=10,
+    )
+
+    @property
+    def resolved(self) -> bool:
+        return all(state is KnowledgeState.PRESENT for _, state, _ in self.components)
+
+    def key(self) -> tuple[object, ...]:
+        return (self.query_id, *self.components)
+
+
 class CountScope(KernelModel):
     """Explicit query/cohort/lifecycle scope with no bare scientific nulls."""
 
@@ -117,40 +153,24 @@ class CountScope(KernelModel):
                 raise ValueError(f"{field_name}.query_scope_id must match CountScope.query_id")
         return self
 
-    def _serialized_components(self) -> tuple[str, ...]:
-        return tuple(
-            json.dumps(getattr(self, field).model_dump(mode="json"), sort_keys=True)
-            for field in (
-                "unit_type",
-                "factor_id",
-                "contrast_id",
-                "group_id",
-                "endpoint_id",
-                "timepoint_id",
-                "cohort_id",
-                "lifecycle_phase",
-                "population_scope",
-                "condition",
-            )
-        )
+    def identity(self) -> CountScopeIdentity:
+        """Normalize scientific state/value only; provenance never defines scope."""
 
-    def semantic_key(self) -> tuple[str, ...]:
-        return (self.query_id, *self._serialized_components())
-
-    def comparison_key(self) -> tuple[object, ...] | None:
-        decisive = (
-            self.unit_type,
-            self.factor_id,
-            self.contrast_id,
-            self.group_id,
-            self.endpoint_id,
-            self.timepoint_id,
-            self.cohort_id,
-            self.lifecycle_phase,
+        return CountScopeIdentity(
+            query_id=self.query_id,
+            components=(
+                _normalized_scope_component("unit_type", self.unit_type),
+                _normalized_scope_component("factor_id", self.factor_id),
+                _normalized_scope_component("contrast_id", self.contrast_id),
+                _normalized_scope_component("group_id", self.group_id),
+                _normalized_scope_component("endpoint_id", self.endpoint_id),
+                _normalized_scope_component("timepoint_id", self.timepoint_id),
+                _normalized_scope_component("cohort_id", self.cohort_id),
+                _normalized_scope_component("lifecycle_phase", self.lifecycle_phase),
+                _normalized_scope_component("population_scope", self.population_scope),
+                _normalized_scope_component("condition", self.condition),
+            ),
         )
-        if any(value.knowledge_state is not KnowledgeState.PRESENT for value in decisive):
-            return None
-        return (self.query_id, *(value.value for value in decisive))
 
 
 class CanonicalCountRecord(KernelModel):
@@ -192,16 +212,40 @@ class CanonicalCountRecord(KernelModel):
 
         if self.origin is CountOrigin.RULE_DERIVATION and not self.rule_trace:
             raise ValueError("RULE_DERIVATION requires rule_trace")
+
+        if (
+            self.value.query_scope_id is not None
+            and self.value.query_scope_id != self.scope.query_id
+        ):
+            raise ValueError("value.query_scope_id must match scope.query_id")
+
+        expected_lifecycle_phase = {
+            CanonicalCountKind.PLANNED_UNIT_COUNT: CountLifecyclePhase.PLANNED,
+            CanonicalCountKind.ALLOCATED_UNIT_COUNT: CountLifecyclePhase.ALLOCATED,
+            CanonicalCountKind.TREATED_UNIT_COUNT: CountLifecyclePhase.TREATED,
+            CanonicalCountKind.OBSERVED_UNIT_COUNT: CountLifecyclePhase.OBSERVED,
+            CanonicalCountKind.EXCLUDED_UNIT_COUNT: CountLifecyclePhase.EXCLUDED,
+            CanonicalCountKind.ANALYZED_UNIT_COUNT: CountLifecyclePhase.ANALYZED,
+        }.get(self.kind)
+        lifecycle_phase = self.scope.lifecycle_phase
+        if (
+            expected_lifecycle_phase is not None
+            and lifecycle_phase.knowledge_state is KnowledgeState.PRESENT
+            and lifecycle_phase.value is not expected_lifecycle_phase
+        ):
+            raise ValueError(
+                f"{self.kind.value} requires lifecycle_phase={expected_lifecycle_phase.value}"
+            )
         return self
 
-    def semantic_identity(self) -> tuple[str, ...]:
-        return (self.kind.value, *self.scope.semantic_key())
+    def semantic_identity(self) -> tuple[object, ...] | None:
+        identity = self.scope.identity()
+        if not identity.resolved:
+            return None
+        return (self.kind.value, *identity.key())
 
     def comparison_identity(self) -> tuple[object, ...] | None:
-        scope_key = self.scope.comparison_key()
-        if scope_key is None:
-            return None
-        return (self.kind.value, *scope_key)
+        return self.semantic_identity()
 
 
 class CanonicalCountRegistry(KernelModel):
@@ -211,12 +255,17 @@ class CanonicalCountRegistry(KernelModel):
     @model_validator(mode="after")
     def _no_silent_collisions(self) -> Self:
         seen_ids: set[str] = set()
-        seen_identities: set[tuple[str, ...]] = set()
+        seen_identities: set[tuple[object, ...]] = set()
         for record in self.records:
             if record.count_id in seen_ids:
                 raise ValueError(f"duplicate count_id: {record.count_id}")
             seen_ids.add(record.count_id)
             identity = record.semantic_identity()
+            if identity is None:
+                raise ValueError(
+                    "SCIENTIFIC_REVIEW_REQUIRED: unresolved decisive count scope cannot "
+                    "enter collision comparison"
+                )
             if identity in seen_identities:
                 raise ValueError(
                     "same-scope count collision requires an explicit ConflictRecord; "
@@ -262,7 +311,9 @@ def count_compatibility(
 
     left_identity = left.comparison_identity()
     right_identity = right.comparison_identity()
-    if left_identity is None or right_identity is None or left_identity != right_identity:
+    if left_identity is None or right_identity is None:
+        return CountCompatibility.REVIEW_REQUIRED
+    if left_identity != right_identity:
         return CountCompatibility.NOT_COMPARABLE
 
     left_value = _present_payload(left)
@@ -323,6 +374,7 @@ __all__ = [
     "CountOrigin",
     "CountQuantifier",
     "CountScope",
+    "CountScopeIdentity",
     "canonical_count_kind",
     "count_compatibility",
     "independent_n_presentation_alias",

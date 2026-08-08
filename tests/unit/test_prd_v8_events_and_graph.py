@@ -88,6 +88,21 @@ def _events() -> tuple[
     return assignment, split, application, exposure, pool, observation
 
 
+def _causal_context() -> QueryCausalContext:
+    return QueryCausalContext(
+        inferential_query_id="IQ-001",
+        assignment_event_id=_present("EVT-ASSIGN-01"),
+        application_event_id=_present("EVT-APPLY-01"),
+        exposure_event_id=_present("EVT-EXPOSURE-01"),
+        assignment_unit_type=_present("culture"),
+        application_unit_type=_present("well"),
+        effective_exposure_unit_type=_present("plate"),
+        experimental_unit_type=_present("culture"),
+        biological_source_unit_type=_present("donor"),
+        interference_status=_present(InterferenceStatus.DOCUMENTED),
+    )
+
+
 def test_event_referenced_timing_requires_existing_event_ids() -> None:
     events = _events()
     timing = RelativeTiming(
@@ -122,47 +137,64 @@ def test_unknown_timing_is_explicit_and_needs_rationale() -> None:
 
 
 def test_causal_unit_roles_remain_distinct_without_resolver_side_effects() -> None:
-    context = QueryCausalContext(
-        inferential_query_id="IQ-001",
-        assignment_event_id=_present("EVT-ASSIGN-01"),
-        application_event_id=_present("EVT-APPLY-01"),
-        exposure_event_id=_present("EVT-EXPOSURE-01"),
-        assignment_unit_type=_present("culture"),
-        application_unit_type=_present("well"),
-        effective_exposure_unit_type=_present("plate"),
-        experimental_unit_type=_present("culture"),
-        biological_source_unit_type=_present("donor"),
-        interference_status=_present(InterferenceStatus.DOCUMENTED),
-    )
+    context = _causal_context()
 
     assert context.effective_exposure_unit_type.value == "plate"
     assert context.experimental_unit_type.value == "culture"
     assert context.biological_source_unit_type.value == "donor"
 
 
-def test_v8_graph_vocabulary_has_distinct_event_nodes_and_relations() -> None:
-    assert {
-        NodeType.INFERENTIAL_QUERY,
-        NodeType.ASSIGNMENT_EVENT,
-        NodeType.APPLICATION_EVENT,
-        NodeType.EXPOSURE_EVENT,
-        NodeType.SPLIT_EVENT,
-        NodeType.POOL_EVENT,
-        NodeType.OBSERVATION,
-        NodeType.ANALYSIS_AGGREGATE,
-        NodeType.COUNT_RECORD,
-        NodeType.EXCLUSION_RECORD,
-    } <= set(NodeType)
-    assert {
-        RelationType.CONTAINED_IN,
-        RelationType.EXPOSED_AS,
-        RelationType.OBSERVED_IN,
-        RelationType.ACQUIRED_FROM,
-        RelationType.AGGREGATED_TO,
-        RelationType.SHARES_EXPOSURE_WITH,
-        RelationType.MAY_INTERFERE_WITH,
-        RelationType.GENERATED_BY,
-        RelationType.COMPUTED_FROM,
-        RelationType.SEGMENTED_INTO,
-    } <= set(RelationType)
-    assert RelationType.CONTAINED_IN.value != RelationType.DERIVED_FROM.value
+def test_causal_event_aggregate_resolves_valid_typed_references() -> None:
+    from ntruth.schemas.causal_context import QueryCausalEventAggregate
+
+    context = _causal_context()
+    aggregate = QueryCausalEventAggregate(
+        experiment_block_id="EB-01",
+        event_registry=EventRegistry(events=_events()),
+        causal_context=context,
+    )
+    assert aggregate.causal_context is context
+
+
+def test_causal_event_aggregate_rejects_dangling_reference() -> None:
+    from ntruth.schemas.causal_context import QueryCausalEventAggregate
+
+    context = _causal_context().model_copy(update={"assignment_event_id": _present("EVT-MISSING")})
+    with pytest.raises(ValidationError, match="dangling assignment_event_id"):
+        QueryCausalEventAggregate(
+            experiment_block_id="EB-01",
+            event_registry=EventRegistry(events=_events()),
+            causal_context=context,
+        )
+
+
+def test_causal_event_aggregate_rejects_wrong_event_type() -> None:
+    from ntruth.schemas.causal_context import QueryCausalEventAggregate
+
+    context = _causal_context().model_copy(update={"assignment_event_id": _present("EVT-APPLY-01")})
+    with pytest.raises(ValidationError, match="assignment_event_id requires AssignmentEvent"):
+        QueryCausalEventAggregate(
+            experiment_block_id="EB-01",
+            event_registry=EventRegistry(events=_events()),
+            causal_context=context,
+        )
+
+
+def test_causal_event_aggregate_rejects_cross_block_reference() -> None:
+    from ntruth.schemas.causal_context import QueryCausalEventAggregate
+
+    events = list(_events())
+    events[0] = events[0].model_copy(update={"experiment_block_id": "EB-OTHER"})
+    with pytest.raises(ValidationError, match="cross-block assignment_event_id"):
+        QueryCausalEventAggregate(
+            experiment_block_id="EB-01",
+            event_registry=EventRegistry(events=tuple(events)),
+            causal_context=_causal_context(),
+        )
+
+
+def test_v7_graph_vocabulary_rejects_v8_only_tokens() -> None:
+    with pytest.raises(ValueError):
+        NodeType("AssignmentEvent")
+    with pytest.raises(ValueError):
+        RelationType("contained_in")

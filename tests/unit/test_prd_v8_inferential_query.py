@@ -101,9 +101,14 @@ def test_query_rejects_mismatched_unknown_scope() -> None:
 
 def test_v8_contracts_are_available_from_public_schema_exports() -> None:
     import ntruth.schemas as public_schemas
-    from ntruth.schemas.count_registry import CanonicalCountRecord
+    from ntruth.schemas.causal_context import QueryCausalEventAggregate
+    from ntruth.schemas.count_registry import CanonicalCountRecord, CountScopeIdentity
     from ntruth.schemas.events import AssignmentEvent
+    from ntruth.schemas.graph_v8 import V8ExperimentGraph
 
     assert public_schemas.InferentialQuery is InferentialQuery
     assert public_schemas.CanonicalCountRecord is CanonicalCountRecord
+    assert public_schemas.CountScopeIdentity is CountScopeIdentity
     assert public_schemas.AssignmentEvent is AssignmentEvent
+    assert public_schemas.QueryCausalEventAggregate is QueryCausalEventAggregate
+    assert public_schemas.V8ExperimentGraph is V8ExperimentGraph
