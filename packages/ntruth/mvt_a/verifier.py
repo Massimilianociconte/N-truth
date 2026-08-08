@@ -19,6 +19,7 @@ from ntruth.mvt_a.stage_schema import (
     StageIssue,
     assert_no_final_scientific_fields,
 )
+from ntruth.schemas.block_boundary import verify_candidate_experiment_block_boundaries
 from ntruth.schemas.core import FrozenModel
 
 if TYPE_CHECKING:
@@ -46,6 +47,7 @@ def hard_verify_candidates(
         "forbidden_final_fields",
         "non_empty_or_explicit_empty",
         "count_kinds_candidate_only",
+        "experiment_block_boundaries",
     )
     try:
         if bundle is None:
@@ -89,6 +91,17 @@ def hard_verify_candidates(
                 StageIssue(
                     code=StageErrorCode.INVALID_COUNT_INVARIANT,
                     detail=f"forbidden final count kind: {count.kind}",
+                )
+            )
+
+    if bundle is not None:
+        try:
+            verify_candidate_experiment_block_boundaries(bundle)
+        except ValueError as exc:
+            errors.append(
+                StageIssue(
+                    code=StageErrorCode.VERIFIER_DISAGREEMENT,
+                    detail=str(exc),
                 )
             )
 

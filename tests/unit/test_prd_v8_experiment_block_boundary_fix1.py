@@ -1,0 +1,380 @@
+"""Regressions for the PRD v8 Experiment Block boundary review."""
+
+from __future__ import annotations
+
+from datetime import UTC, datetime
+
+import pytest
+from pydantic import ValidationError
+
+import ntruth.schemas.block_boundary as boundary
+from ntruth.mvt_a.verifier import hard_verify_candidates
+from ntruth.parser_ai.contract import ParserCandidateOutput
+from ntruth.schemas.authority import AuthorityType
+from ntruth.schemas.knowledge import KnowledgeState, KnowledgeValue
+from ntruth.schemas.support import (
+    SUPPORT_GRADE_VOCABULARY_SECTION_0_4,
+    ConfirmationEvent,
+    EpistemicEventLedger,
+    EvidenceBasis,
+    EvidenceRecord,
+    EvidenceTypeV8,
+    SourceClassRef,
+    SupportDescriptor,
+    SupportGrade,
+)
+from ntruth.training.metrics import score_output
+
+
+def _support() -> SupportDescriptor:
+    return SupportDescriptor(
+        source_class=SourceClassRef(
+            registry_id="ntruth-source-class-v8.0",
+            token="clarification",
+        ),
+        authority_type=AuthorityType.AUTHOR_CLARIFICATION,
+        evidence_basis=EvidenceBasis.CORROBORATED_CONFIRMATION,
+        support_grade=SupportGrade(
+            vocabulary_id=SUPPORT_GRADE_VOCABULARY_SECTION_0_4,
+            token="AUTHOR_CLARIFIED",
+        ),
+    )
+
+
+def _evidence(evidence_id: str, text: str) -> EvidenceRecord:
+    return EvidenceRecord(
+        evidence_id=evidence_id,
+        source_id="METHODS-S2",
+        evidence_type=EvidenceTypeV8.STRUCTURAL_FACT,
+        locator=f"Methods section 2: {evidence_id}",
+        original_text=text,
+    )
+
+
+def _confirmation(
+    *,
+    event_id: str,
+    scope_id: str,
+    evidence_refs: tuple[str, ...],
+    confirmed_evidence_ids: tuple[str, ...],
+    value: object,
+) -> ConfirmationEvent:
+    return ConfirmationEvent(
+        event_id=event_id,
+        support=_support(),
+        evidence_refs=evidence_refs,
+        scope_id=scope_id,
+        confirmed_value=KnowledgeValue(
+            knowledge_state=KnowledgeState.PRESENT,
+            value=value,
+            evidence_ids=confirmed_evidence_ids,
+        ),
+        actor_role="experiment_owner",
+        review_independent=False,
+        created_at=datetime(2026, 8, 8, 12, 0, tzinfo=UTC),
+    )
+
+
+def _parser_payload(
+    *,
+    blocks: tuple[tuple[str, str], ...] = (("EB-01", "Experiment 1"),),
+    evidence_ids: tuple[str, ...] = ("EV-METHODS",),
+    basis: tuple[str, ...] = ("distinct_assignment_history",),
+) -> dict[str, object]:
+    return {
+        "contract_version": "8.0.0",
+        "experiment_blocks": [
+            {
+                "block_id": block_id,
+                "title": title,
+                "evidence_ids": list(evidence_ids),
+                "confidence": 0.8,
+            }
+            for block_id, title in blocks
+        ],
+        "block_boundaries": [
+            {
+                "block_id": block_id,
+                "boundary_basis_candidates": list(basis),
+                "rationale": "Explicit heading and distinct allocation history.",
+                "evidence_ids": list(evidence_ids),
+                "confidence": 0.8,
+            }
+            for block_id, _title in blocks
+        ],
+        "evidence_spans": [
+            {
+                "evidence_id": "EV-METHODS",
+                "file_id": "methods",
+                "evidence_type": "STRUCTURAL_FACT",
+                "text": "Experiment 1 has a distinct allocation history.",
+                "confidence": 0.8,
+                "start": 0,
+                "end": 48,
+            },
+            {
+                "evidence_id": "EV-FIGURE",
+                "file_id": "figure",
+                "evidence_type": "STRUCTURAL_FACT",
+                "text": "Figure 2.",
+                "confidence": 0.8,
+                "start": 0,
+                "end": 9,
+            },
+        ],
+        "coverage": {
+            "status": "COMPLETE",
+            "covered_artifact_ids": ["methods", "figure"],
+            "missing_artifact_ids": [],
+            "rationale": "Both supplied artifacts were routed.",
+        },
+        "model_metadata": {
+            "adapter_name": "fixture",
+            "model_name": "fixture",
+            "model_version": "1",
+            "prompt_template_version": "candidate-v8",
+            "contract_version": "8.0.0",
+            "local_execution": True,
+        },
+    }
+
+
+def test_candidate_metrics_are_local_id_invariant_but_evidence_binding_sensitive() -> None:
+    gold_payload = _parser_payload()
+    gold = ParserCandidateOutput.model_validate(gold_payload)
+
+    renamed_payload = _parser_payload(blocks=(("LOCAL-PREDICTED-ID", "Experiment 1"),))
+    renamed_payload["evidence_spans"][0]["evidence_id"] = "LOCAL-EVIDENCE-ID"  # type: ignore[index]
+    renamed_payload["experiment_blocks"][0]["evidence_ids"] = [  # type: ignore[index]
+        "LOCAL-EVIDENCE-ID"
+    ]
+    renamed_payload["block_boundaries"][0]["evidence_ids"] = [  # type: ignore[index]
+        "LOCAL-EVIDENCE-ID"
+    ]
+    renamed = ParserCandidateOutput.model_validate(renamed_payload)
+    assert score_output(renamed, gold)["micro"]["f1"] == 1.0
+
+    rebound_payload = _parser_payload(evidence_ids=("EV-FIGURE",))
+    rebound = ParserCandidateOutput.model_validate(rebound_payload)
+    rebound_score = score_output(rebound, gold)
+    assert rebound_score["categories"]["block_boundaries"]["false_positive"] == 1
+    assert rebound_score["categories"]["block_boundaries"]["false_negative"] == 1
+    assert rebound_score["micro"]["f1"] < 1.0
+
+
+@pytest.mark.parametrize(("predicted_count", "gold_count"), ((2, 1), (1, 2)))
+def test_candidate_metrics_count_semantic_duplicates_and_omissions(
+    predicted_count: int,
+    gold_count: int,
+) -> None:
+    duplicate_blocks = (("EB-01", "Experiment 1"), ("EB-02", "Experiment 1"))
+    predicted = ParserCandidateOutput.model_validate(
+        _parser_payload(blocks=duplicate_blocks[:predicted_count])
+    )
+    gold = ParserCandidateOutput.model_validate(
+        _parser_payload(blocks=duplicate_blocks[:gold_count])
+    )
+
+    score = score_output(predicted, gold)
+    assert score["categories"]["experiment_blocks"]["f1"] < 1.0
+    assert score["categories"]["block_boundaries"]["f1"] < 1.0
+    assert score["micro"]["f1"] < 1.0
+
+
+def test_confirmed_boundary_requires_exact_unique_confirmed_value_evidence() -> None:
+    record = boundary.ExperimentBlockBoundaryRecord(
+        block_id="EB-01",
+        boundary_basis=KnowledgeValue[tuple[str, ...]](
+            knowledge_state=KnowledgeState.PRESENT,
+            value=("distinct_assignment_history",),
+            evidence_ids=("EV-1", "EV-2"),
+        ),
+        source_refs=("EV-1", "EV-2"),
+        status=boundary.BlockBoundaryStatus.CONFIRMED,
+        rationale="The allocation history is distinct.",
+        confirmation_event_ids=("CONF-1",),
+    )
+    event = _confirmation(
+        event_id="CONF-1",
+        scope_id="EB-01",
+        evidence_refs=("EV-1", "EV-2"),
+        confirmed_evidence_ids=("EV-1",),
+        value=["distinct_assignment_history"],
+    )
+    ledger = EpistemicEventLedger(
+        ledger_id="LEDGER-1",
+        evidence_records=(
+            _evidence("EV-1", "The treatment was assigned after splitting."),
+            _evidence("EV-2", "The allocation table records the split."),
+        ),
+        confirmation_events=(event,),
+    )
+
+    with pytest.raises(ValueError, match=r"confirmed_value evidence|exact"):
+        boundary.verify_experiment_block_boundaries((record,), ledger=ledger)
+
+    with pytest.raises(ValidationError, match="unique"):
+        boundary.ExperimentBlockBoundaryRecord(
+            block_id="EB-01",
+            boundary_basis=KnowledgeValue[tuple[str, ...]](
+                knowledge_state=KnowledgeState.PRESENT,
+                value=("distinct_assignment_history",),
+                evidence_ids=("EV-1", "EV-1"),
+            ),
+            source_refs=("EV-1",),
+            status=boundary.BlockBoundaryStatus.CANDIDATE,
+            rationale="Retained candidate with malformed duplicated evidence.",
+        )
+
+
+def test_figure_changed_only_cannot_pass_the_hard_boundary_or_be_confirmed() -> None:
+    candidate = ParserCandidateOutput.model_validate(
+        _parser_payload(basis=("figure_changed_only",))
+    )
+    result = hard_verify_candidates(candidate)
+    assert result.passed is False
+    assert "experiment_block_boundaries" in result.checks_run
+    assert any("figure" in issue.detail.casefold() for issue in result.errors)
+
+    with pytest.raises(ValidationError, match=r"figure_changed_only|insufficient"):
+        boundary.ExperimentBlockBoundaryRecord(
+            block_id="EB-01",
+            boundary_basis=KnowledgeValue[tuple[str, ...]](
+                knowledge_state=KnowledgeState.PRESENT,
+                value=("figure_changed_only",),
+                evidence_ids=("EV-1",),
+            ),
+            source_refs=("EV-1",),
+            status=boundary.BlockBoundaryStatus.CONFIRMED,
+            rationale="Only the figure changed.",
+            confirmation_event_ids=("CONF-1",),
+        )
+
+
+def test_split_merge_ledger_is_append_only_content_addressed_and_version_chained() -> None:
+    build_change = getattr(boundary, "build_experiment_block_boundary_change", None)
+    build_ledger = getattr(boundary, "build_experiment_block_boundary_change_ledger", None)
+    append_ledger = getattr(boundary, "append_experiment_block_boundary_change_ledger", None)
+    verify_ledger = getattr(boundary, "verify_experiment_block_boundary_change_ledger", None)
+    assert callable(build_change), "content-addressed boundary change builder is missing"
+    assert callable(build_ledger), "content-addressed boundary change ledger builder is missing"
+    assert callable(append_ledger), "append-only boundary ledger operation is missing"
+    assert callable(verify_ledger), "boundary change confirmation resolver is missing"
+
+    split = build_change(
+        change_kind=boundary.BlockBoundaryChangeKind.SPLIT,
+        prior_block_ids=("EB-OLD",),
+        resulting_block_ids=("EB-01", "EB-02"),
+        boundary_basis=("distinct_assignment_history",),
+        source_refs=("EV-1",),
+        rationale="Review resolved two distinct allocation histories.",
+        confirmation_event_ids=("CONF-SPLIT",),
+    )
+    initial = build_ledger(changes=(split,))
+    merge = build_change(
+        change_kind=boundary.BlockBoundaryChangeKind.MERGE,
+        prior_block_ids=("EB-01", "EB-02"),
+        resulting_block_ids=("EB-MERGED",),
+        boundary_basis=("shared_assignment_history",),
+        source_refs=("EV-1",),
+        rationale="Later evidence established one shared allocation history.",
+        confirmation_event_ids=("CONF-MERGE",),
+        previous=split,
+    )
+    appended = append_ledger(initial, merge)
+
+    assert appended.changes[: len(initial.changes)] == initial.changes
+    assert split.sequence == 1
+    assert merge.sequence == 2
+    assert merge.parent_change.value is not None
+    assert merge.parent_change.value.change_id == split.change_id
+    assert merge.parent_change.value.sha256 == split.record_checksum
+    assert appended.ledger_id != initial.ledger_id
+    assert appended.content_checksum != initial.content_checksum
+
+    split_value = {
+        "change_kind": "SPLIT",
+        "prior_block_ids": ["EB-OLD"],
+        "resulting_block_ids": ["EB-01", "EB-02"],
+        "boundary_basis": ["distinct_assignment_history"],
+    }
+    merge_value = {
+        "change_kind": "MERGE",
+        "prior_block_ids": ["EB-01", "EB-02"],
+        "resulting_block_ids": ["EB-MERGED"],
+        "boundary_basis": ["shared_assignment_history"],
+    }
+    epistemic = EpistemicEventLedger(
+        ledger_id="LEDGER-CHANGES",
+        evidence_records=(_evidence("EV-1", "The allocation ledger resolves the boundary."),),
+        confirmation_events=(
+            _confirmation(
+                event_id="CONF-SPLIT",
+                scope_id=split.change_id,
+                evidence_refs=("EV-1",),
+                confirmed_evidence_ids=("EV-1",),
+                value=split_value,
+            ),
+            _confirmation(
+                event_id="CONF-MERGE",
+                scope_id=merge.change_id,
+                evidence_refs=("EV-1",),
+                confirmed_evidence_ids=("EV-1",),
+                value=merge_value,
+            ),
+        ),
+    )
+    assert verify_ledger(appended, ledger=epistemic) == appended
+
+    forged_ledger = appended.model_copy(update={"content_checksum": "0" * 64})
+    with pytest.raises((ValueError, ValidationError), match="ledger checksum"):
+        verify_ledger(forged_ledger, ledger=epistemic)
+
+    tampered = merge.model_dump(mode="json")
+    tampered["resulting_block_ids"] = ["EB-FORGED"]
+    with pytest.raises(ValidationError, match="checksum"):
+        type(merge).model_validate(tampered)
+    with pytest.raises((ValueError, ValidationError), match=r"initial|sequence|parent"):
+        build_ledger(changes=(merge,))
+
+
+def test_change_ledger_resolves_exact_source_and_confirmation_evidence() -> None:
+    build_change = getattr(boundary, "build_experiment_block_boundary_change", None)
+    build_ledger = getattr(boundary, "build_experiment_block_boundary_change_ledger", None)
+    verify_ledger = getattr(boundary, "verify_experiment_block_boundary_change_ledger", None)
+    assert callable(build_change)
+    assert callable(build_ledger)
+    assert callable(verify_ledger)
+
+    change = build_change(
+        change_kind=boundary.BlockBoundaryChangeKind.SPLIT,
+        prior_block_ids=("EB-OLD",),
+        resulting_block_ids=("EB-01", "EB-02"),
+        boundary_basis=("distinct_assignment_history",),
+        source_refs=("EV-1", "EV-2"),
+        rationale="Two allocation histories are explicitly documented.",
+        confirmation_event_ids=("CONF-SPLIT",),
+    )
+    change_ledger = build_ledger(changes=(change,))
+    incomplete_confirmation = _confirmation(
+        event_id="CONF-SPLIT",
+        scope_id=change.change_id,
+        evidence_refs=("EV-1", "EV-2"),
+        confirmed_evidence_ids=("EV-1",),
+        value={
+            "change_kind": "SPLIT",
+            "prior_block_ids": ["EB-OLD"],
+            "resulting_block_ids": ["EB-01", "EB-02"],
+            "boundary_basis": ["distinct_assignment_history"],
+        },
+    )
+    epistemic = EpistemicEventLedger(
+        ledger_id="LEDGER-INCOMPLETE",
+        evidence_records=(
+            _evidence("EV-1", "The Methods name two histories."),
+            _evidence("EV-2", "The allocation table corroborates them."),
+        ),
+        confirmation_events=(incomplete_confirmation,),
+    )
+    with pytest.raises(ValueError, match=r"confirmed_value evidence|exact"):
+        verify_ledger(change_ledger, ledger=epistemic)

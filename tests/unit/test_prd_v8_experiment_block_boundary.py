@@ -15,8 +15,8 @@ from ntruth.schemas.authority import AuthorityType
 from ntruth.schemas.block_boundary import (
     BlockBoundaryChangeKind,
     BlockBoundaryStatus,
-    ExperimentBlockBoundaryChangeRecord,
     ExperimentBlockBoundaryRecord,
+    build_experiment_block_boundary_change,
     verify_experiment_block_boundaries,
 )
 from ntruth.schemas.knowledge import KnowledgeState, KnowledgeValue
@@ -210,11 +210,11 @@ def test_split_and_merge_have_typed_auditable_shapes(
     prior: tuple[str, ...],
     resulting: tuple[str, ...],
 ) -> None:
-    change = ExperimentBlockBoundaryChangeRecord(
-        change_id=f"CHANGE-{kind.value}",
+    change = build_experiment_block_boundary_change(
         change_kind=kind,
         prior_block_ids=prior,
         resulting_block_ids=resulting,
+        boundary_basis=("distinct_assignment_history",),
         source_refs=("EV-BOUNDARY-1",),
         rationale="Human review changed the block boundary.",
         confirmation_event_ids=("CONF-BOUNDARY-1",),
