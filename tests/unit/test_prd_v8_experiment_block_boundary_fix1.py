@@ -165,6 +165,27 @@ def _parser_payload(
     }
 
 
+def _epistemic_change_ledger(
+    *changes: boundary.ExperimentBlockBoundaryChangeRecord,
+) -> EpistemicEventLedger:
+    return EpistemicEventLedger(
+        ledger_id="LEDGER-CHANGE-CLOSURE",
+        evidence_records=(
+            _evidence("EV-1", "The allocation ledger resolves the boundary history."),
+        ),
+        confirmation_events=tuple(
+            _confirmation(
+                event_id=change.confirmation_event_ids[0],
+                scope_id=change.change_id,
+                evidence_refs=change.source_refs,
+                confirmed_evidence_ids=change.source_refs,
+                value=boundary.experiment_block_boundary_change_confirmation_value(change),
+            )
+            for change in changes
+        ),
+    )
+
+
 def test_candidate_metrics_are_local_id_invariant_but_evidence_binding_sensitive() -> None:
     gold_payload = _parser_payload()
     gold = ParserCandidateOutput.model_validate(gold_payload)
@@ -382,6 +403,77 @@ def test_hard_verifier_rechecks_structured_boundary_criterion_uniqueness() -> No
     assert any("criterion" in error.detail for error in result.errors)
 
 
+@pytest.mark.parametrize(
+    ("field", "forged_value"),
+    (
+        ("criterion", "OTHER"),
+        ("criterion", "figure_or_panel_changed_only"),
+        ("internal_query_representability", "OTHER"),
+    ),
+)
+def test_hard_verifier_revalidates_forged_nested_boundary_predicates(
+    field: str,
+    forged_value: str,
+) -> None:
+    valid = ParserCandidateOutput.model_validate(_parser_payload())
+    forged_predicate = (
+        valid.block_boundaries[0].boundary_predicates[0].model_copy(update={field: forged_value})
+    )
+    forged_boundary = valid.block_boundaries[0].model_copy(
+        update={"boundary_predicates": (forged_predicate,)}
+    )
+    forged = valid.model_copy(update={"block_boundaries": (forged_boundary,)})
+
+    result = hard_verify_candidates(forged)
+    assert result.passed is False
+    assert any(
+        "boundary_predicates" in error.detail
+        or "criterion" in error.detail
+        or "internal_query_representability" in error.detail
+        for error in result.errors
+    )
+
+
+@pytest.mark.parametrize("forgery", ("unknown", "duplicate"))
+def test_boundary_verifier_revalidates_forged_confirmed_records(forgery: str) -> None:
+    valid = boundary.ExperimentBlockBoundaryRecord(
+        block_id="EB-01",
+        boundary_basis=KnowledgeValue[tuple[boundary.BlockBoundaryPredicate, ...]](
+            knowledge_state=KnowledgeState.PRESENT,
+            value=(_predicate(),),
+            evidence_ids=("EV-1",),
+        ),
+        source_refs=("EV-1",),
+        status=boundary.BlockBoundaryStatus.CONFIRMED,
+        rationale="The source document explicitly describes a distinct experiment.",
+        confirmation_event_ids=("CONF-1",),
+    )
+    if forgery == "unknown":
+        forged_predicates = (
+            _predicate(representability=boundary.InternalQueryRepresentability.UNKNOWN),
+        )
+    else:
+        forged_predicates = (_predicate(), _predicate())
+    forged_basis = valid.boundary_basis.model_copy(update={"value": forged_predicates})
+    forged = valid.model_copy(update={"boundary_basis": forged_basis})
+    epistemic = EpistemicEventLedger(
+        ledger_id="LEDGER-FORGED-RECORD",
+        evidence_records=(_evidence("EV-1", "The source describes the experiment."),),
+        confirmation_events=(
+            _confirmation(
+                event_id="CONF-1",
+                scope_id="EB-01",
+                evidence_refs=("EV-1",),
+                confirmed_evidence_ids=("EV-1",),
+                value=[predicate.model_dump(mode="json") for predicate in forged_predicates],
+            ),
+        ),
+    )
+
+    with pytest.raises((ValueError, ValidationError), match=r"CONFIRMED|criterion|duplicate"):
+        boundary.verify_experiment_block_boundaries((forged,), ledger=epistemic)
+
+
 def test_boundary_rationale_is_a_non_decisive_metric_note() -> None:
     gold = ParserCandidateOutput.model_validate(_parser_payload())
     predicted_payload = _parser_payload()
@@ -422,7 +514,7 @@ def test_split_merge_ledger_is_append_only_content_addressed_and_version_chained
         resulting_block_ids=("EB-MERGED",),
         boundary_basis=(
             _predicate(
-                boundary.BlockBoundaryCriterion.UNSHAREABLE_CONTRAST_OR_GROUP,
+                boundary.BlockBoundaryCriterion.DISTINCT_EXPERIMENT_SOURCE_DOCUMENT,
                 boundary.InternalQueryRepresentability.REPRESENTABLE,
             ),
         ),
@@ -454,7 +546,7 @@ def test_split_merge_ledger_is_append_only_content_addressed_and_version_chained
         "resulting_block_ids": ["EB-MERGED"],
         "boundary_basis": [
             _predicate(
-                boundary.BlockBoundaryCriterion.UNSHAREABLE_CONTRAST_OR_GROUP,
+                boundary.BlockBoundaryCriterion.DISTINCT_EXPERIMENT_SOURCE_DOCUMENT,
                 boundary.InternalQueryRepresentability.REPRESENTABLE,
             ).model_dump(mode="json")
         ],
@@ -491,6 +583,150 @@ def test_split_merge_ledger_is_append_only_content_addressed_and_version_chained
         type(merge).model_validate(tampered)
     with pytest.raises((ValueError, ValidationError), match=r"initial|sequence|parent"):
         build_ledger(changes=(merge,))
+
+
+def test_change_ledger_rejects_an_orphan_merge() -> None:
+    merge = boundary.build_experiment_block_boundary_change(
+        change_kind=boundary.BlockBoundaryChangeKind.MERGE,
+        prior_block_ids=("EB-01", "EB-02"),
+        resulting_block_ids=("EB-MERGED",),
+        boundary_basis=(
+            _predicate(representability=boundary.InternalQueryRepresentability.REPRESENTABLE),
+        ),
+        source_refs=("EV-1",),
+        rationale="No prior split is present in this chain.",
+        confirmation_event_ids=("CONF-MERGE",),
+    )
+    change_ledger = boundary.build_experiment_block_boundary_change_ledger(changes=(merge,))
+
+    with pytest.raises(ValueError, match=r"MERGE|prior SPLIT|orphan"):
+        boundary.verify_experiment_block_boundary_change_ledger(
+            change_ledger,
+            ledger=_epistemic_change_ledger(merge),
+        )
+
+
+@pytest.mark.parametrize(
+    "merge_criteria",
+    (
+        (boundary.BlockBoundaryCriterion.DISTINCT_EXPERIMENT_SOURCE_DOCUMENT,),
+        (
+            boundary.BlockBoundaryCriterion.DISTINCT_EXPERIMENT_SOURCE_DOCUMENT,
+            boundary.BlockBoundaryCriterion.INCOMPATIBLE_TIMELINE,
+            boundary.BlockBoundaryCriterion.UNSHAREABLE_CONTRAST_OR_GROUP,
+        ),
+    ),
+    ids=("missing", "extraneous"),
+)
+def test_change_ledger_requires_exact_merge_criterion_closure(
+    merge_criteria: tuple[boundary.BlockBoundaryCriterion, ...],
+) -> None:
+    split = boundary.build_experiment_block_boundary_change(
+        change_kind=boundary.BlockBoundaryChangeKind.SPLIT,
+        prior_block_ids=("EB-OLD",),
+        resulting_block_ids=("EB-01", "EB-02"),
+        boundary_basis=(
+            _predicate(),
+            _predicate(boundary.BlockBoundaryCriterion.INCOMPATIBLE_TIMELINE),
+        ),
+        source_refs=("EV-1",),
+        rationale="Two decisive criteria required the split.",
+        confirmation_event_ids=("CONF-SPLIT",),
+    )
+    merge = boundary.build_experiment_block_boundary_change(
+        change_kind=boundary.BlockBoundaryChangeKind.MERGE,
+        prior_block_ids=("EB-01", "EB-02"),
+        resulting_block_ids=("EB-MERGED",),
+        boundary_basis=tuple(
+            _predicate(criterion, boundary.InternalQueryRepresentability.REPRESENTABLE)
+            for criterion in merge_criteria
+        ),
+        source_refs=("EV-1",),
+        rationale="The merge must close exactly the split predicates.",
+        confirmation_event_ids=("CONF-MERGE",),
+        previous=split,
+    )
+    change_ledger = boundary.build_experiment_block_boundary_change_ledger(changes=(split, merge))
+
+    with pytest.raises(ValueError, match=r"MERGE|criterion|criteria|closure"):
+        boundary.verify_experiment_block_boundary_change_ledger(
+            change_ledger,
+            ledger=_epistemic_change_ledger(split, merge),
+        )
+
+
+def test_change_ledger_requires_merge_prior_ids_to_match_one_prior_split() -> None:
+    split = boundary.build_experiment_block_boundary_change(
+        change_kind=boundary.BlockBoundaryChangeKind.SPLIT,
+        prior_block_ids=("EB-OLD",),
+        resulting_block_ids=("EB-01", "EB-02"),
+        boundary_basis=(_predicate(),),
+        source_refs=("EV-1",),
+        rationale="The source establishes two blocks.",
+        confirmation_event_ids=("CONF-SPLIT",),
+    )
+    merge = boundary.build_experiment_block_boundary_change(
+        change_kind=boundary.BlockBoundaryChangeKind.MERGE,
+        prior_block_ids=("EB-01", "EB-03"),
+        resulting_block_ids=("EB-MERGED",),
+        boundary_basis=(
+            _predicate(representability=boundary.InternalQueryRepresentability.REPRESENTABLE),
+        ),
+        source_refs=("EV-1",),
+        rationale="One prior block was never produced by the split.",
+        confirmation_event_ids=("CONF-MERGE",),
+        previous=split,
+    )
+    change_ledger = boundary.build_experiment_block_boundary_change_ledger(changes=(split, merge))
+
+    with pytest.raises(ValueError, match=r"MERGE|prior SPLIT|prior block"):
+        boundary.verify_experiment_block_boundary_change_ledger(
+            change_ledger,
+            ledger=_epistemic_change_ledger(split, merge),
+        )
+
+
+def test_change_ledger_rejects_ambiguous_prior_split_mapping() -> None:
+    first = boundary.build_experiment_block_boundary_change(
+        change_kind=boundary.BlockBoundaryChangeKind.SPLIT,
+        prior_block_ids=("EB-OLD-1",),
+        resulting_block_ids=("EB-01", "EB-02"),
+        boundary_basis=(_predicate(),),
+        source_refs=("EV-1",),
+        rationale="First split declaration.",
+        confirmation_event_ids=("CONF-SPLIT-1",),
+    )
+    second = boundary.build_experiment_block_boundary_change(
+        change_kind=boundary.BlockBoundaryChangeKind.SPLIT,
+        prior_block_ids=("EB-OLD-2",),
+        resulting_block_ids=("EB-01", "EB-02"),
+        boundary_basis=(_predicate(),),
+        source_refs=("EV-1",),
+        rationale="Conflicting second split declaration.",
+        confirmation_event_ids=("CONF-SPLIT-2",),
+        previous=first,
+    )
+    merge = boundary.build_experiment_block_boundary_change(
+        change_kind=boundary.BlockBoundaryChangeKind.MERGE,
+        prior_block_ids=("EB-01", "EB-02"),
+        resulting_block_ids=("EB-MERGED",),
+        boundary_basis=(
+            _predicate(representability=boundary.InternalQueryRepresentability.REPRESENTABLE),
+        ),
+        source_refs=("EV-1",),
+        rationale="The source cannot identify which split is being closed.",
+        confirmation_event_ids=("CONF-MERGE",),
+        previous=second,
+    )
+    change_ledger = boundary.build_experiment_block_boundary_change_ledger(
+        changes=(first, second, merge)
+    )
+
+    with pytest.raises(ValueError, match=r"MERGE|ambiguous|prior SPLIT"):
+        boundary.verify_experiment_block_boundary_change_ledger(
+            change_ledger,
+            ledger=_epistemic_change_ledger(first, second, merge),
+        )
 
 
 def test_change_ledger_resolves_exact_source_and_confirmation_evidence() -> None:

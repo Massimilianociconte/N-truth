@@ -75,6 +75,41 @@ def _require_unique_boundary_criteria(
         )
 
 
+def _verify_merge_closure(
+    changes: tuple[ExperimentBlockBoundaryChangeRecord, ...],
+) -> None:
+    """Require each merge to close one unambiguous prior split exactly."""
+
+    prior_splits: list[ExperimentBlockBoundaryChangeRecord] = []
+    for change in changes:
+        if change.change_kind is BlockBoundaryChangeKind.SPLIT:
+            prior_splits.append(change)
+            continue
+        matching_splits = tuple(
+            split
+            for split in prior_splits
+            if frozenset(split.resulting_block_ids) == frozenset(change.prior_block_ids)
+        )
+        if not matching_splits:
+            raise ValueError(
+                "MERGE prior block IDs do not exactly resolve a prior SPLIT in this chain"
+            )
+        if len(matching_splits) != 1:
+            raise ValueError("MERGE has an ambiguous prior SPLIT mapping")
+        split = matching_splits[0]
+        decisive_split_criteria = {
+            predicate.criterion
+            for predicate in split.boundary_basis
+            if predicate.internal_query_representability
+            is InternalQueryRepresentability.NOT_REPRESENTABLE
+        }
+        merge_criteria = {predicate.criterion for predicate in change.boundary_basis}
+        if merge_criteria != decisive_split_criteria:
+            raise ValueError(
+                "MERGE criterion closure must exactly resolve the decisive prior SPLIT criteria"
+            )
+
+
 class BlockBoundaryStatus(StrEnum):
     CONFIRMED = "CONFIRMED"
     CANDIDATE = "CANDIDATE"
@@ -364,6 +399,12 @@ def verify_candidate_experiment_block_boundaries(
 ) -> ParserCandidateOutput:
     """Hard-gate router proposals without converting them into scientific verdicts."""
 
+    from ntruth.parser_ai.contract import ParserCandidateOutput
+
+    bundle = ParserCandidateOutput.model_validate(
+        bundle.model_dump(mode="python", round_trip=True, warnings="none")
+    )
+
     block_ids = tuple(block.block_id for block in bundle.experiment_blocks)
     boundary_block_ids = tuple(boundary.block_id for boundary in bundle.block_boundaries)
     if len(boundary_block_ids) != len(set(boundary_block_ids)):
@@ -386,6 +427,16 @@ def verify_experiment_block_boundaries(
     ledger: EpistemicEventLedger,
 ) -> tuple[ExperimentBlockBoundaryRecord, ...]:
     """Resolve only CONFIRMED boundaries against the immutable event ledger."""
+
+    records = tuple(
+        ExperimentBlockBoundaryRecord.model_validate(
+            record.model_dump(mode="python", round_trip=True, warnings="none")
+        )
+        for record in records
+    )
+    ledger = EpistemicEventLedger.model_validate(
+        ledger.model_dump(mode="python", round_trip=True, warnings="none")
+    )
 
     block_ids = tuple(record.block_id for record in records)
     if len(set(block_ids)) != len(block_ids):
@@ -433,8 +484,13 @@ def verify_experiment_block_boundary_change_ledger(
 ) -> ExperimentBlockBoundaryChangeLedger:
     """Resolve every change against exact evidence and change-scoped confirmations."""
 
-    change_ledger = ExperimentBlockBoundaryChangeLedger.model_validate(change_ledger)
-    ledger = EpistemicEventLedger.model_validate(ledger)
+    change_ledger = ExperimentBlockBoundaryChangeLedger.model_validate(
+        change_ledger.model_dump(mode="python", round_trip=True, warnings="none")
+    )
+    ledger = EpistemicEventLedger.model_validate(
+        ledger.model_dump(mode="python", round_trip=True, warnings="none")
+    )
+    _verify_merge_closure(change_ledger.changes)
     evidence_ids = {record.evidence_id for record in ledger.evidence_records}
     confirmations = {event.event_id: event for event in ledger.confirmation_events}
     for change in change_ledger.changes:

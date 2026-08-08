@@ -52,7 +52,7 @@ def hard_verify_candidates(
     try:
         if bundle is None:
             raise ValueError("canonical parser candidate payload is absent")
-        assert_no_final_scientific_fields(bundle.model_dump(mode="json"))
+        assert_no_final_scientific_fields(bundle.model_dump(mode="json", warnings="none"))
     except ValueError as exc:
         errors.append(
             StageIssue(
