@@ -273,10 +273,15 @@ class CanonicalCountRegistry(KernelModel):
             seen_ids.add(record.count_id)
             identity = record.semantic_identity()
             if identity is None:
-                raise ValueError(
-                    "SCIENTIFIC_REVIEW_REQUIRED: unresolved decisive count scope cannot "
-                    "enter collision comparison"
-                )
+                if record.value.knowledge_state is KnowledgeState.PRESENT:
+                    raise ValueError(
+                        "SCIENTIFIC_REVIEW_REQUIRED: a PRESENT count with unresolved decisive "
+                        "scope cannot enter collision comparison"
+                    )
+                # An explicit open-world count state is useful evidence even when its
+                # scientific scope is not comparison-ready.  It is retained but never
+                # assigned an identity, aggregated, or compared as if the scope were known.
+                continue
             if identity in seen_identities:
                 raise ValueError(
                     "same-scope count collision requires an explicit ConflictRecord; "

@@ -36,9 +36,11 @@ from ntruth.governance import (
 )
 from ntruth.ingest.safety import SafetyError
 from ntruth.quick_design import (
+    GuidedQuickDesignBuildRequest,
     QuickDesignScientificReviewRequired,
     QuickDesignV7Answers,
     QuickDesignV8Submission,
+    build_guided_quick_design,
     export_v7_for_biostatistician,
     run_quick_design_v7_session,
     run_quick_design_v8,
@@ -311,6 +313,28 @@ def create_app() -> Any:
                 "strategy_module_status": result.report_bundle.strategy_module_status.value,
             },
         }
+
+    @api.post("/v8/quick-design/build-submission")
+    def build_quick_design_submission(
+        payload: GuidedQuickDesignBuildRequest,
+    ) -> dict[str, Any]:
+        """Build one strict canonical submission from reviewed guided fields."""
+
+        try:
+            response = build_guided_quick_design(payload)
+        except QuickDesignScientificReviewRequired as exc:
+            review = exc.review_requirement
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": review.status.value,
+                    "issue_id": review.issue_id,
+                    "message": review.rationale,
+                },
+            ) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return response.model_dump(mode="json")
 
     @api.post("/v7/quick-design")
     def quick_design_v7(payload: LegacyQuickDesignRequest) -> dict[str, Any]:
