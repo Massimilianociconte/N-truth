@@ -6,6 +6,7 @@ import json
 
 import pytest
 import test_prd_v8_derivation_runtime as runtime_fixture
+import test_prd_v8_quick_design as quick_design_fixture
 from pydantic import ValidationError
 
 from ntruth.schemas.claims import DerivedClaim, DerivedClaimSet, DeterminabilityState
@@ -25,8 +26,13 @@ from ntruth.schemas.events import (
     TemporalRelation,
 )
 from ntruth.schemas.knowledge import KnowledgeState, KnowledgeValue
-from ntruth.schemas.report_resolution import TrivialExplicitReportResolutionPolicy
-from ntruth.schemas.support import SourceClassRef, SourceContext, SourceRecord
+from ntruth.schemas.support import (
+    EvidenceRecord,
+    EvidenceTypeV8,
+    SourceClassRef,
+    SourceContext,
+    SourceRecord,
+)
 
 QUERY_ID = "IQ-TASK6-001"
 BLOCK_ID = "BLOCK-TASK6-001"
@@ -133,16 +139,79 @@ def _source(context: SourceContext) -> SourceRecord:
     )
 
 
+def _query(query_id: str = QUERY_ID) -> object:
+    _, request = runtime_fixture._request()
+    return request.query.model_copy(
+        update={
+            "id": query_id,
+            "timepoint_id": request.query.timepoint_id.model_copy(
+                update={"query_scope_id": query_id}
+            ),
+            "effect_measure_or_estimand": request.query.effect_measure_or_estimand.model_copy(
+                update={"query_scope_id": query_id}
+            ),
+            "inference_population": request.query.inference_population.model_copy(
+                update={"query_scope_id": query_id}
+            ),
+            "inference_level": request.query.inference_level.model_copy(
+                update={"query_scope_id": query_id}
+            ),
+        }
+    )
+
+
+def _plan_evidence(*, include_executed: bool = False) -> tuple[EvidenceRecord, ...]:
+    identifiers = {
+        "EV-RUNTIME-001",
+        "EV-PLAN",
+        "EV-TASK6-001",
+        "EV-TASK6-COUNT",
+    }
+    if include_executed:
+        identifiers.add("EV-EXEC")
+    return tuple(
+        EvidenceRecord(
+            evidence_id=identifier,
+            source_id="SOURCE-planned",
+            evidence_type=EvidenceTypeV8.SAMPLE_METADATA_PLANNED,
+            locator=f"fixture://{identifier}",
+            original_text=f"Frozen fixture evidence {identifier}",
+        )
+        for identifier in sorted(identifiers)
+    )
+
+
+def _execution_evidence() -> tuple[EvidenceRecord, ...]:
+    return tuple(
+        EvidenceRecord(
+            evidence_id=identifier,
+            source_id="SOURCE-executed",
+            evidence_type=EvidenceTypeV8.SAMPLE_METADATA_EXECUTED,
+            locator=f"fixture://{identifier}",
+            original_text=f"Frozen execution evidence {identifier}",
+        )
+        for identifier in (
+            "EV-EXEC",
+            "EV-EXEC-Q2",
+            "EV-TASK6-001",
+            "EV-TASK6-COUNT",
+        )
+    )
+
+
 def _plan() -> object:
     prospective = __import__("ntruth.schemas.prospective", fromlist=["build_planned_design"])
     return prospective.build_planned_design(
         experiment_block_id=BLOCK_ID,
-        inferential_query_ids=(QUERY_ID,),
+        inferential_queries=(_query(),),
         sources=(_source(SourceContext.PLANNED),),
+        evidence_records=_plan_evidence(),
+        confirmation_events=(),
         event_registry=_event_registry(),
         count_records=(_count(CanonicalCountKind.PLANNED_UNIT_COUNT, 4),),
         sample_sheet_ref="artifact://sample-sheet/planned-v1",
         methods_draft_ref="artifact://methods/planned-v1",
+        id_convention_ref="artifact://id-convention/planned-v1",
         user_confirmation_scopes=("assignment_event", "planned_unit_count"),
     )
 
@@ -171,12 +240,15 @@ def test_planned_design_rejects_global_timing_and_non_planned_counts() -> None:
     with pytest.raises(ValueError, match="planned_unit_count"):
         prospective.build_planned_design(
             experiment_block_id=BLOCK_ID,
-            inferential_query_ids=(QUERY_ID,),
+            inferential_queries=(_query(),),
             sources=(_source(SourceContext.PLANNED),),
+            evidence_records=_plan_evidence(),
+            confirmation_events=(),
             event_registry=_event_registry(),
             count_records=(_count(CanonicalCountKind.OBSERVED_UNIT_COUNT, 3),),
             sample_sheet_ref="artifact://sample-sheet/planned-v1",
             methods_draft_ref="artifact://methods/planned-v1",
+            id_convention_ref="artifact://id-convention/planned-v1",
             user_confirmation_scopes=("assignment_event",),
         )
 
@@ -187,6 +259,8 @@ def test_two_executions_reconcile_to_same_exact_plan_without_rewriting_it() -> N
     execution_a = prospective.build_executed_design(
         planned_design=plan,
         sources=(_source(SourceContext.EXECUTED),),
+        evidence_records=_execution_evidence(),
+        confirmation_events=(),
         event_registry=_event_registry(executed=True),
         count_records=(_count(CanonicalCountKind.OBSERVED_UNIT_COUNT, 4),),
         deviations=(),
@@ -196,6 +270,8 @@ def test_two_executions_reconcile_to_same_exact_plan_without_rewriting_it() -> N
     execution_b = prospective.build_executed_design(
         planned_design=plan,
         sources=(_source(SourceContext.EXECUTED),),
+        evidence_records=_execution_evidence(),
+        confirmation_events=(),
         event_registry=_event_registry(executed=True),
         count_records=(_count(CanonicalCountKind.OBSERVED_UNIT_COUNT, 3),),
         deviations=(
@@ -234,6 +310,8 @@ def test_reconciliation_rejects_wrong_plan_id_or_checksum() -> None:
     execution = prospective.build_executed_design(
         planned_design=plan,
         sources=(_source(SourceContext.EXECUTED),),
+        evidence_records=_execution_evidence(),
+        confirmation_events=(),
         event_registry=_event_registry(executed=True),
         count_records=(_count(CanonicalCountKind.OBSERVED_UNIT_COUNT, 4),),
         deviations=(),
@@ -254,8 +332,10 @@ def test_multi_query_deviations_have_explicit_scopes_without_first_query_default
     second_query = "IQ-TASK6-002"
     plan = prospective.build_planned_design(
         experiment_block_id=BLOCK_ID,
-        inferential_query_ids=(QUERY_ID, second_query),
+        inferential_queries=(_query(), _query(second_query)),
         sources=(_source(SourceContext.PLANNED),),
+        evidence_records=_plan_evidence(),
+        confirmation_events=(),
         event_registry=_event_registry(),
         count_records=(
             _count(CanonicalCountKind.PLANNED_UNIT_COUNT, 4),
@@ -267,6 +347,7 @@ def test_multi_query_deviations_have_explicit_scopes_without_first_query_default
         ),
         sample_sheet_ref="artifact://sample-sheet/planned-multi-query",
         methods_draft_ref="artifact://methods/planned-multi-query",
+        id_convention_ref="artifact://id-convention/planned-multi-query",
         user_confirmation_scopes=("assignment_event", "planned_unit_count"),
     )
     deviation = prospective.DeviationRecord(
@@ -282,6 +363,8 @@ def test_multi_query_deviations_have_explicit_scopes_without_first_query_default
     execution = prospective.build_executed_design(
         planned_design=plan,
         sources=(_source(SourceContext.EXECUTED),),
+        evidence_records=_execution_evidence(),
+        confirmation_events=(),
         event_registry=_event_registry(executed=True),
         count_records=(
             _count(CanonicalCountKind.OBSERVED_UNIT_COUNT, 4),
@@ -303,12 +386,15 @@ def test_plan_requires_exactly_one_planned_unit_count_for_each_query() -> None:
     with pytest.raises(ValueError, match="exactly one planned_unit_count"):
         prospective.build_planned_design(
             experiment_block_id=BLOCK_ID,
-            inferential_query_ids=(QUERY_ID, second_query),
+            inferential_queries=(_query(), _query(second_query)),
             sources=(_source(SourceContext.PLANNED),),
+            evidence_records=_plan_evidence(),
+            confirmation_events=(),
             event_registry=_event_registry(),
             count_records=(_count(CanonicalCountKind.PLANNED_UNIT_COUNT, 4),),
             sample_sheet_ref="artifact://sample-sheet/incomplete-plan",
             methods_draft_ref="artifact://methods/incomplete-plan",
+            id_convention_ref="artifact://id-convention/incomplete-plan",
             user_confirmation_scopes=("planned_unit_count",),
         )
 
@@ -351,80 +437,19 @@ def _determinate_claim_set(source: DerivedClaimSet) -> DerivedClaimSet:
 
 def test_neutral_report_keeps_determinability_adequacy_and_coverage_independent() -> None:
     reporting = __import__("ntruth.schemas.report_bundle", fromlist=["ReportBundle"])
-    runtime = __import__("ntruth.pipeline_v8", fromlist=["ScenarioCoverage"])
-    coverage = runtime.ScenarioCoverage(
-        status=runtime.ScenarioCoverageStatus.NON_EXHAUSTIVE,
-        profile_id=runtime_fixture.PROFILE_ID,
-        theory_version=runtime_fixture.CANONICAL_BUNDLE.theory.theory_version,
-        emitting_clause_ids=("DT-E-INTERFERENCE-ESTIMAND",),
-        omitted_dimensions=runtime_fixture._present(("unreviewed_interference_topology",)),
-        caveat=runtime_fixture._present("Additional exposure topologies may exist."),
-    )
-    runtime, request = runtime_fixture._request(
-        interference=runtime_fixture.InterferenceStatus.DOCUMENTED,
-        overrides={
-            "interference_status": runtime_fixture._present("documented"),
-            "exposure_interference": runtime_fixture._present("documented"),
-        },
-        scenario_coverages=(coverage,),
-    )
-    pipeline = runtime.run_v8_pipeline(
-        request,
+    _, submission = quick_design_fixture._submission()
+    result = __import__("ntruth.quick_design.v8", fromlist=["run_quick_design_v8"])
+    bundle = result.run_quick_design_v8(
+        submission,
         conformance_bundle=runtime_fixture.CANONICAL_BUNDLE,
-    )
-    claims = _determinate_claim_set(pipeline.claim_set)
-    resolution = TrivialExplicitReportResolutionPolicy().resolve(claims)
-    design_record_context = reporting.ReportDesignRecordContext(
-        mode=reporting.ReportDesignContext.UNVERIFIED_RETROSPECTIVE,
-        planned_design_id=_not_applicable("No prospective plan was supplied."),
-        executed_design_id=_not_applicable("No executed-design record was supplied."),
-        reconciliation_id=_not_applicable("No plan/execution pair was supplied."),
-        retrospective_source_ids=_present(("SOURCE-executed",)),
-    )
-    bundle = reporting.build_report_bundle(
-        design_record_context=design_record_context,
-        source_records=(_source(SourceContext.EXECUTED),),
-        ai_candidates=_not_applicable("Quick Design used no parser AI."),
-        human_confirmations=_not_applicable("No confirmation event in this fixture."),
-        conflicts=_not_applicable("No source conflict record in this fixture."),
-        confirmed_graph=request.graph,
-        claim_sets=(claims,),
-        report_resolution=resolution,
-        design_adequacy_evaluations=pipeline.design_adequacy_evaluations,
-        count_records=request.count_registry.records,
-        scenario_coverages=pipeline.scenario_coverages,
-        sensitivities=_not_applicable("No self-report sensitivity in this fixture."),
-        questions=(
-            reporting.ReportQuestion(
-                question_id="QUESTION-TASK6-001",
-                inferential_query_id=request.query.id,
-                text="Could shared exposure alter treatment realization?",
-                evidence_required=("execution_log", "exposure_event"),
-                primary=True,
-            ),
-        ),
-        statistical_handoff=reporting.StatisticalHandoff(
-            strategy_module_status=reporting.StrategyModuleStatus.HANDOFF_ONLY,
-            structural_requirements=("Model the documented exposure grouping explicitly.",),
-            unresolved_questions=("How many independently exposed clusters were realized?",),
-        ),
-        profile_coverage=pipeline.profile_coverage,
-        inference_limits=("No claim beyond the declared query population.",),
-        execution_manifest=pipeline.execution_manifest,
-    )
+    ).report_bundle
 
-    assert any(
-        claim.determinability_state is DeterminabilityState.DETERMINATE
-        for claim_set in bundle.claim_sets
-        for claim in claim_set.claims
-    )
-    assert bundle.design_adequacy_evaluations[0].finding_type == "INTERFERENCE_DOCUMENTED"
+    assert bundle.claim_sets[0] == bundle.verified_pipeline_contexts[0].result.claim_set
+    assert bundle.design_adequacy_evaluations[0].finding_type == "INTERFERENCE_POSSIBLE"
     assert bundle.scenario_coverages[0].status.value == "NON_EXHAUSTIVE"
     assert bundle.strategy_module_status is reporting.StrategyModuleStatus.HANDOFF_ONLY
-    assert bundle.design_record_context.mode is (
-        reporting.ReportDesignContext.UNVERIFIED_RETROSPECTIVE
-    )
-    assert bundle.epistemic_boundary == reporting.RETROSPECTIVE_EPISTEMIC_BOUNDARY
+    assert bundle.design_record_context.mode is (reporting.ReportDesignContext.PLANNED)
+    assert bundle.epistemic_boundary == reporting.PLANNED_EPISTEMIC_BOUNDARY
 
     serialized = json.dumps(bundle.model_dump(mode="json"), sort_keys=True).lower()
     assert "candidate_analysis_strategies" not in serialized
@@ -469,54 +494,9 @@ def test_multi_query_report_fails_closed_on_query_local_resolution() -> None:
             ),
         }
     )
-    context = reporting.ReportDesignRecordContext(
-        mode=reporting.ReportDesignContext.UNVERIFIED_RETROSPECTIVE,
-        planned_design_id=_not_applicable("No prospective plan was supplied."),
-        executed_design_id=_not_applicable("No executed-design record was supplied."),
-        reconciliation_id=_not_applicable("No plan/execution pair was supplied."),
-        retrospective_source_ids=_present(("SOURCE-executed",)),
-    )
-
-    with pytest.raises(ValueError, match="SRR-V8-014"):
-        reporting.build_report_bundle(
-            design_record_context=context,
-            source_records=(_source(SourceContext.EXECUTED),),
-            ai_candidates=_not_applicable("No parser AI in this fixture."),
-            human_confirmations=_not_applicable("No confirmations in this fixture."),
-            conflicts=_not_applicable("No conflicts in this fixture."),
-            confirmed_graph=request.graph,
-            claim_sets=(first, second),
-            report_resolution=pipeline.report_resolution,
-            design_adequacy_evaluations=pipeline.design_adequacy_evaluations,
-            count_records=request.count_registry.records,
-            scenario_coverages=(
-                runtime.ScenarioCoverage(
-                    status=runtime.ScenarioCoverageStatus.NON_EXHAUSTIVE,
-                    profile_id=runtime_fixture.PROFILE_ID,
-                    theory_version=runtime_fixture.CANONICAL_BUNDLE.theory.theory_version,
-                    emitting_clause_ids=("DT-E-INTERFERENCE-ESTIMAND",),
-                    omitted_dimensions=runtime_fixture._present(("other_query",)),
-                    caveat=runtime_fixture._present("Second-query aggregation is unreviewed."),
-                ),
-            ),
-            sensitivities=_not_applicable("No sensitivity in this fixture."),
-            questions=(
-                reporting.ReportQuestion(
-                    question_id="QUESTION-TASK6-MULTI",
-                    inferential_query_id=request.query.id,
-                    text="What is the global report resolution?",
-                    evidence_required=("reviewed_aggregation_policy",),
-                    primary=True,
-                ),
-            ),
-            statistical_handoff=reporting.StatisticalHandoff(
-                structural_requirements=("Keep queries separate.",),
-                unresolved_questions=("How should query states aggregate?",),
-            ),
-            profile_coverage=pipeline.profile_coverage,
-            inference_limits=("No global resolution without reviewed aggregation.",),
-            execution_manifest=pipeline.execution_manifest,
-        )
+    resolution = reporting.resolve_report_claim_sets((first, second))
+    assert resolution.resolution.knowledge_state is KnowledgeState.UNKNOWN
+    assert resolution.review_requirement.issue_id == "SRR-V8-014"
 
 
 def test_task6_contracts_are_in_the_canonical_json_schema_export() -> None:

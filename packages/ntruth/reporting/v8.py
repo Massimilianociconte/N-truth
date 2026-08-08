@@ -83,6 +83,15 @@ def render_report_bundle_html(report: ReportBundle) -> str:
         "</tr>"
         for source in report.source_records
     )
+    evidence_rows = "".join(
+        "<tr>"
+        f"<td>{_e(record.evidence_id)}</td>"
+        f"<td>{_e(record.source_id)}</td>"
+        f"<td>{_e(record.evidence_type.value)}</td>"
+        f"<td>{_e(record.locator)}</td>"
+        "</tr>"
+        for record in report.evidence_records
+    )
     claim_rows: list[str] = []
     proof_rows: list[str] = []
     for claim_set in report.claim_sets:
@@ -106,6 +115,7 @@ def render_report_bundle_html(report: ReportBundle) -> str:
                 f"<td>{_e(claim.claim_id)}</td>"
                 f"<td>{steps}</td>"
                 f"<td>{_json_text(claim.required_predicates)}</td>"
+                f"<td>{_json_text(tuple(item.model_dump(mode='json') for item in claim.irrelevant_predicates))}</td>"
                 f"<td>{_json_text(claim.assumptions)}</td>"
                 f"<td>{_json_text(claim.sensitivity_records)}</td>"
                 "</tr>"
@@ -137,7 +147,7 @@ def render_report_bundle_html(report: ReportBundle) -> str:
         f"<td>{_knowledge(item.value)}</td>"
         f"<td>{_e(item.quantifier.value)}</td>"
         f"<td>{_e(item.scope.query_id)}</td>"
-        f"<td>{_knowledge(item.scope.unit_type)}</td>"
+        f"<td>{_json_text(item.scope.model_dump(mode='json'))}</td>"
         "</tr>"
         for item in report.count_records
     )
@@ -149,6 +159,40 @@ def render_report_bundle_html(report: ReportBundle) -> str:
         f"<td>{_json_text(item.evidence_required)}</td>"
         "</tr>"
         for item in report.questions
+    )
+    section_rows = "".join(
+        "<tr>"
+        f"<td>{_e(section.inferential_query.id)}</td>"
+        f"<td>{_e(section.claim_set.claim_set_id)}</td>"
+        f"<td>{_json_text(tuple(item.count_id for item in report.count_registry.records if item.count_id in section.count_record_ids))}</td>"
+        f"<td>{_json_text(tuple(item.evaluation_id for item in section.adequacy_evaluations))}</td>"
+        f"<td>{_json_text(tuple(item.status.value for item in section.scenario_coverages))}</td>"
+        f"<td>{_e(section.profile_coverage.statement_id)}</td>"
+        f"<td>{_json_text(tuple(item.question_id for item in section.questions))}</td>"
+        "</tr>"
+        for section in report.query_sections
+    )
+    handoff_rows = "".join(
+        "<tr>"
+        f"<td>{_e(item.category.value)}</td>"
+        f"<td>{_e(item.origin.value)}</td>"
+        f"<td>{_e(item.authority.value)}</td>"
+        f"<td>{_json_text(item.evidence_refs)}</td>"
+        f"<td>{_e(item.text)}</td>"
+        "</tr>"
+        for item in report.statistical_handoff.items
+    )
+    context_pins = _json_text(context.model_dump(mode="json"))
+    execution_pins = _json_text(
+        tuple(
+            {
+                "context_id": item.context_id,
+                "context_checksum": item.content_checksum,
+                "conformance_bundle_checksum": item.conformance_bundle_checksum,
+                "execution_manifest_id": item.result.execution_manifest.manifest_id,
+            }
+            for item in report.verified_pipeline_contexts
+        )
     )
 
     return f"""<!doctype html>
@@ -179,12 +223,17 @@ th {{ background:var(--panel); }} pre {{ margin:.25rem 0; white-space:pre-wrap; 
 <h2>Sources and design context</h2>
 <p>Context: <strong>{_e(context.mode.value)}</strong></p>
 <dl>
-<dt>Planned design</dt><dd>{_knowledge(context.planned_design_id)}</dd>
-<dt>Executed design</dt><dd>{_knowledge(context.executed_design_id)}</dd>
-<dt>Reconciliation</dt><dd>{_knowledge(context.reconciliation_id)}</dd>
+<dt>Planned design</dt><dd>{_knowledge(context.planned_design_record)}</dd>
+<dt>Executed design</dt><dd>{_knowledge(context.executed_design_record)}</dd>
+<dt>Reconciliation</dt><dd>{_knowledge(context.reconciliation_record)}</dd>
 <dt>Retrospective sources</dt><dd>{_knowledge(context.retrospective_source_ids)}</dd>
 </dl>
 <table><thead><tr><th>Source</th><th>Context</th><th>Class</th><th>Version</th></tr></thead><tbody>{sources}</tbody></table>
+<h3>Evidence ledger</h3>
+<table><thead><tr><th>Evidence</th><th>Source</th><th>Type</th><th>Locator</th></tr></thead><tbody>{evidence_rows}</tbody></table>
+
+<h2>Confirmed graph</h2>
+<pre>{_json_text(report.confirmed_graph.model_dump(mode="json"))}</pre>
 
 <h2>AI candidates</h2>{_knowledge(report.ai_candidates)}
 
@@ -196,8 +245,12 @@ th {{ background:var(--panel); }} pre {{ margin:.25rem 0; white-space:pre-wrap; 
 <p>Report resolution: {_knowledge(report.report_resolution.resolution)}</p>
 <table><thead><tr><th>Query</th><th>Claim</th><th>Type</th><th>Determinability</th><th>Value</th><th>Support</th></tr></thead><tbody>{"".join(claim_rows)}</tbody></table>
 
+<h3>Query report sections</h3>
+<table><thead><tr><th>Query</th><th>Claim set</th><th>Counts</th><th>Adequacy</th><th>Scenarios</th><th>Profile</th><th>Questions</th></tr></thead><tbody>{section_rows}</tbody></table>
+
 <h2>Proof and support</h2>
-<table><thead><tr><th>Claim</th><th>Proof trace</th><th>Required predicates</th><th>Assumptions</th><th>Sensitivity refs</th></tr></thead><tbody>{"".join(proof_rows)}</tbody></table>
+<h3>Irrelevant predicates and rationale</h3>
+<table><thead><tr><th>Claim</th><th>Proof trace</th><th>Required predicates</th><th>Irrelevant predicates and rationale</th><th>Assumptions</th><th>Sensitivity refs</th></tr></thead><tbody>{"".join(proof_rows)}</tbody></table>
 
 <h2>Design adequacy findings</h2>
 <table><thead><tr><th>Query</th><th>Axis</th><th>Finding</th><th>Outcome</th><th>Rationale</th></tr></thead><tbody>{adequacy_rows}</tbody></table>
@@ -208,7 +261,8 @@ th {{ background:var(--panel); }} pre {{ margin:.25rem 0; white-space:pre-wrap; 
 <p>Known gaps: {_json_text(report.profile_coverage.known_gap_ids)}</p>
 
 <h2>Counts</h2>
-<table><thead><tr><th>ID</th><th>Kind</th><th>Value</th><th>Quantifier</th><th>Query</th><th>Unit type</th></tr></thead><tbody>{count_rows}</tbody></table>
+<h3>Full ten-dimensional count scope</h3>
+<table><thead><tr><th>ID</th><th>Kind</th><th>Value</th><th>Quantifier</th><th>Query</th><th>Full scope</th></tr></thead><tbody>{count_rows}</tbody></table>
 
 <h2>Sensitivity and questions</h2>
 <h3>Sensitivity records</h3>{_knowledge(report.sensitivities)}
@@ -216,13 +270,14 @@ th {{ background:var(--panel); }} pre {{ margin:.25rem 0; white-space:pre-wrap; 
 
 <h2>Statistical handoff</h2>
 <p>Status: <strong>{_e(report.statistical_handoff.strategy_module_status.value)}</strong></p>
-<h3>Structural requirements</h3><ul>{_items(report.statistical_handoff.structural_requirements)}</ul>
-<h3>Unresolved questions</h3><ul>{_items(report.statistical_handoff.unresolved_questions)}</ul>
+<table><thead><tr><th>Category</th><th>Origin</th><th>Authority</th><th>Evidence</th><th>Text</th></tr></thead><tbody>{handoff_rows}</tbody></table>
 
 <h2>Inference limits</h2><ul>{_items(report.inference_limits)}</ul>
 
 <h2>Provenance and versions</h2>
 <p>Execution manifest <code>{_e(report.execution_manifest.manifest_id)}</code>; Theory {_e(report.execution_manifest.theory_version)}; Rulebook {_e(report.execution_manifest.rulebook_version)}.</p>
+<h3>Contract and execution pins</h3>
+<pre>{context_pins}</pre><pre>{execution_pins}</pre>
 
 <p class="boundary">{_e(report.epistemic_boundary)}</p>
 </body>

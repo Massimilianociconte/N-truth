@@ -443,9 +443,38 @@ def quick_design_run_v8(
     report_json = write_report_bundle_json(result.report_bundle, out / "report-v8.json")
     report_yaml = write_report_bundle_yaml(result.report_bundle, out / "report-v8.yaml")
     report_html = write_report_bundle_html(result.report_bundle, out / "report-v8.html")
+    artifact_names = {
+        "SAMPLE_SHEET": "sample-sheet-v8.csv",
+        "METHODS_DRAFT": "methods-draft-v8.md",
+        "ID_CONVENTION": "id-convention-v8.txt",
+        "EXECUTION_LOG": "execution-log-v8.txt",
+    }
+    artifact_paths: list[Path] = []
+    for artifact in result.artifacts:
+        artifact_path = out / artifact_names[artifact.kind.value]
+        artifact_path.write_text(artifact.content, encoding="utf-8")
+        artifact_paths.append(artifact_path)
+    artifact_manifest = out / "quick-design-artifacts-v8.json"
+    artifact_manifest.write_text(
+        json.dumps(
+            tuple(artifact.model_dump(mode="json") for artifact in result.artifacts),
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     typer.echo("PRD_V8 Quick Design completed through the verified deterministic pipeline.")
     typer.echo(f"Strategy module: {result.report_bundle.strategy_module_status.value}")
-    for path in (plan_path, report_json, report_yaml, report_html):
+    for path in (
+        plan_path,
+        report_json,
+        report_yaml,
+        report_html,
+        *artifact_paths,
+        artifact_manifest,
+    ):
         typer.echo(str(path))
 
 
@@ -485,10 +514,10 @@ def quick_design_run_v7(
     import json
 
     from ntruth.quick_design import (
-        QuickDesignAnswers,
-        export_for_biostatistician,
-        freeze_plan,
-        run_quick_design_session,
+        QuickDesignV7Answers,
+        export_v7_for_biostatistician,
+        freeze_v7_plan,
+        run_quick_design_v7_session,
     )
 
     typer.secho(
@@ -503,7 +532,7 @@ def quick_design_run_v7(
             fg=typer.colors.RED,
         )
         raise typer.Exit(code=2)
-    answers = QuickDesignAnswers(
+    answers = QuickDesignV7Answers(
         source_description=source,
         factor_id=factor,
         levels=(level_parts[0], level_parts[1]),
@@ -518,12 +547,12 @@ def quick_design_run_v7(
         planned_unit_type=planned_unit_type,
         planned_units_per_level=n_per_level,
     )
-    result = run_quick_design_session(answers)
+    result = run_quick_design_v7_session(answers)
     if freeze:
-        result = freeze_plan(result)
-        payload = result.export_payload or export_for_biostatistician(result)
+        result = freeze_v7_plan(result)
+        payload = result.export_payload or export_v7_for_biostatistician(result)
     else:
-        payload = export_for_biostatistician(result)
+        payload = export_v7_for_biostatistician(result)
 
     typer.secho("Quick Design Session — simple_cell_culture", bold=True)
     typer.echo(f"  determinability : {result.determinability.value}")

@@ -8,10 +8,15 @@ import pytest
 import test_prd_v8_derivation_runtime as runtime_fixture
 
 from ntruth.derivation_theory.loader import load_canonical_bundle
-from ntruth.quick_design import QuickDesignAnswers, freeze_plan, run_quick_design_session
+from ntruth.quick_design import (
+    QuickDesignV7Answers,
+    freeze_v7_plan,
+    run_quick_design_v7_session,
+)
 from ntruth.schemas.count_registry import (
     CanonicalCountKind,
     CanonicalCountRecord,
+    CanonicalCountRegistry,
     CountLifecyclePhase,
     CountOrigin,
     CountQuantifier,
@@ -19,7 +24,20 @@ from ntruth.schemas.count_registry import (
 from ntruth.schemas.coverage import ScenarioCoverage, ScenarioCoverageStatus
 from ntruth.schemas.events import RelativeTiming, TemporalRelation
 from ntruth.schemas.knowledge import KnowledgeState, KnowledgeValue
-from ntruth.schemas.support import SourceClassRef, SourceContext, SourceRecord
+from ntruth.schemas.prospective import (
+    ProspectiveArtifactKind,
+    SupportBindingScope,
+    SupportEvidenceBinding,
+    build_prospective_artifact,
+    build_prospective_input_ledger,
+)
+from ntruth.schemas.support import (
+    EvidenceRecord,
+    EvidenceTypeV8,
+    SourceClassRef,
+    SourceContext,
+    SourceRecord,
+)
 
 
 def _non_exhaustive() -> ScenarioCoverage:
@@ -58,6 +76,27 @@ def _not_applicable(query_id: str, rationale: str) -> KnowledgeValue[object]:
     )
 
 
+def _evidence_refs(value: object) -> set[str]:
+    if hasattr(value, "model_dump"):
+        value = value.model_dump(mode="python")
+    if isinstance(value, dict):
+        result: set[str] = set()
+        for key, item in value.items():
+            if key in {"evidence_ids", "evidence_refs", "source_evidence"} and isinstance(
+                item, (tuple, list)
+            ):
+                result.update(str(entry) for entry in item)
+            else:
+                result.update(_evidence_refs(item))
+        return result
+    if isinstance(value, (tuple, list)):
+        result = set()
+        for item in value:
+            result.update(_evidence_refs(item))
+        return result
+    return set()
+
+
 def _submission(*, include_coverage: bool = True) -> tuple[object, object]:
     module = __import__("ntruth.quick_design.v8", fromlist=["QuickDesignV8Submission"])
     coverages = (_non_exhaustive(),) if include_coverage else ()
@@ -84,6 +123,14 @@ def _submission(*, include_coverage: bool = True) -> tuple[object, object]:
             )
         }
     )
+    planned_count = _planned_count(request)
+    request = request.model_copy(
+        update={
+            "count_registry": CanonicalCountRegistry(
+                records=(*request.count_registry.records, planned_count)
+            )
+        }
+    )
     query_id = request.query.id
     source = SourceRecord(
         source_id="SOURCE-QD-PLAN-001",
@@ -94,26 +141,95 @@ def _submission(*, include_coverage: bool = True) -> tuple[object, object]:
         source_context=SourceContext.PLANNED,
         source_version="sha256:quick-design-plan-fixture",
     )
+    support_source = SourceRecord(
+        source_id="SOURCE-QD-METADATA-001",
+        source_class=next(iter(request.support_by_clause.values())).source_class,
+        source_context=SourceContext.PLANNED,
+        source_version="sha256:quick-design-support-fixture",
+    )
+    handoff_text_by_evidence = {
+        "EV-HANDOFF-STRUCTURE": "Recorded exposure grouping must remain explicit in handoff.",
+        "EV-HANDOFF-QUESTION": "How many exposure clusters will be realized?",
+    }
+    evidence_records = tuple(
+        EvidenceRecord(
+            evidence_id=evidence_id,
+            source_id=support_source.source_id,
+            evidence_type=EvidenceTypeV8.EXPERT_ADJUDICATION,
+            locator=f"fixture://{evidence_id}",
+            original_text=handoff_text_by_evidence.get(
+                evidence_id, f"Reviewed Quick Design evidence {evidence_id}"
+            ),
+        )
+        for evidence_id in sorted(_evidence_refs(request) | set(handoff_text_by_evidence))
+    )
+    evidence_ids = {record.evidence_id for record in evidence_records}
+    support = next(iter(request.support_by_clause.values()))
+    clause_bindings = tuple(
+        SupportEvidenceBinding(
+            scope_kind=SupportBindingScope.THEORY_CLAUSE,
+            scope_id=clause_id,
+            support=descriptor,
+            source_ids=(support_source.source_id,),
+            evidence_record_ids=tuple(sorted(evidence_ids)),
+        )
+        for clause_id, descriptor in request.support_by_clause.items()
+    )
+    predicate_bindings = tuple(
+        SupportEvidenceBinding(
+            scope_kind=SupportBindingScope.PREDICATE,
+            scope_id=predicate_id,
+            support=support,
+            source_ids=(support_source.source_id,),
+            evidence_record_ids=tuple(value.evidence_ids),
+        )
+        for predicate_id, value in request.predicate_values.items()
+    )
+    sample_sheet_csv = (
+        "sample_id,factor_level,endpoint_id,lifecycle_status\n"
+        "well-1,vehicle,viability,planned\n"
+        "well-2,drug,viability,planned\n"
+    )
+    methods_draft = (
+        "Treatment assignment EVT-ASSIGN-001 and exposure EVT-EXPOSURE-001 are "
+        "recorded as distinct events."
+    )
+    id_convention = "BLOCK-RUNTIME-001 / well-{index}"
+    artifacts = (
+        build_prospective_artifact(
+            kind=ProspectiveArtifactKind.SAMPLE_SHEET,
+            media_type="text/csv",
+            content=sample_sheet_csv,
+        ),
+        build_prospective_artifact(
+            kind=ProspectiveArtifactKind.METHODS_DRAFT,
+            media_type="text/markdown",
+            content=methods_draft,
+        ),
+        build_prospective_artifact(
+            kind=ProspectiveArtifactKind.ID_CONVENTION,
+            media_type="text/plain",
+            content=id_convention,
+        ),
+    )
+    ledger = build_prospective_input_ledger(
+        request=request,
+        sources=(source, support_source),
+        evidence_records=evidence_records,
+        confirmation_events=(),
+        artifacts=artifacts,
+        support_bindings=(*clause_bindings, *predicate_bindings),
+    )
     submission = module.QuickDesignV8Submission(
         pipeline_request=request,
-        planned_sources=(source,),
+        input_ledger=ledger,
         planned_event_registry=registry,
-        planned_unit_counts=(_planned_count(request),),
-        sample_sheet_csv=(
-            "sample_id,factor_level,endpoint_id,lifecycle_status\n"
-            "well-1,vehicle,viability,planned\n"
-            "well-2,drug,viability,planned\n"
-        ),
-        methods_draft=(
-            "Treatment assignment EVT-ASSIGN-001 and exposure EVT-EXPOSURE-001 are "
-            "recorded as distinct events."
-        ),
-        id_convention="BLOCK-RUNTIME-001 / well-{index}",
+        planned_unit_counts=(planned_count,),
+        sample_sheet_csv=sample_sheet_csv,
+        methods_draft=methods_draft,
+        id_convention=id_convention,
         user_confirmation_scopes=("assignment_event", "planned_unit_count"),
         ai_candidates=_not_applicable(query_id, "The prospective wizard used no parser AI."),
-        human_confirmations=_not_applicable(
-            query_id, "No separate confirmation event is present in this fixture."
-        ),
         conflicts=_not_applicable(query_id, "No conflict is present in this fixture."),
         sensitivities=_not_applicable(query_id, "No self-report sensitivity in this fixture."),
         questions=(
@@ -126,8 +242,22 @@ def _submission(*, include_coverage: bool = True) -> tuple[object, object]:
             ),
         ),
         statistical_handoff=module.StatisticalHandoff(
-            structural_requirements=("Preserve the exposure grouping in handoff.",),
-            unresolved_questions=("How many exposure clusters will be realized?",),
+            items=(
+                module.build_handoff_item(
+                    category=module.HandoffItemCategory.STRUCTURAL_CONSTRAINT,
+                    origin=module.HandoffItemOrigin.VERIFIED_RECORD,
+                    authority="EXPERT_ADJUDICATION",
+                    evidence_refs=("EV-HANDOFF-STRUCTURE",),
+                    text=handoff_text_by_evidence["EV-HANDOFF-STRUCTURE"],
+                ),
+                module.build_handoff_item(
+                    category=module.HandoffItemCategory.UNRESOLVED_QUESTION,
+                    origin=module.HandoffItemOrigin.VERIFIED_RECORD,
+                    authority="EXPERT_ADJUDICATION",
+                    evidence_refs=("EV-HANDOFF-QUESTION",),
+                    text=handoff_text_by_evidence["EV-HANDOFF-QUESTION"],
+                ),
+            ),
         ),
         inference_limits=("This is a planned design, not an executed experiment.",),
     )
@@ -198,8 +328,8 @@ def test_quick_design_v8_propagates_task4_verifier_failure() -> None:
 
 
 def test_v7_freeze_adapter_preserves_user_confirmation_scopes() -> None:
-    legacy = run_quick_design_session(
-        QuickDesignAnswers(
+    legacy = run_quick_design_v7_session(
+        QuickDesignV7Answers(
             source_description="cells",
             allocation_level="well",
             independently_assigned="TRUE",
@@ -211,4 +341,4 @@ def test_v7_freeze_adapter_preserves_user_confirmation_scopes() -> None:
     )
 
     assert legacy.user_confirmation_scopes
-    assert freeze_plan(legacy).user_confirmation_scopes == legacy.user_confirmation_scopes
+    assert freeze_v7_plan(legacy).user_confirmation_scopes == legacy.user_confirmation_scopes

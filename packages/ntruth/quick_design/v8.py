@@ -7,6 +7,8 @@ submission is a structured v8 request; claims and adequacy are produced only by
 
 from __future__ import annotations
 
+from typing import Annotated
+
 from pydantic import Field, JsonValue, model_validator
 
 from ntruth.derivation_theory.contracts import ConformanceBundle
@@ -16,35 +18,48 @@ from ntruth.pipeline_v8 import (
     V8PipelineVerificationError,
     run_v8_pipeline,
 )
-from ntruth.schemas.core import content_checksum
 from ntruth.schemas.count_registry import CanonicalCountKind, CanonicalCountRecord
 from ntruth.schemas.events import EventRegistry
 from ntruth.schemas.kernel import KernelModel, NonBlankStr
 from ntruth.schemas.knowledge import KnowledgeState, KnowledgeValue
-from ntruth.schemas.prospective import PlannedDesignRecord, build_planned_design
+from ntruth.schemas.prospective import (
+    PlannedDesignRecord,
+    ProspectiveArtifact,
+    ProspectiveArtifactKind,
+    ProspectiveInputLedger,
+    ProspectiveInputScientificReviewRequired,
+    build_planned_design,
+)
 from ntruth.schemas.report_bundle import (
+    ConflictRecord,
+    HandoffItem,
+    HandoffItemCategory,
+    HandoffItemOrigin,
     ReportBundle,
     ReportDesignContext,
     ReportDesignRecordContext,
     ReportQuestion,
     StatisticalHandoff,
+    build_handoff_item,
     build_report_bundle,
+    build_verified_pipeline_context,
 )
-from ntruth.schemas.support import ConfirmationEvent, SensitivityRecord, SourceContext, SourceRecord
+from ntruth.schemas.support import ConfirmationEvent, SensitivityRecord, SourceContext
+
+QuickDesignScientificReviewRequired = ProspectiveInputScientificReviewRequired
 
 
 class QuickDesignV8Submission(KernelModel):
     pipeline_request: V8PipelineRequest
-    planned_sources: tuple[SourceRecord, ...] = Field(min_length=1)
+    input_ledger: ProspectiveInputLedger
     planned_event_registry: EventRegistry
     planned_unit_counts: tuple[CanonicalCountRecord, ...] = Field(min_length=1)
-    sample_sheet_csv: NonBlankStr
-    methods_draft: NonBlankStr
-    id_convention: NonBlankStr
+    sample_sheet_csv: Annotated[str, Field(min_length=1)]
+    methods_draft: Annotated[str, Field(min_length=1)]
+    id_convention: Annotated[str, Field(min_length=1)]
     user_confirmation_scopes: tuple[NonBlankStr, ...] = Field(min_length=1)
     ai_candidates: KnowledgeValue[tuple[JsonValue, ...]]
-    human_confirmations: KnowledgeValue[tuple[ConfirmationEvent, ...]]
-    conflicts: KnowledgeValue[tuple[dict[str, JsonValue], ...]]
+    conflicts: KnowledgeValue[tuple[ConflictRecord, ...]]
     sensitivities: KnowledgeValue[tuple[SensitivityRecord, ...]]
     questions: tuple[ReportQuestion, ...] = Field(min_length=1)
     statistical_handoff: StatisticalHandoff
@@ -53,8 +68,13 @@ class QuickDesignV8Submission(KernelModel):
     @model_validator(mode="after")
     def _prospective_scope(self) -> QuickDesignV8Submission:
         query_id = self.pipeline_request.query.id
+        checked_ledger = ProspectiveInputLedger.model_validate(
+            self.input_ledger.model_dump(mode="python")
+        )
+        if checked_ledger.request != self.pipeline_request:
+            raise ValueError("Quick Design input ledger does not pin the pipeline request")
         if any(
-            source.source_context is not SourceContext.PLANNED for source in self.planned_sources
+            source.source_context is not SourceContext.PLANNED for source in checked_ledger.sources
         ):
             raise ValueError("Quick Design v8 accepts only planned source context")
         if self.planned_event_registry != self.pipeline_request.causal_aggregate.event_registry:
@@ -69,10 +89,33 @@ class QuickDesignV8Submission(KernelModel):
             raise ValueError("planned counts must be query-scoped planned_unit_count records")
         if len(self.planned_unit_counts) != 1:
             raise ValueError("Quick Design v8 requires exactly one planned_unit_count per query")
+        registry_by_id = {
+            count.count_id: count for count in self.pipeline_request.count_registry.records
+        }
+        if any(registry_by_id.get(count.count_id) != count for count in self.planned_unit_counts):
+            raise ValueError(
+                "planned_unit_counts must be exact records in the pipeline count registry"
+            )
         if any(question.inferential_query_id != query_id for question in self.questions):
             raise ValueError("Quick Design questions must share the request query")
         if len(set(self.user_confirmation_scopes)) != len(self.user_confirmation_scopes):
             raise ValueError("user_confirmation_scopes contains duplicates")
+        if any(
+            event.scope_id not in self.user_confirmation_scopes
+            for event in checked_ledger.confirmation_events
+        ):
+            raise ValueError("confirmation scope is not frozen in user_confirmation_scopes")
+        artifacts_by_kind = {artifact.kind: artifact for artifact in checked_ledger.artifacts}
+        expected_contents = {
+            ProspectiveArtifactKind.SAMPLE_SHEET: self.sample_sheet_csv,
+            ProspectiveArtifactKind.METHODS_DRAFT: self.methods_draft,
+            ProspectiveArtifactKind.ID_CONVENTION: self.id_convention,
+        }
+        if any(
+            artifacts_by_kind[kind].content != content
+            for kind, content in expected_contents.items()
+        ):
+            raise ValueError("Quick Design artifact content differs from the input ledger")
         return self
 
 
@@ -80,31 +123,7 @@ class QuickDesignV8Result(KernelModel):
     planned_design: PlannedDesignRecord
     pipeline_result: V8PipelineResult
     report_bundle: ReportBundle
-    sample_sheet_csv: NonBlankStr
-    methods_draft: NonBlankStr
-    id_convention: NonBlankStr
-
-
-def _present_reference(
-    value: str,
-    *,
-    evidence_ids: tuple[str, ...],
-    query_id: str,
-) -> KnowledgeValue[str]:
-    return KnowledgeValue[str](
-        knowledge_state=KnowledgeState.PRESENT,
-        value=value,
-        evidence_ids=evidence_ids,
-        query_scope_id=query_id,
-    )
-
-
-def _not_applicable_reference(rationale: str, *, query_id: str) -> KnowledgeValue[str]:
-    return KnowledgeValue[str](
-        knowledge_state=KnowledgeState.NOT_APPLICABLE,
-        rationale=rationale,
-        query_scope_id=query_id,
-    )
+    artifacts: tuple[ProspectiveArtifact, ...] = Field(min_length=3)
 
 
 def run_quick_design_v8(
@@ -120,34 +139,57 @@ def run_quick_design_v8(
 
     planned_design = build_planned_design(
         experiment_block_id=request.experiment_block_id,
-        inferential_query_ids=(request.query.id,),
-        sources=submission.planned_sources,
+        inferential_queries=(request.query,),
+        sources=submission.input_ledger.sources,
+        evidence_records=submission.input_ledger.evidence_records,
+        confirmation_events=submission.input_ledger.confirmation_events,
         event_registry=submission.planned_event_registry,
         count_records=submission.planned_unit_counts,
-        sample_sheet_ref=f"artifact://sha256/{content_checksum(submission.sample_sheet_csv)}",
-        methods_draft_ref=f"artifact://sha256/{content_checksum(submission.methods_draft)}",
+        sample_sheet_ref=next(
+            artifact.artifact_id
+            for artifact in submission.input_ledger.artifacts
+            if artifact.kind is ProspectiveArtifactKind.SAMPLE_SHEET
+        ),
+        methods_draft_ref=next(
+            artifact.artifact_id
+            for artifact in submission.input_ledger.artifacts
+            if artifact.kind is ProspectiveArtifactKind.METHODS_DRAFT
+        ),
+        id_convention_ref=next(
+            artifact.artifact_id
+            for artifact in submission.input_ledger.artifacts
+            if artifact.kind is ProspectiveArtifactKind.ID_CONVENTION
+        ),
         user_confirmation_scopes=submission.user_confirmation_scopes,
     )
     pipeline_result = run_v8_pipeline(
         request,
         conformance_bundle=conformance_bundle,
     )
+    verified_context = build_verified_pipeline_context(
+        request=request,
+        result=pipeline_result,
+        conformance_bundle=conformance_bundle,
+    )
     query_id = request.query.id
-    source_ids = tuple(source.source_id for source in submission.planned_sources)
+    evidence_ids = tuple(record.evidence_id for record in submission.input_ledger.evidence_records)
     design_context = ReportDesignRecordContext(
         mode=ReportDesignContext.PLANNED,
-        planned_design_id=_present_reference(
-            planned_design.plan_id,
-            evidence_ids=source_ids,
-            query_id=query_id,
+        planned_design_record=KnowledgeValue[PlannedDesignRecord](
+            knowledge_state=KnowledgeState.PRESENT,
+            value=planned_design,
+            evidence_ids=evidence_ids,
+            query_scope_id=query_id,
         ),
-        executed_design_id=_not_applicable_reference(
-            "The experiment has not entered the executed-design lane.",
-            query_id=query_id,
+        executed_design_record=KnowledgeValue(
+            knowledge_state=KnowledgeState.NOT_APPLICABLE,
+            rationale="The experiment has not entered the executed-design lane.",
+            query_scope_id=query_id,
         ),
-        reconciliation_id=_not_applicable_reference(
-            "Plan/execution reconciliation requires an executed design.",
-            query_id=query_id,
+        reconciliation_record=KnowledgeValue(
+            knowledge_state=KnowledgeState.NOT_APPLICABLE,
+            rationale="Plan/execution reconciliation requires an executed design.",
+            query_scope_id=query_id,
         ),
         retrospective_source_ids=KnowledgeValue[tuple[str, ...]](
             knowledge_state=KnowledgeState.NOT_APPLICABLE,
@@ -155,40 +197,65 @@ def run_quick_design_v8(
             query_scope_id=query_id,
         ),
     )
+    ledger_state = KnowledgeValue[tuple[ProspectiveInputLedger, ...]](
+        knowledge_state=KnowledgeState.PRESENT,
+        value=(submission.input_ledger,),
+        evidence_ids=evidence_ids,
+        query_scope_id=query_id,
+    )
+    if submission.input_ledger.confirmation_events:
+        confirmation_state = KnowledgeValue[tuple[ConfirmationEvent, ...]](
+            knowledge_state=KnowledgeState.PRESENT,
+            value=submission.input_ledger.confirmation_events,
+            evidence_ids=tuple(
+                sorted(
+                    {
+                        ref
+                        for event in submission.input_ledger.confirmation_events
+                        for ref in event.evidence_refs
+                    }
+                )
+            ),
+            query_scope_id=query_id,
+        )
+    else:
+        confirmation_state = KnowledgeValue[tuple[ConfirmationEvent, ...]](
+            knowledge_state=KnowledgeState.NOT_REPORTED,
+            source_scope_ids=tuple(source.source_id for source in submission.input_ledger.sources),
+            query_scope_id=query_id,
+        )
     report_bundle = build_report_bundle(
+        verified_pipeline_contexts=(verified_context,),
         design_record_context=design_context,
-        source_records=submission.planned_sources,
+        prospective_input_ledgers=ledger_state,
+        source_records=submission.input_ledger.sources,
+        evidence_records=submission.input_ledger.evidence_records,
         ai_candidates=submission.ai_candidates,
-        human_confirmations=submission.human_confirmations,
+        human_confirmations=confirmation_state,
         conflicts=submission.conflicts,
-        confirmed_graph=request.graph,
-        claim_sets=(pipeline_result.claim_set,),
-        report_resolution=pipeline_result.report_resolution,
-        design_adequacy_evaluations=pipeline_result.design_adequacy_evaluations,
-        count_records=(*submission.planned_unit_counts, *request.count_registry.records),
-        scenario_coverages=pipeline_result.scenario_coverages,
         sensitivities=submission.sensitivities,
         questions=submission.questions,
         statistical_handoff=submission.statistical_handoff,
-        profile_coverage=pipeline_result.profile_coverage,
         inference_limits=submission.inference_limits,
-        execution_manifest=pipeline_result.execution_manifest,
     )
     return QuickDesignV8Result(
         planned_design=planned_design,
         pipeline_result=pipeline_result,
         report_bundle=report_bundle,
-        sample_sheet_csv=submission.sample_sheet_csv,
-        methods_draft=submission.methods_draft,
-        id_convention=submission.id_convention,
+        artifacts=submission.input_ledger.artifacts,
     )
 
 
 __all__ = [
+    "HandoffItem",
+    "HandoffItemCategory",
+    "HandoffItemOrigin",
+    "QuickDesignScientificReviewRequired",
     "QuickDesignV8Result",
     "QuickDesignV8Submission",
     "ReportQuestion",
     "StatisticalHandoff",
     "V8PipelineVerificationError",
+    "build_handoff_item",
     "run_quick_design_v8",
 ]

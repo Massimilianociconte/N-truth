@@ -500,6 +500,6 @@ def test_fastapi_health_acknowledgement_report_and_parity(tmp_path: Path) -> Non
     assert redone.json()["revision"] == 4
     assert redone.json()["report"]["blocks"][0]["n_statements"][0]["value"] == old_value + 1
 
-    loaded = client.get("/v1/reports", params={"path": body["artifacts"]["json"]})
+    loaded = client.get("/v7/report", params={"path": body["artifacts"]["json"]})
     assert loaded.status_code == 200
     assert loaded.json()["report_id"] == body["report"]["report_id"]

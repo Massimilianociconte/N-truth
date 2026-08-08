@@ -36,13 +36,19 @@ from ntruth.governance import (
 )
 from ntruth.ingest.safety import SafetyError
 from ntruth.quick_design import (
-    QuickDesignAnswers,
+    QuickDesignScientificReviewRequired,
+    QuickDesignV7Answers,
     QuickDesignV8Submission,
-    export_for_biostatistician,
-    run_quick_design_session,
+    export_v7_for_biostatistician,
+    run_quick_design_v7_session,
     run_quick_design_v8,
 )
-from ntruth.reporting import read_json, report_bundle_to_dict, report_to_dict
+from ntruth.reporting import (
+    read_json,
+    read_report_bundle_json,
+    report_bundle_to_dict,
+    report_to_dict,
+)
 from ntruth.rules.loader import (
     DEFAULT_RULESET_ID,
     DEFAULT_RULESET_VERSION,
@@ -282,11 +288,22 @@ def create_app() -> Any:
                 payload,
                 conformance_bundle=load_runtime_bundle(),
             )
+        except QuickDesignScientificReviewRequired as exc:
+            review = exc.review_requirement
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "SCIENTIFIC_REVIEW_REQUIRED",
+                    "issue_id": review.issue_id,
+                    "message": review.rationale,
+                },
+            ) from exc
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         return {
             "planned_design": result.planned_design.model_dump(mode="json"),
             "report": report_bundle_to_dict(result.report_bundle),
+            "artifacts": tuple(artifact.model_dump(mode="json") for artifact in result.artifacts),
             "contract": {
                 "code": "PRD_V8",
                 "version": "8.0.0",
@@ -299,8 +316,8 @@ def create_app() -> Any:
         """Explicitly qualified historical adapter; never the canonical route."""
 
         try:
-            result = run_quick_design_session(
-                QuickDesignAnswers(
+            result = run_quick_design_v7_session(
+                QuickDesignV7Answers(
                     source_description=payload.source_description,
                     preparation_description=payload.preparation_description,
                     factor_id=payload.factor_id,
@@ -321,17 +338,28 @@ def create_app() -> Any:
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         return {
-            "result": export_for_biostatistician(result),
+            "result": export_v7_for_biostatistician(result),
             "contract": {
                 "code": "DEPRECATED_V7_ADAPTER",
                 "version": "v7",
             },
         }
 
-    @api.get("/report")
-    @api.get("/v1/report")
-    @api.get("/v1/reports")
-    def report(path: str) -> dict[str, Any]:
+    @api.get("/v8/report")
+    def report_v8(path: str) -> dict[str, Any]:
+        report_path = Path(path).expanduser()
+        if not report_path.is_file():
+            raise HTTPException(status_code=404, detail=f"Report non trovato: {report_path}")
+        try:
+            loaded = read_report_bundle_json(report_path)
+        except (OSError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=f"Report non valido: {exc}") from exc
+        return report_bundle_to_dict(loaded)
+
+    @api.get("/v7/report")
+    def report_v7(path: str) -> dict[str, Any]:
+        """Explicitly qualified legacy report reader."""
+
         report_path = Path(path).expanduser()
         if not report_path.is_file():
             raise HTTPException(status_code=404, detail=f"Report non trovato: {report_path}")

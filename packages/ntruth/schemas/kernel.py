@@ -42,8 +42,17 @@ def kernel_json_schemas() -> dict[str, dict[str, Any]]:
         ExecutedDesignRecord,
         PlanExecutionReconciliation,
         PlannedDesignRecord,
+        ProspectiveArtifact,
+        ProspectiveInputLedger,
+        SupportEvidenceBinding,
     )
-    from ntruth.schemas.report_bundle import ReportBundle
+    from ntruth.schemas.report_bundle import (
+        ConflictRecord,
+        HandoffItem,
+        QueryReportSection,
+        ReportBundle,
+        VerifiedPipelineContext,
+    )
     from ntruth.schemas.report_resolution import ReportResolutionOutcome
     from ntruth.schemas.support import (
         ConfirmationEvent,
@@ -72,6 +81,13 @@ def kernel_json_schemas() -> dict[str, dict[str, Any]]:
         "planned_design_record": PlannedDesignRecord,
         "executed_design_record": ExecutedDesignRecord,
         "plan_execution_reconciliation": PlanExecutionReconciliation,
+        "prospective_artifact": ProspectiveArtifact,
+        "prospective_input_ledger": ProspectiveInputLedger,
+        "support_evidence_binding": SupportEvidenceBinding,
+        "conflict_record_v8": ConflictRecord,
+        "handoff_item": HandoffItem,
+        "query_report_section": QueryReportSection,
+        "verified_pipeline_context": VerifiedPipelineContext,
         "report_bundle": ReportBundle,
     }
     return {name: model.model_json_schema(mode="validation") for name, model in models.items()}

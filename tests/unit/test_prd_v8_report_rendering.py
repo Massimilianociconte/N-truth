@@ -8,11 +8,9 @@ from pathlib import Path
 
 import pytest
 import test_prd_v8_quick_design as quick_design_fixture
-import test_prd_v8_task6_contracts as contract_fixture
 
 from ntruth.derivation_theory.loader import load_canonical_bundle
 from ntruth.schemas.report_bundle import build_report_bundle
-from ntruth.schemas.report_resolution import TrivialExplicitReportResolutionPolicy
 
 
 def _bundle() -> object:
@@ -24,48 +22,23 @@ def _bundle() -> object:
             quick_design_fixture.runtime_fixture.REPOSITORY_ROOT
         ),
     )
-    current = result.report_bundle
-    claims = contract_fixture._determinate_claim_set(current.claim_sets[0])
-    return build_report_bundle(
-        design_record_context=current.design_record_context,
-        source_records=current.source_records,
-        ai_candidates=current.ai_candidates,
-        human_confirmations=current.human_confirmations,
-        conflicts=current.conflicts,
-        confirmed_graph=current.confirmed_graph,
-        claim_sets=(claims,),
-        report_resolution=TrivialExplicitReportResolutionPolicy().resolve(claims),
-        design_adequacy_evaluations=current.design_adequacy_evaluations,
-        count_records=current.count_records,
-        scenario_coverages=current.scenario_coverages,
-        sensitivities=current.sensitivities,
-        questions=current.questions,
-        statistical_handoff=current.statistical_handoff,
-        profile_coverage=current.profile_coverage,
-        inference_limits=current.inference_limits,
-        execution_manifest=current.execution_manifest,
-    )
+    return result.report_bundle
 
 
 def _with_inference_limits(bundle: object, limits: tuple[str, ...]) -> object:
     return build_report_bundle(
+        verified_pipeline_contexts=bundle.verified_pipeline_contexts,
         design_record_context=bundle.design_record_context,
+        prospective_input_ledgers=bundle.prospective_input_ledgers,
         source_records=bundle.source_records,
+        evidence_records=bundle.evidence_records,
         ai_candidates=bundle.ai_candidates,
         human_confirmations=bundle.human_confirmations,
         conflicts=bundle.conflicts,
-        confirmed_graph=bundle.confirmed_graph,
-        claim_sets=bundle.claim_sets,
-        report_resolution=bundle.report_resolution,
-        design_adequacy_evaluations=bundle.design_adequacy_evaluations,
-        count_records=bundle.count_records,
-        scenario_coverages=bundle.scenario_coverages,
         sensitivities=bundle.sensitivities,
         questions=bundle.questions,
         statistical_handoff=bundle.statistical_handoff,
-        profile_coverage=bundle.profile_coverage,
         inference_limits=limits,
-        execution_manifest=bundle.execution_manifest,
     )
 
 
@@ -106,7 +79,7 @@ def test_report_bundle_html_has_all_neutral_axes_without_approval_language() -> 
         "Inference limits",
     ):
         assert label in html
-    assert "DETERMINATE" in html
+    assert "INSUFFICIENT_INFORMATION" in html
     assert "INTERFERENCE_POSSIBLE" in html
     assert "NON_EXHAUSTIVE" in html
     assert "HANDOFF_ONLY" in html
