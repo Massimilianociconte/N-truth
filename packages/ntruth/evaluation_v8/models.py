@@ -116,7 +116,7 @@ class FalseCertaintyDenominatorScope(StrEnum):
 
 
 class FalseCertaintyMetricProtocol(KernelModel):
-    """Reviewed denominator/event-unit pin required before a rate can be emitted."""
+    """Content-addressed protocol declaration; not proof of independent review."""
 
     protocol_id: NonBlankStr
     content_checksum: Sha256
@@ -719,15 +719,25 @@ class EndToEndEvaluationReport(KernelModel):
             and EVALUATION_PROCESS_METRICS_REVIEW_ISSUE_ID not in blocker_ids
         ):
             raise ValueError("unclosed process metrics require their scientific-review blocker")
-        if (
-            self.false_certainty.knowledge_state is KnowledgeState.PRESENT
-            and self.false_certainty.value is not None
-            and self.false_certainty.value.rate.knowledge_state is not KnowledgeState.PRESENT
-            and FALSE_CERTAINTY_PROTOCOL_REVIEW_ISSUE_ID not in blocker_ids
-        ):
-            raise ValueError(
-                "unclosed false-certainty denominator requires its scientific-review blocker"
+        if self.false_certainty.knowledge_state is KnowledgeState.PRESENT:
+            summary = self.false_certainty.value
+            false_certainty_closed = summary is not None and all(
+                value.knowledge_state is KnowledgeState.PRESENT
+                for value in (
+                    summary.scope,
+                    summary.denominator,
+                    summary.event_count,
+                    summary.rate,
+                    summary.severity,
+                )
             )
+            if (
+                not false_certainty_closed
+                and FALSE_CERTAINTY_PROTOCOL_REVIEW_ISSUE_ID not in blocker_ids
+            ):
+                raise ValueError(
+                    "unclosed false-certainty protocol or severity requires its review blocker"
+                )
         expected = content_checksum(
             self.model_dump(mode="json", exclude={"evaluation_id", "content_checksum"})
         )

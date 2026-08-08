@@ -17,7 +17,6 @@ from ntruth.evaluation_v8 import (
     AuditRoleAssignment,
     BlindResidualAuditProtocol,
     ClusterBootstrapProtocol,
-    ClusterMetricObservation,
     EvaluationStatus,
     FalseCertaintyCategory,
     GeneralizationUnit,
@@ -35,6 +34,7 @@ from ntruth.evaluation_v8 import (
     ResidualOrigin,
     ResidualSeverity,
     StabilityComponentObservation,
+    build_cluster_metric_observation,
     build_independent_report_reference,
     build_reference_stability_report,
     build_report_evaluation_snapshot,
@@ -296,10 +296,10 @@ def test_report_evaluation_retains_every_denominator_and_false_certainty_residua
     assert result.residuals.knowledge_state is KnowledgeState.PRESENT
     residuals = result.residuals.value or ()
     assert {item.dimension.value for item in residuals} == {
-        "CLAIM_SEMANTICS",
         "EVIDENCE_CORRECTNESS",
         "PROOF_CORRECTNESS",
         "ADEQUACY_AXIS",
+        "SUPPORT_CORRECTNESS",
     }
     false_certainty_residual = next(
         item
@@ -596,25 +596,25 @@ def _generalization_contract() -> MetricGeneralizationContract:
 def test_cluster_precision_is_invariant_to_duplicate_rows_inside_cluster() -> None:
     contract = _generalization_contract()
     base = (
-        ClusterMetricObservation(
+        build_cluster_metric_observation(
             metric_id=contract.metric_id,
-            observation_id="OBS-SF-1",
+            elementary_source_id="SOURCE-SF-1",
             generalization_unit_id="SF-1",
             value=Decimal("0.2"),
             stratum_values={"complexity-tier": "T1", "profile": "P1"},
             evidence_ids=("E-SF-1",),
         ),
-        ClusterMetricObservation(
+        build_cluster_metric_observation(
             metric_id=contract.metric_id,
-            observation_id="OBS-SF-2",
+            elementary_source_id="SOURCE-SF-2",
             generalization_unit_id="SF-2",
             value=Decimal("0.7"),
             stratum_values={"complexity-tier": "T1", "profile": "P1"},
             evidence_ids=("E-SF-2",),
         ),
-        ClusterMetricObservation(
+        build_cluster_metric_observation(
             metric_id=contract.metric_id,
-            observation_id="OBS-SF-3",
+            elementary_source_id="SOURCE-SF-3",
             generalization_unit_id="SF-3",
             value=Decimal("0.9"),
             stratum_values={"complexity-tier": "T2", "profile": "P2"},
@@ -633,19 +633,12 @@ def test_cluster_precision_is_invariant_to_duplicate_rows_inside_cluster() -> No
             original.model_copy(update={"content_checksum": "0" * 64}).model_dump(mode="python")
         )
 
-    with pytest.raises(ValueError, match="conflicting duplicate cluster observation"):
+    with pytest.raises(ValueError, match=r"elementary source checksum|observation ID"):
         cluster_bootstrap_precision(
             contract,
             (
                 *base,
-                ClusterMetricObservation(
-                    metric_id=contract.metric_id,
-                    observation_id="OBS-SF-1",
-                    generalization_unit_id="SF-1",
-                    value=Decimal("0.8"),
-                    stratum_values={"complexity-tier": "T1", "profile": "P1"},
-                    evidence_ids=("E-SF-1",),
-                ),
+                base[0].model_copy(update={"value": Decimal("0.8")}),
             ),
         )
 
@@ -674,9 +667,9 @@ def test_one_cluster_returns_unknown_precision_instead_of_a_spurious_interval() 
     result = cluster_bootstrap_precision(
         contract,
         (
-            ClusterMetricObservation(
+            build_cluster_metric_observation(
                 metric_id=contract.metric_id,
-                observation_id="OBS-SF-1",
+                elementary_source_id="SOURCE-SF-1",
                 generalization_unit_id="SF-1",
                 value=Decimal("0.5"),
                 stratum_values={"complexity-tier": "T1", "profile": "P1"},

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from contextlib import suppress
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
@@ -115,7 +116,7 @@ def build_false_certainty_metric_protocol(
     severity_policy_checksum: str,
     evidence_ids: tuple[str, ...],
 ) -> FalseCertaintyMetricProtocol:
-    """Address a reviewed metric denominator without inventing a repository threshold."""
+    """Address a protocol declaration without treating the caller as a review authority."""
 
     fields: dict[str, Any] = {
         "report_scope_id": report_scope_id,
@@ -150,7 +151,7 @@ def build_evaluation_process_observations(
     question_usefulness: tuple[QuestionUsefulnessObservation, ...],
     evidence_ids: tuple[str, ...],
 ) -> EvaluationProcessObservations:
-    """Build a report-bound process record from real questions, claims and evidence."""
+    """Build a report-bound draft; this alone cannot authorize process metrics."""
 
     from ntruth.schemas.report_bundle import ReportBundle
 
@@ -460,6 +461,8 @@ def _abstention_disposition(
     observed: ClaimEvaluationSnapshot,
     reference: ClaimEvaluationSnapshot,
     claim_outcome: MatchOutcome,
+    *,
+    independently_reviewed_actionable_question_ids: frozenset[str] = frozenset(),
 ) -> AbstentionDisposition:
     if observed.determinability_state is DeterminabilityState.DETERMINATE and (
         reference.determinability_state is not DeterminabilityState.DETERMINATE
@@ -468,7 +471,10 @@ def _abstention_disposition(
         return AbstentionDisposition.FALSE_CERTAINTY
     if observed.determinability_state is DeterminabilityState.DETERMINATE:
         return AbstentionDisposition.RESOLVED
-    if observed.actionable_question_ids.knowledge_state is KnowledgeState.PRESENT:
+    if observed.actionable_question_ids.knowledge_state is KnowledgeState.PRESENT and bool(
+        set(observed.actionable_question_ids.value or ())
+        & independently_reviewed_actionable_question_ids
+    ):
         return AbstentionDisposition.ACTIONABLE_ABSTENTION
     if observed.unresolved_risk_ids.knowledge_state is KnowledgeState.PRESENT:
         return AbstentionDisposition.UNRESOLVED_RISK_DETECTED
@@ -575,6 +581,19 @@ def _false_certainty_residuals(
     observed: ClaimEvaluationSnapshot,
     reference: ClaimEvaluationSnapshot,
 ) -> tuple[ResidualEvent, ...]:
+    dimension_by_category = {
+        FalseCertaintyCategory.EU_OR_COUNT_ERROR: ResidualDimension.COUNT_CORRECTNESS,
+        FalseCertaintyCategory.DECISIVE_PRECONDITION_UNSUPPORTED: (
+            ResidualDimension.SUPPORT_CORRECTNESS
+        ),
+        FalseCertaintyCategory.MATERIAL_SCENARIO_OMITTED: ResidualDimension.SCENARIO_COVERAGE,
+        FalseCertaintyCategory.HIDDEN_CONFLICT: ResidualDimension.SUPPORT_CORRECTNESS,
+        FalseCertaintyCategory.PROFILE_COVERAGE_UNDECLARED: ResidualDimension.PROFILE_COVERAGE,
+        FalseCertaintyCategory.INFERENCE_OR_ESTIMAND_SCOPE_OVERREACH: (
+            ResidualDimension.CLAIM_SEMANTICS
+        ),
+        FalseCertaintyCategory.ADEQUACY_UNSUPPORTED_POSITIVE: ResidualDimension.ADEQUACY_AXIS,
+    }
     categories = reference.false_certainty_categories
     if categories.knowledge_state is KnowledgeState.PRESENT:
         category_values: tuple[FalseCertaintyCategory | None, ...] = tuple(categories.value or ())
@@ -599,7 +618,11 @@ def _false_certainty_residuals(
             )
         residuals.append(
             _residual_event(
-                dimension=ResidualDimension.CLAIM_SEMANTICS,
+                dimension=(
+                    ResidualDimension.CLAIM_SEMANTICS
+                    if category is None
+                    else dimension_by_category[category]
+                ),
                 scope_kind=ResidualScopeKind.CLAIM,
                 scope_id=observed.claim_id,
                 query_id=observed.query_id,
@@ -1028,31 +1051,12 @@ def _process_fields(
         )
     ):
         return _unknown_process_fields(report_scope_id), False
-    timing = checked.time_to_confirmed_report
-    if timing.knowledge_state is KnowledgeState.PRESENT and timing.value is not None:
-        time_value = KnowledgeValue[Decimal](
-            knowledge_state=KnowledgeState.PRESENT,
-            value=timing.value.report_seconds,
-            evidence_ids=timing.evidence_ids,
-            query_scope_id=report_scope_id,
-        )
-        delta_value = KnowledgeValue[Decimal](
-            knowledge_state=KnowledgeState.PRESENT,
-            value=timing.value.report_seconds - timing.value.manual_baseline_seconds,
-            evidence_ids=timing.evidence_ids,
-            query_scope_id=report_scope_id,
-        )
-    else:
-        rationale = "Report timing or its manual baseline remains unavailable."
-        time_value = _unknown(scope=report_scope_id, rationale=rationale)
-        delta_value = _unknown(scope=report_scope_id, rationale=rationale)
-    fields: dict[str, KnowledgeValue[Any]] = {
-        "time_to_confirmed_report_seconds": time_value,
-        "review_time_delta_seconds": delta_value,
-        "decisive_human_correction_count": checked.decisive_human_correction_count,
-        "question_usefulness": checked.question_usefulness,
-    }
-    return fields, all(value.knowledge_state is KnowledgeState.PRESENT for value in fields.values())
+    # A valid draft proves report linkage and internal integrity only.  PRD v8
+    # process metrics need governed timing/correction event ledgers, reviewer
+    # custody/separation evidence and an independently adjudicated H.1 record.
+    # None of those authorities exists in this repository, so caller-authored
+    # values must stay open-world UNKNOWN.
+    return _unknown_process_fields(report_scope_id), False
 
 
 def _reference_stability_is_resolved(
@@ -1328,24 +1332,15 @@ def evaluate_end_to_end(
             }
         )
     )
-    checked_protocol: FalseCertaintyMetricProtocol | None = None
     summary_scope: KnowledgeValue[str]
     summary_denominator: KnowledgeValue[int]
     summary_event_count: KnowledgeValue[int]
     summary_rate: KnowledgeValue[Decimal]
     if false_certainty_protocol is not None:
-        try:
-            candidate = FalseCertaintyMetricProtocol.model_validate(
+        with suppress(AttributeError, TypeError, ValueError):
+            FalseCertaintyMetricProtocol.model_validate(
                 false_certainty_protocol.model_dump(mode="python")
             )
-        except (AttributeError, TypeError, ValueError):
-            candidate = None
-        if (
-            candidate is not None
-            and candidate.report_scope_id == observed.report_id
-            and set(candidate.evidence_ids).issubset(reference.evidence_ids)
-        ):
-            checked_protocol = candidate
     if false_certainty_classification_closed:
         summary_event_count = KnowledgeValue[int](
             knowledge_state=KnowledgeState.PRESENT,
@@ -1360,59 +1355,31 @@ def evaluate_end_to_end(
                 "At least one material residual lacks a reviewed false-certainty classification."
             ),
         )
-    rate_is_resolved = (
-        checked_protocol is not None
-        and false_certainty_classification_closed
-        and false_certainty_event_count <= checked_protocol.denominator
-    )
-    if not rate_is_resolved:
-        blockers.append(
-            ScientificReviewRequirement(
-                issue_id=FALSE_CERTAINTY_PROTOCOL_REVIEW_ISSUE_ID,
-                rationale=(
-                    "False-certainty rate remains UNKNOWN until its reviewed preregistration and "
-                    "every material residual classification are both resolved."
-                ),
-            )
-        )
-    if checked_protocol is None:
-        summary_scope = _unknown(
-            scope=observed.report_id,
-            rationale="No reviewed false-certainty denominator scope was supplied.",
-        )
-        summary_denominator = _unknown(
-            scope=observed.report_id,
-            rationale="No reviewed false-certainty denominator was supplied.",
-        )
-    else:
-        protocol_evidence = checked_protocol.evidence_ids
-        summary_scope = KnowledgeValue[str](
-            knowledge_state=KnowledgeState.PRESENT,
-            value=checked_protocol.denominator_scope_id,
-            evidence_ids=protocol_evidence,
-            query_scope_id=observed.report_id,
-        )
-        summary_denominator = KnowledgeValue[int](
-            knowledge_state=KnowledgeState.PRESENT,
-            value=checked_protocol.denominator,
-            evidence_ids=protocol_evidence,
-            query_scope_id=observed.report_id,
-        )
-    if rate_is_resolved and checked_protocol is not None:
-        summary_rate = KnowledgeValue[Decimal](
-            knowledge_state=KnowledgeState.PRESENT,
-            value=Decimal(false_certainty_event_count) / Decimal(checked_protocol.denominator),
-            evidence_ids=checked_protocol.evidence_ids,
-            query_scope_id=observed.report_id,
-        )
-    else:
-        summary_rate = _unknown(
-            scope=observed.report_id,
+    blockers.append(
+        ScientificReviewRequirement(
+            issue_id=FALSE_CERTAINTY_PROTOCOL_REVIEW_ISSUE_ID,
             rationale=(
-                "A false-certainty rate requires a reviewed scope, denominator and complete "
-                "classification of material residuals."
+                "False-certainty scope, denominator, rate and severity remain UNKNOWN until an "
+                "independently governed preregistration, population manifest, event-unit pin and "
+                "severity-policy review are resolved outside caller control."
             ),
         )
+    )
+    summary_scope = _unknown(
+        scope=observed.report_id,
+        rationale="No independently governed false-certainty scope has been resolved.",
+    )
+    summary_denominator = _unknown(
+        scope=observed.report_id,
+        rationale="No independently governed population manifest has been resolved.",
+    )
+    summary_rate = _unknown(
+        scope=observed.report_id,
+        rationale=(
+            "A false-certainty rate requires a governed scope, recomputed denominator, exact "
+            "event-unit identity and complete residual classification."
+        ),
+    )
     false_certainty_value = KnowledgeValue[FalseCertaintySummary](
         knowledge_state=KnowledgeState.PRESENT,
         value=FalseCertaintySummary(

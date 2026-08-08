@@ -62,14 +62,17 @@ def test_false_certainty_rate_is_unknown_without_a_resolved_protocol() -> None:
     assert "SRR-V8-FALSE-CERTAINTY-PROTOCOL" in {item.issue_id for item in result.blockers}
 
 
-def test_resolved_false_certainty_protocol_pins_scope_denominator_and_rate() -> None:
+@pytest.mark.parametrize("denominator", (2, 200))
+def test_caller_declared_false_certainty_protocol_cannot_clear_review_blocker(
+    denominator: int,
+) -> None:
     observed, reference = _one_wrong_decisive_claim()
     builder = getattr(evaluation, "build_false_certainty_metric_protocol", None)
     assert builder is not None, "content-addressed false-certainty protocol builder is missing"
     protocol = builder(
         report_scope_id="REPORT-1",
         denominator_scope_id="PREREGISTERED-DEFINITIVE-OUTPUTS-V1",
-        denominator=10,
+        denominator=denominator,
         event_unit="one materially unsupported definitive conclusion",
         severity_policy_id="FALSE-CERTAINTY-SEVERITY-V1",
         severity_policy_checksum=base._digest("false-certainty-severity-v1"),
@@ -84,12 +87,12 @@ def test_resolved_false_certainty_protocol_pins_scope_denominator_and_rate() -> 
 
     summary = result.false_certainty.value
     assert summary is not None
-    assert summary.scope.value == "PREREGISTERED-DEFINITIVE-OUTPUTS-V1"
-    assert summary.denominator.value == 10
+    assert summary.scope.knowledge_state is KnowledgeState.UNKNOWN
+    assert summary.denominator.knowledge_state is KnowledgeState.UNKNOWN
     assert summary.event_count.value == 1
-    assert summary.rate.value == Decimal("0.1")
-    assert summary.rate.evidence_ids == protocol.evidence_ids
-    assert "SRR-V8-FALSE-CERTAINTY-PROTOCOL" not in {item.issue_id for item in result.blockers}
+    assert summary.rate.knowledge_state is KnowledgeState.UNKNOWN
+    assert summary.severity.knowledge_state is KnowledgeState.UNKNOWN
+    assert "SRR-V8-FALSE-CERTAINTY-PROTOCOL" in {item.issue_id for item in result.blockers}
 
 
 def test_false_certainty_retains_every_definitive_mismatch_dimension() -> None:
@@ -329,9 +332,9 @@ def _cluster_fixture() -> tuple[object, tuple[object, ...]]:
         3: (Decimal("0"), Decimal("1")),
     }
     rows = tuple(
-        evaluation.ClusterMetricObservation(
+        evaluation.build_cluster_metric_observation(
             metric_id=contract.metric_id,
-            observation_id=f"OBS-{cluster}-{row}",
+            elementary_source_id=f"SOURCE-{cluster}-{row}",
             generalization_unit_id=f"SF-{cluster}",
             value=value,
             stratum_values={"profile": "A"},
@@ -395,17 +398,13 @@ def test_cluster_manifest_rejects_cross_metric_estimate_after_readdressing() -> 
 
 def test_semantic_duplicate_inside_cluster_cannot_narrow_precision() -> None:
     contract, rows = _cluster_fixture()
-    original = evaluation.cluster_bootstrap_precision(contract, rows)
     duplicate = rows[4].model_copy(update={"observation_id": "REISSUED-SAME-SOURCE-ROW"})
 
-    duplicated = evaluation.cluster_bootstrap_precision(contract, (*rows, duplicate))
-
-    assert duplicated == original
-    assert duplicated.input_manifest.observation_count == len(rows)
-    assert duplicated.effective_cluster_count == original.effective_cluster_count
+    with pytest.raises(ValueError, match=r"observation ID.*elementary source"):
+        evaluation.cluster_bootstrap_precision(contract, (*rows, duplicate))
 
 
-def test_process_builder_resolves_only_real_report_questions_claims_and_evidence() -> None:
+def test_process_builder_draft_does_not_self_authorize_process_metrics() -> None:
     builder = getattr(evaluation, "build_evaluation_process_observations", None)
     assert builder is not None, "content-addressed process-observation builder is missing"
     quick_design_fixture = importlib.import_module("test_prd_v8_quick_design")
@@ -498,5 +497,8 @@ def test_process_builder_resolves_only_real_report_questions_claims_and_evidence
 
     assert process.report_checksum == report.content_checksum
     assert process.content_checksum
-    assert "SRR-V8-EVAL-PROCESS-METRICS" not in {item.issue_id for item in result.blockers}
-    assert result.question_usefulness.knowledge_state is KnowledgeState.PRESENT
+    assert "SRR-V8-EVAL-PROCESS-METRICS" in {item.issue_id for item in result.blockers}
+    assert result.time_to_confirmed_report_seconds.knowledge_state is KnowledgeState.UNKNOWN
+    assert result.review_time_delta_seconds.knowledge_state is KnowledgeState.UNKNOWN
+    assert result.decisive_human_correction_count.knowledge_state is KnowledgeState.UNKNOWN
+    assert result.question_usefulness.knowledge_state is KnowledgeState.UNKNOWN

@@ -100,10 +100,27 @@ class ClusterMetricEstimate(KernelModel):
 class ClusterMetricObservation(KernelModel):
     metric_id: NonBlankStr
     observation_id: NonBlankStr
+    elementary_source_id: NonBlankStr
+    elementary_source_checksum: Sha256
     generalization_unit_id: NonBlankStr
     value: Decimal = Field(ge=Decimal("0"), le=Decimal("1"))
     stratum_values: dict[NonBlankStr, NonBlankStr]
     evidence_ids: tuple[NonBlankStr, ...] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _content_addressed_elementary_source(self) -> Self:
+        expected = cluster_elementary_source_checksum(
+            metric_id=self.metric_id,
+            elementary_source_id=self.elementary_source_id,
+            generalization_unit_id=self.generalization_unit_id,
+            value=self.value,
+            stratum_values=self.stratum_values,
+        )
+        if self.elementary_source_checksum != expected:
+            raise ValueError("cluster elementary source checksum mismatch")
+        if self.observation_id != f"CLUSTER-OBSERVATION-{expected[:20]}":
+            raise ValueError("cluster observation ID differs from its elementary source")
+        return self
 
 
 class ClusterObservationManifest(KernelModel):
@@ -113,6 +130,7 @@ class ClusterObservationManifest(KernelModel):
     estimator_id: NonBlankStr
     estimator_checksum: Sha256
     stratification_variables: tuple[NonBlankStr, ...]
+    evidence_ids: tuple[NonBlankStr, ...] = Field(min_length=1)
     observations: tuple[ClusterMetricObservation, ...] = Field(min_length=1)
     cluster_estimates: tuple[ClusterMetricEstimate, ...] = Field(min_length=1)
     observation_count: int = Field(ge=1)
@@ -123,6 +141,9 @@ class ClusterObservationManifest(KernelModel):
         observation_ids = [item.observation_id for item in self.observations]
         if len(set(observation_ids)) != len(observation_ids):
             raise ValueError("cluster observation manifest contains duplicate observation IDs")
+        source_ids = [item.elementary_source_id for item in self.observations]
+        if len(set(source_ids)) != len(source_ids):
+            raise ValueError("cluster observation manifest contains a semantic duplicate source")
         cluster_ids = [item.generalization_unit_id for item in self.cluster_estimates]
         if len(set(cluster_ids)) != len(cluster_ids):
             raise ValueError("cluster observation manifest contains duplicate cluster estimates")
@@ -137,6 +158,17 @@ class ClusterObservationManifest(KernelModel):
             raise ValueError("cluster observation has incomplete or unexpected strata")
         if any(set(item.stratum_values) != expected_strata for item in self.cluster_estimates):
             raise ValueError("cluster estimate has incomplete or unexpected strata")
+        expected_evidence = tuple(
+            sorted(
+                {
+                    evidence_id
+                    for observation in self.observations
+                    for evidence_id in observation.evidence_ids
+                }
+            )
+        )
+        if self.evidence_ids != expected_evidence:
+            raise ValueError("cluster manifest evidence inputs are not exactly closed")
         observations_by_cluster = {
             cluster_id: [
                 item for item in self.observations if item.generalization_unit_id == cluster_id
@@ -200,6 +232,12 @@ class ClusterPrecisionResult(KernelModel):
 
     @model_validator(mode="after")
     def _blocked_xor_interval(self) -> Self:
+        declared_cluster_ids = tuple(
+            unit.generalization_unit_id for unit in self.generalization_contract.units
+        )
+        manifest_cluster_ids = tuple(
+            estimate.generalization_unit_id for estimate in self.input_manifest.cluster_estimates
+        )
         if (
             self.metric_id != self.generalization_contract.metric_id
             or self.elementary_unit is not self.generalization_contract.elementary_unit
@@ -213,6 +251,7 @@ class ClusterPrecisionResult(KernelModel):
             or self.input_manifest.stratification_variables
             != self.generalization_contract.stratification_variables
             or self.effective_cluster_count != self.input_manifest.cluster_count
+            or manifest_cluster_ids != declared_cluster_ids
         ):
             raise ValueError("cluster precision result differs from its pinned metric contract")
         if self.interval.query_scope_id != self.metric_id:
@@ -319,6 +358,7 @@ def _build_observation_manifest(
 ) -> ClusterObservationManifest:
     by_observation_id: dict[str, ClusterMetricObservation] = {}
     for observation in observations:
+        observation = ClusterMetricObservation.model_validate(observation.model_dump(mode="python"))
         if observation.metric_id != contract.metric_id:
             raise ValueError("cluster observation belongs to another metric")
         if set(observation.stratum_values) != set(contract.stratification_variables):
@@ -328,22 +368,13 @@ def _build_observation_manifest(
             by_observation_id[observation.observation_id] = observation
         elif previous != observation:
             raise ValueError("conflicting duplicate cluster observation")
-    by_semantic_identity: dict[
-        tuple[str, str, Decimal, tuple[tuple[str, str], ...], tuple[str, ...]],
-        ClusterMetricObservation,
-    ] = {}
+    by_elementary_source: dict[str, ClusterMetricObservation] = {}
     for observation in by_observation_id.values():
-        identity = (
-            observation.metric_id,
-            observation.generalization_unit_id,
-            observation.value,
-            tuple(sorted(observation.stratum_values.items())),
-            tuple(sorted(observation.evidence_ids)),
-        )
-        previous = by_semantic_identity.get(identity)
-        if previous is None or observation.observation_id < previous.observation_id:
-            by_semantic_identity[identity] = observation
-    canonical_observations = tuple(by_semantic_identity.values())
+        previous = by_elementary_source.get(observation.elementary_source_id)
+        if previous is not None and previous != observation:
+            raise ValueError("conflicting duplicate cluster elementary source")
+        by_elementary_source[observation.elementary_source_id] = observation
+    canonical_observations = tuple(by_elementary_source.values())
     declared_ids = {unit.generalization_unit_id for unit in contract.units}
     observed_cluster_ids = {
         observation.generalization_unit_id for observation in canonical_observations
@@ -391,6 +422,15 @@ def _build_observation_manifest(
         estimator_id=contract.cluster_estimator_id,
         estimator_checksum=contract.cluster_estimator_checksum,
         stratification_variables=contract.stratification_variables,
+        evidence_ids=tuple(
+            sorted(
+                {
+                    evidence_id
+                    for observation in ordered_observations
+                    for evidence_id in observation.evidence_ids
+                }
+            )
+        ),
         observations=ordered_observations,
         cluster_estimates=cluster_estimates,
         observation_count=len(ordered_observations),
@@ -406,6 +446,15 @@ def _build_observation_manifest(
         estimator_id=contract.cluster_estimator_id,
         estimator_checksum=contract.cluster_estimator_checksum,
         stratification_variables=contract.stratification_variables,
+        evidence_ids=tuple(
+            sorted(
+                {
+                    evidence_id
+                    for observation in ordered_observations
+                    for evidence_id in observation.evidence_ids
+                }
+            )
+        ),
         observations=ordered_observations,
         cluster_estimates=cluster_estimates,
         observation_count=len(ordered_observations),
@@ -513,6 +562,57 @@ def cluster_bootstrap_precision(
     )
 
 
+def build_cluster_metric_observation(
+    *,
+    metric_id: str,
+    elementary_source_id: str,
+    generalization_unit_id: str,
+    value: Decimal,
+    stratum_values: dict[str, str],
+    evidence_ids: tuple[str, ...],
+) -> ClusterMetricObservation:
+    """Create one content-addressed elementary observation."""
+
+    checksum = cluster_elementary_source_checksum(
+        metric_id=metric_id,
+        elementary_source_id=elementary_source_id,
+        generalization_unit_id=generalization_unit_id,
+        value=value,
+        stratum_values=stratum_values,
+    )
+    return ClusterMetricObservation(
+        metric_id=metric_id,
+        observation_id=f"CLUSTER-OBSERVATION-{checksum[:20]}",
+        elementary_source_id=elementary_source_id,
+        elementary_source_checksum=checksum,
+        generalization_unit_id=generalization_unit_id,
+        value=value,
+        stratum_values=stratum_values,
+        evidence_ids=evidence_ids,
+    )
+
+
+def cluster_elementary_source_checksum(
+    *,
+    metric_id: str,
+    elementary_source_id: str,
+    generalization_unit_id: str,
+    value: Decimal,
+    stratum_values: dict[str, str],
+) -> str:
+    """Address one elementary metric row independently of evidence aliases."""
+
+    return content_checksum(
+        {
+            "metric_id": metric_id,
+            "elementary_source_id": elementary_source_id,
+            "generalization_unit_id": generalization_unit_id,
+            "value": value,
+            "stratum_values": stratum_values,
+        }
+    )
+
+
 __all__ = [
     "CLUSTER_PRECISION_REVIEW_ISSUE_ID",
     "SUPPORTED_CLUSTER_BOOTSTRAP_METHOD",
@@ -527,5 +627,7 @@ __all__ = [
     "GeneralizationUnitKind",
     "MetricGeneralizationContract",
     "PrecisionInterval",
+    "build_cluster_metric_observation",
     "cluster_bootstrap_precision",
+    "cluster_elementary_source_checksum",
 ]

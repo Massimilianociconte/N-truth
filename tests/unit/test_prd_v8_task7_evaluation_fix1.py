@@ -563,9 +563,9 @@ def test_cluster_bootstrap_aggregates_elementary_rows_and_seals_numeric_inputs()
         small_cluster_caveat="Conformance-only interval; no generalization claim is authorized.",
     )
     rows = tuple(
-        observation_type(
+        evaluation.build_cluster_metric_observation(
             metric_id=contract.metric_id,
-            observation_id=f"OBS-{cluster}-{row}",
+            elementary_source_id=f"SOURCE-{cluster}-{row}",
             generalization_unit_id=f"SF-{cluster}",
             value=value,
             stratum_values={"profile": "A" if cluster < 3 else "B"},
@@ -604,7 +604,10 @@ def test_cluster_bootstrap_aggregates_elementary_rows_and_seals_numeric_inputs()
     payload["result_id"] = f"CLUSTER-PRECISION-{outer_checksum[:20]}"
     with pytest.raises(
         ValidationError,
-        match=r"cluster estimate differs|cluster observation manifest checksum mismatch",
+        match=(
+            r"cluster estimate differs|cluster observation manifest checksum mismatch|"
+            r"cluster elementary source checksum mismatch"
+        ),
     ):
         evaluation.ClusterPrecisionResult.model_validate(payload)
 
