@@ -408,10 +408,7 @@ def verify_candidate_experiment_block_boundaries(
 
     from ntruth.parser_ai.contract import ParserCandidateOutput
 
-    ParserCandidateOutput.assert_raw_candidate_only(bundle)
-    bundle = ParserCandidateOutput.model_validate(
-        bundle.model_dump(mode="python", round_trip=True, warnings="none")
-    )
+    bundle = ParserCandidateOutput.assert_raw_candidate_only(bundle)
 
     block_ids = tuple(block.block_id for block in bundle.experiment_blocks)
     boundary_block_ids = tuple(boundary.block_id for boundary in bundle.block_boundaries)

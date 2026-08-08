@@ -67,6 +67,62 @@ def _raw_candidate_contract_tree(
     return value
 
 
+def _assert_exact_candidate_model_types(
+    actual: object,
+    canonical: object,
+    *,
+    path: str = "$",
+    seen: set[tuple[int, int]] | None = None,
+) -> None:
+    """Reject non-canonical Pydantic runtime types anywhere in the candidate tree."""
+
+    if seen is None:
+        seen = set()
+    identity = (id(actual), id(canonical))
+    if identity in seen:
+        return
+    seen.add(identity)
+    if isinstance(canonical, BaseModel):
+        if type(actual) is not type(canonical):
+            raise ValueError(
+                f"candidate runtime type at {path} must be exact canonical "
+                f"{type(canonical).__name__}, got {type(actual).__name__}"
+            )
+        actual_values = actual.__dict__
+        canonical_values = canonical.__dict__
+        for field_name in type(canonical).model_fields:
+            if field_name not in actual_values or field_name not in canonical_values:
+                raise ValueError(f"candidate runtime field {path}.{field_name} is not canonical")
+            _assert_exact_candidate_model_types(
+                actual_values[field_name],
+                canonical_values[field_name],
+                path=f"{path}.{field_name}",
+                seen=seen,
+            )
+        return
+    if isinstance(canonical, Mapping):
+        if not isinstance(actual, Mapping) or actual.keys() != canonical.keys():
+            raise ValueError(f"candidate runtime mapping at {path} is not canonical")
+        for key, item in canonical.items():
+            _assert_exact_candidate_model_types(
+                actual[key],
+                item,
+                path=f"{path}.{key}",
+                seen=seen,
+            )
+        return
+    if isinstance(canonical, (list, tuple)):
+        if not isinstance(actual, (list, tuple)) or len(actual) != len(canonical):
+            raise ValueError(f"candidate runtime container at {path} is not canonical")
+        for index, item in enumerate(canonical):
+            _assert_exact_candidate_model_types(
+                actual[index],
+                item,
+                path=f"{path}[{index}]",
+                seen=seen,
+            )
+
+
 class ParserAISectionInput(FrozenModel):
     section_id: str
     role: str
@@ -620,10 +676,25 @@ class ParserCandidateOutput(FrozenModel):
     coverage: StageCoverage
     model_metadata: ParserModelMetadata
 
-    def assert_raw_candidate_only(self) -> None:
-        """Reject forbidden final fields retained outside canonical serialization."""
+    def assert_raw_candidate_only(self) -> ParserCandidateOutput:
+        """Reject hidden final fields and return an exact canonical runtime tree."""
 
         assert_no_final_scientific_fields(_raw_candidate_contract_tree(self))
+        if type(self) is not ParserCandidateOutput:
+            raise ValueError(
+                "candidate runtime type at $ must be exact canonical ParserCandidateOutput, "
+                f"got {type(self).__name__}"
+            )
+        canonical = ParserCandidateOutput.model_validate(
+            ParserCandidateOutput.model_dump(
+                self,
+                mode="python",
+                round_trip=True,
+                warnings="none",
+            )
+        )
+        _assert_exact_candidate_model_types(self, canonical)
+        return canonical
 
     @model_validator(mode="before")
     @classmethod
