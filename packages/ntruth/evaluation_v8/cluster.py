@@ -9,6 +9,7 @@ from typing import Annotated, Self
 
 from pydantic import Field, model_validator
 
+from ntruth.evaluation_v8.models import EVALUATION_SCIENTIFIC_HOLD_ISSUE_ID
 from ntruth.schemas.core import content_checksum
 from ntruth.schemas.kernel import KernelModel, NonBlankStr
 from ntruth.schemas.knowledge import KnowledgeState, KnowledgeValue
@@ -16,6 +17,15 @@ from ntruth.schemas.support import ScientificReviewRequirement
 
 CLUSTER_PRECISION_REVIEW_ISSUE_ID = "SRR-V8-CLUSTER-PRECISION"
 SUPPORTED_CLUSTER_BOOTSTRAP_METHOD = "cluster-bootstrap-sha256-v1"
+SUPPORTED_CLUSTER_ESTIMATOR_ID = "cluster-mean-by-stratum-v1"
+SUPPORTED_CLUSTER_ESTIMATOR_CHECKSUM = content_checksum(
+    {
+        "estimator_id": SUPPORTED_CLUSTER_ESTIMATOR_ID,
+        "elementary_aggregation": "arithmetic mean within each declared resampling cluster",
+        "resampling_weight": "one equal contribution per resampled cluster",
+        "stratification": "resample clusters independently within exact declared strata",
+    }
+)
 Sha256 = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
 
 
@@ -67,6 +77,11 @@ class MetricGeneralizationContract(KernelModel):
             raise ValueError("generalization contract contains duplicate unit IDs")
         if self.elementary_unit is self.resampling_cluster:
             raise ValueError("elementary and resampling-cluster units must remain distinct")
+        if (
+            self.cluster_estimator_id != SUPPORTED_CLUSTER_ESTIMATOR_ID
+            or self.cluster_estimator_checksum != SUPPORTED_CLUSTER_ESTIMATOR_CHECKSUM
+        ):
+            raise ValueError("unknown or unreviewed deterministic cluster estimator")
         if len(set(self.stratification_variables)) != len(self.stratification_variables):
             raise ValueError("stratification variables contain duplicates")
         return self
@@ -79,14 +94,85 @@ class ClusterMetricEstimate(KernelModel):
     generalization_unit_id: NonBlankStr
     estimate: Decimal = Field(ge=Decimal("0"), le=Decimal("1"))
     evidence_ids: tuple[NonBlankStr, ...] = Field(min_length=1)
+    stratum_values: dict[NonBlankStr, NonBlankStr]
+
+
+class ClusterMetricObservation(KernelModel):
+    metric_id: NonBlankStr
+    observation_id: NonBlankStr
+    generalization_unit_id: NonBlankStr
+    value: Decimal = Field(ge=Decimal("0"), le=Decimal("1"))
+    stratum_values: dict[NonBlankStr, NonBlankStr]
+    evidence_ids: tuple[NonBlankStr, ...] = Field(min_length=1)
+
+
+class ClusterObservationManifest(KernelModel):
+    manifest_id: NonBlankStr
+    content_checksum: Sha256
+    metric_id: NonBlankStr
+    estimator_id: NonBlankStr
+    estimator_checksum: Sha256
+    stratification_variables: tuple[NonBlankStr, ...]
+    observations: tuple[ClusterMetricObservation, ...] = Field(min_length=1)
+    cluster_estimates: tuple[ClusterMetricEstimate, ...] = Field(min_length=1)
+    observation_count: int = Field(ge=1)
+    cluster_count: int = Field(ge=1)
+
+    @model_validator(mode="after")
+    def _derived_and_content_addressed(self) -> Self:
+        observation_ids = [item.observation_id for item in self.observations]
+        if len(set(observation_ids)) != len(observation_ids):
+            raise ValueError("cluster observation manifest contains duplicate observation IDs")
+        cluster_ids = [item.generalization_unit_id for item in self.cluster_estimates]
+        if len(set(cluster_ids)) != len(cluster_ids):
+            raise ValueError("cluster observation manifest contains duplicate cluster estimates")
+        if self.observation_count != len(self.observations) or self.cluster_count != len(
+            self.cluster_estimates
+        ):
+            raise ValueError("cluster observation manifest count mismatch")
+        if {item.generalization_unit_id for item in self.observations} != set(cluster_ids):
+            raise ValueError("cluster observations and estimates have different cluster membership")
+        expected_strata = set(self.stratification_variables)
+        if any(set(item.stratum_values) != expected_strata for item in self.observations):
+            raise ValueError("cluster observation has incomplete or unexpected strata")
+        if any(set(item.stratum_values) != expected_strata for item in self.cluster_estimates):
+            raise ValueError("cluster estimate has incomplete or unexpected strata")
+        observations_by_cluster = {
+            cluster_id: [
+                item for item in self.observations if item.generalization_unit_id == cluster_id
+            ]
+            for cluster_id in cluster_ids
+        }
+        for estimate in self.cluster_estimates:
+            rows = observations_by_cluster[estimate.generalization_unit_id]
+            if not rows:
+                raise ValueError("cluster estimate has no elementary observations")
+            if any(row.metric_id != self.metric_id for row in rows):
+                raise ValueError("cluster observation belongs to another metric")
+            if any(row.stratum_values != estimate.stratum_values for row in rows):
+                raise ValueError("one cluster crosses declared strata")
+            expected_estimate = sum((row.value for row in rows), Decimal("0")) / Decimal(len(rows))
+            expected_evidence = tuple(
+                sorted({evidence_id for row in rows for evidence_id in row.evidence_ids})
+            )
+            if estimate.estimate != expected_estimate or estimate.evidence_ids != expected_evidence:
+                raise ValueError("cluster estimate differs from sealed elementary observations")
+        expected = content_checksum(
+            self.model_dump(mode="json", exclude={"manifest_id", "content_checksum"})
+        )
+        if self.content_checksum != expected:
+            raise ValueError("cluster observation manifest checksum mismatch")
+        if self.manifest_id != f"CLUSTER-OBSERVATIONS-{expected[:20]}":
+            raise ValueError("cluster observation manifest ID mismatch")
+        return self
 
 
 class PrecisionInterval(KernelModel):
     method_id: NonBlankStr
     confidence_level: Decimal
-    point_estimate: Decimal
-    lower: Decimal
-    upper: Decimal
+    point_estimate: Decimal = Field(ge=Decimal("0"), le=Decimal("1"))
+    lower: Decimal = Field(ge=Decimal("0"), le=Decimal("1"))
+    upper: Decimal = Field(ge=Decimal("0"), le=Decimal("1"))
 
     @model_validator(mode="after")
     def _ordered_interval(self) -> Self:
@@ -99,6 +185,7 @@ class ClusterPrecisionResult(KernelModel):
     result_id: NonBlankStr
     content_checksum: Sha256
     generalization_contract: MetricGeneralizationContract
+    input_manifest: ClusterObservationManifest
     metric_id: NonBlankStr
     elementary_unit: GeneralizationUnitKind
     resampling_cluster: GeneralizationUnitKind
@@ -106,7 +193,8 @@ class ClusterPrecisionResult(KernelModel):
     effective_cluster_count: int = Field(ge=1)
     interval: KnowledgeValue[PrecisionInterval]
     small_cluster_caveat: NonBlankStr
-    blocker: ScientificReviewRequirement | None = None
+    scientific_use_permitted: bool = False
+    blockers: tuple[ScientificReviewRequirement, ...] = Field(min_length=1)
 
     @model_validator(mode="after")
     def _blocked_xor_interval(self) -> Self:
@@ -116,12 +204,26 @@ class ClusterPrecisionResult(KernelModel):
             or self.resampling_cluster is not self.generalization_contract.resampling_cluster
             or self.declared_cluster_count != len(self.generalization_contract.units)
             or self.small_cluster_caveat != self.generalization_contract.small_cluster_caveat
+            or self.input_manifest.metric_id != self.metric_id
+            or self.input_manifest.estimator_id != self.generalization_contract.cluster_estimator_id
+            or self.input_manifest.estimator_checksum
+            != self.generalization_contract.cluster_estimator_checksum
+            or self.input_manifest.stratification_variables
+            != self.generalization_contract.stratification_variables
+            or self.effective_cluster_count != self.input_manifest.cluster_count
         ):
             raise ValueError("cluster precision result differs from its pinned metric contract")
+        if self.interval.query_scope_id != self.metric_id:
+            raise ValueError("cluster precision interval has the wrong metric scope")
+        if self.scientific_use_permitted:
+            raise ValueError("cluster precision result is not a scientific release authority")
+        blocker_ids = {item.issue_id for item in self.blockers}
+        if EVALUATION_SCIENTIFIC_HOLD_ISSUE_ID not in blocker_ids:
+            raise ValueError("cluster precision result must retain the scientific HOLD")
         if self.interval.knowledge_state is KnowledgeState.PRESENT:
-            if self.blocker is not None:
+            if CLUSTER_PRECISION_REVIEW_ISSUE_ID in blocker_ids:
                 raise ValueError("computed precision cannot carry a missing-cluster blocker")
-        elif self.blocker is None or self.blocker.issue_id != CLUSTER_PRECISION_REVIEW_ISSUE_ID:
+        elif CLUSTER_PRECISION_REVIEW_ISSUE_ID not in blocker_ids:
             raise ValueError("unavailable cluster precision requires its explicit blocker")
         expected = content_checksum(
             self.model_dump(mode="json", exclude={"result_id", "content_checksum"})
@@ -136,14 +238,26 @@ class ClusterPrecisionResult(KernelModel):
 def _build_cluster_precision_result(
     contract: MetricGeneralizationContract,
     *,
+    input_manifest: ClusterObservationManifest,
     effective_cluster_count: int,
     interval: KnowledgeValue[PrecisionInterval],
-    blocker: ScientificReviewRequirement | None = None,
+    unavailable_blocker: ScientificReviewRequirement | None = None,
 ) -> ClusterPrecisionResult:
+    blockers = (
+        ScientificReviewRequirement(
+            issue_id=EVALUATION_SCIENTIFIC_HOLD_ISSUE_ID,
+            rationale=(
+                "A deterministic precision interval is not a release decision; governed metric "
+                "provenance, reference stability, burden and a policy-pinned decision remain required."
+            ),
+        ),
+        *((unavailable_blocker,) if unavailable_blocker is not None else ()),
+    )
     draft = ClusterPrecisionResult.model_construct(
         result_id="CLUSTER-PRECISION-PENDING",
         content_checksum="0" * 64,
         generalization_contract=contract,
+        input_manifest=input_manifest,
         metric_id=contract.metric_id,
         elementary_unit=contract.elementary_unit,
         resampling_cluster=contract.resampling_cluster,
@@ -151,7 +265,8 @@ def _build_cluster_precision_result(
         effective_cluster_count=effective_cluster_count,
         interval=interval,
         small_cluster_caveat=contract.small_cluster_caveat,
-        blocker=blocker,
+        scientific_use_permitted=False,
+        blockers=blockers,
     )
     checksum = content_checksum(
         draft.model_dump(mode="json", exclude={"result_id", "content_checksum"})
@@ -160,6 +275,7 @@ def _build_cluster_precision_result(
         result_id=f"CLUSTER-PRECISION-{checksum[:20]}",
         content_checksum=checksum,
         generalization_contract=contract,
+        input_manifest=input_manifest,
         metric_id=contract.metric_id,
         elementary_unit=contract.elementary_unit,
         resampling_cluster=contract.resampling_cluster,
@@ -167,7 +283,8 @@ def _build_cluster_precision_result(
         effective_cluster_count=effective_cluster_count,
         interval=interval,
         small_cluster_caveat=contract.small_cluster_caveat,
-        blocker=blocker,
+        scientific_use_permitted=False,
+        blockers=blockers,
     )
 
 
@@ -191,35 +308,98 @@ def _quantile(values: list[Decimal], probability: Decimal) -> Decimal:
         return ordered[lower_index] + (ordered[upper_index] - ordered[lower_index]) * weight
 
 
-def cluster_bootstrap_precision(
+def _build_observation_manifest(
     contract: MetricGeneralizationContract,
-    estimates: tuple[ClusterMetricEstimate, ...],
-) -> ClusterPrecisionResult:
-    """Resample cluster estimates, ignoring exact duplicate rows by cluster ID.
-
-    The interface deliberately accepts pre-aggregated cluster contributions.
-    Repeating item rows inside a cluster therefore cannot increase the effective
-    sample size or narrow the resulting interval.
-    """
-
-    by_cluster: dict[str, ClusterMetricEstimate] = {}
-    for estimate in estimates:
-        if estimate.metric_id != contract.metric_id:
-            raise ValueError("cluster estimate belongs to another metric")
-        previous = by_cluster.get(estimate.generalization_unit_id)
+    observations: tuple[ClusterMetricObservation, ...],
+) -> ClusterObservationManifest:
+    by_observation_id: dict[str, ClusterMetricObservation] = {}
+    for observation in observations:
+        if observation.metric_id != contract.metric_id:
+            raise ValueError("cluster observation belongs to another metric")
+        if set(observation.stratum_values) != set(contract.stratification_variables):
+            raise ValueError("cluster observation has incomplete or unexpected strata")
+        previous = by_observation_id.get(observation.observation_id)
         if previous is None:
-            by_cluster[estimate.generalization_unit_id] = estimate
-        elif previous != estimate:
-            raise ValueError("conflicting duplicate cluster estimate")
+            by_observation_id[observation.observation_id] = observation
+        elif previous != observation:
+            raise ValueError("conflicting duplicate cluster observation")
     declared_ids = {unit.generalization_unit_id for unit in contract.units}
-    if set(by_cluster) != declared_ids:
-        missing = sorted(declared_ids - set(by_cluster))
-        unexpected = sorted(set(by_cluster) - declared_ids)
+    observed_cluster_ids = {
+        observation.generalization_unit_id for observation in by_observation_id.values()
+    }
+    if observed_cluster_ids != declared_ids:
+        missing = sorted(declared_ids - observed_cluster_ids)
+        unexpected = sorted(observed_cluster_ids - declared_ids)
         raise ValueError(
-            f"cluster estimates do not close the metric contract; missing={missing}, "
+            f"cluster observations do not close the metric contract; missing={missing}, "
             f"unexpected={unexpected}"
         )
-    ordered_estimates = [by_cluster[unit.generalization_unit_id] for unit in contract.units]
+    unit_order = {unit.generalization_unit_id: index for index, unit in enumerate(contract.units)}
+    ordered_observations = tuple(
+        sorted(
+            by_observation_id.values(),
+            key=lambda item: (unit_order[item.generalization_unit_id], item.observation_id),
+        )
+    )
+    estimates: list[ClusterMetricEstimate] = []
+    for unit in contract.units:
+        rows = [
+            item
+            for item in ordered_observations
+            if item.generalization_unit_id == unit.generalization_unit_id
+        ]
+        stratum_values = rows[0].stratum_values
+        if any(row.stratum_values != stratum_values for row in rows):
+            raise ValueError("one resampling cluster crosses declared strata")
+        estimates.append(
+            ClusterMetricEstimate(
+                metric_id=contract.metric_id,
+                generalization_unit_id=unit.generalization_unit_id,
+                estimate=sum((row.value for row in rows), Decimal("0")) / Decimal(len(rows)),
+                evidence_ids=tuple(
+                    sorted({evidence_id for row in rows for evidence_id in row.evidence_ids})
+                ),
+                stratum_values=stratum_values,
+            )
+        )
+    cluster_estimates = tuple(estimates)
+    draft = ClusterObservationManifest.model_construct(
+        manifest_id="CLUSTER-OBSERVATIONS-PENDING",
+        content_checksum="0" * 64,
+        metric_id=contract.metric_id,
+        estimator_id=contract.cluster_estimator_id,
+        estimator_checksum=contract.cluster_estimator_checksum,
+        stratification_variables=contract.stratification_variables,
+        observations=ordered_observations,
+        cluster_estimates=cluster_estimates,
+        observation_count=len(ordered_observations),
+        cluster_count=len(cluster_estimates),
+    )
+    checksum = content_checksum(
+        draft.model_dump(mode="json", exclude={"manifest_id", "content_checksum"})
+    )
+    return ClusterObservationManifest(
+        manifest_id=f"CLUSTER-OBSERVATIONS-{checksum[:20]}",
+        content_checksum=checksum,
+        metric_id=contract.metric_id,
+        estimator_id=contract.cluster_estimator_id,
+        estimator_checksum=contract.cluster_estimator_checksum,
+        stratification_variables=contract.stratification_variables,
+        observations=ordered_observations,
+        cluster_estimates=cluster_estimates,
+        observation_count=len(ordered_observations),
+        cluster_count=len(cluster_estimates),
+    )
+
+
+def cluster_bootstrap_precision(
+    contract: MetricGeneralizationContract,
+    observations: tuple[ClusterMetricObservation, ...],
+) -> ClusterPrecisionResult:
+    """Aggregate sealed elementary rows, then resample clusters within exact strata."""
+
+    input_manifest = _build_observation_manifest(contract, observations)
+    ordered_estimates = list(input_manifest.cluster_estimates)
     values = [estimate.estimate for estimate in ordered_estimates]
     evidence_ids = tuple(
         sorted(
@@ -234,13 +414,14 @@ def cluster_bootstrap_precision(
         )
         return _build_cluster_precision_result(
             contract,
+            input_manifest=input_manifest,
             effective_cluster_count=cluster_count,
             interval=KnowledgeValue[PrecisionInterval](
                 knowledge_state=KnowledgeState.UNKNOWN,
                 rationale=rationale,
                 query_scope_id=contract.metric_id,
             ),
-            blocker=ScientificReviewRequirement(
+            unavailable_blocker=ScientificReviewRequirement(
                 issue_id=CLUSTER_PRECISION_REVIEW_ISSUE_ID,
                 rationale=rationale,
             ),
@@ -249,18 +430,25 @@ def cluster_bootstrap_precision(
         context.prec = 40
         denominator = Decimal(cluster_count)
         point_estimate = sum(values, Decimal("0")) / denominator
+        estimates_by_stratum: dict[tuple[str, ...], list[ClusterMetricEstimate]] = {}
+        for estimate in ordered_estimates:
+            key = tuple(
+                estimate.stratum_values[variable] for variable in contract.stratification_variables
+            )
+            estimates_by_stratum.setdefault(key, []).append(estimate)
         bootstrap_estimates = [
             sum(
                 (
-                    values[
+                    stratum_estimates[
                         _draw_index(
-                            seed=contract.bootstrap.seed,
+                            seed=f"{contract.bootstrap.seed}\0{stratum_key!r}",
                             iteration=iteration,
                             draw=draw,
-                            cluster_count=cluster_count,
+                            cluster_count=len(stratum_estimates),
                         )
-                    ]
-                    for draw in range(cluster_count)
+                    ].estimate
+                    for stratum_key, stratum_estimates in sorted(estimates_by_stratum.items())
+                    for draw in range(len(stratum_estimates))
                 ),
                 Decimal("0"),
             )
@@ -282,6 +470,7 @@ def cluster_bootstrap_precision(
     )
     return _build_cluster_precision_result(
         contract,
+        input_manifest=input_manifest,
         effective_cluster_count=cluster_count,
         interval=KnowledgeValue[PrecisionInterval](
             knowledge_state=KnowledgeState.PRESENT,
@@ -295,8 +484,12 @@ def cluster_bootstrap_precision(
 __all__ = [
     "CLUSTER_PRECISION_REVIEW_ISSUE_ID",
     "SUPPORTED_CLUSTER_BOOTSTRAP_METHOD",
+    "SUPPORTED_CLUSTER_ESTIMATOR_CHECKSUM",
+    "SUPPORTED_CLUSTER_ESTIMATOR_ID",
     "ClusterBootstrapProtocol",
     "ClusterMetricEstimate",
+    "ClusterMetricObservation",
+    "ClusterObservationManifest",
     "ClusterPrecisionResult",
     "GeneralizationUnit",
     "GeneralizationUnitKind",

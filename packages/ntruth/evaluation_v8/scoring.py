@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from collections import Counter
+from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
 from ntruth.evaluation_v8.models import (
     CONFORMANCE_REFERENCE_REVIEW_ISSUE_ID,
+    EVALUATION_PROCESS_METRICS_REVIEW_ISSUE_ID,
     EVALUATION_REFERENCE_REVIEW_ISSUE_ID,
     EVALUATION_SCIENTIFIC_HOLD_ISSUE_ID,
     PARTIAL_CLAIM_MATCH_REVIEW_ISSUE_ID,
@@ -19,8 +21,11 @@ from ntruth.evaluation_v8.models import (
     ClaimEvaluationSnapshot,
     EndToEndEvaluationReport,
     EvaluationDenominators,
+    EvaluationProcessObservations,
     EvaluationStatus,
     FalseCertaintyCategory,
+    FalseCertaintyDenominatorScope,
+    FalseCertaintySummary,
     IndependentReferencePurpose,
     IndependentReportReference,
     MatchOutcome,
@@ -28,14 +33,18 @@ from ntruth.evaluation_v8.models import (
     PartialClaimEquivalence,
     QueryEvaluationResult,
     QueryEvaluationSnapshot,
+    QuestionAttributionSnapshot,
+    ReferenceStabilityArtifactReference,
     ReferenceStabilityComponentRecord,
     ReferenceStabilityConclusion,
     ReferenceStabilityPolicyPin,
     ReferenceStabilityReport,
     ReportEvaluationSnapshot,
     ResidualAuditFinding,
+    ResidualDimension,
     ResidualEvent,
     ResidualOrigin,
+    ResidualScopeKind,
     ResidualSeverity,
 )
 from ntruth.schemas.claims import DeterminabilityState
@@ -103,22 +112,41 @@ def build_independent_report_reference(
     source_record_ids: tuple[str, ...],
     evidence_ids: tuple[str, ...],
     reviewer_actor_ids: tuple[str, ...],
+    reference_stability_report: ReferenceStabilityReport | None = None,
     reference_stability_report_checksum: KnowledgeValue[str] | None = None,
     partial_claim_equivalences: KnowledgeValue[tuple[PartialClaimEquivalence, ...]] | None = None,
 ) -> IndependentReportReference:
     """Address a reference and make conformance-only purpose non-upgradable."""
 
-    if reference_stability_report_checksum is None:
-        if purpose is IndependentReferencePurpose.CONFORMANCE_ONLY:
-            reference_stability_report_checksum = _not_applicable_checksum(
-                scope=report_scope_id,
-                rationale="Conformance fixtures are not scientific reference-stability evidence.",
-            )
-        else:
-            reference_stability_report_checksum = _unknown(
-                scope=report_scope_id,
-                rationale="No independently reviewed reference-stability report was supplied.",
-            )
+    if reference_stability_report_checksum is not None:
+        raise ValueError(
+            "raw reference-stability checksum is not authoritative; resolve the addressed report"
+        )
+    reference_stability_value: KnowledgeValue[ReferenceStabilityArtifactReference]
+    if purpose is IndependentReferencePurpose.CONFORMANCE_ONLY:
+        reference_stability_value = KnowledgeValue[ReferenceStabilityArtifactReference](
+            knowledge_state=KnowledgeState.NOT_APPLICABLE,
+            rationale="Conformance fixtures are not scientific reference-stability evidence.",
+            query_scope_id=report_scope_id,
+        )
+    elif reference_stability_report is None:
+        reference_stability_value = _unknown(
+            scope=report_scope_id,
+            rationale="No independently reviewed reference-stability report was supplied.",
+        )
+    else:
+        if reference_stability_report.report_id != report_scope_id:
+            raise ValueError("reference-stability report belongs to another report scope")
+        reference_stability_value = KnowledgeValue[ReferenceStabilityArtifactReference](
+            knowledge_state=KnowledgeState.PRESENT,
+            value=ReferenceStabilityArtifactReference(
+                artifact_id=reference_stability_report.artifact_id,
+                content_checksum=reference_stability_report.content_checksum,
+                report_scope_id=reference_stability_report.report_id,
+            ),
+            evidence_ids=(evidence_ids[0],),
+            query_scope_id=report_scope_id,
+        )
     if partial_claim_equivalences is None:
         if purpose is IndependentReferencePurpose.CONFORMANCE_ONLY:
             partial_claim_equivalences = KnowledgeValue[tuple[PartialClaimEquivalence, ...]](
@@ -139,7 +167,7 @@ def build_independent_report_reference(
         "source_record_ids": source_record_ids,
         "evidence_ids": evidence_ids,
         "reviewer_actor_ids": reviewer_actor_ids,
-        "reference_stability_report_checksum": reference_stability_report_checksum,
+        "reference_stability_report": reference_stability_value,
         "partial_claim_equivalences": partial_claim_equivalences,
     }
     draft = IndependentReportReference.model_construct(content_checksum="0" * 64, **fields)
@@ -194,9 +222,17 @@ def build_reference_stability_report(
         "reference_stability_conclusion": conclusion,
         "blocker": blocker,
     }
-    draft = ReferenceStabilityReport.model_construct(content_checksum="0" * 64, **fields)
-    checksum = content_checksum(draft.model_dump(mode="json", exclude={"content_checksum"}))
-    return ReferenceStabilityReport(content_checksum=checksum, **fields)
+    draft = ReferenceStabilityReport.model_construct(
+        artifact_id="REFERENCE-STABILITY-PENDING", content_checksum="0" * 64, **fields
+    )
+    checksum = content_checksum(
+        draft.model_dump(mode="json", exclude={"artifact_id", "content_checksum"})
+    )
+    return ReferenceStabilityReport(
+        artifact_id=f"REFERENCE-STABILITY-{checksum[:20]}",
+        content_checksum=checksum,
+        **fields,
+    )
 
 
 def _summarize_audit_boolean(
@@ -292,10 +328,11 @@ def _match_summary(
 def _abstention_disposition(
     observed: ClaimEvaluationSnapshot,
     reference: ClaimEvaluationSnapshot,
+    claim_outcome: MatchOutcome,
 ) -> AbstentionDisposition:
-    if (
-        observed.determinability_state is DeterminabilityState.DETERMINATE
-        and reference.determinability_state is not DeterminabilityState.DETERMINATE
+    if observed.determinability_state is DeterminabilityState.DETERMINATE and (
+        reference.determinability_state is not DeterminabilityState.DETERMINATE
+        or claim_outcome is MatchOutcome.INCORRECT
     ):
         return AbstentionDisposition.FALSE_CERTAINTY
     if observed.determinability_state is DeterminabilityState.DETERMINATE:
@@ -307,11 +344,76 @@ def _abstention_disposition(
     return AbstentionDisposition.UNACTIONABLE_ABSTENTION
 
 
-def _unknown_residual_dimension[T](claim_id: str, rationale: str) -> KnowledgeValue[T]:
+def _unknown_residual_dimension[T](
+    *, scope_id: str, claim_id: str | None, query_id: str | None, rationale: str
+) -> KnowledgeValue[T]:
+    if claim_id is not None:
+        return KnowledgeValue[T](
+            knowledge_state=KnowledgeState.UNKNOWN,
+            rationale=rationale,
+            claim_scope_id=claim_id,
+        )
     return KnowledgeValue[T](
         knowledge_state=KnowledgeState.UNKNOWN,
         rationale=rationale,
-        claim_scope_id=claim_id,
+        query_scope_id=query_id or scope_id,
+    )
+
+
+def _residual_event(
+    *,
+    dimension: ResidualDimension,
+    scope_kind: ResidualScopeKind,
+    scope_id: str,
+    match_outcome: MatchOutcome,
+    impact_on_claim: str,
+    query_id: str | None = None,
+    claim_id: str | None = None,
+    axis_id: str | None = None,
+    false_certainty_category: KnowledgeValue[FalseCertaintyCategory] | None = None,
+) -> ResidualEvent:
+    if false_certainty_category is None:
+        false_certainty_category = _unknown_residual_dimension(
+            scope_id=scope_id,
+            claim_id=claim_id,
+            query_id=query_id,
+            rationale="False-certainty classification requires independent residual review.",
+        )
+    origin: KnowledgeValue[ResidualOrigin] = _unknown_residual_dimension(
+        scope_id=scope_id,
+        claim_id=claim_id,
+        query_id=query_id,
+        rationale="Error origin requires blind residual re-adjudication.",
+    )
+    severity: KnowledgeValue[ResidualSeverity] = _unknown_residual_dimension(
+        scope_id=scope_id,
+        claim_id=claim_id,
+        query_id=query_id,
+        rationale="Severity requires the preregistered residual-audit rubric.",
+    )
+    identity = (
+        dimension,
+        scope_kind,
+        scope_id,
+        match_outcome,
+        query_id,
+        claim_id,
+        axis_id,
+        false_certainty_category.model_dump(mode="json"),
+    )
+    return ResidualEvent(
+        residual_id=f"RESIDUAL-{content_checksum(identity)[:20]}",
+        dimension=dimension,
+        scope_kind=scope_kind,
+        scope_id=scope_id,
+        query_id=query_id,
+        claim_id=claim_id,
+        axis_id=axis_id,
+        match_outcome=match_outcome,
+        false_certainty_category=false_certainty_category,
+        origin=origin,
+        severity=severity,
+        impact_on_claim=impact_on_claim,
     )
 
 
@@ -326,12 +428,14 @@ def _false_certainty_residuals(
     else:
         category_values = (None,)
     residuals: list[ResidualEvent] = []
-    for index, category in enumerate(category_values):
+    for category in category_values:
         category_value: KnowledgeValue[FalseCertaintyCategory]
         if category is None:
             category_value = _unknown_residual_dimension(
-                observed.claim_id,
-                "The independent audit has not classified the false-certainty condition.",
+                scope_id=observed.claim_id,
+                claim_id=observed.claim_id,
+                query_id=observed.query_id,
+                rationale="The independent audit has not classified the false-certainty condition.",
             )
         else:
             category_value = KnowledgeValue[FalseCertaintyCategory](
@@ -340,25 +444,18 @@ def _false_certainty_residuals(
                 evidence_ids=categories.evidence_ids,
                 claim_scope_id=observed.claim_id,
             )
-        origin: KnowledgeValue[ResidualOrigin] = _unknown_residual_dimension(
-            observed.claim_id,
-            "Error origin requires blind residual re-adjudication.",
-        )
-        severity: KnowledgeValue[ResidualSeverity] = _unknown_residual_dimension(
-            observed.claim_id,
-            "Severity requires the preregistered residual-audit rubric.",
-        )
         residuals.append(
-            ResidualEvent(
-                residual_id=f"RESIDUAL-{content_checksum((observed.claim_id, category, index))[:20]}",
+            _residual_event(
+                dimension=ResidualDimension.CLAIM_SEMANTICS,
+                scope_kind=ResidualScopeKind.CLAIM,
+                scope_id=observed.claim_id,
                 query_id=observed.query_id,
                 claim_id=observed.claim_id,
+                match_outcome=MatchOutcome.INCORRECT,
                 false_certainty_category=category_value,
-                origin=origin,
-                severity=severity,
                 impact_on_claim=(
                     "Observed output was DETERMINATE while the independent reference retained "
-                    "an unresolved state."
+                    "an unresolved state or a materially different semantic value."
                 ),
             )
         )
@@ -394,7 +491,24 @@ def _score_query(
     evidence_outcomes: dict[str, MatchOutcome] = {}
     proof_outcomes: dict[str, MatchOutcome] = {}
     abstention = Counter({item: 0 for item in AbstentionDisposition})
+    false_certainty_claim_ids: list[str] = []
     residuals: list[ResidualEvent] = []
+    if (
+        observed is None
+        or observed.report_resolution_checksum != reference.report_resolution_checksum
+    ):
+        residuals.append(
+            _residual_event(
+                dimension=ResidualDimension.QUERY_REPORT_RESOLUTION,
+                scope_kind=ResidualScopeKind.QUERY,
+                scope_id=reference.query_id,
+                query_id=reference.query_id,
+                match_outcome=(
+                    MatchOutcome.MISSING if observed is None else MatchOutcome.INCORRECT
+                ),
+                impact_on_claim="The query-level report resolution differs from the reference.",
+            )
+        )
     for claim_id, expected in reference_claims.items():
         actual = observed_claims.get(claim_id)
         if actual is None:
@@ -402,6 +516,31 @@ def _score_query(
             evidence_outcomes[claim_id] = MatchOutcome.MISSING
             proof_outcomes[claim_id] = MatchOutcome.MISSING
             abstention[AbstentionDisposition.NOT_EVALUABLE_MISSING_OUTPUT] += 1
+            for dimension, impact in (
+                (
+                    ResidualDimension.CLAIM_SEMANTICS,
+                    "A reference claim is missing from the observed report.",
+                ),
+                (
+                    ResidualDimension.EVIDENCE_CORRECTNESS,
+                    "Evidence correctness is not evaluable because the reference claim is missing.",
+                ),
+                (
+                    ResidualDimension.PROOF_CORRECTNESS,
+                    "Proof correctness is not evaluable because the reference claim is missing.",
+                ),
+            ):
+                residuals.append(
+                    _residual_event(
+                        dimension=dimension,
+                        scope_kind=ResidualScopeKind.CLAIM,
+                        scope_id=claim_id,
+                        query_id=reference.query_id,
+                        claim_id=claim_id,
+                        match_outcome=MatchOutcome.MISSING,
+                        impact_on_claim=impact,
+                    )
+                )
             continue
         if (
             actual.semantic_value_checksum == expected.semantic_value_checksum
@@ -429,10 +568,74 @@ def _score_query(
             if actual.proof_trace_checksum == expected.proof_trace_checksum
             else MatchOutcome.INCORRECT
         )
-        disposition = _abstention_disposition(actual, expected)
+        disposition = _abstention_disposition(actual, expected, claim_outcomes[claim_id])
         abstention[disposition] += 1
         if disposition is AbstentionDisposition.FALSE_CERTAINTY:
+            false_certainty_claim_ids.append(claim_id)
             residuals.extend(_false_certainty_residuals(observed=actual, reference=expected))
+        elif claim_outcomes[claim_id] is not MatchOutcome.EXACT:
+            residuals.append(
+                _residual_event(
+                    dimension=ResidualDimension.CLAIM_SEMANTICS,
+                    scope_kind=ResidualScopeKind.CLAIM,
+                    scope_id=claim_id,
+                    query_id=reference.query_id,
+                    claim_id=claim_id,
+                    match_outcome=claim_outcomes[claim_id],
+                    impact_on_claim="Observed claim semantics differ from the independent reference.",
+                )
+            )
+        if evidence_outcomes[claim_id] is not MatchOutcome.EXACT:
+            residuals.append(
+                _residual_event(
+                    dimension=ResidualDimension.EVIDENCE_CORRECTNESS,
+                    scope_kind=ResidualScopeKind.CLAIM,
+                    scope_id=claim_id,
+                    query_id=reference.query_id,
+                    claim_id=claim_id,
+                    match_outcome=evidence_outcomes[claim_id],
+                    impact_on_claim="Observed evidence lineage differs from the independent reference.",
+                )
+            )
+        if proof_outcomes[claim_id] is not MatchOutcome.EXACT:
+            residuals.append(
+                _residual_event(
+                    dimension=ResidualDimension.PROOF_CORRECTNESS,
+                    scope_kind=ResidualScopeKind.CLAIM,
+                    scope_id=claim_id,
+                    query_id=reference.query_id,
+                    claim_id=claim_id,
+                    match_outcome=proof_outcomes[claim_id],
+                    impact_on_claim="Observed proof lineage differs from the independent reference.",
+                )
+            )
+
+    for claim_id in sorted(set(observed_claims) - set(reference_claims)):
+        for dimension, impact in (
+            (
+                ResidualDimension.CLAIM_SEMANTICS,
+                "The observed report contains a claim absent from the independent reference.",
+            ),
+            (
+                ResidualDimension.EVIDENCE_CORRECTNESS,
+                "Unexpected claim evidence has no reference comparator.",
+            ),
+            (
+                ResidualDimension.PROOF_CORRECTNESS,
+                "Unexpected claim proof has no reference comparator.",
+            ),
+        ):
+            residuals.append(
+                _residual_event(
+                    dimension=dimension,
+                    scope_kind=ResidualScopeKind.CLAIM,
+                    scope_id=claim_id,
+                    query_id=reference.query_id,
+                    claim_id=claim_id,
+                    match_outcome=MatchOutcome.UNEXPECTED,
+                    impact_on_claim=impact,
+                )
+            )
 
     reference_axes = {axis.axis_id: axis for axis in reference.adequacy_axes}
     observed_axes = (
@@ -449,8 +652,69 @@ def _score_query(
         )
         for axis_id, expected in reference_axes.items()
     }
+    for axis_id, outcome in axis_outcomes.items():
+        if outcome is not MatchOutcome.EXACT:
+            residuals.append(
+                _residual_event(
+                    dimension=ResidualDimension.ADEQUACY_AXIS,
+                    scope_kind=ResidualScopeKind.ADEQUACY_AXIS,
+                    scope_id=axis_id,
+                    query_id=reference.query_id,
+                    axis_id=axis_id,
+                    match_outcome=outcome,
+                    impact_on_claim="Observed design-adequacy axis differs from the reference.",
+                )
+            )
+    for axis_id in sorted(set(observed_axes) - set(reference_axes)):
+        residuals.append(
+            _residual_event(
+                dimension=ResidualDimension.ADEQUACY_AXIS,
+                scope_kind=ResidualScopeKind.ADEQUACY_AXIS,
+                scope_id=axis_id,
+                query_id=reference.query_id,
+                axis_id=axis_id,
+                match_outcome=MatchOutcome.UNEXPECTED,
+                impact_on_claim="Observed report contains an adequacy axis absent from the reference.",
+            )
+        )
     observed_claim_ids = set(observed_claims)
     reference_claim_ids = set(reference_claims)
+    decisive_values = [claim.decisive for claim in reference.claims]
+    if all(value.knowledge_state is KnowledgeState.PRESENT for value in decisive_values):
+        decisive_ids = {claim.claim_id for claim in reference.claims if bool(claim.decisive.value)}
+        if decisive_ids:
+            decisive_match = KnowledgeValue[MatchSummary](
+                knowledge_state=KnowledgeState.PRESENT,
+                value=_match_summary(
+                    reference_ids=decisive_ids,
+                    observed_ids=observed_claim_ids & decisive_ids,
+                    outcomes={
+                        key: value for key, value in claim_outcomes.items() if key in decisive_ids
+                    },
+                ),
+                evidence_ids=tuple(
+                    sorted(
+                        {
+                            evidence_id
+                            for claim in reference.claims
+                            if claim.claim_id in decisive_ids
+                            for evidence_id in claim.decisive.evidence_ids
+                        }
+                    )
+                ),
+                query_scope_id=reference.query_id,
+            )
+        else:
+            decisive_match = KnowledgeValue[MatchSummary](
+                knowledge_state=KnowledgeState.ABSENT_EXPLICIT,
+                query_scope_id=reference.query_id,
+            )
+    else:
+        decisive_match = KnowledgeValue[MatchSummary](
+            knowledge_state=KnowledgeState.UNKNOWN,
+            rationale="Decisive-claim designation is not closed for every reference claim.",
+            query_scope_id=reference.query_id,
+        )
     result = QueryEvaluationResult(
         query_id=reference.query_id,
         report_resolution_match=(
@@ -462,6 +726,7 @@ def _score_query(
             observed_ids=observed_claim_ids,
             outcomes=claim_outcomes,
         ),
+        decisive_claim_match=decisive_match,
         adequacy_axis_match=_match_summary(
             reference_ids=set(reference_axes),
             observed_ids=set(observed_axes),
@@ -478,13 +743,85 @@ def _score_query(
             outcomes=proof_outcomes,
         ),
         abstention_dispositions=dict(abstention),
+        false_certainty_claim_ids=tuple(false_certainty_claim_ids),
     )
     return result, tuple(residuals)
+
+
+def _unknown_process_fields(report_scope_id: str) -> dict[str, KnowledgeValue[Any]]:
+    rationale = (
+        "No independently governed report timing, correction or question-usefulness record exists."
+    )
+    return {
+        "time_to_confirmed_report_seconds": _unknown(scope=report_scope_id, rationale=rationale),
+        "review_time_delta_seconds": _unknown(scope=report_scope_id, rationale=rationale),
+        "decisive_human_correction_count": _unknown(scope=report_scope_id, rationale=rationale),
+        "question_usefulness": _unknown(scope=report_scope_id, rationale=rationale),
+    }
+
+
+def _process_fields(
+    report_scope_id: str,
+    observations: EvaluationProcessObservations | None,
+) -> tuple[dict[str, KnowledgeValue[Any]], bool]:
+    if observations is None:
+        return _unknown_process_fields(report_scope_id), False
+    if observations.report_scope_id != report_scope_id:
+        raise ValueError("process observations belong to another report scope")
+    timing = observations.time_to_confirmed_report
+    if timing.knowledge_state is KnowledgeState.PRESENT and timing.value is not None:
+        time_value = KnowledgeValue[Decimal](
+            knowledge_state=KnowledgeState.PRESENT,
+            value=timing.value.report_seconds,
+            evidence_ids=timing.evidence_ids,
+            query_scope_id=report_scope_id,
+        )
+        delta_value = KnowledgeValue[Decimal](
+            knowledge_state=KnowledgeState.PRESENT,
+            value=timing.value.report_seconds - timing.value.manual_baseline_seconds,
+            evidence_ids=timing.evidence_ids,
+            query_scope_id=report_scope_id,
+        )
+    else:
+        rationale = "Report timing or its manual baseline remains unavailable."
+        time_value = _unknown(scope=report_scope_id, rationale=rationale)
+        delta_value = _unknown(scope=report_scope_id, rationale=rationale)
+    fields: dict[str, KnowledgeValue[Any]] = {
+        "time_to_confirmed_report_seconds": time_value,
+        "review_time_delta_seconds": delta_value,
+        "decisive_human_correction_count": observations.decisive_human_correction_count,
+        "question_usefulness": observations.question_usefulness,
+    }
+    return fields, all(value.knowledge_state is KnowledgeState.PRESENT for value in fields.values())
+
+
+def _reference_stability_is_resolved(
+    reference: IndependentReportReference,
+    reports: tuple[ReferenceStabilityReport, ...],
+) -> bool:
+    addressed = reference.reference_stability_report
+    if addressed.knowledge_state is not KnowledgeState.PRESENT or addressed.value is None:
+        return False
+    matches = [report for report in reports if report.artifact_id == addressed.value.artifact_id]
+    if len(matches) != 1:
+        return False
+    report = matches[0]
+    return (
+        report.content_checksum == addressed.value.content_checksum
+        and report.report_id == addressed.value.report_scope_id == reference.report_scope_id
+        and report.component_evidence_complete
+        and report.interpretation_policy.knowledge_state is KnowledgeState.PRESENT
+        and report.reference_stability_conclusion.knowledge_state is KnowledgeState.PRESENT
+        and report.blocker is None
+    )
 
 
 def evaluate_end_to_end(
     observed: ReportEvaluationSnapshot,
     reference_value: KnowledgeValue[IndependentReportReference],
+    *,
+    reference_stability_reports: tuple[ReferenceStabilityReport, ...] = (),
+    process_observations: EvaluationProcessObservations | None = None,
 ) -> EndToEndEvaluationReport:
     """Score a complete report or emit explicit UNKNOWNs when reference is absent."""
 
@@ -495,6 +832,7 @@ def evaluate_end_to_end(
         or reference_value.value is None
     ):
         rationale = "End-to-end evaluation requires an independently reviewed report reference."
+        process_fields, _ = _process_fields(observed.report_id, process_observations)
         return _build_end_to_end_report(
             {
                 "report_scope_id": observed.report_id,
@@ -503,15 +841,24 @@ def evaluate_end_to_end(
                 "status": EvaluationStatus.BLOCKED,
                 "scientific_use_permitted": False,
                 "denominators": _unknown(scope=observed.report_id, rationale=rationale),
+                "complete_report_match": _unknown(scope=observed.report_id, rationale=rationale),
                 "global_report_resolution_match": _unknown(
                     scope=observed.report_id, rationale=rationale
                 ),
                 "query_results": _unknown(scope=observed.report_id, rationale=rationale),
                 "residuals": _unknown(scope=observed.report_id, rationale=rationale),
+                "false_certainty": _unknown(scope=observed.report_id, rationale=rationale),
+                **process_fields,
                 "blockers": (
                     ScientificReviewRequirement(
                         issue_id=EVALUATION_REFERENCE_REVIEW_ISSUE_ID,
                         rationale=rationale,
+                    ),
+                    ScientificReviewRequirement(
+                        issue_id=EVALUATION_PROCESS_METRICS_REVIEW_ISSUE_ID,
+                        rationale=(
+                            "Timing, correction and question-usefulness observations are not closed."
+                        ),
                     ),
                 ),
             }
@@ -530,6 +877,51 @@ def evaluate_end_to_end(
             ).add(equivalence.accepted_observed_semantic_checksum)
     query_results: list[QueryEvaluationResult] = []
     residuals: list[ResidualEvent] = []
+    if observed.report_checksum != reference.snapshot.report_checksum:
+        residuals.append(
+            _residual_event(
+                dimension=ResidualDimension.COMPLETE_REPORT,
+                scope_kind=ResidualScopeKind.REPORT,
+                scope_id=observed.report_id,
+                match_outcome=MatchOutcome.INCORRECT,
+                impact_on_claim="The complete user-consumed ReportBundle differs from the reference.",
+            )
+        )
+    if (
+        observed.global_report_resolution_checksum
+        != reference.snapshot.global_report_resolution_checksum
+    ):
+        residuals.append(
+            _residual_event(
+                dimension=ResidualDimension.GLOBAL_REPORT_RESOLUTION,
+                scope_kind=ResidualScopeKind.REPORT,
+                scope_id=observed.report_id,
+                match_outcome=MatchOutcome.INCORRECT,
+                impact_on_claim="Global report resolution differs from the independent reference.",
+            )
+        )
+    for query_id in sorted(set(reference_queries) - set(observed_queries)):
+        residuals.append(
+            _residual_event(
+                dimension=ResidualDimension.QUERY_MEMBERSHIP,
+                scope_kind=ResidualScopeKind.QUERY,
+                scope_id=query_id,
+                query_id=query_id,
+                match_outcome=MatchOutcome.MISSING,
+                impact_on_claim="A reference query is missing from the observed report.",
+            )
+        )
+    for query_id in sorted(set(observed_queries) - set(reference_queries)):
+        residuals.append(
+            _residual_event(
+                dimension=ResidualDimension.QUERY_MEMBERSHIP,
+                scope_kind=ResidualScopeKind.QUERY,
+                scope_id=query_id,
+                query_id=query_id,
+                match_outcome=MatchOutcome.UNEXPECTED,
+                impact_on_claim="The observed report contains a query absent from the reference.",
+            )
+        )
     for query_id, expected in reference_queries.items():
         result, query_residuals = _score_query(
             observed_queries.get(query_id), expected, partial_equivalences
@@ -539,17 +931,59 @@ def evaluate_end_to_end(
 
     claim_count = sum(len(query.claims) for query in reference.snapshot.query_snapshots)
     axis_count = sum(len(query.adequacy_axes) for query in reference.snapshot.query_snapshots)
+    reference_claims = [
+        claim for query in reference.snapshot.query_snapshots for claim in query.claims
+    ]
+    decisive_claim_ids_by_query: dict[str, set[str]] = {}
+    if all(claim.decisive.knowledge_state is KnowledgeState.PRESENT for claim in reference_claims):
+        decisive_claim_ids_by_query = {
+            query.query_id: {claim.claim_id for claim in query.claims if bool(claim.decisive.value)}
+            for query in reference.snapshot.query_snapshots
+        }
+        decisive_count = KnowledgeValue[int](
+            knowledge_state=KnowledgeState.PRESENT,
+            value=sum(len(claim_ids) for claim_ids in decisive_claim_ids_by_query.values()),
+            evidence_ids=tuple(
+                sorted(
+                    {
+                        evidence_id
+                        for claim in reference_claims
+                        for evidence_id in claim.decisive.evidence_ids
+                    }
+                )
+            ),
+            query_scope_id=observed.report_id,
+        )
+    else:
+        decisive_count = KnowledgeValue[int](
+            knowledge_state=KnowledgeState.UNKNOWN,
+            rationale="Decisive-claim designation is not closed for every reference claim.",
+            query_scope_id=observed.report_id,
+        )
     denominators = EvaluationDenominators(
+        report_count=1,
         query_count=len(reference_queries),
         missing_query_count=len(set(reference_queries) - set(observed_queries)),
         unexpected_query_count=len(set(observed_queries) - set(reference_queries)),
         global_report_resolution_count=1,
         claim_count=claim_count,
+        decisive_claim_count=decisive_count,
         adequacy_axis_count=axis_count,
         evidence_correctness_count=claim_count,
         proof_correctness_count=claim_count,
     )
     blockers: list[ScientificReviewRequirement] = []
+    process_fields, process_complete = _process_fields(observed.report_id, process_observations)
+    if not process_complete:
+        blockers.append(
+            ScientificReviewRequirement(
+                issue_id=EVALUATION_PROCESS_METRICS_REVIEW_ISSUE_ID,
+                rationale=(
+                    "Timing, correction and question-usefulness observations require independent "
+                    "review before interpretation."
+                ),
+            )
+        )
     if reference.purpose is IndependentReferencePurpose.CONFORMANCE_ONLY:
         status = EvaluationStatus.CONFORMANCE_ONLY
         scientific_use_permitted = False
@@ -565,10 +999,7 @@ def evaluate_end_to_end(
     else:
         status = EvaluationStatus.EVALUATED_WITH_INDEPENDENT_REFERENCE
         scientific_use_permitted = False
-        if (
-            reference.reference_stability_report_checksum.knowledge_state
-            is not KnowledgeState.PRESENT
-        ):
+        if not _reference_stability_is_resolved(reference, reference_stability_reports):
             blockers.append(
                 ScientificReviewRequirement(
                     issue_id=REFERENCE_STABILITY_REVIEW_ISSUE_ID,
@@ -609,6 +1040,45 @@ def evaluate_end_to_end(
             evidence_ids=reference.evidence_ids,
             query_scope_id=observed.report_id,
         )
+    decisive_denominator = decisive_count.value
+    if (
+        decisive_count.knowledge_state is KnowledgeState.PRESENT
+        and decisive_denominator is not None
+        and decisive_denominator > 0
+    ):
+        false_certainty_event_count = sum(
+            len(
+                set(result.false_certainty_claim_ids)
+                & decisive_claim_ids_by_query.get(result.query_id, set())
+            )
+            for result in query_results
+        )
+        false_certainty_value: KnowledgeValue[FalseCertaintySummary] = KnowledgeValue[
+            FalseCertaintySummary
+        ](
+            knowledge_state=KnowledgeState.PRESENT,
+            value=FalseCertaintySummary(
+                scope=FalseCertaintyDenominatorScope.DECISIVE_REFERENCE_CLAIMS,
+                denominator=decisive_denominator,
+                event_count=false_certainty_event_count,
+                severity=KnowledgeValue[tuple[ResidualSeverity, ...]](
+                    knowledge_state=KnowledgeState.UNKNOWN,
+                    rationale=(
+                        "False-certainty severity requires the preregistered blind residual-audit "
+                        "rubric."
+                    ),
+                    query_scope_id=observed.report_id,
+                ),
+            ),
+            evidence_ids=reference.evidence_ids,
+            query_scope_id=observed.report_id,
+        )
+    else:
+        false_certainty_value = KnowledgeValue[FalseCertaintySummary](
+            knowledge_state=KnowledgeState.UNKNOWN,
+            rationale="False-certainty denominator requires closed decisive-claim designations.",
+            query_scope_id=observed.report_id,
+        )
     return _build_end_to_end_report(
         {
             "report_scope_id": observed.report_id,
@@ -624,6 +1094,12 @@ def evaluate_end_to_end(
             "denominators": KnowledgeValue[EvaluationDenominators](
                 knowledge_state=KnowledgeState.PRESENT,
                 value=denominators,
+                evidence_ids=reference.evidence_ids,
+                query_scope_id=observed.report_id,
+            ),
+            "complete_report_match": KnowledgeValue[bool](
+                knowledge_state=KnowledgeState.PRESENT,
+                value=observed.report_checksum == reference.snapshot.report_checksum,
                 evidence_ids=reference.evidence_ids,
                 query_scope_id=observed.report_id,
             ),
@@ -643,6 +1119,8 @@ def evaluate_end_to_end(
                 query_scope_id=observed.report_id,
             ),
             "residuals": residual_value,
+            "false_certainty": false_certainty_value,
+            **process_fields,
             "blockers": tuple(blockers),
         }
     )
@@ -703,9 +1181,11 @@ def snapshot_report_bundle(report: ReportBundle) -> ReportEvaluationSnapshot:
                     claim_scope_id=claim.claim_id,
                 )
                 actionable_question_ids = KnowledgeValue[tuple[str, ...]](
-                    knowledge_state=KnowledgeState.PRESENT,
-                    value=questions,
-                    evidence_ids=report_evidence_ids,
+                    knowledge_state=KnowledgeState.UNKNOWN,
+                    rationale=(
+                        "Report questions are query-scoped; no reviewed claim-question attribution "
+                        "is available."
+                    ),
                     claim_scope_id=claim.claim_id,
                 )
             evidence_ids = tuple(
@@ -757,6 +1237,14 @@ def snapshot_report_bundle(report: ReportBundle) -> ReportEvaluationSnapshot:
                 ClaimEvaluationSnapshot(
                     query_id=section.inferential_query.id,
                     claim_id=claim.claim_id,
+                    decisive=KnowledgeValue[bool](
+                        knowledge_state=KnowledgeState.UNKNOWN,
+                        rationale=(
+                            "The ReportBundle does not carry an independently reviewed decisive-"
+                            "claim designation."
+                        ),
+                        claim_scope_id=claim.claim_id,
+                    ),
                     semantic_value_checksum=content_checksum(
                         {
                             "claim_type": claim.claim_type,
@@ -799,6 +1287,21 @@ def snapshot_report_bundle(report: ReportBundle) -> ReportEvaluationSnapshot:
                         ),
                     )
                     for evaluation in section.adequacy_evaluations
+                ),
+                question_attributions=tuple(
+                    QuestionAttributionSnapshot(
+                        query_id=section.inferential_query.id,
+                        question_id=question_id,
+                        claim_ids=KnowledgeValue[tuple[str, ...]](
+                            knowledge_state=KnowledgeState.UNKNOWN,
+                            rationale=(
+                                "Question-to-claim attribution requires independent review; the "
+                                "report question is retained only at query scope."
+                            ),
+                            query_scope_id=section.inferential_query.id,
+                        ),
+                    )
+                    for question_id in questions
                 ),
             )
         )

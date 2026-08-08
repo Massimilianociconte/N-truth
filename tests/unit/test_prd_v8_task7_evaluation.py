@@ -9,13 +9,15 @@ from pydantic import ValidationError
 
 from ntruth.derivation_theory.loader import load_canonical_bundle
 from ntruth.evaluation_v8 import (
+    SUPPORTED_CLUSTER_ESTIMATOR_CHECKSUM,
+    SUPPORTED_CLUSTER_ESTIMATOR_ID,
     AbstentionDisposition,
     AgreementObservation,
     AuditRole,
     AuditRoleAssignment,
     BlindResidualAuditProtocol,
     ClusterBootstrapProtocol,
-    ClusterMetricEstimate,
+    ClusterMetricObservation,
     EvaluationStatus,
     FalseCertaintyCategory,
     GeneralizationUnit,
@@ -28,6 +30,7 @@ from ntruth.evaluation_v8 import (
     ReferenceStabilityComponentRecord,
     ReportEvaluationSnapshot,
     ResidualAuditFinding,
+    ResidualAuditSampleItem,
     ResidualAuditStratum,
     ResidualOrigin,
     ResidualSeverity,
@@ -106,6 +109,12 @@ def _claim(
     return ClaimEvaluationSnapshot(
         query_id="IQ-1",
         claim_id=claim_id,
+        decisive=KnowledgeValue[bool](
+            knowledge_state=KnowledgeState.PRESENT,
+            value=True,
+            evidence_ids=(f"E-{claim_id}",),
+            claim_scope_id=claim_id,
+        ),
         semantic_value_checksum=_digest(value),
         determinability_state=state,
         evidence_record_ids=KnowledgeValue[tuple[str, ...]](
@@ -166,7 +175,10 @@ def test_missing_reference_blocks_without_zero_denominator_claims() -> None:
     assert result.status is EvaluationStatus.BLOCKED
     assert result.denominators.knowledge_state is KnowledgeState.UNKNOWN
     assert result.query_results.knowledge_state is KnowledgeState.UNKNOWN
-    assert {item.issue_id for item in result.blockers} == {"SRR-V8-EVAL-REFERENCE"}
+    assert {item.issue_id for item in result.blockers} == {
+        "SRR-V8-EVAL-REFERENCE",
+        "SRR-V8-EVAL-PROCESS-METRICS",
+    }
 
 
 def test_snapshot_is_derived_from_the_actual_complete_report_bundle() -> None:
@@ -256,8 +268,19 @@ def test_report_evaluation_retains_every_denominator_and_false_certainty_residua
     assert query.proof_correctness.by_outcome[MatchOutcome.INCORRECT] == 1
     assert query.abstention_dispositions[AbstentionDisposition.FALSE_CERTAINTY] == 1
     assert result.residuals.knowledge_state is KnowledgeState.PRESENT
-    assert len(result.residuals.value or ()) == 1
-    assert (result.residuals.value or ())[0].false_certainty_category.value == (
+    residuals = result.residuals.value or ()
+    assert {item.dimension.value for item in residuals} == {
+        "CLAIM_SEMANTICS",
+        "EVIDENCE_CORRECTNESS",
+        "PROOF_CORRECTNESS",
+        "ADEQUACY_AXIS",
+    }
+    false_certainty_residual = next(
+        item
+        for item in residuals
+        if item.false_certainty_category.knowledge_state is KnowledgeState.PRESENT
+    )
+    assert false_certainty_residual.false_certainty_category.value == (
         FalseCertaintyCategory.DECISIVE_PRECONDITION_UNSUPPORTED
     )
     assert "SRR-V8-CONFORMANCE-REFERENCE-NONSCIENTIFIC" in {
@@ -345,9 +368,14 @@ def test_blind_residual_audit_enforces_role_separation() -> None:
         BlindResidualAuditProtocol(
             protocol_id="AUDIT-1",
             sample_manifest_checksum=_digest("sample"),
-            report_ids=("REPORT-1",),
-            claim_ids=("C-1",),
-            reference_ids=("REF-1",),
+            sample_items=(
+                ResidualAuditSampleItem(
+                    report_id="REPORT-1",
+                    query_id="IQ-1",
+                    claim_id="C-1",
+                    reference_id="REF-1",
+                ),
+            ),
             strata=tuple(ResidualAuditStratum),
             blind_to_original_output=True,
             role_assignments=_audit_assignments(auditor="GENERATOR-D"),
@@ -357,9 +385,14 @@ def test_blind_residual_audit_enforces_role_separation() -> None:
     protocol = BlindResidualAuditProtocol(
         protocol_id="AUDIT-1",
         sample_manifest_checksum=_digest("sample"),
-        report_ids=("REPORT-1",),
-        claim_ids=("C-1",),
-        reference_ids=("REF-1",),
+        sample_items=(
+            ResidualAuditSampleItem(
+                report_id="REPORT-1",
+                query_id="IQ-1",
+                claim_id="C-1",
+                reference_id="REF-1",
+            ),
+        ),
         strata=tuple(ResidualAuditStratum),
         blind_to_original_output=True,
         role_assignments=_audit_assignments(auditor="AUDITOR-E"),
@@ -372,9 +405,14 @@ def test_residual_audit_does_not_impute_unknown_as_zero() -> None:
     protocol = BlindResidualAuditProtocol(
         protocol_id="AUDIT-OPEN-WORLD",
         sample_manifest_checksum=_digest("sample-open-world"),
-        report_ids=("REPORT-1",),
-        claim_ids=("C-1",),
-        reference_ids=("REF-1",),
+        sample_items=(
+            ResidualAuditSampleItem(
+                report_id="REPORT-1",
+                query_id="IQ-1",
+                claim_id="C-1",
+                reference_id="REF-1",
+            ),
+        ),
         strata=tuple(ResidualAuditStratum),
         blind_to_original_output=True,
         role_assignments=_audit_assignments(auditor="AUDITOR-E"),
@@ -383,7 +421,9 @@ def test_residual_audit_does_not_impute_unknown_as_zero() -> None:
     finding = ResidualAuditFinding(
         finding_id="FINDING-1",
         report_id="REPORT-1",
+        query_id="IQ-1",
         claim_id="C-1",
+        reference_id="REF-1",
         decisive_error=KnowledgeValue[bool](
             knowledge_state=KnowledgeState.UNKNOWN,
             rationale="Blind re-adjudication is not complete.",
@@ -472,7 +512,7 @@ def test_agreement_is_not_reference_stability_or_gate_closure() -> None:
         for component in ReferenceStabilityComponent
     )
     report = build_reference_stability_report(
-        report_id="REFERENCE-STABILITY-1",
+        report_id="REFERENCE-PILOT-1",
         protocol_id="PILOT-PROTOCOL-1",
         component_records=records,
         evidence_ids=("E-AGREEMENT",),
@@ -485,7 +525,7 @@ def test_agreement_is_not_reference_stability_or_gate_closure() -> None:
 
     with pytest.raises(ValidationError, match="exactly six"):
         build_reference_stability_report(
-            report_id="REFERENCE-STABILITY-INCOMPLETE",
+            report_id="REFERENCE-PILOT-1",
             protocol_id="PILOT-PROTOCOL-1",
             component_records=(records[0],),
             evidence_ids=("E-AGREEMENT",),
@@ -498,8 +538,8 @@ def _generalization_contract() -> MetricGeneralizationContract:
         elementary_unit=GeneralizationUnitKind.CLAIM,
         resampling_cluster=GeneralizationUnitKind.STUDY_FAMILY,
         stratification_variables=("complexity-tier", "profile"),
-        cluster_estimator_id="conformance-binary-claim-mean-v1",
-        cluster_estimator_checksum=_digest("conformance-binary-claim-mean-v1"),
+        cluster_estimator_id=SUPPORTED_CLUSTER_ESTIMATOR_ID,
+        cluster_estimator_checksum=SUPPORTED_CLUSTER_ESTIMATOR_CHECKSUM,
         units=(
             GeneralizationUnit(
                 metric_id="final-claim-correctness",
@@ -529,22 +569,28 @@ def _generalization_contract() -> MetricGeneralizationContract:
 def test_cluster_precision_is_invariant_to_duplicate_rows_inside_cluster() -> None:
     contract = _generalization_contract()
     base = (
-        ClusterMetricEstimate(
+        ClusterMetricObservation(
             metric_id=contract.metric_id,
+            observation_id="OBS-SF-1",
             generalization_unit_id="SF-1",
-            estimate=Decimal("0.2"),
+            value=Decimal("0.2"),
+            stratum_values={"complexity-tier": "T1", "profile": "P1"},
             evidence_ids=("E-SF-1",),
         ),
-        ClusterMetricEstimate(
+        ClusterMetricObservation(
             metric_id=contract.metric_id,
+            observation_id="OBS-SF-2",
             generalization_unit_id="SF-2",
-            estimate=Decimal("0.7"),
+            value=Decimal("0.7"),
+            stratum_values={"complexity-tier": "T1", "profile": "P1"},
             evidence_ids=("E-SF-2",),
         ),
-        ClusterMetricEstimate(
+        ClusterMetricObservation(
             metric_id=contract.metric_id,
+            observation_id="OBS-SF-3",
             generalization_unit_id="SF-3",
-            estimate=Decimal("0.9"),
+            value=Decimal("0.9"),
+            stratum_values={"complexity-tier": "T2", "profile": "P2"},
             evidence_ids=("E-SF-3",),
         ),
     )
@@ -560,15 +606,17 @@ def test_cluster_precision_is_invariant_to_duplicate_rows_inside_cluster() -> No
             original.model_copy(update={"content_checksum": "0" * 64}).model_dump(mode="python")
         )
 
-    with pytest.raises(ValueError, match="conflicting duplicate cluster estimate"):
+    with pytest.raises(ValueError, match="conflicting duplicate cluster observation"):
         cluster_bootstrap_precision(
             contract,
             (
                 *base,
-                ClusterMetricEstimate(
+                ClusterMetricObservation(
                     metric_id=contract.metric_id,
+                    observation_id="OBS-SF-1",
                     generalization_unit_id="SF-1",
-                    estimate=Decimal("0.8"),
+                    value=Decimal("0.8"),
+                    stratum_values={"complexity-tier": "T1", "profile": "P1"},
                     evidence_ids=("E-SF-1",),
                 ),
             ),
@@ -599,15 +647,16 @@ def test_one_cluster_returns_unknown_precision_instead_of_a_spurious_interval() 
     result = cluster_bootstrap_precision(
         contract,
         (
-            ClusterMetricEstimate(
+            ClusterMetricObservation(
                 metric_id=contract.metric_id,
+                observation_id="OBS-SF-1",
                 generalization_unit_id="SF-1",
-                estimate=Decimal("0.5"),
+                value=Decimal("0.5"),
+                stratum_values={"complexity-tier": "T1", "profile": "P1"},
                 evidence_ids=("E-SF-1",),
             ),
         ),
     )
 
     assert result.interval.knowledge_state is KnowledgeState.UNKNOWN
-    assert result.blocker is not None
-    assert result.blocker.issue_id == "SRR-V8-CLUSTER-PRECISION"
+    assert "SRR-V8-CLUSTER-PRECISION" in {item.issue_id for item in result.blockers}
