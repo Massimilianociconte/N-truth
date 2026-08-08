@@ -14,6 +14,7 @@ from ntruth.schemas.knowledge import KnowledgeValue, ensure_unambiguous_scientif
 SUPPORT_GRADE_VOCABULARY_SECTION_0_4 = "ntruth-prd-v8.0-section-0.4"
 SUPPORT_GRADE_VOCABULARY_APPENDIX_R_1 = "ntruth-prd-v8.0-appendix-r.1"
 SOURCE_CLASS_REGISTRY_ID = "ntruth-source-class-v8.0"
+RULE_CHALLENGE_OUTCOME_REVIEW_ISSUE_ID = "SRR-V8-024"
 SOURCE_CLASS_TOKENS = frozenset(
     {
         "document",
@@ -90,6 +91,12 @@ class SourceContext(StrEnum):
 
 class ScientificReviewStatus(StrEnum):
     SCIENTIFIC_REVIEW_REQUIRED = "SCIENTIFIC_REVIEW_REQUIRED"
+
+
+class ScientificReviewRequirement(KernelModel):
+    status: ScientificReviewStatus = ScientificReviewStatus.SCIENTIFIC_REVIEW_REQUIRED
+    issue_id: NonBlankStr
+    rationale: NonBlankStr
 
 
 class RuleChallengeStatus(StrEnum):
@@ -262,13 +269,24 @@ class RuleChallengeDecision(KernelModel):
     rationale: NonBlankStr
     resulting_theory_version: NonBlankStr
     resulting_ruleset_version: NonBlankStr
+    change_record_id: NonBlankStr
     rederivation_record_id: NonBlankStr
+    outcome_contract_review: ScientificReviewRequirement
     created_at: datetime
 
     @field_validator("created_at")
     @classmethod
     def _timezone_aware(cls, value: datetime) -> datetime:
         return _require_timezone(value)
+
+    @model_validator(mode="after")
+    def _registered_outcome_contract_gap(self) -> RuleChallengeDecision:
+        if self.outcome_contract_review.issue_id != RULE_CHALLENGE_OUTCOME_REVIEW_ISSUE_ID:
+            raise ValueError(
+                "outcome_contract_review must reference registered scientific-review issue "
+                f"{RULE_CHALLENGE_OUTCOME_REVIEW_ISSUE_ID}"
+            )
+        return self
 
 
 class EpistemicEventLedger(KernelModel):
@@ -294,6 +312,7 @@ class EpistemicEventLedger(KernelModel):
             raise ValueError("ledger object IDs must be globally unique")
 
         evidence_by_id = {record.evidence_id: record for record in self.evidence_records}
+        sensitivity_ids = {record.sensitivity_id for record in self.sensitivity_records}
         forbidden = {EvidenceTypeV8.MODEL_INFERENCE, EvidenceTypeV8.RULE_DERIVATION}
         for event in self.confirmation_events:
             missing = set(event.evidence_refs) - evidence_by_id.keys()
@@ -306,17 +325,37 @@ class EpistemicEventLedger(KernelModel):
             ]
             if prohibited:
                 raise ValueError(f"{prohibited[0].value} cannot be factual confirmation evidence")
+            missing_sensitivity = set(event.sensitivity_record_ids) - sensitivity_ids
+            if missing_sensitivity:
+                raise ValueError(
+                    "confirmation references unknown sensitivity record IDs: "
+                    f"{sorted(missing_sensitivity)}"
+                )
 
-        challenge_ids = {challenge.challenge_id for challenge in self.rule_challenges}
+        challenges_by_id = {challenge.challenge_id: challenge for challenge in self.rule_challenges}
         decided_challenges: set[str] = set()
         for decision in self.rule_challenge_decisions:
-            if decision.challenge_id not in challenge_ids:
+            challenge = challenges_by_id.get(decision.challenge_id)
+            if challenge is None:
                 raise ValueError(
                     f"decision {decision.decision_id} references unknown RuleChallenge "
                     f"{decision.challenge_id}"
                 )
             if decision.challenge_id in decided_challenges:
                 raise ValueError(f"RuleChallenge {decision.challenge_id} already has a decision")
+            if decision.created_at < challenge.created_at:
+                raise ValueError(
+                    f"decision {decision.decision_id} precedes RuleChallenge "
+                    f"{decision.challenge_id}"
+                )
+            if decision.outcome is RuleChallengeDecisionOutcome.ACCEPTED and (
+                decision.resulting_theory_version == challenge.theory_version
+                or decision.resulting_ruleset_version == challenge.ruleset_version
+            ):
+                raise ValueError(
+                    "ACCEPTED decision requires distinct successor versions from the frozen "
+                    "RuleChallenge contracts"
+                )
             decided_challenges.add(decision.challenge_id)
         return self
 
@@ -372,6 +411,7 @@ class EpistemicEventLedger(KernelModel):
 
 
 __all__ = [
+    "RULE_CHALLENGE_OUTCOME_REVIEW_ISSUE_ID",
     "SOURCE_CLASS_REGISTRY_ID",
     "SOURCE_CLASS_TOKENS",
     "SUPPORT_GRADE_TOKENS",
@@ -387,6 +427,7 @@ __all__ = [
     "RuleChallengeDecision",
     "RuleChallengeDecisionOutcome",
     "RuleChallengeStatus",
+    "ScientificReviewRequirement",
     "ScientificReviewStatus",
     "SensitivityRecord",
     "SourceClassRef",

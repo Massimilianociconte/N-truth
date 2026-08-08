@@ -9,7 +9,9 @@ from pydantic import Field, JsonValue, model_validator
 
 from ntruth.schemas.kernel import KernelModel, NonBlankStr
 from ntruth.schemas.knowledge import KnowledgeState, KnowledgeValue
-from ntruth.schemas.support import ScientificReviewStatus, SupportGrade
+from ntruth.schemas.support import ScientificReviewRequirement, SupportGrade
+
+CLAIM_STATE_OUTPUT_REVIEW_ISSUE_ID = "SRR-V8-023"
 
 
 class DeterminabilityState(StrEnum):
@@ -24,12 +26,6 @@ class DeterminabilityState(StrEnum):
 
 class IrrelevantPredicate(KernelModel):
     id: NonBlankStr
-    rationale: NonBlankStr
-
-
-class ScientificReviewRequirement(KernelModel):
-    status: ScientificReviewStatus = ScientificReviewStatus.SCIENTIFIC_REVIEW_REQUIRED
-    issue_id: NonBlankStr
     rationale: NonBlankStr
 
 
@@ -148,10 +144,18 @@ class DerivedClaim(KernelModel):
                 f"{state.value} requires SCIENTIFIC_REVIEW_REQUIRED until Task 4 closes its "
                 "state/output payload contract"
             )
+        elif self.state_contract_review.issue_id != CLAIM_STATE_OUTPUT_REVIEW_ISSUE_ID:
+            raise ValueError(
+                "state_contract_review must reference registered scientific-review issue "
+                f"{CLAIM_STATE_OUTPUT_REVIEW_ISSUE_ID}"
+            )
 
         if (
             state
             in {
+                DeterminabilityState.CONDITIONALLY_DETERMINATE,
+                DeterminabilityState.MULTIPLE_PLAUSIBLE_GRAPHS,
+                DeterminabilityState.INSUFFICIENT_INFORMATION,
                 DeterminabilityState.OUT_OF_SCOPE,
                 DeterminabilityState.INVALID_GRAPH,
                 DeterminabilityState.CONFLICTING_INFORMATION,

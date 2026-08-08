@@ -101,6 +101,31 @@ def _rule_challenge(*, challenge_id: str = "CHAL-001", status: str = "OPEN") -> 
     )
 
 
+def _rule_challenge_decision_payload(
+    *,
+    outcome: str = "ACCEPTED",
+    theory_version: str = "derivation-theory-0.2.0",
+    ruleset_version: str = "ntruth-core-0.4.0",
+    created_at: datetime = datetime(2026, 8, 8, 13, 0, tzinfo=UTC),
+) -> dict[str, object]:
+    return {
+        "decision_id": "RCD-001",
+        "challenge_id": "CHAL-001",
+        "outcome": outcome,
+        "reviewer_role": "methodology_reviewer",
+        "rationale": "The challenge received an append-only review decision.",
+        "resulting_theory_version": theory_version,
+        "resulting_ruleset_version": ruleset_version,
+        "change_record_id": "CHANGE-001",
+        "rederivation_record_id": "REDERIVE-001",
+        "outcome_contract_review": {
+            "issue_id": "SRR-V8-024",
+            "rationale": "The accepted/rejected payload mapping remains under review.",
+        },
+        "created_at": created_at,
+    }
+
+
 def _claim_review_requirement(*, issue_id: str) -> object:
     claims = _claims()
     return claims.ScientificReviewRequirement(
@@ -155,6 +180,7 @@ def _claim_for_state(
     state_name: str,
     value: object,
     include_review_blocker: bool = True,
+    review_issue_id: str = "SRR-V8-023",
 ) -> object:
     claims = _claims()
     state = claims.DeterminabilityState(state_name)
@@ -180,7 +206,7 @@ def _claim_for_state(
         proof_trace=_proof_trace(resolved=state is claims.DeterminabilityState.DETERMINATE),
         profile_coverage=_profile_coverage_reference(),
         state_contract_review=(
-            _claim_review_requirement(issue_id="TASK4-CLAIM-STATE-OUTPUT-CONTRACT")
+            _claim_review_requirement(issue_id=review_issue_id)
             if include_review_blocker and state is not claims.DeterminabilityState.DETERMINATE
             else None
         ),
@@ -473,6 +499,23 @@ def test_ledger_accepts_declared_factual_confirmation_evidence() -> None:
     assert ledger.confirmation_events[0].confirmed_value.value is True
 
 
+def test_ledger_deserialization_rejects_dangling_confirmation_sensitivity_reference() -> None:
+    """Catches a persisted confirmation pointing outside the ledger sensitivity bundle."""
+    support = _support()
+    evidence = _evidence_record(
+        evidence_id="EV-001",
+        evidence_type=support.EvidenceTypeV8.AUTHOR_CLARIFICATION,
+    )
+    event = _confirmation_event().model_copy(update={"sensitivity_record_ids": ("SENS-MISSING",)})
+    payload = {
+        "ledger_id": "LEDGER-001",
+        "evidence_records": [evidence.model_dump(mode="json")],
+        "confirmation_events": [event.model_dump(mode="json")],
+    }
+    with pytest.raises(ValidationError, match="unknown sensitivity"):
+        support.EpistemicEventLedger.model_validate(payload)
+
+
 def test_ledger_rejects_duplicate_ids_when_deserializing() -> None:
     """Catches persisted duplicate events bypassing append helper validation."""
     support = _support()
@@ -521,17 +564,7 @@ def test_rule_challenge_decision_is_separate_append_only_history() -> None:
     """Catches mutating a challenge status instead of recording review and re-derivation."""
     support = _support()
     challenge = _rule_challenge()
-    decision = support.RuleChallengeDecision(
-        decision_id="RCD-001",
-        challenge_id=challenge.challenge_id,
-        outcome=support.RuleChallengeDecisionOutcome.ACCEPTED,
-        reviewer_role="methodology_reviewer",
-        rationale="The challenged clause requires amendment.",
-        resulting_theory_version="derivation-theory-0.2.0",
-        resulting_ruleset_version="ntruth-core-0.4.0",
-        rederivation_record_id="REDERIVE-001",
-        created_at=datetime(2026, 8, 8, 13, 0, tzinfo=UTC),
-    )
+    decision = support.RuleChallengeDecision.model_validate(_rule_challenge_decision_payload())
     ledger = support.EpistemicEventLedger(
         ledger_id="LEDGER-001",
         rule_challenges=(challenge,),
@@ -549,22 +582,97 @@ def test_rule_challenge_decision_is_separate_append_only_history() -> None:
 def test_rule_challenge_decision_requires_existing_challenge() -> None:
     """Catches an orphan decision entering through direct deserialization."""
     support = _support()
-    decision = support.RuleChallengeDecision(
+    payload = _rule_challenge_decision_payload(outcome="REJECTED")
+    payload.update(
         decision_id="RCD-ORPHAN",
         challenge_id="CHAL-MISSING",
-        outcome=support.RuleChallengeDecisionOutcome.REJECTED,
-        reviewer_role="methodology_reviewer",
-        rationale="The current theory and rule remain valid.",
         resulting_theory_version="derivation-theory-0.1.0",
         resulting_ruleset_version="ntruth-core-0.3.0",
         rederivation_record_id="REDERIVE-UNCHANGED-001",
-        created_at=datetime(2026, 8, 8, 13, 0, tzinfo=UTC),
     )
+    decision = support.RuleChallengeDecision.model_validate(payload)
     with pytest.raises(ValidationError, match="unknown RuleChallenge"):
         support.EpistemicEventLedger(
             ledger_id="LEDGER-001",
             rule_challenge_decisions=(decision,),
         )
+
+
+def test_rule_challenge_decision_cannot_precede_challenge() -> None:
+    """Catches persisted review history whose decision predates the challenged snapshot."""
+    support = _support()
+    challenge = _rule_challenge()
+    decision = support.RuleChallengeDecision.model_validate(
+        _rule_challenge_decision_payload(created_at=datetime(2026, 8, 8, 11, 59, tzinfo=UTC))
+    )
+    with pytest.raises(ValidationError, match="precedes RuleChallenge"):
+        support.EpistemicEventLedger.model_validate(
+            {
+                "ledger_id": "LEDGER-001",
+                "rule_challenges": [challenge.model_dump(mode="json")],
+                "rule_challenge_decisions": [decision.model_dump(mode="json")],
+            }
+        )
+
+
+@pytest.mark.parametrize(
+    ("theory_version", "ruleset_version"),
+    [
+        ("derivation-theory-0.1.0", "ntruth-core-0.4.0"),
+        ("derivation-theory-0.2.0", "ntruth-core-0.3.0"),
+    ],
+)
+def test_accepted_rule_challenge_requires_distinct_successor_versions(
+    theory_version: str,
+    ruleset_version: str,
+) -> None:
+    """Catches ACCEPTED history that silently reuses either frozen contract version."""
+    support = _support()
+    challenge = _rule_challenge()
+    decision = support.RuleChallengeDecision.model_validate(
+        _rule_challenge_decision_payload(
+            theory_version=theory_version,
+            ruleset_version=ruleset_version,
+        )
+    )
+    with pytest.raises(ValidationError, match="distinct successor versions"):
+        support.EpistemicEventLedger.model_validate(
+            {
+                "ledger_id": "LEDGER-001",
+                "rule_challenges": [challenge.model_dump(mode="json")],
+                "rule_challenge_decisions": [decision.model_dump(mode="json")],
+            }
+        )
+
+
+def test_rule_challenge_decision_requires_change_record_reference() -> None:
+    """Catches a decision that cannot be joined to its change or migration record."""
+    support = _support()
+    payload = _rule_challenge_decision_payload()
+    payload.pop("change_record_id")
+    with pytest.raises(ValidationError, match="change_record_id"):
+        support.RuleChallengeDecision.model_validate(payload)
+
+
+def test_rule_challenge_decision_requires_typed_registered_outcome_blocker() -> None:
+    """Catches an outcome mapping being treated as scientifically closed by omission."""
+    support = _support()
+    payload = _rule_challenge_decision_payload()
+    payload.pop("outcome_contract_review")
+    with pytest.raises(ValidationError, match="outcome_contract_review"):
+        support.RuleChallengeDecision.model_validate(payload)
+
+
+def test_rule_challenge_outcome_blocker_rejects_unregistered_issue_id() -> None:
+    """Catches a local outcome-review label bypassing the scientific review register."""
+    support = _support()
+    payload = _rule_challenge_decision_payload()
+    payload["outcome_contract_review"] = {
+        "issue_id": "LOCAL-OUTCOME-MAPPING",
+        "rationale": "The accepted/rejected payload mapping remains under review.",
+    }
+    with pytest.raises(ValidationError, match="registered scientific-review issue"):
+        support.RuleChallengeDecision.model_validate(payload)
 
 
 def test_derived_claim_requires_pinned_profile_coverage_and_explicit_proof_dependencies() -> None:
@@ -615,6 +723,9 @@ def test_proof_trace_must_cover_every_required_predicate() -> None:
     ("state_name", "knowledge_state"),
     [
         ("DETERMINATE", "UNKNOWN"),
+        ("CONDITIONALLY_DETERMINATE", "PRESENT"),
+        ("MULTIPLE_PLAUSIBLE_GRAPHS", "PRESENT"),
+        ("INSUFFICIENT_INFORMATION", "PRESENT"),
         ("OUT_OF_SCOPE", "PRESENT"),
         ("INVALID_GRAPH", "PRESENT"),
         ("CONFLICTING_INFORMATION", "PRESENT"),
@@ -672,3 +783,19 @@ def test_unclosed_state_output_mappings_require_typed_scientific_review_blocker(
 
     blocked = _claim_for_state(state_name=state_name, value=unknown)
     assert blocked.state_contract_review.status.value == "SCIENTIFIC_REVIEW_REQUIRED"
+
+
+def test_unclosed_state_output_blocker_requires_registered_issue_id() -> None:
+    """Catches an arbitrary local label masquerading as a governed review-register entry."""
+    knowledge = _knowledge()
+    unknown = knowledge.KnowledgeValue[str](
+        knowledge_state=knowledge.KnowledgeState.UNKNOWN,
+        rationale="The claim-specific output mapping remains under review.",
+        claim_scope_id="CLAIM-EU-001",
+    )
+    with pytest.raises(ValidationError, match="registered scientific-review issue"):
+        _claim_for_state(
+            state_name="INSUFFICIENT_INFORMATION",
+            value=unknown,
+            review_issue_id="TASK4-CLAIM-STATE-OUTPUT-CONTRACT",
+        )

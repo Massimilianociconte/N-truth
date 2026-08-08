@@ -29,6 +29,8 @@ reviewer role, rationale, affected theory/schema versions and re-derivation scop
 | SRR-V8-020 | App. K T06, PDF p.131 | PDF rendering truncates the action at an unescaped pipe. | Use the intact Markdown wording and retain the PDF-rendering erratum in source reconciliation. | Editorial confirmation only. |
 | SRR-V8-021 | §34, App. D/N | DRIVER snapshot/reference freeze, retrieval hash and clause mapping are required but not supplied as reviewed repository assets. | Theory/reference-stability gate remains blocked; no claim of DRIVER conformance. | Independent scientific reviewers and reference custodian. |
 | SRR-V8-022 | §14–18, §24 | Real Anchor, Derivation Gold, reference-stability and residual-audit evidence do not yet exist. | Engineering may implement schemas and gates only; data/science readiness remains `NOT_STARTED`/`BLOCKED`. | Data custodian, annotators, adjudicators and independent reviewers. |
+| SRR-V8-023 | §10.3, App. M | Positive payload shapes for `CONDITIONALLY_DETERMINATE`, `MULTIPLE_PLAUSIBLE_GRAPHS` and `INSUFFICIENT_INFORMATION` are not closed as executable contracts. | Reject an ordinary `PRESENT` value for these states and require an explicit review blocker; Task 4 must define any condition, alternative or gap payload before use. | Derivation Theory and schema reviewers. |
+| SRR-V8-024 | App. R.3, binding rule 53 | The outcome-dependent payload mapping for accepted/rejected rule challenges is not fully specified, including change-versus-migration record semantics. | Preserve append-only decision, change-record and re-derivation references and require an explicit outcome review blocker; do not infer an unreviewed outcome mapping. | Scientific governance and Derivation Theory reviewers. |
 
 ## Closure rule
 
