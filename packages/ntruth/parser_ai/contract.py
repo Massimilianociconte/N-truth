@@ -7,6 +7,7 @@ consente al modello di scrivere nel grafo scientifico confermato.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from enum import Enum
 from typing import Any, Literal, cast
 
 from pydantic import BaseModel, Field, JsonValue, model_validator
@@ -55,15 +56,51 @@ def _raw_candidate_contract_tree(
             payload[field_name] = _raw_candidate_contract_tree(item, seen=seen)
         extra_values = value.__pydantic_extra__
         if isinstance(extra_values, Mapping):
+            if type(extra_values) is not dict:
+                raise ValueError(
+                    "candidate runtime container type for Pydantic extras must be "
+                    f"exact builtin dict, got {type(extra_values).__name__}"
+                )
             for field_name, item in extra_values.items():
                 if field_name.startswith("_"):
                     continue
                 payload[field_name] = _raw_candidate_contract_tree(item, seen=seen)
         return payload
     if isinstance(value, Mapping):
-        return {key: _raw_candidate_contract_tree(item, seen=seen) for key, item in value.items()}
+        if type(value) is not dict:
+            raise ValueError(
+                "candidate runtime container type must be exact builtin dict, "
+                f"got {type(value).__name__}"
+            )
+        mapping_payload: dict[object, object] = {}
+        for key, item in value.items():
+            raw_key = _raw_candidate_contract_tree(key, seen=seen)
+            raw_item = _raw_candidate_contract_tree(item, seen=seen)
+            try:
+                mapping_payload[raw_key] = raw_item
+            except TypeError as exc:
+                raise ValueError("candidate runtime mapping key is not canonical") from exc
+        return mapping_payload
     if isinstance(value, (list, tuple, set, frozenset)):
+        if type(value) not in {list, tuple, set, frozenset}:
+            raise ValueError(
+                "candidate runtime container type must be an exact builtin, "
+                f"got {type(value).__name__}"
+            )
         return tuple(_raw_candidate_contract_tree(item, seen=seen) for item in value)
+    if isinstance(value, Enum):
+        return value
+    if isinstance(value, (str, int, float, bool, bytes)) and type(value) not in {
+        str,
+        int,
+        float,
+        bool,
+        bytes,
+    }:
+        raise ValueError(
+            "candidate runtime scalar type must be an exact builtin or canonical enum, "
+            f"got {type(value).__name__}"
+        )
     return value
 
 
@@ -100,27 +137,84 @@ def _assert_exact_candidate_model_types(
                 seen=seen,
             )
         return
-    if isinstance(canonical, Mapping):
-        if not isinstance(actual, Mapping) or actual.keys() != canonical.keys():
+    if type(canonical) is dict:
+        if type(actual) is not dict or len(actual) != len(canonical):
             raise ValueError(f"candidate runtime mapping at {path} is not canonical")
-        for key, item in canonical.items():
+        unmatched_mapping_items = list(canonical.items())
+        for index, (actual_key, actual_item) in enumerate(actual.items()):
+            match_index = next(
+                (
+                    candidate_index
+                    for candidate_index, (canonical_key, _) in enumerate(unmatched_mapping_items)
+                    if type(actual_key) is type(canonical_key) and actual_key == canonical_key
+                ),
+                None,
+            )
+            if match_index is None:
+                raise ValueError(f"candidate runtime mapping key at {path} is not canonical")
+            canonical_key, canonical_item = unmatched_mapping_items.pop(match_index)
             _assert_exact_candidate_model_types(
-                actual[key],
-                item,
-                path=f"{path}.{key}",
+                actual_key,
+                canonical_key,
+                path=f"{path}.<key:{index}>",
+                seen=seen,
+            )
+            _assert_exact_candidate_model_types(
+                actual_item,
+                canonical_item,
+                path=f"{path}[{canonical_key!r}]",
                 seen=seen,
             )
         return
-    if isinstance(canonical, (list, tuple)):
-        if not isinstance(actual, (list, tuple)) or len(actual) != len(canonical):
+    if type(canonical) in {list, tuple}:
+        if type(actual) is not type(canonical):
             raise ValueError(f"candidate runtime container at {path} is not canonical")
-        for index, item in enumerate(canonical):
+        actual_sequence = cast(list[object] | tuple[object, ...], actual)
+        canonical_sequence = cast(list[object] | tuple[object, ...], canonical)
+        if len(actual_sequence) != len(canonical_sequence):
+            raise ValueError(f"candidate runtime container at {path} is not canonical")
+        for index, (actual_item, canonical_item) in enumerate(
+            zip(actual_sequence, canonical_sequence, strict=True)
+        ):
             _assert_exact_candidate_model_types(
-                actual[index],
-                item,
+                actual_item,
+                canonical_item,
                 path=f"{path}[{index}]",
                 seen=seen,
             )
+        return
+    if type(canonical) in {set, frozenset}:
+        if type(actual) is not type(canonical):
+            raise ValueError(f"candidate runtime container at {path} is not canonical")
+        actual_set = cast(set[object] | frozenset[object], actual)
+        canonical_set = cast(set[object] | frozenset[object], canonical)
+        if len(actual_set) != len(canonical_set):
+            raise ValueError(f"candidate runtime container at {path} is not canonical")
+        unmatched_set_items = list(canonical_set)
+        for index, actual_item in enumerate(actual_set):
+            match_index = next(
+                (
+                    candidate_index
+                    for candidate_index, canonical_item in enumerate(unmatched_set_items)
+                    if actual_item == canonical_item
+                ),
+                None,
+            )
+            if match_index is None:
+                raise ValueError(f"candidate runtime set item at {path}[{index}] is not canonical")
+            canonical_item = unmatched_set_items.pop(match_index)
+            _assert_exact_candidate_model_types(
+                actual_item,
+                canonical_item,
+                path=f"{path}[{index}]",
+                seen=seen,
+            )
+        return
+    if type(actual) is not type(canonical):
+        raise ValueError(
+            f"candidate runtime type at {path} must be exact canonical "
+            f"{type(canonical).__name__}, got {type(actual).__name__}"
+        )
 
 
 class ParserAISectionInput(FrozenModel):
@@ -685,14 +779,17 @@ class ParserCandidateOutput(FrozenModel):
                 "candidate runtime type at $ must be exact canonical ParserCandidateOutput, "
                 f"got {type(self).__name__}"
             )
-        canonical = ParserCandidateOutput.model_validate(
-            ParserCandidateOutput.model_dump(
-                self,
-                mode="python",
-                round_trip=True,
-                warnings="none",
+        try:
+            canonical = ParserCandidateOutput.model_validate(
+                ParserCandidateOutput.model_dump(
+                    self,
+                    mode="python",
+                    round_trip=True,
+                    warnings="none",
+                )
             )
-        )
+        except TypeError as exc:
+            raise ValueError("candidate runtime tree cannot be canonicalized") from exc
         _assert_exact_candidate_model_types(self, canonical)
         return canonical
 
