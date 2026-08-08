@@ -73,7 +73,12 @@ def _parser_output(*, confidence: float = 0.7) -> ParserCandidateOutput:
             "block_boundaries": [
                 {
                     "block_id": "block-1",
-                    "boundary_basis_candidates": ["explicit_document_structure"],
+                    "boundary_predicates": [
+                        {
+                            "criterion": "DISTINCT_EXPERIMENT_SOURCE_DOCUMENT",
+                            "internal_query_representability": "NOT_REPRESENTABLE",
+                        }
+                    ],
                     "rationale": "The source explicitly identifies the candidate block.",
                     "evidence_ids": ["evidence-1"],
                     "confidence": confidence,

@@ -14,8 +14,11 @@ from ntruth.parser_ai.contract import (
 from ntruth.schemas.authority import AuthorityType
 from ntruth.schemas.block_boundary import (
     BlockBoundaryChangeKind,
+    BlockBoundaryCriterion,
+    BlockBoundaryPredicate,
     BlockBoundaryStatus,
     ExperimentBlockBoundaryRecord,
+    InternalQueryRepresentability,
     build_experiment_block_boundary_change,
     verify_experiment_block_boundaries,
 )
@@ -34,10 +37,24 @@ from ntruth.schemas.support import (
 from ntruth.training.metrics import score_output
 
 
-def _basis(*, evidence: tuple[str, ...] = ("EV-BOUNDARY-1",)) -> KnowledgeValue[tuple[str, ...]]:
-    return KnowledgeValue[tuple[str, ...]](
+def _predicate(
+    criterion: BlockBoundaryCriterion = BlockBoundaryCriterion.DISTINCT_EXPERIMENT_SOURCE_DOCUMENT,
+    representability: InternalQueryRepresentability = (
+        InternalQueryRepresentability.NOT_REPRESENTABLE
+    ),
+) -> BlockBoundaryPredicate:
+    return BlockBoundaryPredicate(
+        criterion=criterion,
+        internal_query_representability=representability,
+    )
+
+
+def _basis(
+    *, evidence: tuple[str, ...] = ("EV-BOUNDARY-1",)
+) -> KnowledgeValue[tuple[BlockBoundaryPredicate, ...]]:
+    return KnowledgeValue[tuple[BlockBoundaryPredicate, ...]](
         knowledge_state=KnowledgeState.PRESENT,
-        value=("distinct_assignment_history", "distinct_source_population"),
+        value=(_predicate(),),
         evidence_ids=evidence,
     )
 
@@ -74,9 +91,15 @@ def _confirmation() -> ConfirmationEvent:
         ),
         evidence_refs=("EV-BOUNDARY-1",),
         scope_id="EB-01",
-        confirmed_value=KnowledgeValue[list[str]](
+        confirmed_value=KnowledgeValue[list[dict[str, str]]](
             knowledge_state=KnowledgeState.PRESENT,
-            value=["distinct_assignment_history", "distinct_source_population"],
+            value=[
+                {
+                    "schema_version": "8.0.0",
+                    "criterion": "DISTINCT_EXPERIMENT_SOURCE_DOCUMENT",
+                    "internal_query_representability": "NOT_REPRESENTABLE",
+                }
+            ],
             evidence_ids=("EV-BOUNDARY-1",),
         ),
         actor_role="experiment_owner",
@@ -115,7 +138,12 @@ def _candidate_payload() -> dict[str, object]:
         "block_boundaries": [
             {
                 "block_id": "EB-01",
-                "boundary_basis_candidates": ["distinct_assignment_history"],
+                "boundary_predicates": [
+                    {
+                        "criterion": "DISTINCT_EXPERIMENT_SOURCE_DOCUMENT",
+                        "internal_query_representability": "NOT_REPRESENTABLE",
+                    }
+                ],
                 "rationale": "Explicit Experiment 1 heading and allocation history.",
                 "evidence_ids": ["EV-BOUNDARY-1"],
                 "confidence": 0.8,
@@ -176,9 +204,17 @@ def test_confirmed_boundary_cannot_be_self_declared_without_confirmation() -> No
 
 
 def test_conflicting_boundary_retains_alternatives_and_cannot_be_confirmed() -> None:
-    conflicting = KnowledgeValue[tuple[str, ...]](
+    conflicting = KnowledgeValue[tuple[BlockBoundaryPredicate, ...]](
         knowledge_state=KnowledgeState.CONFLICTING,
-        conflicting_values=(("distinct_assignment_history",), ("shared_assignment_history",)),
+        conflicting_values=(
+            (_predicate(),),
+            (
+                _predicate(
+                    BlockBoundaryCriterion.INCOMPATIBLE_TIMELINE,
+                    InternalQueryRepresentability.UNKNOWN,
+                ),
+            ),
+        ),
         evidence_ids=("EV-BOUNDARY-1", "EV-BOUNDARY-2"),
     )
     record = ExperimentBlockBoundaryRecord(
@@ -210,16 +246,22 @@ def test_split_and_merge_have_typed_auditable_shapes(
     prior: tuple[str, ...],
     resulting: tuple[str, ...],
 ) -> None:
+    representability = (
+        InternalQueryRepresentability.NOT_REPRESENTABLE
+        if kind is BlockBoundaryChangeKind.SPLIT
+        else InternalQueryRepresentability.REPRESENTABLE
+    )
     change = build_experiment_block_boundary_change(
         change_kind=kind,
         prior_block_ids=prior,
         resulting_block_ids=resulting,
-        boundary_basis=("distinct_assignment_history",),
+        boundary_basis=(_predicate(representability=representability),),
         source_refs=("EV-BOUNDARY-1",),
         rationale="Human review changed the block boundary.",
         confirmation_event_ids=("CONF-BOUNDARY-1",),
     )
     assert change.change_kind is kind
+    assert change.boundary_basis[0].internal_query_representability is representability
 
 
 def test_parser_requires_exactly_one_candidate_boundary_per_candidate_block() -> None:
@@ -227,7 +269,7 @@ def test_parser_requires_exactly_one_candidate_boundary_per_candidate_block() ->
     assert parsed.block_boundaries == (
         CandidateBlockBoundary(
             block_id="EB-01",
-            boundary_basis_candidates=("distinct_assignment_history",),
+            boundary_predicates=(_predicate(),),
             rationale="Explicit Experiment 1 heading and allocation history.",
             evidence_ids=("EV-BOUNDARY-1",),
             confidence=0.8,
@@ -250,8 +292,11 @@ def test_parser_boundary_cannot_reference_another_or_unknown_block() -> None:
 def test_boundary_candidates_are_scored_instead_of_ignored() -> None:
     gold = ParserCandidateOutput.model_validate(_candidate_payload())
     changed_payload = _candidate_payload()
-    changed_payload["block_boundaries"][0]["boundary_basis_candidates"] = [  # type: ignore[index]
-        "distinct_source_population"
+    changed_payload["block_boundaries"][0]["boundary_predicates"] = [  # type: ignore[index]
+        {
+            "criterion": "INCOMPATIBLE_TIMELINE",
+            "internal_query_representability": "NOT_REPRESENTABLE",
+        }
     ]
     predicted = ParserCandidateOutput.model_validate(changed_payload)
 

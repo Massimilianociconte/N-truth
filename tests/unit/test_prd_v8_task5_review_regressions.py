@@ -54,14 +54,24 @@ def _candidate_payload(*, coverage: str = "COMPLETE") -> dict[str, Any]:
         "block_boundaries": [
             {
                 "block_id": "block-a",
-                "boundary_basis_candidates": ["explicit_document_structure"],
+                "boundary_predicates": [
+                    {
+                        "criterion": "DISTINCT_EXPERIMENT_SOURCE_DOCUMENT",
+                        "internal_query_representability": "NOT_REPRESENTABLE",
+                    }
+                ],
                 "rationale": "The source explicitly separates block A.",
                 "evidence_ids": ["ev-a"],
                 "confidence": 0.9,
             },
             {
                 "block_id": "block-b",
-                "boundary_basis_candidates": ["explicit_document_structure"],
+                "boundary_predicates": [
+                    {
+                        "criterion": "DISTINCT_EXPERIMENT_SOURCE_DOCUMENT",
+                        "internal_query_representability": "NOT_REPRESENTABLE",
+                    }
+                ],
                 "rationale": "The source explicitly separates block B.",
                 "evidence_ids": ["ev-b"],
                 "confidence": 0.9,

@@ -16,6 +16,7 @@ from ntruth.mvt_a.stage_schema import (
     StageCoverage,
     assert_no_final_scientific_fields,
 )
+from ntruth.schemas.block_boundary import BlockBoundaryPredicate
 from ntruth.schemas.core import Determinability, EvidenceType, FrozenModel
 from ntruth.schemas.document import DocumentIR, StatisticalCodeArtifact
 from ntruth.schemas.graph import ALLOCATABLE_NODE_TYPES, NodeType, RelationType
@@ -214,20 +215,21 @@ class CandidateExperimentBlock(CandidateFact):
 
 
 class CandidateBlockBoundary(CandidateFact):
-    """Router proposal only; confirmation belongs to the epistemic ledger."""
+    """Router proposal only; ``rationale`` is descriptive and never decisive."""
 
     block_id: str
-    boundary_basis_candidates: tuple[str, ...] = Field(min_length=1)
+    boundary_predicates: tuple[BlockBoundaryPredicate, ...] = Field(min_length=1)
     rationale: str
 
     @model_validator(mode="after")
     def _described_candidate(self) -> CandidateBlockBoundary:
         if not self.block_id.strip() or not self.rationale.strip():
             raise ValueError("block boundary candidate requires block_id and rationale")
-        if any(not basis.strip() for basis in self.boundary_basis_candidates):
-            raise ValueError("block boundary candidate basis must not be blank")
-        if len(set(self.boundary_basis_candidates)) != len(self.boundary_basis_candidates):
-            raise ValueError("block boundary candidate basis values must be unique")
+        criteria = tuple(predicate.criterion for predicate in self.boundary_predicates)
+        if len(criteria) != len(set(criteria)):
+            raise ValueError(
+                "block boundary criterion must be unique; contradictory states are forbidden"
+            )
         return self
 
 

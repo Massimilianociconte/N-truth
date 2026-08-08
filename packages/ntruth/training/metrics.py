@@ -185,8 +185,15 @@ def _candidate_fact_rows(
             (
                 (
                     blocks.get(boundary.block_id, (boundary.block_id,)),
-                    tuple(sorted(_text(item) for item in boundary.boundary_basis_candidates)),
-                    _text(boundary.rationale),
+                    tuple(
+                        sorted(
+                            (
+                                _ontology(predicate.criterion),
+                                _ontology(predicate.internal_query_representability),
+                            )
+                            for predicate in boundary.boundary_predicates
+                        )
+                    ),
                     bound(boundary.evidence_ids),
                 ),
                 boundary.confidence,

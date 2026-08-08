@@ -22,15 +22,57 @@ if TYPE_CHECKING:
 
 
 Sha256 = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
-FIGURE_CHANGED_ONLY_BASIS = "figure_changed_only"
 
 
-def _basis_token(value: str) -> str:
-    return "_".join(value.casefold().replace("-", " ").split())
+class BlockBoundaryCriterion(StrEnum):
+    """Closed PRD v8 §6.6 reasons that may justify block separation."""
+
+    UNSHAREABLE_CONTRAST_OR_GROUP = "UNSHAREABLE_CONTRAST_OR_GROUP"
+    INCOMPATIBLE_TIMELINE = "INCOMPATIBLE_TIMELINE"
+    DISTINCT_EXPERIMENT_SOURCE_DOCUMENT = "DISTINCT_EXPERIMENT_SOURCE_DOCUMENT"
 
 
-def _figure_change_is_the_only_basis(values: tuple[str, ...] | list[str]) -> bool:
-    return {_basis_token(value) for value in values} == {FIGURE_CHANGED_ONLY_BASIS}
+class InternalQueryRepresentability(StrEnum):
+    """Whether the criterion change can remain inside one block as an internal query."""
+
+    NOT_REPRESENTABLE = "NOT_REPRESENTABLE"
+    REPRESENTABLE = "REPRESENTABLE"
+    UNKNOWN = "UNKNOWN"
+
+
+class BlockBoundaryPredicate(KernelModel):
+    """Structured candidate predicate; descriptive free text is never decisive."""
+
+    criterion: BlockBoundaryCriterion
+    internal_query_representability: InternalQueryRepresentability
+
+
+def _has_decisive_separation_predicate(
+    values: tuple[BlockBoundaryPredicate, ...],
+) -> bool:
+    return any(
+        value.internal_query_representability is InternalQueryRepresentability.NOT_REPRESENTABLE
+        for value in values
+    )
+
+
+def _all_predicates_representable(
+    values: tuple[BlockBoundaryPredicate, ...],
+) -> bool:
+    return bool(values) and all(
+        value.internal_query_representability is InternalQueryRepresentability.REPRESENTABLE
+        for value in values
+    )
+
+
+def _require_unique_boundary_criteria(
+    values: tuple[BlockBoundaryPredicate, ...],
+) -> None:
+    criteria = tuple(value.criterion for value in values)
+    if len(criteria) != len(set(criteria)):
+        raise ValueError(
+            "boundary criterion must be unique; contradictory representability is forbidden"
+        )
 
 
 class BlockBoundaryStatus(StrEnum):
@@ -46,7 +88,7 @@ class BlockBoundaryChangeKind(StrEnum):
 
 class ExperimentBlockBoundaryRecord(KernelModel):
     block_id: NonBlankStr
-    boundary_basis: KnowledgeValue[tuple[NonBlankStr, ...]]
+    boundary_basis: KnowledgeValue[tuple[BlockBoundaryPredicate, ...]]
     source_refs: tuple[NonBlankStr, ...] = Field(min_length=1)
     status: BlockBoundaryStatus
     rationale: NonBlankStr
@@ -54,6 +96,10 @@ class ExperimentBlockBoundaryRecord(KernelModel):
 
     @model_validator(mode="after")
     def _epistemic_status_and_sources(self) -> Self:
+        if self.boundary_basis.value is not None:
+            _require_unique_boundary_criteria(self.boundary_basis.value)
+        for alternative in self.boundary_basis.conflicting_values:
+            _require_unique_boundary_criteria(alternative)
         if len(set(self.source_refs)) != len(self.source_refs):
             raise ValueError("Experiment Block boundary source_refs must be unique")
         if len(set(self.boundary_basis.evidence_ids)) != len(self.boundary_basis.evidence_ids):
@@ -69,11 +115,12 @@ class ExperimentBlockBoundaryRecord(KernelModel):
                 raise ValueError(
                     "CONFIRMED boundary requires a PRESENT basis and confirmation event"
                 )
-            if self.boundary_basis.value is not None and _figure_change_is_the_only_basis(
+            if self.boundary_basis.value is None or not _has_decisive_separation_predicate(
                 self.boundary_basis.value
             ):
                 raise ValueError(
-                    "figure_changed_only is insufficient to confirm an Experiment Block boundary"
+                    "CONFIRMED boundary requires a PRD §6.6 predicate that is not "
+                    "representable with internal queries"
                 )
         elif self.status is BlockBoundaryStatus.CANDIDATE:
             if state is not KnowledgeState.PRESENT or self.confirmation_event_ids:
@@ -100,13 +147,14 @@ class ExperimentBlockBoundaryChangeRecord(KernelModel):
     change_kind: BlockBoundaryChangeKind
     prior_block_ids: tuple[NonBlankStr, ...] = Field(min_length=1)
     resulting_block_ids: tuple[NonBlankStr, ...] = Field(min_length=1)
-    boundary_basis: tuple[NonBlankStr, ...] = Field(min_length=1)
+    boundary_basis: tuple[BlockBoundaryPredicate, ...] = Field(min_length=1)
     source_refs: tuple[NonBlankStr, ...] = Field(min_length=1)
     rationale: NonBlankStr
     confirmation_event_ids: tuple[NonBlankStr, ...] = Field(min_length=1)
 
     @model_validator(mode="after")
     def _typed_change_shape(self) -> Self:
+        _require_unique_boundary_criteria(self.boundary_basis)
         for label, values in (
             ("prior_block_ids", self.prior_block_ids),
             ("resulting_block_ids", self.resulting_block_ids),
@@ -124,8 +172,21 @@ class ExperimentBlockBoundaryChangeRecord(KernelModel):
             len(self.prior_block_ids) < 2 or len(self.resulting_block_ids) != 1
         ):
             raise ValueError("MERGE requires at least two prior blocks and one resulting block")
-        if _figure_change_is_the_only_basis(self.boundary_basis):
-            raise ValueError("figure_changed_only is insufficient for a boundary split or merge")
+        if (
+            self.change_kind is BlockBoundaryChangeKind.SPLIT
+            and not _has_decisive_separation_predicate(self.boundary_basis)
+        ):
+            raise ValueError(
+                "boundary split requires a PRD §6.6 predicate that is not "
+                "representable with internal queries"
+            )
+        if self.change_kind is BlockBoundaryChangeKind.MERGE and not _all_predicates_representable(
+            self.boundary_basis
+        ):
+            raise ValueError(
+                "boundary merge requires all cited PRD §6.6 predicates to be representable "
+                "with internal queries"
+            )
         if self.sequence == 1:
             if self.parent_change.knowledge_state is not KnowledgeState.NOT_APPLICABLE:
                 raise ValueError("initial boundary change requires an explicit root parent state")
@@ -194,7 +255,7 @@ def build_experiment_block_boundary_change(
     change_kind: BlockBoundaryChangeKind,
     prior_block_ids: tuple[str, ...],
     resulting_block_ids: tuple[str, ...],
-    boundary_basis: tuple[str, ...],
+    boundary_basis: tuple[BlockBoundaryPredicate, ...],
     source_refs: tuple[str, ...],
     rationale: str,
     confirmation_event_ids: tuple[str, ...],
@@ -292,7 +353,9 @@ def experiment_block_boundary_change_confirmation_value(
         "change_kind": change.change_kind.value,
         "prior_block_ids": list(change.prior_block_ids),
         "resulting_block_ids": list(change.resulting_block_ids),
-        "boundary_basis": list(change.boundary_basis),
+        "boundary_basis": [
+            predicate.model_dump(mode="json") for predicate in change.boundary_basis
+        ],
     }
 
 
@@ -308,10 +371,12 @@ def verify_candidate_experiment_block_boundaries(
     if set(boundary_block_ids) != set(block_ids):
         raise ValueError("every candidate Experiment Block requires exactly one boundary")
     for candidate in bundle.block_boundaries:
-        if _figure_change_is_the_only_basis(list(candidate.boundary_basis_candidates)):
-            raise ValueError(
-                "figure_changed_only is insufficient to promote an Experiment Block boundary"
-            )
+        predicates = candidate.boundary_predicates
+        if not predicates or any(
+            not isinstance(predicate, BlockBoundaryPredicate) for predicate in predicates
+        ):
+            raise ValueError("candidate Experiment Block boundary requires structured predicates")
+        _require_unique_boundary_criteria(tuple(predicates))
     return bundle
 
 
@@ -352,10 +417,11 @@ def verify_experiment_block_boundaries(
             ):
                 raise ValueError("boundary confirmed_value evidence IDs must be unique")
             confirmed_value = event.confirmed_value.value
-            if (
-                not isinstance(confirmed_value, (list, tuple))
-                or tuple(confirmed_value) != record.boundary_basis.value
-            ):
+            expected_value = [
+                predicate.model_dump(mode="json")
+                for predicate in (record.boundary_basis.value or ())
+            ]
+            if confirmed_value != expected_value:
                 raise ValueError("boundary confirmation value does not match boundary basis")
     return records
 
@@ -417,13 +483,15 @@ def verify_experiment_block_boundary_change_ledger(
 
 
 __all__ = [
-    "FIGURE_CHANGED_ONLY_BASIS",
     "BlockBoundaryChangeKind",
+    "BlockBoundaryCriterion",
+    "BlockBoundaryPredicate",
     "BlockBoundaryStatus",
     "BoundaryChangeReference",
     "ExperimentBlockBoundaryChangeLedger",
     "ExperimentBlockBoundaryChangeRecord",
     "ExperimentBlockBoundaryRecord",
+    "InternalQueryRepresentability",
     "append_experiment_block_boundary_change_ledger",
     "build_experiment_block_boundary_change",
     "build_experiment_block_boundary_change_ledger",

@@ -45,7 +45,12 @@ def _candidate_payload() -> dict[str, object]:
         "block_boundaries": [
             {
                 "block_id": "block-1",
-                "boundary_basis_candidates": ["explicit_document_structure"],
+                "boundary_predicates": [
+                    {
+                        "criterion": "DISTINCT_EXPERIMENT_SOURCE_DOCUMENT",
+                        "internal_query_representability": "NOT_REPRESENTABLE",
+                    }
+                ],
                 "rationale": "The source identifies Block one explicitly.",
                 "evidence_ids": ["ev-1"],
                 "confidence": 0.8,

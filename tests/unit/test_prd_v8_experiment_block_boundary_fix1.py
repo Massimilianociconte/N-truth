@@ -75,12 +75,38 @@ def _confirmation(
     )
 
 
+def _predicate(
+    criterion: boundary.BlockBoundaryCriterion = (
+        boundary.BlockBoundaryCriterion.DISTINCT_EXPERIMENT_SOURCE_DOCUMENT
+    ),
+    representability: boundary.InternalQueryRepresentability = (
+        boundary.InternalQueryRepresentability.NOT_REPRESENTABLE
+    ),
+) -> boundary.BlockBoundaryPredicate:
+    return boundary.BlockBoundaryPredicate(
+        criterion=criterion,
+        internal_query_representability=representability,
+    )
+
+
+def _predicate_payload(
+    criterion: str = "DISTINCT_EXPERIMENT_SOURCE_DOCUMENT",
+    representability: str = "NOT_REPRESENTABLE",
+) -> dict[str, str]:
+    return {
+        "criterion": criterion,
+        "internal_query_representability": representability,
+    }
+
+
 def _parser_payload(
     *,
     blocks: tuple[tuple[str, str], ...] = (("EB-01", "Experiment 1"),),
     evidence_ids: tuple[str, ...] = ("EV-METHODS",),
-    basis: tuple[str, ...] = ("distinct_assignment_history",),
+    predicates: tuple[dict[str, str], ...] | None = None,
 ) -> dict[str, object]:
+    if predicates is None:
+        predicates = (_predicate_payload(),)
     return {
         "contract_version": "8.0.0",
         "experiment_blocks": [
@@ -95,7 +121,7 @@ def _parser_payload(
         "block_boundaries": [
             {
                 "block_id": block_id,
-                "boundary_basis_candidates": list(basis),
+                "boundary_predicates": list(predicates),
                 "rationale": "Explicit heading and distinct allocation history.",
                 "evidence_ids": list(evidence_ids),
                 "confidence": 0.8,
@@ -184,9 +210,9 @@ def test_candidate_metrics_count_semantic_duplicates_and_omissions(
 def test_confirmed_boundary_requires_exact_unique_confirmed_value_evidence() -> None:
     record = boundary.ExperimentBlockBoundaryRecord(
         block_id="EB-01",
-        boundary_basis=KnowledgeValue[tuple[str, ...]](
+        boundary_basis=KnowledgeValue[tuple[boundary.BlockBoundaryPredicate, ...]](
             knowledge_state=KnowledgeState.PRESENT,
-            value=("distinct_assignment_history",),
+            value=(_predicate(),),
             evidence_ids=("EV-1", "EV-2"),
         ),
         source_refs=("EV-1", "EV-2"),
@@ -199,7 +225,7 @@ def test_confirmed_boundary_requires_exact_unique_confirmed_value_evidence() -> 
         scope_id="EB-01",
         evidence_refs=("EV-1", "EV-2"),
         confirmed_evidence_ids=("EV-1",),
-        value=["distinct_assignment_history"],
+        value=[_predicate().model_dump(mode="json")],
     )
     ledger = EpistemicEventLedger(
         ledger_id="LEDGER-1",
@@ -216,9 +242,9 @@ def test_confirmed_boundary_requires_exact_unique_confirmed_value_evidence() -> 
     with pytest.raises(ValidationError, match="unique"):
         boundary.ExperimentBlockBoundaryRecord(
             block_id="EB-01",
-            boundary_basis=KnowledgeValue[tuple[str, ...]](
+            boundary_basis=KnowledgeValue[tuple[boundary.BlockBoundaryPredicate, ...]](
                 knowledge_state=KnowledgeState.PRESENT,
-                value=("distinct_assignment_history",),
+                value=(_predicate(),),
                 evidence_ids=("EV-1", "EV-1"),
             ),
             source_refs=("EV-1",),
@@ -227,21 +253,28 @@ def test_confirmed_boundary_requires_exact_unique_confirmed_value_evidence() -> 
         )
 
 
-def test_figure_changed_only_cannot_pass_the_hard_boundary_or_be_confirmed() -> None:
+def test_unknown_or_unstructured_basis_never_promotes_a_boundary() -> None:
     candidate = ParserCandidateOutput.model_validate(
-        _parser_payload(basis=("figure_changed_only",))
+        _parser_payload(
+            predicates=(
+                _predicate_payload(
+                    representability="UNKNOWN",
+                ),
+            )
+        )
     )
     result = hard_verify_candidates(candidate)
-    assert result.passed is False
+    assert result.passed is True
     assert "experiment_block_boundaries" in result.checks_run
-    assert any("figure" in issue.detail.casefold() for issue in result.errors)
 
-    with pytest.raises(ValidationError, match=r"figure_changed_only|insufficient"):
+    with pytest.raises(ValidationError, match=r"not representable|CONFIRMED"):
         boundary.ExperimentBlockBoundaryRecord(
             block_id="EB-01",
-            boundary_basis=KnowledgeValue[tuple[str, ...]](
+            boundary_basis=KnowledgeValue[tuple[boundary.BlockBoundaryPredicate, ...]](
                 knowledge_state=KnowledgeState.PRESENT,
-                value=("figure_changed_only",),
+                value=(
+                    _predicate(representability=boundary.InternalQueryRepresentability.UNKNOWN),
+                ),
                 evidence_ids=("EV-1",),
             ),
             source_refs=("EV-1",),
@@ -249,6 +282,118 @@ def test_figure_changed_only_cannot_pass_the_hard_boundary_or_be_confirmed() -> 
             rationale="Only the figure changed.",
             confirmation_event_ids=("CONF-1",),
         )
+
+    with pytest.raises(ValueError, match="not representable"):
+        boundary.build_experiment_block_boundary_change(
+            change_kind=boundary.BlockBoundaryChangeKind.SPLIT,
+            prior_block_ids=("EB-OLD",),
+            resulting_block_ids=("EB-01", "EB-02"),
+            boundary_basis=(
+                _predicate(representability=boundary.InternalQueryRepresentability.UNKNOWN),
+            ),
+            source_refs=("EV-1",),
+            rationale="Figure or panel changed; retained only as a non-decisive note.",
+            confirmation_event_ids=("CONF-1",),
+        )
+
+    invalid_other = _parser_payload(predicates=(_predicate_payload(criterion="OTHER"),))
+    with pytest.raises(ValidationError, match="criterion"):
+        ParserCandidateOutput.model_validate(invalid_other)
+
+
+def test_free_text_boundary_synonym_cannot_be_a_decisive_predicate() -> None:
+    payload = _parser_payload()
+    candidate = payload["block_boundaries"][0]  # type: ignore[index]
+    candidate.pop("boundary_predicates")
+    candidate["boundary_basis_candidates"] = ["figure_or_panel_changed_only"]
+    with pytest.raises(ValidationError, match=r"structured|predicate|boundary"):
+        ParserCandidateOutput.model_validate(payload)
+
+
+def test_boundary_basis_uses_the_closed_prd_section_6_6_predicate_vocabulary() -> None:
+    criterion_type = getattr(boundary, "BlockBoundaryCriterion", None)
+    representability_type = getattr(boundary, "InternalQueryRepresentability", None)
+    predicate_type = getattr(boundary, "BlockBoundaryPredicate", None)
+    assert criterion_type is not None, "closed PRD boundary criterion vocabulary is missing"
+    assert representability_type is not None, "query representability vocabulary is missing"
+    assert predicate_type is not None, "structured boundary predicate is missing"
+
+    predicate = predicate_type(
+        criterion=criterion_type.INCOMPATIBLE_TIMELINE,
+        internal_query_representability=representability_type.NOT_REPRESENTABLE,
+    )
+    assert predicate.criterion is criterion_type.INCOMPATIBLE_TIMELINE
+    assert predicate.internal_query_representability is representability_type.NOT_REPRESENTABLE
+
+
+def test_boundary_criterion_cannot_have_contradictory_representability_states() -> None:
+    contradictory = (
+        _predicate_payload(representability="UNKNOWN"),
+        _predicate_payload(representability="NOT_REPRESENTABLE"),
+    )
+    with pytest.raises(ValidationError, match=r"criterion|duplicate|contradictory"):
+        ParserCandidateOutput.model_validate(_parser_payload(predicates=contradictory))
+
+    predicates = (
+        _predicate(representability=boundary.InternalQueryRepresentability.UNKNOWN),
+        _predicate(representability=boundary.InternalQueryRepresentability.NOT_REPRESENTABLE),
+    )
+    with pytest.raises(ValidationError, match=r"criterion|duplicate|contradictory"):
+        boundary.ExperimentBlockBoundaryRecord(
+            block_id="EB-01",
+            boundary_basis=KnowledgeValue[tuple[boundary.BlockBoundaryPredicate, ...]](
+                knowledge_state=KnowledgeState.PRESENT,
+                value=predicates,
+                evidence_ids=("EV-1",),
+            ),
+            source_refs=("EV-1",),
+            status=boundary.BlockBoundaryStatus.CONFIRMED,
+            rationale="The note is non-decisive.",
+            confirmation_event_ids=("CONF-1",),
+        )
+    with pytest.raises((ValueError, ValidationError), match=r"criterion|duplicate|contradictory"):
+        boundary.build_experiment_block_boundary_change(
+            change_kind=boundary.BlockBoundaryChangeKind.SPLIT,
+            prior_block_ids=("EB-OLD",),
+            resulting_block_ids=("EB-01", "EB-02"),
+            boundary_basis=predicates,
+            source_refs=("EV-1",),
+            rationale="The note is non-decisive.",
+            confirmation_event_ids=("CONF-1",),
+        )
+
+
+def test_hard_verifier_rechecks_structured_boundary_criterion_uniqueness() -> None:
+    valid = ParserCandidateOutput.model_validate(_parser_payload())
+    forged_boundary = valid.block_boundaries[0].model_copy(
+        update={
+            "boundary_predicates": (
+                _predicate(representability=boundary.InternalQueryRepresentability.UNKNOWN),
+                _predicate(
+                    representability=(boundary.InternalQueryRepresentability.NOT_REPRESENTABLE)
+                ),
+            )
+        }
+    )
+    forged = valid.model_copy(update={"block_boundaries": (forged_boundary,)})
+
+    result = hard_verify_candidates(forged)
+    assert result.passed is False
+    assert any("criterion" in error.detail for error in result.errors)
+
+
+def test_boundary_rationale_is_a_non_decisive_metric_note() -> None:
+    gold = ParserCandidateOutput.model_validate(_parser_payload())
+    predicted_payload = _parser_payload()
+    predicted_payload["block_boundaries"][0]["rationale"] = (  # type: ignore[index]
+        "A differently worded descriptive note with the same structured predicates."
+    )
+    predicted = ParserCandidateOutput.model_validate(predicted_payload)
+
+    score = score_output(predicted, gold)
+    assert score["categories"]["block_boundaries"]["f1"] == 1.0
+    assert score["micro"]["f1"] == 1.0
+    assert score["exact_contract_match"] is False
 
 
 def test_split_merge_ledger_is_append_only_content_addressed_and_version_chained() -> None:
@@ -265,7 +410,7 @@ def test_split_merge_ledger_is_append_only_content_addressed_and_version_chained
         change_kind=boundary.BlockBoundaryChangeKind.SPLIT,
         prior_block_ids=("EB-OLD",),
         resulting_block_ids=("EB-01", "EB-02"),
-        boundary_basis=("distinct_assignment_history",),
+        boundary_basis=(_predicate(),),
         source_refs=("EV-1",),
         rationale="Review resolved two distinct allocation histories.",
         confirmation_event_ids=("CONF-SPLIT",),
@@ -275,7 +420,12 @@ def test_split_merge_ledger_is_append_only_content_addressed_and_version_chained
         change_kind=boundary.BlockBoundaryChangeKind.MERGE,
         prior_block_ids=("EB-01", "EB-02"),
         resulting_block_ids=("EB-MERGED",),
-        boundary_basis=("shared_assignment_history",),
+        boundary_basis=(
+            _predicate(
+                boundary.BlockBoundaryCriterion.UNSHAREABLE_CONTRAST_OR_GROUP,
+                boundary.InternalQueryRepresentability.REPRESENTABLE,
+            ),
+        ),
         source_refs=("EV-1",),
         rationale="Later evidence established one shared allocation history.",
         confirmation_event_ids=("CONF-MERGE",),
@@ -296,13 +446,18 @@ def test_split_merge_ledger_is_append_only_content_addressed_and_version_chained
         "change_kind": "SPLIT",
         "prior_block_ids": ["EB-OLD"],
         "resulting_block_ids": ["EB-01", "EB-02"],
-        "boundary_basis": ["distinct_assignment_history"],
+        "boundary_basis": [_predicate().model_dump(mode="json")],
     }
     merge_value = {
         "change_kind": "MERGE",
         "prior_block_ids": ["EB-01", "EB-02"],
         "resulting_block_ids": ["EB-MERGED"],
-        "boundary_basis": ["shared_assignment_history"],
+        "boundary_basis": [
+            _predicate(
+                boundary.BlockBoundaryCriterion.UNSHAREABLE_CONTRAST_OR_GROUP,
+                boundary.InternalQueryRepresentability.REPRESENTABLE,
+            ).model_dump(mode="json")
+        ],
     }
     epistemic = EpistemicEventLedger(
         ledger_id="LEDGER-CHANGES",
@@ -350,7 +505,7 @@ def test_change_ledger_resolves_exact_source_and_confirmation_evidence() -> None
         change_kind=boundary.BlockBoundaryChangeKind.SPLIT,
         prior_block_ids=("EB-OLD",),
         resulting_block_ids=("EB-01", "EB-02"),
-        boundary_basis=("distinct_assignment_history",),
+        boundary_basis=(_predicate(),),
         source_refs=("EV-1", "EV-2"),
         rationale="Two allocation histories are explicitly documented.",
         confirmation_event_ids=("CONF-SPLIT",),
@@ -365,7 +520,7 @@ def test_change_ledger_resolves_exact_source_and_confirmation_evidence() -> None
             "change_kind": "SPLIT",
             "prior_block_ids": ["EB-OLD"],
             "resulting_block_ids": ["EB-01", "EB-02"],
-            "boundary_basis": ["distinct_assignment_history"],
+            "boundary_basis": [_predicate().model_dump(mode="json")],
         },
     )
     epistemic = EpistemicEventLedger(
