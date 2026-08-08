@@ -17,7 +17,12 @@ from ntruth.training.mlx_inference import (
     export_adapter_bundle,
     predict_and_score,
 )
-from ntruth.training.mlx_runtime import MLXPipelineError, sha256_file
+from ntruth.training.mlx_runtime import (
+    MLXPipelineError,
+    TrainingDesignLineagePins,
+    resolve_training_lineage_inputs,
+    sha256_file,
+)
 from ntruth.training.records import AnnotationStatus, DatasetManifest, ManifestRecord
 
 
@@ -228,6 +233,28 @@ def _fake_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Pa
     adapter = best / "adapters.safetensors"
     adapter.write_bytes(b"adapter")
     model_hash = "a" * 64
+    design_lineage = TrainingDesignLineagePins(
+        planned_design_artifact_id="planned-1",
+        planned_design_artifact_sha256="d" * 64,
+        executed_design_artifact_id="executed-1",
+        executed_design_artifact_sha256="e" * 64,
+    )
+    design_lineage_path = tmp_path / "task6-training-design-lineage.json"
+    design_lineage_path.write_text(
+        json.dumps(design_lineage.model_dump(mode="json"), sort_keys=True),
+        encoding="utf-8",
+    )
+    protected_source = _protected_release_source_manifest()
+    protected_source_path = tmp_path / "protected-source-dataset-manifest.json"
+    protected_source_path.write_text(
+        json.dumps(protected_source.model_dump(mode="json"), sort_keys=True),
+        encoding="utf-8",
+    )
+    training_lineage = resolve_training_lineage_inputs(
+        design_lineage_pins=design_lineage,
+        design_lineage_artifact_path=design_lineage_path,
+        protected_source_manifest_path=protected_source_path,
+    )
     state = {
         "schema_version": "8.0.0",
         "status": "completed_maximum_phases",
@@ -240,6 +267,7 @@ def _fake_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Pa
         "best_phase": 1,
         "last_completed_phase": 1,
         "best_adapter_sha256": sha256_file(adapter),
+        **training_lineage.state_payload(),
     }
     (run / "run-state.json").write_text(json.dumps(state), encoding="utf-8")
     monkeypatch.setattr(
@@ -538,6 +566,10 @@ def test_export_happy_path_copies_verified_bundle(
             "split": "TEST",
             "snapshot_id": "protected-test-1",
             "snapshot_sha256": "f" * 64,
+            "record_count": 1,
+            "record_ids_checksum": (
+                "e19fb8e28174c0999f801fbe618e3db0820dab93acb1eb0877db6f40f8cdf50d"
+            ),
             "lineage": {
                 "source_manifest_id": source_manifest.dataset_id,
                 "source_manifest_sha256": "b" * 64,

@@ -24,6 +24,7 @@ from ntruth.training.mlx_runtime import (
     MLXPipelineError,
     doctor,
     download_model,
+    load_training_design_lineage_pins,
     run_training,
     verify_model,
 )
@@ -190,6 +191,16 @@ def train(
         "--reality-gate-v8",
         help="Artefatto content-addressed Reality Gate v8 con purpose TRAIN.",
     ),
+    design_lineage_v8: Path = typer.Option(
+        ...,
+        "--design-lineage-v8",
+        help="Artefatto typed Task 6 con soli pin planned/executed design.",
+    ),
+    protected_source_manifest: Path = typer.Option(
+        ...,
+        "--protected-source-manifest",
+        help="DatasetManifest sorgente indipendente per TEST protetto.",
+    ),
     resume: bool = typer.Option(False, "--resume"),
     runtime_smoke_only: bool = typer.Option(
         False,
@@ -209,6 +220,9 @@ def train(
             out.resolve(),
             seed=seed,
             reality_gate=FileRealityGateV8Protocol(reality_gate_v8.resolve()),
+            design_lineage_pins=load_training_design_lineage_pins(design_lineage_v8.resolve()),
+            design_lineage_artifact_path=design_lineage_v8.resolve(),
+            protected_source_manifest_path=protected_source_manifest.resolve(),
             smoke_test=runtime_smoke_only,
             resume=resume,
         )

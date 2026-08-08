@@ -136,6 +136,8 @@ def test_07_real_custodial_test_snapshot_validator_is_distinct_from_training(
         "executed_design_artifact_id": "executed-1",
         "executed_design_artifact_sha256": "c" * 64,
         "protected_source_manifest_path": str(source_path),
+        "protected_source_manifest_id": manifest.lineage.source_manifest_id,
+        "protected_source_manifest_sha256": manifest.lineage.source_manifest_sha256,
         "smoke_test": False,
     }
     resolved, runtime_verified = _verify_evaluation_snapshot(
@@ -302,6 +304,18 @@ def test_12_denied_gate_causes_zero_training_payload_opens(
     )
     gate_path = tmp_path / "gate.json"
     gate_path.write_text(json.dumps(artifact.model_dump(mode="json")), encoding="utf-8")
+    design_lineage = runtime.TrainingDesignLineagePins(
+        planned_design_artifact_id="planned-1",
+        planned_design_artifact_sha256="c" * 64,
+        executed_design_artifact_id="executed-1",
+        executed_design_artifact_sha256="d" * 64,
+    )
+    design_lineage_path = tmp_path / "task6-training-design-lineage.json"
+    design_lineage_path.write_text(
+        json.dumps(design_lineage.model_dump(mode="json"), sort_keys=True),
+        encoding="utf-8",
+    )
+    _, protected_source_manifest_path, _ = _write_protected_snapshot(tmp_path)
     payload_opens: list[Path] = []
     original_iter = runtime.iter_jsonl
 
@@ -319,6 +333,9 @@ def test_12_denied_gate_causes_zero_training_payload_opens(
             seed=7,
             smoke_test=True,
             reality_gate=runtime.FileRealityGateV8Protocol(gate_path),
+            design_lineage_pins=design_lineage,
+            design_lineage_artifact_path=design_lineage_path,
+            protected_source_manifest_path=protected_source_manifest_path,
         )
     assert payload_opens == []
 

@@ -17,6 +17,7 @@ from ntruth.parser_ai.contract import (
     ParserCandidateOutput,
     validate_candidate_contract_pair,
 )
+from ntruth.schemas.core import content_checksum
 from ntruth.training.calibration import ConfidenceObservation, calibration_report
 from ntruth.training.metrics import (
     aggregate_scores,
@@ -26,12 +27,17 @@ from ntruth.training.metrics import (
     score_output,
 )
 from ntruth.training.mlx_runtime import (
+    TRAINING_RUN_LINEAGE_STATE_FIELDS,
     MLXPipelineError,
+    TrainingLineageReviewRequired,
+    TrainingRunLineagePins,
     _model_path,
     _write_json,
     iter_jsonl,
     iter_verified_jsonl,
     load_profile,
+    load_training_design_lineage_pins,
+    resolve_training_lineage_inputs,
     sha256_file,
     stage_verified_training_view,
     utc_now,
@@ -175,6 +181,29 @@ def _verify_best_run(
     smoke_test = state.get("smoke_test")
     if not isinstance(smoke_test, bool):
         raise MLXPipelineError("smoke_test non booleano nel run-state")
+    try:
+        recorded_training_lineage = TrainingRunLineagePins.model_validate(
+            {field: state.get(field) for field in TRAINING_RUN_LINEAGE_STATE_FIELDS}
+        )
+        current_training_lineage = resolve_training_lineage_inputs(
+            design_lineage_pins=load_training_design_lineage_pins(
+                Path(recorded_training_lineage.training_design_lineage_artifact_path)
+            ),
+            design_lineage_artifact_path=Path(
+                recorded_training_lineage.training_design_lineage_artifact_path
+            ),
+            protected_source_manifest_path=Path(
+                recorded_training_lineage.protected_source_manifest_path
+            ),
+        )
+    except (ValueError, TrainingLineageReviewRequired) as exc:
+        raise ProtectedEvaluationReviewRequired(
+            f"SCIENTIFIC_REVIEW_REQUIRED: sealed run lineage is incomplete or stale: {exc}"
+        ) from exc
+    if current_training_lineage != recorded_training_lineage:
+        raise ProtectedEvaluationReviewRequired(
+            "SCIENTIFIC_REVIEW_REQUIRED: sealed run design/source lineage changed"
+        )
 
     return {
         "schema_version": EVALUATION_LINEAGE_SCHEMA_VERSION,
@@ -194,6 +223,7 @@ def _verify_best_run(
         "adapter_path": str(expected_adapter_dir),
         "adapter_sha256": adapter_sha256,
         "adapter_config_sha256": adapter_config_sha256,
+        **recorded_training_lineage.state_payload(),
     }
 
 
@@ -248,6 +278,12 @@ def _verify_evaluation_snapshot(
             expected = run_lineage.get(key)
             if getattr(manifest.lineage, key) != expected:
                 raise MLXPipelineError(f"protected evaluation lineage mismatch: {key}")
+        for run_key, lineage_key in (
+            ("protected_source_manifest_id", "source_manifest_id"),
+            ("protected_source_manifest_sha256", "source_manifest_sha256"),
+        ):
+            if run_lineage.get(run_key) != getattr(manifest.lineage, lineage_key):
+                raise MLXPipelineError(f"protected evaluation lineage mismatch: {run_key}")
         source_manifest = validate_protected_source_manifest(source_manifest_path, manifest)
         return expected_path, {
             "snapshot_id": manifest.snapshot_id,
@@ -355,6 +391,13 @@ def validate_protected_release_lineage(
         label="protected source manifest id",
     )
     test_members = tuple(record for record in source.records if record.split is CorpusSplit.TEST)
+    test_member_ids = sorted(record.record_id for record in test_members)
+    if protected.get("record_count") != len(test_member_ids) or protected.get(
+        "record_ids_checksum"
+    ) != content_checksum(test_member_ids):
+        raise MLXPipelineError(
+            "protected TEST membership/count checksum does not match source DatasetManifest"
+        )
     if not test_members or any(not record.release_eligible for record in test_members):
         raise MLXPipelineError("protected TEST source membership is not release-eligible")
     training_hash = run_lineage.get("run_dataset_snapshot_sha256")

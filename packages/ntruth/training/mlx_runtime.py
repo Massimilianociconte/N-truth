@@ -19,6 +19,7 @@ import sys
 import time
 from collections import Counter
 from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
@@ -62,6 +63,147 @@ _SOURCE_SPLIT_NAMES = {
 
 class MLXPipelineError(RuntimeError):
     """Errore operativo previsto della corsia ML locale."""
+
+
+class TrainingLineageReviewRequired(MLXPipelineError):
+    """Task 6 design/source lineage is absent or not independently verifiable."""
+
+
+class TrainingDesignLineagePins(FrozenModel):
+    """Opaque Task 6 output pins; this boundary assigns no design meaning."""
+
+    schema_version: Literal["8.0.0"] = "8.0.0"
+    artifact_type: Literal["TASK6_TRAINING_DESIGN_LINEAGE_PINS"] = (
+        "TASK6_TRAINING_DESIGN_LINEAGE_PINS"
+    )
+    artifact_id: str = ""
+    artifact_sha256: str = ""
+    planned_design_artifact_id: str
+    planned_design_artifact_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    executed_design_artifact_id: str
+    executed_design_artifact_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @model_validator(mode="after")
+    def _content_addressed(self) -> TrainingDesignLineagePins:
+        if not self.planned_design_artifact_id.strip() or not (
+            self.executed_design_artifact_id.strip()
+        ):
+            raise ValueError("planned/executed design artifact IDs must not be blank")
+        identity = self.model_dump(mode="json", exclude={"artifact_id", "artifact_sha256"})
+        checksum = content_checksum(identity)
+        artifact_id = f"training-design-lineage-{checksum[:20]}"
+        if self.artifact_sha256 and self.artifact_sha256 != checksum:
+            raise ValueError("training design lineage checksum mismatch")
+        if self.artifact_id and self.artifact_id != artifact_id:
+            raise ValueError("training design lineage artifact id mismatch")
+        object.__setattr__(self, "artifact_sha256", checksum)
+        object.__setattr__(self, "artifact_id", artifact_id)
+        return self
+
+
+class TrainingRunLineagePins(FrozenModel):
+    training_design_lineage_artifact_id: str
+    training_design_lineage_artifact_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    training_design_lineage_file_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    training_design_lineage_artifact_path: str
+    planned_design_artifact_id: str
+    planned_design_artifact_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    executed_design_artifact_id: str
+    executed_design_artifact_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    protected_source_manifest_id: str
+    protected_source_manifest_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    protected_source_manifest_path: str
+    protected_source_records_checksum: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @model_validator(mode="after")
+    def _references_are_explicit(self) -> TrainingRunLineagePins:
+        identifiers = (
+            self.training_design_lineage_artifact_id,
+            self.training_design_lineage_artifact_path,
+            self.planned_design_artifact_id,
+            self.executed_design_artifact_id,
+            self.protected_source_manifest_id,
+            self.protected_source_manifest_path,
+        )
+        if any(not value.strip() for value in identifiers):
+            raise ValueError("training run lineage references must not be blank")
+        return self
+
+    def state_payload(self) -> dict[str, Any]:
+        return self.model_dump(mode="json")
+
+
+TRAINING_RUN_LINEAGE_STATE_FIELDS = tuple(TrainingRunLineagePins.model_fields)
+
+
+def load_training_design_lineage_pins(path: Path) -> TrainingDesignLineagePins:
+    path = path.resolve()
+    if path.is_symlink() or not path.is_file():
+        raise TrainingLineageReviewRequired(
+            "SCIENTIFIC_REVIEW_REQUIRED: Task 6 design-lineage artifact is absent or symlinked"
+        )
+    try:
+        return TrainingDesignLineagePins.model_validate_json(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise TrainingLineageReviewRequired(
+            f"SCIENTIFIC_REVIEW_REQUIRED: Task 6 design-lineage artifact invalid: {exc}"
+        ) from exc
+
+
+def resolve_training_lineage_inputs(
+    *,
+    design_lineage_pins: TrainingDesignLineagePins | None,
+    design_lineage_artifact_path: Path | None,
+    protected_source_manifest_path: Path | None,
+) -> TrainingRunLineagePins:
+    if (
+        design_lineage_pins is None
+        or design_lineage_artifact_path is None
+        or protected_source_manifest_path is None
+    ):
+        raise TrainingLineageReviewRequired(
+            "SCIENTIFIC_REVIEW_REQUIRED: Task 6 design pins and protected source "
+            "DatasetManifest are mandatory"
+        )
+    design_path = design_lineage_artifact_path.resolve()
+    loaded_design = load_training_design_lineage_pins(design_path)
+    if loaded_design != design_lineage_pins:
+        raise TrainingLineageReviewRequired(
+            "SCIENTIFIC_REVIEW_REQUIRED: in-memory design pins do not match Task 6 artifact"
+        )
+    source_path = protected_source_manifest_path.resolve()
+    if source_path.is_symlink() or not source_path.is_file():
+        raise TrainingLineageReviewRequired(
+            "SCIENTIFIC_REVIEW_REQUIRED: protected source DatasetManifest is absent or symlinked"
+        )
+    try:
+        source = DatasetManifest.model_validate_json(source_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise TrainingLineageReviewRequired(
+            f"SCIENTIFIC_REVIEW_REQUIRED: protected source DatasetManifest invalid: {exc}"
+        ) from exc
+    return TrainingRunLineagePins(
+        training_design_lineage_artifact_id=loaded_design.artifact_id,
+        training_design_lineage_artifact_sha256=loaded_design.artifact_sha256,
+        training_design_lineage_file_sha256=sha256_file(design_path),
+        training_design_lineage_artifact_path=str(design_path),
+        planned_design_artifact_id=loaded_design.planned_design_artifact_id,
+        planned_design_artifact_sha256=loaded_design.planned_design_artifact_sha256,
+        executed_design_artifact_id=loaded_design.executed_design_artifact_id,
+        executed_design_artifact_sha256=loaded_design.executed_design_artifact_sha256,
+        protected_source_manifest_id=source.dataset_id,
+        protected_source_manifest_sha256=sha256_file(source_path),
+        protected_source_manifest_path=str(source_path),
+        protected_source_records_checksum=source.records_checksum,
+    )
+
+
+def reconcile_training_lineage_pins(
+    recorded: Mapping[str, Any], expected: TrainingRunLineagePins
+) -> None:
+    for field_name, expected_value in expected.state_payload().items():
+        if recorded.get(field_name) != expected_value:
+            raise MLXPipelineError(f"training lineage {field_name} changed: cannot resume the run")
 
 
 class TrainingRealityGateV8Request(FrozenModel):
@@ -583,6 +725,7 @@ def _stream_command(
     cwd: Path,
     log_path: Path,
     environment: Mapping[str, str] | None = None,
+    pass_fds: tuple[int, ...] = (),
 ) -> CommandResult:
     env = os.environ.copy()
     env.update(environment or {})
@@ -600,6 +743,7 @@ def _stream_command(
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
+            pass_fds=pass_fds,
         )
         assert process.stdout is not None
         for line in process.stdout:
@@ -1308,9 +1452,196 @@ def iter_verified_jsonl(path: Path, *, expected_sha256: str) -> Iterator[dict[st
         yield value
 
 
-def _copy_validation_as_test(data_dir: Path, target: Path) -> None:
+class ValidationConsumerViewManifest(FrozenModel):
+    schema_version: Literal["8.0.0"] = "8.0.0"
+    purpose: Literal["MODEL_SELECTION_VALIDATION"] = "MODEL_SELECTION_VALIDATION"
+    view_id: str = ""
+    view_sha256: str = ""
+    payload_file: Literal["test.jsonl"] = "test.jsonl"
+    payload_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    payload_size_bytes: int = Field(ge=0)
+    source_training_snapshot_id: str
+    source_training_snapshot_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_valid_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @model_validator(mode="after")
+    def _content_addressed(self) -> ValidationConsumerViewManifest:
+        identity = self.model_dump(mode="json", exclude={"view_id", "view_sha256"})
+        checksum = content_checksum(identity)
+        view_id = f"validation-consumer-{checksum[:20]}"
+        if self.view_sha256 and self.view_sha256 != checksum:
+            raise ValueError("validation consumer view checksum mismatch")
+        if self.view_id and self.view_id != view_id:
+            raise ValueError("validation consumer view id mismatch")
+        object.__setattr__(self, "view_sha256", checksum)
+        object.__setattr__(self, "view_id", view_id)
+        return self
+
+
+def _validated_validation_consumer_view(target: Path) -> dict[str, Any]:
+    root = target.resolve()
+    expected_names = {"test.jsonl", "consumer-view-manifest.json"}
+    try:
+        entries = tuple(root.iterdir())
+    except OSError as exc:
+        raise MLXPipelineError(f"validation consumer view unreadable: {exc}") from exc
+    if {entry.name for entry in entries} != expected_names:
+        raise MLXPipelineError("validation consumer view allowlist changed")
+    if any(entry.is_symlink() or not entry.is_file() for entry in entries):
+        raise MLXPipelineError("validation consumer view contains symlink/non-regular content")
+    manifest_path = root / "consumer-view-manifest.json"
+    try:
+        manifest = ValidationConsumerViewManifest.model_validate_json(
+            manifest_path.read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError) as exc:
+        raise MLXPipelineError(f"validation consumer manifest invalid: {exc}") from exc
+    payload = root / manifest.payload_file
+    if payload.stat().st_size != manifest.payload_size_bytes:
+        raise MLXPipelineError("validation consumer payload size changed")
+    if sha256_file(payload) != manifest.payload_sha256:
+        raise MLXPipelineError("validation consumer payload checksum changed")
+    return {
+        "path": str(root),
+        "view_id": manifest.view_id,
+        "view_sha256": manifest.view_sha256,
+        "file_hashes": {
+            "test.jsonl": manifest.payload_sha256,
+            "consumer-view-manifest.json": sha256_file(manifest_path),
+        },
+    }
+
+
+def stage_validation_consumer_view(
+    data_dir: Path,
+    target: Path,
+    *,
+    training_view: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Create the exact content-addressed validation-as-test consumer view."""
+
+    expected_training_hashes = training_view.get("file_hashes")
+    if not isinstance(expected_training_hashes, Mapping):
+        raise MLXPipelineError("training view hashes absent for validation staging")
+    verify_staged_training_view(data_dir, expected_training_hashes)
+    if target.exists() and any(target.iterdir()):
+        existing = _validated_validation_consumer_view(target)
+        manifest = ValidationConsumerViewManifest.model_validate_json(
+            (target / "consumer-view-manifest.json").read_text(encoding="utf-8")
+        )
+        if (
+            manifest.source_training_snapshot_id != training_view.get("snapshot_id")
+            or manifest.source_training_snapshot_sha256 != training_view.get("snapshot_sha256")
+            or manifest.source_valid_sha256 != expected_training_hashes.get("valid.jsonl")
+        ):
+            raise MLXPipelineError("validation consumer view source lineage changed")
+        target.chmod(0o555)
+        return existing
     target.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(data_dir / "valid.jsonl", target / "test.jsonl")
+    source = data_dir.resolve() / "valid.jsonl"
+    payload = target / "test.jsonl"
+    if source.is_symlink() or not source.is_file():
+        raise MLXPipelineError("validation source replacement detected")
+    before = sha256_file(source)
+    if before != expected_training_hashes.get("valid.jsonl"):
+        raise MLXPipelineError("validation source checksum changed")
+    shutil.copyfile(source, payload)
+    if sha256_file(source) != before or sha256_file(payload) != before:
+        raise MLXPipelineError("validation source changed while staging")
+    manifest = ValidationConsumerViewManifest(
+        payload_sha256=before,
+        payload_size_bytes=payload.stat().st_size,
+        source_training_snapshot_id=str(training_view.get("snapshot_id")),
+        source_training_snapshot_sha256=str(training_view.get("snapshot_sha256")),
+        source_valid_sha256=before,
+    )
+    manifest_path = target / "consumer-view-manifest.json"
+    _write_json(manifest_path, manifest.model_dump(mode="json"))
+    payload.chmod(0o444)
+    manifest_path.chmod(0o444)
+    target.chmod(0o555)
+    return _validated_validation_consumer_view(target)
+
+
+@contextmanager
+def _open_sealed_consumer_directory(
+    view: Mapping[str, Any],
+) -> Iterator[tuple[str, int]]:
+    root_value = view.get("path")
+    expected_hashes = view.get("file_hashes")
+    if not isinstance(root_value, str) or not isinstance(expected_hashes, Mapping):
+        raise MLXPipelineError("sealed consumer view metadata is incomplete")
+    root = Path(root_value).resolve()
+    if root.stat().st_mode & 0o222:
+        raise MLXPipelineError("sealed consumer directory mode changed")
+    flags = os.O_RDONLY
+    if hasattr(os, "O_DIRECTORY"):
+        flags |= os.O_DIRECTORY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        directory_fd = os.open(root, flags)
+    except OSError as exc:
+        raise MLXPipelineError(f"sealed consumer directory open failed: {exc}") from exc
+    try:
+        names = set(os.listdir(directory_fd))
+        if names != set(expected_hashes):
+            raise MLXPipelineError("sealed consumer view allowlist changed")
+        for name, expected_hash in expected_hashes.items():
+            if not isinstance(name, str) or not isinstance(expected_hash, str):
+                raise MLXPipelineError("sealed consumer hash manifest invalid")
+            file_flags = os.O_RDONLY
+            if hasattr(os, "O_NOFOLLOW"):
+                file_flags |= os.O_NOFOLLOW
+            try:
+                file_fd = os.open(name, file_flags, dir_fd=directory_fd)
+            except OSError as exc:
+                raise MLXPipelineError(
+                    f"sealed consumer file symlink/replacement blocked: {name}: {exc}"
+                ) from exc
+            try:
+                metadata = os.fstat(file_fd)
+                if not stat.S_ISREG(metadata.st_mode) or metadata.st_mode & 0o222:
+                    raise MLXPipelineError(f"sealed consumer file mode changed: {name}")
+                digest = hashlib.sha256()
+                while chunk := os.read(file_fd, 1024 * 1024):
+                    digest.update(chunk)
+            finally:
+                os.close(file_fd)
+            if digest.hexdigest() != expected_hash:
+                raise MLXPipelineError(f"sealed consumer checksum changed: {name}")
+        fd_path = Path("/dev/fd") / str(directory_fd)
+        if not fd_path.is_dir():
+            raise MLXPipelineError(
+                "sealed directory FD handoff unavailable on this platform; fail closed"
+            )
+        yield str(fd_path), directory_fd
+    finally:
+        os.close(directory_fd)
+
+
+def stream_mlx_with_sealed_view(
+    config: Mapping[str, Any],
+    *,
+    view: Mapping[str, Any],
+    config_path: Path,
+    cwd: Path,
+    log_path: Path,
+    environment: Mapping[str, str] | None = None,
+) -> CommandResult:
+    """Pin the verified directory inode into the MLX child with pass_fds."""
+
+    with _open_sealed_consumer_directory(view) as (fd_path, directory_fd):
+        payload = dict(config)
+        payload["data"] = fd_path
+        _write_json(config_path, payload)
+        return _stream_command(
+            _mlx_command(config_path),
+            cwd=cwd,
+            log_path=log_path,
+            environment=environment,
+            pass_fds=(directory_fd,),
+        )
 
 
 def _mlx_command(config_path: Path) -> list[str]:
@@ -1325,6 +1656,9 @@ def run_training(
     *,
     seed: int,
     reality_gate: RealityGateV8Protocol,
+    design_lineage_pins: TrainingDesignLineagePins | None,
+    design_lineage_artifact_path: Path | None,
+    protected_source_manifest_path: Path | None,
     smoke_test: bool = False,
     resume: bool = False,
 ) -> dict[str, Any]:
@@ -1335,6 +1669,11 @@ def run_training(
     il controller interrompe dopo ``patience`` fasi senza miglioramento.
     """
 
+    training_lineage = resolve_training_lineage_inputs(
+        design_lineage_pins=design_lineage_pins,
+        design_lineage_artifact_path=design_lineage_artifact_path,
+        protected_source_manifest_path=protected_source_manifest_path,
+    )
     envelope = read_training_snapshot_envelope(data_dir, smoke_test=smoke_test)
     gate_artifact = verify_training_reality_gate_v8(
         reality_gate,
@@ -1371,7 +1710,11 @@ def run_training(
     training_view_dir = Path(str(training_view["path"]))
     verify_staged_training_view(training_view_dir, training_view["file_hashes"])
     validation_dir = run_dir / "_validation-as-test"
-    _copy_validation_as_test(training_view_dir, validation_dir)
+    validation_view = stage_validation_consumer_view(
+        training_view_dir,
+        validation_dir,
+        training_view=training_view,
+    )
 
     maximum_phases = 1 if smoke_test else int(training["maximum_phases"])
     iterations_per_phase = (
@@ -1398,6 +1741,7 @@ def run_training(
         if state.get("dataset_manifest_sha256") != dataset["manifest_sha256"]:
             raise MLXPipelineError("manifest snapshot cambiato: impossibile riprendere il run")
         reconcile_reality_gate_pins(state, RealityGatePinTuple.from_artifact(gate_artifact))
+        reconcile_training_lineage_pins(state, training_lineage)
         previous_environment = state.get("environment")
         if not isinstance(previous_environment, dict):
             raise MLXPipelineError("record ambiente assente: impossibile riprendere il run")
@@ -1421,6 +1765,7 @@ def run_training(
             "reality_gate_no_corpus_attestation_sha256": (
                 gate_artifact.no_corpus_attestation_sha256
             ),
+            **training_lineage.state_payload(),
             "model_provenance_sha256": model_check["provenance_sha256"],
             "environment": environment_record,
             "seed": seed,
@@ -1483,10 +1828,10 @@ def run_training(
             "lora_parameters": training["lora_parameters"],
         }
         config_path = run_dir / "configs" / f"phase-{phase:04d}.json"
-        _write_json(config_path, phase_config)
-        verify_staged_training_view(training_view_dir, training_view["file_hashes"])
-        train_result = _stream_command(
-            _mlx_command(config_path),
+        train_result = stream_mlx_with_sealed_view(
+            phase_config,
+            view=training_view,
+            config_path=config_path,
             cwd=repo_root,
             log_path=run_dir / "train.log",
             environment=offline_environment,
@@ -1506,9 +1851,10 @@ def run_training(
             "max_seq_length": int(profile["data"]["max_sequence_length"]),
         }
         eval_path = run_dir / "configs" / f"phase-{phase:04d}-eval.json"
-        _write_json(eval_path, eval_config)
-        eval_result = _stream_command(
-            _mlx_command(eval_path),
+        eval_result = stream_mlx_with_sealed_view(
+            eval_config,
+            view=validation_view,
+            config_path=eval_path,
             cwd=repo_root,
             log_path=run_dir / "validation.log",
             environment=offline_environment,

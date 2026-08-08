@@ -424,6 +424,8 @@ def test_protected_release_uses_protected_not_training_snapshot_pins() -> None:
         "split": "TEST",
         "snapshot_id": "protected-1",
         "snapshot_sha256": "a" * 64,
+        "record_count": 1,
+        "record_ids_checksum": content_checksum(["protected-1"]),
         "lineage": {
             "source_manifest_id": source.dataset_id,
             "source_manifest_sha256": "b" * 64,
