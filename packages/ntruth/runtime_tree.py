@@ -21,51 +21,100 @@ def _model_state(value: BaseModel, *, path: str) -> dict[str, object]:
     state = object.__getattribute__(value, "__dict__")
     if type(state) is not dict:
         raise ExactRuntimeTreeError(path=path, reason="non-builtin model state")
+    state_fields = tuple(dict.keys(state))
+    if any(type(field_name) is not str for field_name in state_fields):
+        raise ExactRuntimeTreeError(path=path, reason="non-string model field")
     declared = set(type(value).model_fields)
-    if set(state) != declared:
+    if set(state_fields) != declared:
         raise ExactRuntimeTreeError(path=path, reason="undeclared or missing model field")
     fields_set = object.__getattribute__(value, "__pydantic_fields_set__")
-    if type(fields_set) is not set or not fields_set.issubset(declared):
+    if (
+        type(fields_set) is not set
+        or any(type(field_name) is not str for field_name in fields_set)
+        or not fields_set.issubset(declared)
+    ):
         raise ExactRuntimeTreeError(path=path, reason="invalid field-set metadata")
     extra = object.__getattribute__(value, "__pydantic_extra__")
-    if extra:
+    if extra is not None:
         raise ExactRuntimeTreeError(path=path, reason="undeclared extra model state")
     private = object.__getattribute__(value, "__pydantic_private__")
-    if private:
+    if private is not None:
         raise ExactRuntimeTreeError(path=path, reason="undeclared private model state")
     return state
 
 
-def _preflight_exact_tree(value: object, *, path: str) -> None:
+def _preflight_exact_tree(
+    value: object,
+    *,
+    path: str,
+    active: set[int] | None = None,
+) -> None:
+    if active is None:
+        active = set()
     if isinstance(value, BaseModel):
-        state = _model_state(value, path=path)
-        for field_name, item in state.items():
-            _preflight_exact_tree(item, path=f"{path}.{field_name}")
+        identity = id(value)
+        if identity in active:
+            raise ExactRuntimeTreeError(path=path, reason="recursive runtime model")
+        active.add(identity)
+        try:
+            state = _model_state(value, path=path)
+            for field_name, item in dict.items(state):
+                _preflight_exact_tree(item, path=f"{path}.{field_name}", active=active)
+        finally:
+            active.remove(identity)
         return
     if isinstance(value, Mapping):
         if type(value) is not dict:
             raise ExactRuntimeTreeError(path=path, reason="non-builtin mapping")
-        for index, (key, item) in enumerate(dict.items(value)):
-            _preflight_exact_tree(key, path=f"{path}.key[{index}]")
-            _preflight_exact_tree(item, path=f"{path}.value[{index}]")
+        identity = id(value)
+        if identity in active:
+            raise ExactRuntimeTreeError(path=path, reason="recursive runtime mapping")
+        active.add(identity)
+        try:
+            for index, (key, item) in enumerate(dict.items(value)):
+                _preflight_exact_tree(key, path=f"{path}.key[{index}]", active=active)
+                _preflight_exact_tree(item, path=f"{path}.value[{index}]", active=active)
+        finally:
+            active.remove(identity)
         return
     if isinstance(value, tuple):
         if type(value) is not tuple:
             raise ExactRuntimeTreeError(path=path, reason="non-builtin tuple")
-        for index, item in enumerate(value):
-            _preflight_exact_tree(item, path=f"{path}[{index}]")
+        identity = id(value)
+        if identity in active:
+            raise ExactRuntimeTreeError(path=path, reason="recursive runtime tuple")
+        active.add(identity)
+        try:
+            for index, item in enumerate(value):
+                _preflight_exact_tree(item, path=f"{path}[{index}]", active=active)
+        finally:
+            active.remove(identity)
         return
     if isinstance(value, list):
         if type(value) is not list:
             raise ExactRuntimeTreeError(path=path, reason="non-builtin list")
-        for index, item in enumerate(value):
-            _preflight_exact_tree(item, path=f"{path}[{index}]")
+        identity = id(value)
+        if identity in active:
+            raise ExactRuntimeTreeError(path=path, reason="recursive runtime list")
+        active.add(identity)
+        try:
+            for index, item in enumerate(value):
+                _preflight_exact_tree(item, path=f"{path}[{index}]", active=active)
+        finally:
+            active.remove(identity)
         return
     if isinstance(value, (set, frozenset)):
         if type(value) not in {set, frozenset}:
             raise ExactRuntimeTreeError(path=path, reason="non-builtin set")
-        for index, item in enumerate(value):
-            _preflight_exact_tree(item, path=f"{path}[{index}]")
+        identity = id(value)
+        if identity in active:
+            raise ExactRuntimeTreeError(path=path, reason="recursive runtime set")
+        active.add(identity)
+        try:
+            for index, item in enumerate(value):
+                _preflight_exact_tree(item, path=f"{path}[{index}]", active=active)
+        finally:
+            active.remove(identity)
 
 
 def _compare_exact_tree(raw: object, canonical: object, *, path: str) -> None:
@@ -140,8 +189,8 @@ def canonicalize_exact_model[ModelT: BaseModel](
 
     if type(value) is not expected_type:
         raise ExactRuntimeTreeError(path=path, reason="root runtime type mismatch")
-    _preflight_exact_tree(value, path=path)
     try:
+        _preflight_exact_tree(value, path=path)
         payload = BaseModel.model_dump(
             value,
             mode="python",
@@ -149,9 +198,11 @@ def canonicalize_exact_model[ModelT: BaseModel](
             round_trip=True,
         )
         canonical = expected_type.model_validate(payload)
+        _compare_exact_tree(value, canonical, path=path)
+    except ExactRuntimeTreeError:
+        raise
     except Exception as error:
         raise ExactRuntimeTreeError(path=path, reason="canonical reconstruction failed") from error
-    _compare_exact_tree(value, canonical, path=path)
     return canonical
 
 
