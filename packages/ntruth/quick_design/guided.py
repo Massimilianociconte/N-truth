@@ -11,11 +11,12 @@ import csv
 import io
 import json
 from collections.abc import Mapping
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum, StrEnum
 from typing import Any, Literal, Self, cast
 
 from pydantic import BaseModel, Field, JsonValue, field_validator, model_validator
+from pydantic_core import TzInfo
 
 from ntruth.derivation_theory.contracts import ConformanceBundle
 from ntruth.derivation_theory.runtime import load_runtime_bundle
@@ -96,6 +97,38 @@ from ntruth.schemas.support import (
 
 GUIDED_SAMPLE_SHEET_MAX_ROWS = 100_000
 GUIDED_QUESTION_PRIORITY_REVIEW_ISSUE_ID = "SRR-V8-025"
+
+
+def _canonical_confirmation_datetime(value: datetime) -> datetime:
+    """Normalize only exact, non-overridable timestamp and timezone implementations."""
+
+    if type(value) is not datetime:
+        raise ValueError(
+            f"confirmed_at must use the exact canonical datetime type, got {type(value).__name__}"
+        )
+    zone = value.tzinfo
+    if zone is None:
+        raise ValueError("confirmed_at requires a timezone offset")
+    if type(zone) not in {timezone, TzInfo}:
+        raise ValueError(
+            "confirmed_at must use an exact canonical fixed-offset timezone, "
+            f"got {type(zone).__name__}"
+        )
+    offset = datetime.utcoffset(value)
+    if offset is None:
+        raise ValueError("confirmed_at requires a timezone offset")
+    canonical_zone = timezone(offset)
+    return datetime(
+        value.year,
+        value.month,
+        value.day,
+        value.hour,
+        value.minute,
+        value.second,
+        value.microsecond,
+        tzinfo=canonical_zone,
+        fold=value.fold,
+    )
 
 
 class GuidedAnswerStatus(StrEnum):
@@ -266,9 +299,7 @@ class GuidedQuickDesignConfirmation(KernelModel):
     @field_validator("confirmed_at")
     @classmethod
     def _timezone_aware(cls, value: datetime) -> datetime:
-        if value.tzinfo is None or value.utcoffset() is None:
-            raise ValueError("confirmed_at requires a timezone offset")
-        return value
+        return _canonical_confirmation_datetime(value)
 
 
 class GuidedQuickDesignBuildRequest(KernelModel):
@@ -359,6 +390,8 @@ class GuidedQuickDesignBuildResponse(KernelModel):
             result=self.canonical_result.value,
         ):
             raise ValueError("confirmed guided snapshot checksum mismatch")
+        else:
+            _assert_confirmed_guided_closure(self)
         return self
 
 
@@ -378,6 +411,9 @@ def _raw_guided_contract_tree(
             raise ValueError("guided runtime tree contains a recursive container cycle")
         seen.add(identity)
     try:
+        if isinstance(value, datetime):
+            _canonical_confirmation_datetime(value)
+            return value
         if isinstance(value, BaseModel):
             raw_values = value.__dict__
             if type(raw_values) is not dict:
@@ -1591,6 +1627,123 @@ def _build_submission(
     )
     validate_raw_wizard_submission(submission)
     return submission
+
+
+def _assert_confirmed_guided_closure(response: GuidedQuickDesignBuildResponse) -> None:
+    """Re-derive every confirmed projection from its embedded governed inputs."""
+
+    submission = response.submission_audit_snapshot.value
+    result = response.canonical_result.value
+    if submission is None or result is None:  # guarded by the response state contract
+        raise ValueError("guided confirmed closure requires submission and result values")
+
+    contexts = result.report_bundle.verified_pipeline_contexts
+    if len(contexts) != 1:
+        raise ValueError("guided confirmed closure requires exactly one verified pipeline context")
+    try:
+        bundle = contexts[0].conformance_bundle
+    except ValueError as exc:
+        raise ValueError("guided confirmed closure has an invalid conformance bundle") from exc
+
+    evidence_records = submission.input_ledger.evidence_records
+    if len(evidence_records) != 1:
+        raise ValueError("guided confirmed closure requires exactly one guided evidence record")
+    evidence = evidence_records[0]
+    try:
+        draft_payload = json.loads(evidence.original_text)
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise ValueError("guided confirmed closure draft snapshot is not valid JSON") from exc
+    if type(draft_payload) is not dict:
+        raise ValueError("guided confirmed closure draft snapshot must be a JSON object")
+    try:
+        draft = GuidedQuickDesignDraft.model_validate(draft_payload)
+        (
+            preview_checksum,
+            block_id,
+            query_id,
+            artifact_previews,
+            _preview_predicates,
+            question_queue,
+            summary,
+        ) = _build_preview_parts(draft, bundle)
+    except ValueError as exc:
+        raise ValueError("guided confirmed closure preview re-derivation failed") from exc
+
+    expected_evidence_id = stable_id("EV-QD-REVIEW", preview_checksum)
+    if (
+        response.preview_checksum != preview_checksum
+        or evidence.evidence_id != expected_evidence_id
+        or evidence.locator != f"guided-review://{preview_checksum}"
+    ):
+        raise ValueError("guided confirmed closure preview/evidence binding mismatch")
+    if response.summary != summary:
+        raise ValueError("guided confirmed closure summary mismatch")
+    if response.question_queue != question_queue:
+        raise ValueError("guided confirmed closure question queue mismatch")
+    if response.visible_questions != question_queue[:3]:
+        raise ValueError("guided confirmed closure visible question projection mismatch")
+    if response.artifact_previews != artifact_previews:
+        raise ValueError("guided confirmed closure artifact preview mismatch")
+
+    primary_question_ids = tuple(
+        question.question_id for question in submission.questions if question.primary
+    )
+    if len(primary_question_ids) != 1:
+        raise ValueError("guided confirmed closure requires exactly one selected review focus")
+    focus_predicate_ids = tuple(
+        question.predicate_id
+        for question in question_queue
+        if question.question_id == primary_question_ids[0]
+    )
+    if len(focus_predicate_ids) != 1:
+        raise ValueError("guided confirmed closure review focus differs from the Theory queue")
+
+    confirmation_events = submission.input_ledger.confirmation_events
+    if not confirmation_events:
+        raise ValueError("guided confirmed closure requires confirmation events")
+    actor_role = confirmation_events[0].actor_role
+    confirmed_at = _canonical_confirmation_datetime(confirmation_events[0].created_at)
+    for event in confirmation_events:
+        event_time = _canonical_confirmation_datetime(event.created_at)
+        if event.actor_role != actor_role or event_time != confirmed_at:
+            raise ValueError(
+                "guided confirmed closure requires one actor and timestamp across confirmations"
+            )
+
+    reconstructed_request = GuidedQuickDesignBuildRequest(
+        action=GuidedBuildAction.CONFIRM,
+        draft=draft,
+        confirmation=GuidedQuickDesignConfirmation(
+            preview_checksum=preview_checksum,
+            review_focus_predicate_id=focus_predicate_ids[0],
+            actor_role=actor_role,
+            confirmed_at=confirmed_at,
+        ),
+    )
+    try:
+        reconstructed_submission = _build_submission(
+            request=reconstructed_request,
+            bundle=bundle,
+            preview_checksum=preview_checksum,
+            block_id=block_id,
+            query_id=query_id,
+            artifact_previews=artifact_previews,
+            question_queue=question_queue,
+        )
+    except ValueError as exc:
+        raise ValueError("guided confirmed closure submission re-derivation failed") from exc
+    if reconstructed_submission != submission:
+        raise ValueError("guided confirmed closure submission differs from re-derivation")
+
+    try:
+        reconstructed_result = run_quick_design_v8(
+            reconstructed_submission,
+            conformance_bundle=bundle,
+        )
+    except ValueError as exc:
+        raise ValueError("guided confirmed closure canonical re-execution failed") from exc
+    if reconstructed_result != result:
+        raise ValueError("guided confirmed closure result differs from canonical re-execution")
 
 
 def build_guided_quick_design(
