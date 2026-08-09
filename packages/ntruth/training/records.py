@@ -803,7 +803,14 @@ def _iter_jsonl_physical_lines(payload: bytes) -> Iterator[tuple[int, bytes]]:
 def loads_supervised_jsonl(payload: str | bytes) -> tuple[SupervisedRecord, ...]:
     """Carica JSONL locale; le righe vuote sono ignorate ma mai emesse in output."""
 
-    raw_payload = payload if isinstance(payload, bytes) else payload.encode("utf-8")
+    if isinstance(payload, bytes):
+        raw_payload = payload
+    else:
+        try:
+            raw_payload = payload.encode("utf-8")
+        except UnicodeEncodeError as error:
+            line_number = payload.count("\n", 0, error.start) + 1
+            raise DatasetFormatError(line_number, str(error)) from error
     records: list[SupervisedRecord] = []
     for line_number, line in _iter_jsonl_physical_lines(raw_payload):
         if not line.strip():

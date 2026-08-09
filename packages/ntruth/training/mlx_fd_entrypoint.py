@@ -84,17 +84,22 @@ def read_inherited_jsonl(
             raise InheritedFDContractError(
                 f"inherited FD is not an anonymous regular file for split {split}"
             )
-        duplicate = os.dup(descriptor)
         try:
-            os.lseek(duplicate, 0, os.SEEK_SET)
-            with os.fdopen(duplicate, "r", encoding="utf-8", closefd=False) as handle:
+            duplicate = os.dup(descriptor)
+        except OSError as exc:
+            raise InheritedFDContractError(
+                f"inherited FD cannot be duplicated for split {split}"
+            ) from exc
+        try:
+            with os.fdopen(duplicate, "rb") as handle:
+                os.lseek(handle.fileno(), 0, os.SEEK_SET)
                 rows: list[dict[str, Any]] = []
                 for line_number, line in enumerate(handle, 1):
                     if not line.strip():
                         continue
                     try:
                         row = json.loads(line)
-                    except json.JSONDecodeError as exc:
+                    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
                         raise InheritedFDContractError(
                             f"inherited JSONL invalid at {split}:{line_number}"
                         ) from exc
@@ -105,8 +110,6 @@ def read_inherited_jsonl(
                     rows.append(row)
         except (OSError, UnicodeError) as exc:
             raise InheritedFDContractError(f"inherited JSONL unreadable for split {split}") from exc
-        finally:
-            os.close(duplicate)
         if not rows:
             raise InheritedFDContractError(f"inherited JSONL is empty for split {split}")
         rows_by_split[split] = rows
