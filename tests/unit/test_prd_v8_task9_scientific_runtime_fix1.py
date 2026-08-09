@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 import test_prd_v8_derivation_runtime as runtime_fixture
-from pydantic import JsonValue, ValidationError
+from pydantic import BaseModel, JsonValue, ValidationError
 
 from ntruth.derivation_theory.contracts import ConformanceBundle
 from ntruth.derivation_theory.runtime import V8DerivationInput
@@ -69,8 +69,8 @@ def test_runtime_rejects_root_and_nested_undeclared_state_before_derivation() ->
         update={
             "query": request.query.model_copy(
                 update={
-                    "timepoint_id": request.query.timepoint_id.model_copy(
-                        update={"design_verdict": "ADEQUATE"}
+                    "timepoint_id": BaseModel.model_copy(
+                        request.query.timepoint_id, update={"design_verdict": "ADEQUATE"}
                     )
                 }
             )

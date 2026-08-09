@@ -11,10 +11,11 @@ from networkx.algorithms.isomorphism import (
     MultiDiGraphMatcher,
     categorical_node_match,
 )
-from pydantic import Field, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 from ntruth.derivation_theory.loader import canonical_checksum
-from ntruth.schemas.graph_v8 import V8ExperimentGraph
+from ntruth.runtime_tree import _preflight_exact_tree, canonicalize_exact_model
+from ntruth.schemas.graph_v8 import V8ExperimentGraph, V8GraphNode, V8GraphRelation
 from ntruth.schemas.kernel import KernelModel, NonBlankStr
 from ntruth.schemas.knowledge import KnowledgeValue
 from ntruth.schemas.support import ScientificReviewRequirement
@@ -63,6 +64,98 @@ class ExactGraphView(KernelModel):
         if set(semantic_ids) != node_ids:
             raise ValueError("exact graph equality requires one semantic identity per node")
         return self
+
+
+def _require_same_exact_value(raw: object, checked: object) -> None:
+    if type(raw) is not type(checked) or raw != checked:
+        raise _UnaddressableGraphValue("non-canonical graph runtime value")
+
+
+def _validated_graph_view(value: ExactGraphView, *, path: str) -> ExactGraphView:
+    if type(value) is not ExactGraphView:
+        raise _UnaddressableGraphValue("non-canonical exact graph view")
+    _preflight_exact_tree(value, path=path)
+    payload = BaseModel.model_dump(
+        value,
+        mode="json",
+        exclude_unset=True,
+        round_trip=True,
+        warnings="none",
+    )
+    checked = ExactGraphView.model_validate(payload)
+    if type(value.node_semantics) is not tuple:
+        raise _UnaddressableGraphValue("non-canonical semantic identity container")
+    for index, (raw_identity, checked_identity) in enumerate(
+        zip(value.node_semantics, checked.node_semantics, strict=True)
+    ):
+        canonical_identity = canonicalize_exact_model(
+            raw_identity,
+            GraphNodeSemanticIdentity,
+            path=f"{path}.node_semantics[{index}]",
+        )
+        if canonical_identity != checked_identity:
+            raise _UnaddressableGraphValue("semantic identity reconstruction mismatch")
+
+    if type(value.graph) is not V8ExperimentGraph:
+        raise _UnaddressableGraphValue("non-canonical graph model")
+    if type(value.graph.nodes) is not tuple or type(value.graph.relations) is not tuple:
+        raise _UnaddressableGraphValue("non-canonical graph container")
+    for index, (raw_node, checked_node) in enumerate(
+        zip(value.graph.nodes, checked.graph.nodes, strict=True)
+    ):
+        canonical_node = canonicalize_exact_model(
+            raw_node,
+            V8GraphNode,
+            path=f"{path}.graph.nodes[{index}]",
+        )
+        if canonical_node != checked_node:
+            raise _UnaddressableGraphValue("graph node reconstruction mismatch")
+    structural_fields = (
+        "relation_id",
+        "relation_type",
+        "source_node_id",
+        "target_node_id",
+    )
+    scope_fields = ("query_scope", "factor_scope")
+    knowledge_metadata_fields = (
+        "schema_version",
+        "knowledge_state",
+        "evidence_ids",
+        "source_scope_ids",
+        "rationale",
+        "claim_scope_id",
+        "query_scope_id",
+    )
+    for index, (raw_relation, checked_relation) in enumerate(
+        zip(value.graph.relations, checked.graph.relations, strict=True)
+    ):
+        if type(raw_relation) is not V8GraphRelation:
+            raise _UnaddressableGraphValue("non-canonical graph relation")
+        for field_name in structural_fields:
+            _require_same_exact_value(
+                getattr(raw_relation, field_name),
+                getattr(checked_relation, field_name),
+            )
+        for field_name in scope_fields:
+            raw_scope = getattr(raw_relation, field_name)
+            checked_scope = getattr(checked_relation, field_name)
+            canonical_scope = canonicalize_exact_model(
+                raw_scope,
+                type(checked_scope),
+                path=f"{path}.graph.relations[{index}].{field_name}",
+            )
+            if canonical_scope != checked_scope:
+                raise _UnaddressableGraphValue("graph scope reconstruction mismatch")
+        raw_attributes = raw_relation.decisive_attributes
+        checked_attributes = checked_relation.decisive_attributes
+        if type(raw_attributes) is not type(checked_attributes):
+            raise _UnaddressableGraphValue("non-canonical decisive attributes")
+        for field_name in knowledge_metadata_fields:
+            _require_same_exact_value(
+                getattr(raw_attributes, field_name),
+                getattr(checked_attributes, field_name),
+            )
+    return value
 
 
 def _networkx_graph(view: ExactGraphView) -> nx.MultiDiGraph[str]:
@@ -127,11 +220,11 @@ def _readdress_scientific_mapping_key(
     *,
     require_node_reference: bool,
 ) -> object:
-    identity = node_identities.get(key)
-    if identity is not None:
-        return {"type": "node_identity", "value": identity}
     if require_node_reference:
-        raise _UnaddressableGraphValue("unresolved graph node-reference mapping key")
+        identity = node_identities.get(key)
+        if identity is None:
+            raise _UnaddressableGraphValue("unresolved graph node-reference mapping key")
+        return {"type": "node_identity", "value": identity}
     return {"type": "str", "value": key}
 
 
@@ -146,19 +239,27 @@ def _readdress_scientific_payload(
     if active is None:
         active = set()
     if raw is None:
+        if require_node_reference:
+            raise _UnaddressableGraphValue("null graph node reference")
         return {"type": "none"}
     if type(raw) is bool:
+        if require_node_reference:
+            raise _UnaddressableGraphValue("non-string graph node reference")
         return {"type": "bool", "value": raw}
     if type(raw) is int:
+        if require_node_reference:
+            raise _UnaddressableGraphValue("non-string graph node reference")
         return {"type": "int", "value": raw}
     if type(raw) is float:
+        if require_node_reference:
+            raise _UnaddressableGraphValue("non-string graph node reference")
         return {"type": "float", "value": raw}
     if type(raw) is str:
-        node_identity = node_identities.get(raw)
-        if node_identity is not None:
-            return {"type": "node_identity", "value": node_identity}
         if require_node_reference:
-            raise _UnaddressableGraphValue("unresolved graph node reference")
+            node_identity = node_identities.get(raw)
+            if node_identity is None:
+                raise _UnaddressableGraphValue("unresolved graph node reference")
+            return {"type": "node_identity", "value": node_identity}
         return {"type": "str", "value": raw}
     if isinstance(raw, Mapping):
         if type(raw) is not dict:
@@ -281,15 +382,17 @@ def exact_graph_equal(left: ExactGraphView, right: ExactGraphView) -> bool:
     """Compare directed typed structure and semantic keys while ignoring local IDs."""
 
     try:
+        canonical_left = _validated_graph_view(left, path="$.left_graph_view")
+        canonical_right = _validated_graph_view(right, path="$.right_graph_view")
         matcher = MultiDiGraphMatcher(
-            _networkx_graph(left),
-            _networkx_graph(right),
+            _networkx_graph(canonical_left),
+            _networkx_graph(canonical_right),
             node_match=categorical_node_match("identity", None),
             edge_match=_parallel_relation_contracts_match,
         )
-    except _UnaddressableGraphValue:
+        return matcher.is_isomorphic()
+    except Exception:
         return False
-    return matcher.is_isomorphic()
 
 
 def _parallel_relation_contracts_match(

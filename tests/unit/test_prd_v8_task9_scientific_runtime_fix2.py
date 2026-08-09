@@ -6,7 +6,7 @@ from typing import Any, ClassVar, Self
 
 import pytest
 import test_prd_v8_derivation_runtime as runtime_fixture
-from pydantic import JsonValue, model_validator
+from pydantic import BaseModel, JsonValue, model_validator
 
 from ntruth.derivation_theory.runtime import V8DerivationInput
 from ntruth.graph.equality_v8 import (
@@ -385,8 +385,9 @@ def test_exact_graph_equality_fails_closed_for_non_builtin_attribute_container()
         ),
     )
     relation = valid.graph.relations[0]
-    forged_attributes = relation.decisive_attributes.model_copy(
-        update={"value": _AttributeMappingSubclass(relation.decisive_attributes.value or {})}
+    forged_attributes = BaseModel.model_copy(
+        relation.decisive_attributes,
+        update={"value": _AttributeMappingSubclass(relation.decisive_attributes.value or {})},
     )
     forged_relation = relation.model_copy(update={"decisive_attributes": forged_attributes})
     forged_graph = valid.graph.model_copy(update={"relations": (forged_relation,)})

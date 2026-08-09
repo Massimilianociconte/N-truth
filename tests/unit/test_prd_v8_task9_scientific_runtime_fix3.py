@@ -6,6 +6,7 @@ from typing import Any
 
 import pytest
 import test_prd_v8_task9_scientific_runtime_fix2 as fix2
+from pydantic import BaseModel
 
 from ntruth.graph.equality_v8 import (
     ExactGraphView,
@@ -16,7 +17,10 @@ from ntruth.graph.equality_v8 import (
 
 def _with_attribute_value(view: ExactGraphView, value: Any) -> ExactGraphView:
     relation = view.graph.relations[0]
-    attributes = relation.decisive_attributes.model_copy(update={"value": value})
+    attributes = BaseModel.model_copy(
+        relation.decisive_attributes,
+        update={"value": value},
+    )
     updated_relation = relation.model_copy(update={"decisive_attributes": attributes})
     return view.model_copy(
         update={"graph": view.graph.model_copy(update={"relations": (updated_relation,)})}
@@ -60,8 +64,9 @@ def test_exact_graph_equality_fails_closed_for_recursive_scientific_payload(
             ),
         )
         relation = baseline.graph.relations[0]
-        attributes = relation.decisive_attributes.model_copy(
-            update={"conflicting_values": (recursive_conflict, {"literal": "other"})}
+        attributes = BaseModel.model_copy(
+            relation.decisive_attributes,
+            update={"conflicting_values": (recursive_conflict, {"literal": "other"})},
         )
         updated_relation = relation.model_copy(update={"decisive_attributes": attributes})
         left = baseline.model_copy(
