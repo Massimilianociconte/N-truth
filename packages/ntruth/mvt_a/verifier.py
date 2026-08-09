@@ -32,12 +32,14 @@ class HardVerifierResult(FrozenModel):
     checks_run: tuple[str, ...] = ()
 
 
-def _stable_error_detail(exc: ValueError, *, fallback: str) -> str:
+def _stable_error_detail(exc: Exception, *, fallback: str) -> str:
     try:
         detail = str(exc)
-        return detail if detail.strip() else fallback
     except Exception:
         return fallback
+    if type(detail) is not str:
+        return fallback
+    return detail if str.strip(detail) else fallback
 
 
 def hard_verify_candidates(
@@ -62,7 +64,7 @@ def hard_verify_candidates(
             raise ValueError("canonical parser candidate payload is absent")
         bundle = ParserCandidateOutput.assert_raw_candidate_only(bundle)
         assert_no_final_scientific_fields(bundle.model_dump(mode="json", warnings="none"))
-    except ValueError as exc:
+    except Exception as exc:
         error = StageIssue(
             code=StageErrorCode.VERIFIER_DISAGREEMENT,
             detail=_stable_error_detail(
