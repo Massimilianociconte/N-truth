@@ -10,14 +10,16 @@ from __future__ import annotations
 import csv
 import io
 import json
+from collections.abc import Mapping
 from datetime import datetime
-from enum import StrEnum
-from typing import Any, Literal, Self
+from enum import Enum, StrEnum
+from typing import Any, Literal, Self, cast
 
-from pydantic import Field, JsonValue, field_validator, model_validator
+from pydantic import BaseModel, Field, JsonValue, field_validator, model_validator
 
 from ntruth.derivation_theory.contracts import ConformanceBundle
 from ntruth.derivation_theory.runtime import load_runtime_bundle
+from ntruth.mvt_a.stage_schema import assert_no_final_scientific_fields
 from ntruth.pipeline_v8 import V8PipelineRequest
 from ntruth.quick_design.v8 import (
     QuickDesignScientificReviewRequired,
@@ -60,6 +62,7 @@ from ntruth.schemas.graph_v8 import V8ExperimentGraph, V8GraphNode, V8GraphNodeT
 from ntruth.schemas.kernel import KernelModel, NonBlankStr
 from ntruth.schemas.knowledge import KnowledgeState, KnowledgeValue
 from ntruth.schemas.prospective import (
+    COUNT_RECONCILIATION_REVIEW_ISSUE_ID,
     ConfirmationRelationKind,
     ConfirmationTarget,
     ProspectiveArtifact,
@@ -91,6 +94,9 @@ from ntruth.schemas.support import (
     SupportGrade,
 )
 
+GUIDED_SAMPLE_SHEET_MAX_ROWS = 100_000
+GUIDED_QUESTION_PRIORITY_REVIEW_ISSUE_ID = "SRR-V8-025"
+
 
 class GuidedAnswerStatus(StrEnum):
     PROVIDED = "PROVIDED"
@@ -110,6 +116,23 @@ class GuidedBuildState(StrEnum):
 class GuidedInterferenceStatus(StrEnum):
     UNKNOWN = "UNKNOWN"
     POSSIBLE = "POSSIBLE"
+
+
+class GuidedQuestionPriorityState(StrEnum):
+    """The reviewed Theory assets do not yet define question priority."""
+
+    UNREVIEWED = "UNREVIEWED"
+
+
+class _GuidedCountScopeScientificReviewRequired(QuickDesignScientificReviewRequired):
+    """Typed count-scope blocker using the canonical count-vocabulary issue ID."""
+
+    def __init__(self, rationale: str) -> None:
+        self.review_requirement = ScientificReviewRequirement(
+            issue_id=COUNT_RECONCILIATION_REVIEW_ISSUE_ID,
+            rationale=rationale,
+        )
+        ValueError.__init__(self, f"SCIENTIFIC_REVIEW_REQUIRED: {rationale}")
 
 
 class GuidedTextAnswer(KernelModel):
@@ -174,6 +197,7 @@ class GuidedInterferenceAnswer(KernelModel):
 
 class GuidedPlannedGroup(KernelModel):
     group_id: NonBlankStr
+    cohort_id: GuidedTextAnswer
     factor_level: NonBlankStr
     planned_count: int = Field(strict=True, ge=1)
 
@@ -209,6 +233,16 @@ class GuidedQuickDesignDraft(KernelModel):
 
     @model_validator(mode="after")
     def _planned_query_scope(self) -> Self:
+        total_planned_rows = sum(group.planned_count for group in self.planned_groups)
+        if (
+            any(group.planned_count > GUIDED_SAMPLE_SHEET_MAX_ROWS for group in self.planned_groups)
+            or total_planned_rows > GUIDED_SAMPLE_SHEET_MAX_ROWS
+        ):
+            raise ValueError(
+                "planned_count exceeds the operational sample-sheet safety limit of "
+                f"{GUIDED_SAMPLE_SHEET_MAX_ROWS} rows; this is an implementation safety "
+                "limit, not a scientific threshold"
+            )
         normalized_levels = tuple(item.casefold() for item in self.factor_levels)
         if len(normalized_levels) != len(set(normalized_levels)):
             raise ValueError("factor_levels must be distinct")
@@ -225,7 +259,7 @@ class GuidedQuickDesignDraft(KernelModel):
 
 class GuidedQuickDesignConfirmation(KernelModel):
     preview_checksum: str = Field(pattern=r"^[0-9a-f]{64}$")
-    primary_predicate_id: NonBlankStr
+    review_focus_predicate_id: NonBlankStr
     actor_role: NonBlankStr
     confirmed_at: datetime
 
@@ -258,7 +292,11 @@ class GuidedTheoryQuestion(KernelModel):
     required_predicate_rationales: tuple[NonBlankStr, ...] = Field(min_length=1)
     known_gap_rationales: tuple[NonBlankStr, ...] = ()
     text: NonBlankStr
-    evidence_required: tuple[NonBlankStr, ...] = Field(min_length=1)
+    priority_state: Literal[GuidedQuestionPriorityState.UNREVIEWED] = (
+        GuidedQuestionPriorityState.UNREVIEWED
+    )
+    priority_review: ScientificReviewRequirement
+    evidence_required: KnowledgeValue[tuple[NonBlankStr, ...]]
 
 
 class GuidedQuickDesignSummary(KernelModel):
@@ -268,6 +306,7 @@ class GuidedQuickDesignSummary(KernelModel):
     unknown_field_ids: tuple[NonBlankStr, ...]
     planned_group_count: int = Field(ge=2)
     planned_unit_total: int = Field(ge=2)
+    known_profile_gaps: tuple[NonBlankStr, ...] = Field(min_length=1)
     scenario_coverage_status: Literal["NON_EXHAUSTIVE"] = "NON_EXHAUSTIVE"
     strategy_module_status: Literal["HANDOFF_ONLY"] = "HANDOFF_ONLY"
 
@@ -277,28 +316,349 @@ class GuidedQuickDesignBuildResponse(KernelModel):
     contract_version: Literal["8.0.0"] = "8.0.0"
     action: GuidedBuildAction
     state: GuidedBuildState
-    next_endpoint: Literal["/v8/quick-design"] = "/v8/quick-design"
     preview_checksum: str = Field(pattern=r"^[0-9a-f]{64}$")
     summary: GuidedQuickDesignSummary
     visible_questions: tuple[GuidedTheoryQuestion, ...] = Field(max_length=3)
     question_queue: tuple[GuidedTheoryQuestion, ...] = Field(min_length=1)
     artifact_previews: tuple[ProspectiveArtifact, ...] = Field(min_length=3, max_length=3)
-    submission: KnowledgeValue[QuickDesignV8Submission]
+    submission_audit_snapshot: KnowledgeValue[QuickDesignV8Submission]
+    submission_is_execution_capability: Literal[False] = False
+    canonical_result: KnowledgeValue[QuickDesignV8Result]
+    confirmed_snapshot_checksum: KnowledgeValue[str]
 
     @model_validator(mode="after")
     def _preview_or_submission(self) -> Self:
         if self.visible_questions != self.question_queue[:3]:
             raise ValueError("visible questions must be the first three retained queue entries")
-        state = self.submission.knowledge_state
+        submission_state = self.submission_audit_snapshot.knowledge_state
+        result_state = self.canonical_result.knowledge_state
+        checksum_state = self.confirmed_snapshot_checksum.knowledge_state
         if self.action is GuidedBuildAction.PREVIEW:
             if (
-                state is not KnowledgeState.UNKNOWN
+                submission_state is not KnowledgeState.UNKNOWN
+                or result_state is not KnowledgeState.UNKNOWN
+                or checksum_state is not KnowledgeState.UNKNOWN
                 or self.state is not GuidedBuildState.REVIEW_REQUIRED
             ):
-                raise ValueError("PREVIEW must retain REVIEW_REQUIRED without a submission")
-        elif state is not KnowledgeState.PRESENT or self.state is not GuidedBuildState.BUILT:
-            raise ValueError("CONFIRM must emit a BUILT reviewed canonical submission")
+                raise ValueError("PREVIEW must retain REVIEW_REQUIRED without an executable result")
+        elif (
+            submission_state is not KnowledgeState.PRESENT
+            or result_state is not KnowledgeState.PRESENT
+            or checksum_state is not KnowledgeState.PRESENT
+            or self.state is not GuidedBuildState.BUILT
+            or self.submission_audit_snapshot.value is None
+            or self.canonical_result.value is None
+            or self.confirmed_snapshot_checksum.value is None
+        ):
+            raise ValueError(
+                "CONFIRM must atomically emit a BUILT audit snapshot and canonical result"
+            )
+        elif self.confirmed_snapshot_checksum.value != _confirmed_snapshot_checksum(
+            preview_checksum=self.preview_checksum,
+            submission=self.submission_audit_snapshot.value,
+            result=self.canonical_result.value,
+        ):
+            raise ValueError("confirmed guided snapshot checksum mismatch")
         return self
+
+
+def _raw_guided_contract_tree(
+    value: object,
+    *,
+    seen: set[int] | None = None,
+) -> object:
+    """Expose public runtime state before Pydantic can omit invalid extras."""
+
+    if seen is None:
+        seen = set()
+    tracked = isinstance(value, (BaseModel, Mapping, list, tuple, set, frozenset))
+    identity = id(value)
+    if tracked:
+        if identity in seen:
+            raise ValueError("guided runtime tree contains a recursive container cycle")
+        seen.add(identity)
+    try:
+        if isinstance(value, BaseModel):
+            raw_values = value.__dict__
+            if type(raw_values) is not dict:
+                raise ValueError(
+                    "guided runtime model state must be exact builtin dict, "
+                    f"got {type(raw_values).__name__}"
+                )
+            declared_fields = type(value).model_fields
+            payload: dict[object, object] = {
+                field_name: _raw_guided_contract_tree(raw_values[field_name], seen=seen)
+                for field_name in declared_fields
+                if field_name in raw_values
+            }
+            for field_name in raw_values:
+                if not isinstance(field_name, str):
+                    raise ValueError(
+                        f"guided runtime model state key {field_name!r} is not canonical"
+                    )
+                if field_name in declared_fields or field_name.startswith("_"):
+                    continue
+                raise ValueError(
+                    f"guided runtime model has non-canonical undeclared public field {field_name!r}"
+                )
+            extra_values = value.__pydantic_extra__
+            if extra_values is not None:
+                if type(extra_values) is not dict:
+                    raise ValueError(
+                        "guided runtime Pydantic extras must use exact builtin dict, "
+                        f"got {type(extra_values).__name__}"
+                    )
+                if extra_values:
+                    extra_field = next(iter(extra_values))
+                    raise ValueError(
+                        "guided runtime model has non-canonical undeclared Pydantic "
+                        f"extra field {extra_field!r}"
+                    )
+                raise ValueError(
+                    "guided runtime model has a non-canonical empty Pydantic extra store"
+                )
+            return payload
+        if isinstance(value, Mapping):
+            if type(value) is not dict:
+                raise ValueError(
+                    "guided runtime container type must be exact builtin dict, "
+                    f"got {type(value).__name__}"
+                )
+            mapping_payload: dict[object, object] = {}
+            for key, item in value.items():
+                raw_key = _raw_guided_contract_tree(key, seen=seen)
+                raw_item = _raw_guided_contract_tree(item, seen=seen)
+                try:
+                    mapping_payload[raw_key] = raw_item
+                except TypeError as exc:
+                    raise ValueError("guided runtime mapping key is not canonical") from exc
+            return mapping_payload
+        if isinstance(value, (list, tuple, set, frozenset)):
+            if type(value) not in {list, tuple, set, frozenset}:
+                raise ValueError(
+                    "guided runtime container type must be an exact builtin, "
+                    f"got {type(value).__name__}"
+                )
+            return tuple(_raw_guided_contract_tree(item, seen=seen) for item in value)
+        if isinstance(value, Enum):
+            enum_state = value.__dict__
+            if type(enum_state) is not dict:
+                raise ValueError(
+                    "guided runtime enum state must be exact builtin dict, "
+                    f"got {type(enum_state).__name__}"
+                )
+            public_enum_fields = tuple(
+                field_name
+                for field_name in enum_state
+                if not isinstance(field_name, str) or not field_name.startswith("_")
+            )
+            if public_enum_fields:
+                raise ValueError(
+                    f"guided runtime enum has non-canonical public state {public_enum_fields!r}"
+                )
+            return value
+        if isinstance(value, (str, int, float, bool, bytes)) and type(value) not in {
+            str,
+            int,
+            float,
+            bool,
+            bytes,
+        }:
+            raise ValueError(
+                "guided runtime scalar type must be an exact builtin or canonical enum, "
+                f"got {type(value).__name__}"
+            )
+        return value
+    finally:
+        if tracked:
+            seen.remove(identity)
+
+
+def _assert_exact_guided_model_types(
+    actual: object,
+    canonical: object,
+    *,
+    path: str = "$",
+    seen: set[tuple[int, int]] | None = None,
+) -> None:
+    """Reject non-canonical models and container interchange anywhere in a draft."""
+
+    if seen is None:
+        seen = set()
+    identity = (id(actual), id(canonical))
+    if identity in seen:
+        return
+    seen.add(identity)
+    if isinstance(canonical, BaseModel):
+        if type(actual) is not type(canonical):
+            raise ValueError(
+                f"guided runtime type at {path} must be exact canonical "
+                f"{type(canonical).__name__}, got {type(actual).__name__}"
+            )
+        actual_values = actual.__dict__
+        canonical_values = canonical.__dict__
+        for field_name in type(canonical).model_fields:
+            if field_name not in actual_values or field_name not in canonical_values:
+                raise ValueError(f"guided runtime field {path}.{field_name} is not canonical")
+            _assert_exact_guided_model_types(
+                actual_values[field_name],
+                canonical_values[field_name],
+                path=f"{path}.{field_name}",
+                seen=seen,
+            )
+        return
+    if type(canonical) is dict:
+        if type(actual) is not dict or len(actual) != len(canonical):
+            raise ValueError(f"guided runtime mapping at {path} is not canonical")
+        unmatched_mapping_items = list(canonical.items())
+        for index, (actual_key, actual_item) in enumerate(actual.items()):
+            match_index = next(
+                (
+                    candidate_index
+                    for candidate_index, (canonical_key, _) in enumerate(unmatched_mapping_items)
+                    if type(actual_key) is type(canonical_key) and actual_key == canonical_key
+                ),
+                None,
+            )
+            if match_index is None:
+                raise ValueError(f"guided runtime mapping key at {path} is not canonical")
+            canonical_key, canonical_item = unmatched_mapping_items.pop(match_index)
+            _assert_exact_guided_model_types(
+                actual_key,
+                canonical_key,
+                path=f"{path}.<key:{index}>",
+                seen=seen,
+            )
+            _assert_exact_guided_model_types(
+                actual_item,
+                canonical_item,
+                path=f"{path}[{canonical_key!r}]",
+                seen=seen,
+            )
+        return
+    if type(canonical) in {list, tuple}:
+        if type(actual) is not type(canonical):
+            raise ValueError(f"guided runtime container at {path} is not canonical")
+        actual_sequence = cast(list[object] | tuple[object, ...], actual)
+        canonical_sequence = cast(list[object] | tuple[object, ...], canonical)
+        if len(actual_sequence) != len(canonical_sequence):
+            raise ValueError(f"guided runtime container at {path} is not canonical")
+        for index, (actual_item, canonical_item) in enumerate(
+            zip(actual_sequence, canonical_sequence, strict=True)
+        ):
+            _assert_exact_guided_model_types(
+                actual_item,
+                canonical_item,
+                path=f"{path}[{index}]",
+                seen=seen,
+            )
+        return
+    if type(canonical) in {set, frozenset}:
+        if type(actual) is not type(canonical):
+            raise ValueError(f"guided runtime container at {path} is not canonical")
+        actual_set = cast(set[object] | frozenset[object], actual)
+        canonical_set = cast(set[object] | frozenset[object], canonical)
+        if len(actual_set) != len(canonical_set):
+            raise ValueError(f"guided runtime container at {path} is not canonical")
+        unmatched_set_items = list(canonical_set)
+        for index, actual_item in enumerate(actual_set):
+            match_index = next(
+                (
+                    candidate_index
+                    for candidate_index, canonical_item in enumerate(unmatched_set_items)
+                    if type(actual_item) is type(canonical_item) and actual_item == canonical_item
+                ),
+                None,
+            )
+            if match_index is None:
+                raise ValueError(f"guided runtime set item at {path}[{index}] is not canonical")
+            canonical_item = unmatched_set_items.pop(match_index)
+            _assert_exact_guided_model_types(
+                actual_item,
+                canonical_item,
+                path=f"{path}[{index}]",
+                seen=seen,
+            )
+        return
+    if type(actual) is not type(canonical):
+        raise ValueError(
+            f"guided runtime type at {path} must be exact canonical "
+            f"{type(canonical).__name__}, got {type(actual).__name__}"
+        )
+
+
+def _canonical_guided_request(
+    request: GuidedQuickDesignBuildRequest,
+) -> GuidedQuickDesignBuildRequest:
+    if type(request) is not GuidedQuickDesignBuildRequest:
+        raise ValueError(
+            "guided runtime type at $ must be exact canonical "
+            f"GuidedQuickDesignBuildRequest, got {type(request).__name__}"
+        )
+    assert_no_final_scientific_fields(_raw_guided_contract_tree(request))
+    try:
+        canonical = GuidedQuickDesignBuildRequest.model_validate(
+            GuidedQuickDesignBuildRequest.model_dump(
+                request,
+                mode="python",
+                round_trip=True,
+                warnings="none",
+            )
+        )
+    except ValueError:
+        raise
+    except Exception as exc:
+        raise ValueError(f"guided runtime tree cannot be canonicalized: {exc}") from exc
+    _assert_exact_guided_model_types(request, canonical)
+    return canonical
+
+
+def _confirmed_snapshot_checksum(
+    *,
+    preview_checksum: str,
+    submission: QuickDesignV8Submission,
+    result: QuickDesignV8Result,
+) -> str:
+    return content_checksum(
+        {
+            "preview_checksum": preview_checksum,
+            "submission_audit_snapshot": submission.model_dump(mode="json"),
+            "canonical_result": result.model_dump(mode="json"),
+        }
+    )
+
+
+def _build_confirmation_event(
+    *,
+    support: SupportDescriptor,
+    evidence_id: str,
+    scope_id: str,
+    value: KnowledgeValue[Any],
+    actor_role: str,
+    created_at: datetime,
+) -> ConfirmationEvent:
+    confirmed_value = KnowledgeValue[JsonValue].model_validate(value.model_dump(mode="json"))
+    body = {
+        "support": support.model_dump(mode="json"),
+        "evidence_refs": (evidence_id,),
+        "scope_id": scope_id,
+        "confirmed_value": confirmed_value.model_dump(mode="json"),
+        "actor_role": actor_role,
+        "review_independent": False,
+        "sensitivity_record_ids": (),
+        "created_at": created_at.isoformat(),
+    }
+    body_checksum = content_checksum(body)
+    return ConfirmationEvent(
+        event_id=f"CONF-QD-{body_checksum[:20]}",
+        support=support,
+        evidence_refs=(evidence_id,),
+        scope_id=scope_id,
+        confirmed_value=confirmed_value,
+        actor_role=actor_role,
+        review_independent=False,
+        created_at=created_at,
+    )
 
 
 def _answer_knowledge(
@@ -418,6 +778,8 @@ def _draft_ids(draft: GuidedQuickDesignDraft) -> tuple[str, str]:
 def _question_queue(
     bundle: ConformanceBundle,
     predicate_values: dict[str, KnowledgeValue[Any]],
+    *,
+    query_id: str,
 ) -> tuple[GuidedTheoryQuestion, ...]:
     clause_ids_by_predicate: dict[str, list[str]] = {}
     rationales_by_predicate: dict[str, list[str]] = {}
@@ -454,13 +816,32 @@ def _question_queue(
                 theory_clause_ids=clause_ids,
                 required_predicate_rationales=required_rationales,
                 known_gap_rationales=known_gap_rationales,
-                text=" ".join(required_rationales),
-                evidence_required=required_rationales,
+                text=(
+                    f"Review unresolved predicate `{predicate_id}`. The retained Theory "
+                    "requirements are recorded separately; this wording and queue order "
+                    "have not received scientific priority review."
+                ),
+                priority_review=ScientificReviewRequirement(
+                    issue_id=GUIDED_QUESTION_PRIORITY_REVIEW_ISSUE_ID,
+                    rationale=(
+                        "Question/evidence ordering and evidence-request contracts have not "
+                        "received independent scientific review; display order is not a "
+                        "Theory-derived priority."
+                    ),
+                ),
+                evidence_required=KnowledgeValue[tuple[NonBlankStr, ...]](
+                    knowledge_state=KnowledgeState.UNKNOWN,
+                    rationale=(
+                        "The reviewed Theory/Profile assets do not define a concrete "
+                        "evidence-request contract for this predicate."
+                    ),
+                    query_scope_id=query_id,
+                ),
             )
         )
     if not questions:
         raise QuickDesignScientificReviewRequired(
-            "the guided profile emitted no unresolved Theory predicate for primary review"
+            "the guided profile emitted no unresolved Theory predicate for review focus"
         )
     return tuple(questions)
 
@@ -477,6 +858,7 @@ def _artifact_previews(
             "experiment_block_id",
             "factor_id",
             "factor_level",
+            "cohort_id",
             "planned_unit_type",
             "endpoint_id",
             "timepoint_id",
@@ -492,6 +874,7 @@ def _artifact_previews(
                     block_id,
                     draft.factor_id,
                     group.factor_level,
+                    group.cohort_id.value or "UNKNOWN",
                     planned_unit,
                     draft.endpoint_id,
                     draft.timepoint_id,
@@ -530,6 +913,12 @@ def _artifact_previews(
         f"Intervention: {intervention}. Exposure pathway: {pathway}. Exposure container: "
         f"{container}. User-reviewed interference status: {draft.interference.status.value} "
         f"({draft.interference.rationale}).\n\n"
+        "Lifecycle cohort IDs by planned group (user reviewed): "
+        + ", ".join(
+            f"{group.group_id}={group.cohort_id.value or 'UNKNOWN'}"
+            for group in draft.planned_groups
+        )
+        + ".\n\n"
         "Experimental-unit identity, independence, interference consequences and design "
         "adequacy are not inferred by this draft. Counts below are planned counts only.\n"
     )
@@ -649,7 +1038,7 @@ def _build_preview_parts(
         query_id=query_id,
         assignment_event_id=assignment_event_id,
     )
-    queue = _question_queue(bundle, predicates)
+    queue = _question_queue(bundle, predicates, query_id=query_id)
     artifacts = _artifact_previews(draft, block_id)
     provided = tuple(
         sorted(
@@ -672,6 +1061,7 @@ def _build_preview_parts(
         unknown_field_ids=unknown,
         planned_group_count=len(draft.planned_groups),
         planned_unit_total=sum(group.planned_count for group in draft.planned_groups),
+        known_profile_gaps=bundle.profile_closure.known_gaps,
     )
     preview_checksum = content_checksum(
         {
@@ -735,11 +1125,21 @@ def _build_submission(
     if confirmation.preview_checksum != preview_checksum:
         raise ValueError("preview checksum differs from the recomputed guided draft")
     unresolved_ids = {question.predicate_id for question in question_queue}
-    if confirmation.primary_predicate_id not in unresolved_ids:
-        raise ValueError("primary predicate must be selected from the retained Theory queue")
+    if confirmation.review_focus_predicate_id not in unresolved_ids:
+        raise ValueError("review focus must be selected from the retained Theory queue")
     if draft.planned_unit_type.status is not GuidedAnswerStatus.PROVIDED:
         raise QuickDesignScientificReviewRequired(
             "planned_unit_count requires a user-provided unit type and fully resolved scope"
+        )
+    missing_cohort_groups = tuple(
+        group.group_id
+        for group in draft.planned_groups
+        if group.cohort_id.status is not GuidedAnswerStatus.PROVIDED
+    )
+    if missing_cohort_groups:
+        raise _GuidedCountScopeScientificReviewRequired(
+            "planned_unit_count requires an explicit user-declared lifecycle cohort_id "
+            "for every group; unresolved groups: " + ", ".join(missing_cohort_groups)
         )
 
     evidence_id = stable_id("EV-QD-REVIEW", preview_checksum)
@@ -949,7 +1349,12 @@ def _build_submission(
                 query=query,
                 unit_type=planned_unit_value,
                 group_id=_present(group.group_id, evidence_id=evidence_id, query_id=query_id),
-                cohort_id=_present(group.group_id, evidence_id=evidence_id, query_id=query_id),
+                cohort_id=_answer_knowledge(
+                    group.cohort_id,
+                    field_name=f"planned_group[{group.group_id}].cohort_id",
+                    evidence_id=evidence_id,
+                    query_id=query_id,
+                ),
                 condition=_present(group.factor_level, evidence_id=evidence_id, query_id=query_id),
                 lifecycle_phase=lifecycle,
                 evidence_id=evidence_id,
@@ -1052,14 +1457,12 @@ def _build_submission(
         original_text=json.dumps(draft.model_dump(mode="json"), sort_keys=True, ensure_ascii=False),
     )
     confirmation_events = tuple(
-        ConfirmationEvent(
-            event_id=stable_id("CONF-QD", preview_checksum, predicate_id),
+        _build_confirmation_event(
             support=support,
-            evidence_refs=(evidence_id,),
+            evidence_id=evidence_id,
             scope_id=predicate_id,
-            confirmed_value=KnowledgeValue[JsonValue].model_validate(value.model_dump(mode="json")),
+            value=value,
             actor_role=confirmation.actor_role,
-            review_independent=False,
             created_at=confirmation.confirmed_at,
         )
         for predicate_id, value in predicates.items()
@@ -1104,8 +1507,11 @@ def _build_submission(
             question_id=question.question_id,
             inferential_query_id=query_id,
             text=question.text,
-            evidence_required=question.evidence_required,
-            primary=question.predicate_id == confirmation.primary_predicate_id,
+            evidence_required=(
+                "SCIENTIFIC_REVIEW_REQUIRED:"
+                f"{question.priority_review.issue_id}:evidence_request_contract_unknown",
+            ),
+            primary=question.predicate_id == confirmation.review_focus_predicate_id,
         )
         for question in question_queue
     )
@@ -1176,6 +1582,11 @@ def _build_submission(
             "Experimental-unit identity, interference consequences and design adequacy remain "
             "Theory-governed outputs.",
             "ScenarioCoverage is NON_EXHAUSTIVE under SRR-V8-008.",
+            "ReportQuestion.primary records only the user-selected review focus; it is not "
+            "a Theory-reviewed question priority (SRR-V8-025).",
+            *tuple(
+                f"Profile known gap: {known_gap}" for known_gap in bundle.profile_closure.known_gaps
+            ),
         ),
     )
     validate_raw_wizard_submission(submission)
@@ -1189,7 +1600,7 @@ def build_guided_quick_design(
 ) -> GuidedQuickDesignBuildResponse:
     """Preview or confirm one deterministic guided draft without a legacy resolver."""
 
-    request = GuidedQuickDesignBuildRequest.model_validate(request.model_dump(mode="python"))
+    request = _canonical_guided_request(request)
     bundle = conformance_bundle or load_runtime_bundle()
     (
         preview_checksum,
@@ -1201,9 +1612,19 @@ def build_guided_quick_design(
         summary,
     ) = _build_preview_parts(request.draft, bundle)
     if request.action is GuidedBuildAction.PREVIEW:
-        submission: KnowledgeValue[QuickDesignV8Submission] = KnowledgeValue(
+        submission_audit_snapshot: KnowledgeValue[QuickDesignV8Submission] = KnowledgeValue(
             knowledge_state=KnowledgeState.UNKNOWN,
-            rationale="The user has not confirmed this exact guided preview checksum.",
+            rationale=("PREVIEW is review-only; no confirmed submission audit snapshot exists."),
+            query_scope_id=query_id,
+        )
+        canonical_result: KnowledgeValue[QuickDesignV8Result] = KnowledgeValue(
+            knowledge_state=KnowledgeState.UNKNOWN,
+            rationale="PREVIEW does not execute the canonical Quick Design lane.",
+            query_scope_id=query_id,
+        )
+        confirmed_snapshot_checksum: KnowledgeValue[str] = KnowledgeValue(
+            knowledge_state=KnowledgeState.UNKNOWN,
+            rationale="A confirmed snapshot checksum exists only after atomic CONFIRM.",
             query_scope_id=query_id,
         )
     else:
@@ -1217,9 +1638,30 @@ def build_guided_quick_design(
             question_queue=question_queue,
         )
         evidence_ids = tuple(record.evidence_id for record in built.input_ledger.evidence_records)
-        submission = KnowledgeValue(
+        result = run_quick_design_v8(
+            built,
+            conformance_bundle=bundle,
+        )
+        snapshot_checksum = _confirmed_snapshot_checksum(
+            preview_checksum=preview_checksum,
+            submission=built,
+            result=result,
+        )
+        submission_audit_snapshot = KnowledgeValue(
             knowledge_state=KnowledgeState.PRESENT,
             value=built,
+            evidence_ids=evidence_ids,
+            query_scope_id=query_id,
+        )
+        canonical_result = KnowledgeValue(
+            knowledge_state=KnowledgeState.PRESENT,
+            value=result,
+            evidence_ids=evidence_ids,
+            query_scope_id=query_id,
+        )
+        confirmed_snapshot_checksum = KnowledgeValue(
+            knowledge_state=KnowledgeState.PRESENT,
+            value=snapshot_checksum,
             evidence_ids=evidence_ids,
             query_scope_id=query_id,
         )
@@ -1235,32 +1677,30 @@ def build_guided_quick_design(
         visible_questions=question_queue[:3],
         question_queue=question_queue,
         artifact_previews=artifact_previews,
-        submission=submission,
+        submission_audit_snapshot=submission_audit_snapshot,
+        canonical_result=canonical_result,
+        confirmed_snapshot_checksum=confirmed_snapshot_checksum,
     )
 
 
 def run_confirmed_guided_quick_design(
     response: GuidedQuickDesignBuildResponse,
-    *,
-    conformance_bundle: ConformanceBundle | None = None,
 ) -> QuickDesignV8Result:
-    """Exercise the canonical endpoint-equivalent lane for a confirmed builder response."""
+    """Return the result already executed atomically by guided CONFIRM."""
 
     response = GuidedQuickDesignBuildResponse.model_validate(response.model_dump(mode="python"))
     if (
         response.action is not GuidedBuildAction.CONFIRM
-        or response.submission.knowledge_state is not KnowledgeState.PRESENT
-        or response.submission.value is None
+        or response.canonical_result.knowledge_state is not KnowledgeState.PRESENT
+        or response.canonical_result.value is None
     ):
-        raise ValueError("only a confirmed guided response can enter the canonical lane")
-    validate_raw_wizard_submission(response.submission.value)
-    return run_quick_design_v8(
-        response.submission.value,
-        conformance_bundle=conformance_bundle or load_runtime_bundle(),
-    )
+        raise ValueError("only an atomically confirmed guided response has a canonical result")
+    return response.canonical_result.value
 
 
 __all__ = [
+    "GUIDED_QUESTION_PRIORITY_REVIEW_ISSUE_ID",
+    "GUIDED_SAMPLE_SHEET_MAX_ROWS",
     "GuidedAnswerStatus",
     "GuidedBuildAction",
     "GuidedBuildState",
@@ -1268,6 +1708,7 @@ __all__ = [
     "GuidedInterferenceAnswer",
     "GuidedInterferenceStatus",
     "GuidedPlannedGroup",
+    "GuidedQuestionPriorityState",
     "GuidedQuickDesignBuildRequest",
     "GuidedQuickDesignBuildResponse",
     "GuidedQuickDesignConfirmation",

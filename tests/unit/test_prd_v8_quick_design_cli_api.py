@@ -142,6 +142,8 @@ def test_v8_quick_design_api_returns_canonical_neutral_report() -> None:
         "code": "PRD_V8",
         "version": "8.0.0",
         "strategy_module_status": "HANDOFF_ONLY",
+        "input_mode": "RAW_AUTHOR_ASSERTED",
+        "guided_confirmation": False,
     }
     assert body["planned_design"]["plan_id"].startswith("PLAN-")
     assert body["report"]["report_id"].startswith("REPORT-")

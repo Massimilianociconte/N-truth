@@ -170,11 +170,13 @@ def _draft(*, planned_unit_available: bool = True) -> object:
         planned_groups=(
             module.GuidedPlannedGroup(
                 group_id="vehicle",
+                cohort_id=provided("cohort-vehicle"),
                 factor_level="vehicle",
                 planned_count=2,
             ),
             module.GuidedPlannedGroup(
                 group_id="drug",
+                cohort_id=provided("cohort-drug"),
                 factor_level="drug",
                 planned_count=2,
             ),
@@ -192,18 +194,24 @@ def _preview(draft: object | None = None) -> object:
     )
 
 
-def _confirm(preview: object, draft: object | None = None) -> object:
+def _confirm(
+    preview: object,
+    draft: object | None = None,
+    *,
+    actor_role: str = "researcher",
+    confirmed_at: datetime = datetime(2026, 8, 9, 8, 30, tzinfo=UTC),
+) -> object:
     module = _guided()
-    primary = preview.visible_questions[0]
+    review_focus = preview.visible_questions[0]
     return module.build_guided_quick_design(
         module.GuidedQuickDesignBuildRequest(
             action="CONFIRM",
             draft=draft or _draft(),
             confirmation=module.GuidedQuickDesignConfirmation(
                 preview_checksum=preview.preview_checksum,
-                primary_predicate_id=primary.predicate_id,
-                actor_role="researcher",
-                confirmed_at=datetime(2026, 8, 9, 8, 30, tzinfo=UTC),
+                review_focus_predicate_id=review_focus.predicate_id,
+                actor_role=actor_role,
+                confirmed_at=confirmed_at,
             ),
         )
     )
@@ -216,7 +224,8 @@ def test_guided_preview_is_deterministic_and_retains_the_full_theory_question_qu
     second = _preview()
 
     assert first == second
-    assert first.submission.knowledge_state is KnowledgeState.UNKNOWN
+    assert first.submission_audit_snapshot.knowledge_state is KnowledgeState.UNKNOWN
+    assert first.canonical_result.knowledge_state is KnowledgeState.UNKNOWN
     assert len(first.visible_questions) == 3
     assert len(first.question_queue) > len(first.visible_questions)
     assert first.visible_questions == first.question_queue[:3]
@@ -232,12 +241,8 @@ def test_guided_preview_is_deterministic_and_retains_the_full_theory_question_qu
     assert first.contract_code == "NTRUTH_QUICK_DESIGN_GUIDED_V8"
     assert first.contract_version == "8.0.0"
     assert first.state == "REVIEW_REQUIRED"
-    assert first.next_endpoint == "/v8/quick-design"
     assert all(question.required_predicate_rationales for question in first.question_queue)
-    assert all(
-        question.text == " ".join(question.required_predicate_rationales)
-        for question in first.question_queue
-    )
+    assert all(question.priority_state == "UNREVIEWED" for question in first.question_queue)
 
 
 def test_guided_confirmation_builds_only_user_supported_canonical_facts() -> None:
@@ -246,10 +251,11 @@ def test_guided_confirmation_builds_only_user_supported_canonical_facts() -> Non
     module = _guided()
     preview = _preview()
     confirmed = _confirm(preview)
-    submission = confirmed.submission.value
+    submission = confirmed.submission_audit_snapshot.value
     assert submission is not None
 
-    assert confirmed.submission.knowledge_state is KnowledgeState.PRESENT
+    assert confirmed.submission_audit_snapshot.knowledge_state is KnowledgeState.PRESENT
+    assert confirmed.canonical_result.knowledge_state is KnowledgeState.PRESENT
     assert confirmed.preview_checksum == preview.preview_checksum
     assert confirmed.state == "BUILT"
     assert confirmed.artifact_previews == submission.input_ledger.artifacts
@@ -344,14 +350,14 @@ def test_guided_confirmation_builds_only_user_supported_canonical_facts() -> Non
     assert result.report_bundle.strategy_module_status.value == "HANDOFF_ONLY"
 
 
-def test_guided_confirmation_recomputes_checksum_and_primary_question() -> None:
-    """Catches confirming a stale preview or a non-Theory primary predicate."""
+def test_guided_confirmation_recomputes_checksum_and_review_focus() -> None:
+    """Catches confirming a stale preview or a non-Theory review focus."""
 
     module = _guided()
     preview = _preview()
     for checksum, predicate_id, match in (
         ("0" * 64, preview.visible_questions[0].predicate_id, "checksum"),
-        (preview.preview_checksum, "not-a-theory-predicate", "primary"),
+        (preview.preview_checksum, "not-a-theory-predicate", "review focus"),
     ):
         with pytest.raises(ValueError, match=match):
             module.build_guided_quick_design(
@@ -360,7 +366,7 @@ def test_guided_confirmation_recomputes_checksum_and_primary_question() -> None:
                     draft=_draft(),
                     confirmation=module.GuidedQuickDesignConfirmation(
                         preview_checksum=checksum,
-                        primary_predicate_id=predicate_id,
+                        review_focus_predicate_id=predicate_id,
                         actor_role="researcher",
                         confirmed_at=datetime(2026, 8, 9, 8, 30, tzinfo=UTC),
                     ),
@@ -376,7 +382,7 @@ def test_guided_confirmation_requires_timezone_aware_review_time() -> None:
     with pytest.raises(ValueError, match=r"timezone|fuso|offset"):
         module.GuidedQuickDesignConfirmation(
             preview_checksum=preview.preview_checksum,
-            primary_predicate_id=preview.visible_questions[0].predicate_id,
+            review_focus_predicate_id=preview.visible_questions[0].predicate_id,
             actor_role="researcher",
             confirmed_at=datetime(2026, 8, 9, 8, 30),
         )
@@ -406,7 +412,7 @@ def test_guided_event_unit_sets_are_not_copied_between_causal_axes() -> None:
         }
     )
     confirmed = _confirm(_preview(missing_application_ids), missing_application_ids)
-    submission = confirmed.submission.value
+    submission = confirmed.submission_audit_snapshot.value
     assert submission is not None
     assignment, application, exposure = submission.planned_event_registry.events
 

@@ -281,7 +281,7 @@ def create_app() -> Any:
 
     @api.post("/v8/quick-design")
     def quick_design_v8(payload: QuickDesignV8Submission) -> dict[str, Any]:
-        """Canonical prospective flow; claims come only from the v8 pipeline."""
+        """Raw author-asserted prospective flow; never a guided confirmation lane."""
 
         from ntruth.derivation_theory.runtime import load_runtime_bundle
 
@@ -311,6 +311,8 @@ def create_app() -> Any:
                 "code": "PRD_V8",
                 "version": "8.0.0",
                 "strategy_module_status": result.report_bundle.strategy_module_status.value,
+                "input_mode": "RAW_AUTHOR_ASSERTED",
+                "guided_confirmation": False,
             },
         }
 
@@ -318,7 +320,7 @@ def create_app() -> Any:
     def build_quick_design_submission(
         payload: GuidedQuickDesignBuildRequest,
     ) -> dict[str, Any]:
-        """Build one strict canonical submission from reviewed guided fields."""
+        """Preview, or atomically confirm and execute, reviewed guided fields."""
 
         try:
             response = build_guided_quick_design(payload)
