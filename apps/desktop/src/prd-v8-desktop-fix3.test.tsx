@@ -277,6 +277,90 @@ async function readdressConfirmedSnapshot(response: Record<string, unknown>): Pr
   );
 }
 
+async function readdressRawResult(response: Record<string, unknown>): Promise<void> {
+  const canonical = response.canonical_result as Record<string, unknown>;
+  const raw = canonical.value as Record<string, unknown>;
+  const report = raw.report_bundle as Record<string, unknown>;
+  const contexts = report.verified_pipeline_contexts as Array<Record<string, unknown>>;
+  const context = contexts[0];
+  const { context_id: _contextId, content_checksum: _contextChecksum, ...contextBody } =
+    context;
+  const contextChecksum = await sha256Hex(pythonJson(contextBody));
+  context.content_checksum = contextChecksum;
+  context.context_id = `PIPELINE-CONTEXT-${contextChecksum.slice(0, 20)}`;
+  const { report_id: _reportId, content_checksum: _reportChecksum, ...reportBody } =
+    report;
+  const reportChecksum = await sha256Hex(pythonJson(reportBody));
+  report.content_checksum = reportChecksum;
+  report.report_id = `REPORT-${reportChecksum.slice(0, 20)}`;
+  await readdressConfirmedSnapshot(response);
+}
+
+function forgeExecutionManifest(response: Record<string, unknown>): string {
+  const canonical = response.canonical_result as Record<string, unknown>;
+  const raw = canonical.value as Record<string, unknown>;
+  const pipeline = raw.pipeline_result as Record<string, unknown>;
+  const manifest = structuredClone(
+    pipeline.execution_manifest,
+  ) as Record<string, unknown>;
+  const forgedTheoryChecksum = "0".repeat(64);
+  const forgedRuleChecksum = "1".repeat(64);
+  const forgedImplementationChecksum = "2".repeat(64);
+  Object.assign(manifest, {
+    manifest_id: "FORGED-MANIFEST-V8",
+    theory_id: "FORGED-THEORY-V8",
+    theory_version: "99.0.0",
+    theory_checksum: forgedTheoryChecksum,
+    rulebook_id: "FORGED-RULEBOOK-V8",
+    rulebook_version: "99.0.0",
+    rulebook_checksum: forgedRuleChecksum,
+    profile_closure_asset_id: "FORGED-PROFILE-CLOSURE",
+    profile_closure_asset_version: "99.0.0",
+    profile_closure_checksum: "3".repeat(64),
+    reference_registry_id: "FORGED-REFERENCE-REGISTRY",
+    reference_registry_version: "99.0.0",
+    reference_registry_checksum: "4".repeat(64),
+    fixture_set_id: "FORGED-FIXTURE-SET",
+    fixture_set_version: "99.0.0",
+    fixture_set_checksum: "5".repeat(64),
+    evaluator_registry_id: "FORGED-EVALUATOR-REGISTRY",
+    evaluator_registry_version: "99.0.0",
+    evaluator_registry_checksum: "6".repeat(64),
+    release_blocker_issue_ids: ["FORGED-RELEASE-BLOCKER"],
+  });
+  for (const pin of manifest.implementation_rules as Array<Record<string, unknown>>) {
+    Object.assign(pin, {
+      theory_id: "FORGED-THEORY-V8",
+      theory_version: "99.0.0",
+      theory_checksum: forgedTheoryChecksum,
+      rule_version: "99.0.0",
+      rule_checksum: forgedRuleChecksum,
+      theory_clause_version: "99.0.0",
+      implementation_artifact_version: "99.0.0",
+      implementation_artifact_checksum: forgedImplementationChecksum,
+      required_predicate_ids: ["forged_predicate"],
+      irrelevant_predicates: [],
+    });
+  }
+  Object.assign(manifest.adequacy_evaluator as Record<string, unknown>, {
+    theory_id: "FORGED-THEORY-V8",
+    theory_version: "99.0.0",
+    theory_checksum: forgedTheoryChecksum,
+    theory_clause_version: "99.0.0",
+    rule_version: "99.0.0",
+    rule_checksum: forgedRuleChecksum,
+    implementation_artifact_version: "99.0.0",
+    implementation_artifact_checksum: forgedImplementationChecksum,
+  });
+  pipeline.execution_manifest = structuredClone(manifest);
+  const report = raw.report_bundle as Record<string, unknown>;
+  report.execution_manifest = structuredClone(manifest);
+  const contexts = report.verified_pipeline_contexts as Array<Record<string, unknown>>;
+  const resultPayload = contexts[0].result_payload as Record<string, unknown>;
+  resultPayload.execution_manifest = structuredClone(manifest);
+  return forgedTheoryChecksum;
+}
+
 function pythonJson(value: unknown): string {
   if (value === null || typeof value === "boolean" || typeof value === "number") {
     return JSON.stringify(value);
@@ -363,6 +447,21 @@ describe("PRD v8 Desktop strict runtime boundaries", () => {
       },
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a fully readdressed execution manifest detached from the reviewed bundle", async () => {
+    const draft = validDraft();
+    const response = await confirmedResponse(draft);
+    const forgedTheoryChecksum = forgeExecutionManifest(response);
+    await readdressRawResult(response);
+    const fetchMock = vi.fn(async () => jsonResponse(response));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      api.buildQuickDesignSubmission({ action: "CONFIRM", draft }),
+    ).rejects.toThrow(/malformed PRD v8 build response/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(response)).toContain(forgedTheoryChecksum);
   });
 
   it.each([

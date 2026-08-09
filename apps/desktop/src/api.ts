@@ -803,6 +803,218 @@ function isExecutionManifest(value: unknown): boolean {
   );
 }
 
+async function expectedExecutionManifest(
+  bundle: JsonRecord,
+): Promise<JsonRecord | undefined> {
+  const theory = bundle.theory;
+  const rulebook = bundle.rulebook;
+  const profile = bundle.profile_closure;
+  const referenceRegistry = bundle.reference_registry;
+  const fixtureSet = bundle.fixture_set;
+  const evaluatorRegistry = bundle.evaluator_registry;
+  if (
+    !isRecord(theory) ||
+    !isRecord(rulebook) ||
+    !isRecord(profile) ||
+    !isRecord(referenceRegistry) ||
+    !isRecord(fixtureSet) ||
+    !isRecord(evaluatorRegistry) ||
+    !Array.isArray(theory.clauses) ||
+    !Array.isArray(rulebook.rules) ||
+    rulebook.rules.length < 7 ||
+    !Array.isArray(rulebook.scientific_review_requirements) ||
+    !Array.isArray(referenceRegistry.slots) ||
+    !Array.isArray(evaluatorRegistry.artifact_pins)
+  ) {
+    return undefined;
+  }
+  const clauses = theory.clauses.filter(isRecord);
+  const evaluatorPins = evaluatorRegistry.artifact_pins.filter(isRecord);
+  if (clauses.length !== theory.clauses.length || evaluatorPins.length < 8) {
+    return undefined;
+  }
+  const implementationRules: JsonRecord[] = [];
+  const ruleChecksums: string[] = [];
+  const implementationChecksums: string[] = [];
+  for (const item of rulebook.rules) {
+    if (
+      !isRecord(item) ||
+      !isNonEmptyString(item.rule_id) ||
+      !isNonEmptyString(item.rule_version) ||
+      !isNonEmptyString(item.theory_clause_id) ||
+      !isNonEmptyString(item.theory_clause_version) ||
+      !Array.isArray(item.required_predicates) ||
+      item.required_predicates.length < 1 ||
+      !item.required_predicates.every(
+        (predicate) => isRecord(predicate) && isNonEmptyString(predicate.predicate_id),
+      ) ||
+      !Array.isArray(item.irrelevant_predicates) ||
+      item.irrelevant_predicates.length < 1
+    ) {
+      return undefined;
+    }
+    const clauseMatches = clauses.filter(
+      (clause) => clause.clause_id === item.theory_clause_id,
+    );
+    const pinMatches = evaluatorPins.filter(
+      (pin) =>
+        pin.evaluator_kind === "DERIVATION" &&
+        pin.theory_clause_id === item.theory_clause_id &&
+        pin.rule_id === item.rule_id,
+    );
+    if (clauseMatches.length !== 1 || pinMatches.length !== 1) return undefined;
+    const clause = clauseMatches[0];
+    const pin = pinMatches[0];
+    const ruleChecksum = await compactChecksum(item);
+    if (
+      ruleChecksum === undefined ||
+      !isNonEmptyString(clause.clause_version) ||
+      clause.clause_version !== item.theory_clause_version ||
+      !isNonEmptyString(pin.artifact_id) ||
+      !isNonEmptyString(pin.artifact_version) ||
+      !isSha256(pin.implementation_source_digest)
+    ) {
+      return undefined;
+    }
+    ruleChecksums.push(ruleChecksum);
+    implementationChecksums.push(pin.implementation_source_digest);
+    implementationRules.push({
+      schema_version: "8.0.0",
+      theory_id: theory.theory_id,
+      theory_version: theory.theory_version,
+      theory_checksum: theory.declared_checksum,
+      rule_id: item.rule_id,
+      rule_version: item.rule_version,
+      rule_checksum: ruleChecksum,
+      theory_clause_id: item.theory_clause_id,
+      theory_clause_version: item.theory_clause_version,
+      implementation_artifact_id: pin.artifact_id,
+      implementation_artifact_version: pin.artifact_version,
+      implementation_artifact_checksum: pin.implementation_source_digest,
+      required_predicate_ids: item.required_predicates.map(
+        (predicate) => (predicate as JsonRecord).predicate_id,
+      ),
+      irrelevant_predicates: item.irrelevant_predicates,
+    });
+  }
+  const adequacyRuleMatches = rulebook.rules.filter(
+    (rule) =>
+      isRecord(rule) && rule.theory_clause_id === "DT-E-INTERFERENCE-ESTIMAND",
+  );
+  const adequacyClauseMatches = clauses.filter(
+    (clause) => clause.clause_id === "DT-E-INTERFERENCE-ESTIMAND",
+  );
+  const adequacyPinMatches = evaluatorPins.filter(
+    (pin) =>
+      pin.evaluator_kind === "ADEQUACY" &&
+      pin.theory_clause_id === "DT-E-INTERFERENCE-ESTIMAND",
+  );
+  if (
+    adequacyRuleMatches.length !== 1 ||
+    adequacyClauseMatches.length !== 1 ||
+    adequacyPinMatches.length !== 1
+  ) {
+    return undefined;
+  }
+  const adequacyRule = adequacyRuleMatches[0] as JsonRecord;
+  const adequacyClause = adequacyClauseMatches[0];
+  const adequacyPin = adequacyPinMatches[0];
+  const adequacyRuleChecksum = await compactChecksum(adequacyRule);
+  if (
+    adequacyRuleChecksum === undefined ||
+    !isNonEmptyString(adequacyClause.clause_version) ||
+    !isNonEmptyString(adequacyPin.artifact_id) ||
+    !isNonEmptyString(adequacyPin.artifact_version) ||
+    !isSha256(adequacyPin.implementation_source_digest)
+  ) {
+    return undefined;
+  }
+  const adequacyEvaluator: JsonRecord = {
+    schema_version: "8.0.0",
+    theory_id: theory.theory_id,
+    theory_version: theory.theory_version,
+    theory_checksum: theory.declared_checksum,
+    theory_clause_id: adequacyClause.clause_id,
+    theory_clause_version: adequacyClause.clause_version,
+    rule_id: adequacyRule.rule_id,
+    rule_version: adequacyRule.rule_version,
+    rule_checksum: adequacyRuleChecksum,
+    implementation_artifact_id: adequacyPin.artifact_id,
+    implementation_artifact_version: adequacyPin.artifact_version,
+    implementation_artifact_checksum: adequacyPin.implementation_source_digest,
+  };
+  const blockerIds = new Set<string>();
+  for (const review of rulebook.scientific_review_requirements) {
+    if (!isRecord(review) || !isNonEmptyString(review.issue_id)) return undefined;
+    blockerIds.add(review.issue_id);
+  }
+  if (
+    !isRecord(profile.review_requirement) ||
+    !isNonEmptyString(profile.review_requirement.issue_id)
+  ) {
+    return undefined;
+  }
+  blockerIds.add(profile.review_requirement.issue_id);
+  for (const slot of referenceRegistry.slots) {
+    if (!isRecord(slot)) return undefined;
+    if (slot.availability === "SCIENTIFIC_REVIEW_REQUIRED") {
+      if (
+        !isRecord(slot.review_requirement) ||
+        !isNonEmptyString(slot.review_requirement.issue_id)
+      ) {
+        return undefined;
+      }
+      blockerIds.add(slot.review_requirement.issue_id);
+    }
+  }
+  for (const rule of rulebook.rules) {
+    if (!isRecord(rule) || !isStringArray(rule.known_gap_issue_ids)) return undefined;
+    for (const issueId of rule.known_gap_issue_ids) blockerIds.add(issueId);
+  }
+  const checksums = [
+    theory.declared_checksum,
+    rulebook.declared_checksum,
+    profile.declared_checksum,
+    referenceRegistry.declared_checksum,
+    fixtureSet.declared_checksum,
+    evaluatorRegistry.declared_checksum,
+  ];
+  if (!checksums.every(isSha256)) return undefined;
+  const manifestId = await stableId(
+    "v8-execution-manifest",
+    ...checksums,
+    ...ruleChecksums,
+    ...implementationChecksums,
+    adequacyPin.implementation_source_digest,
+  );
+  if (manifestId === undefined) return undefined;
+  return {
+    schema_version: "8.0.0",
+    manifest_id: manifestId,
+    theory_id: theory.theory_id,
+    theory_version: theory.theory_version,
+    theory_checksum: theory.declared_checksum,
+    rulebook_id: rulebook.rulebook_id,
+    rulebook_version: rulebook.rulebook_version,
+    rulebook_checksum: rulebook.declared_checksum,
+    profile_closure_asset_id: profile.asset_id,
+    profile_closure_asset_version: profile.asset_version,
+    profile_closure_checksum: profile.declared_checksum,
+    reference_registry_id: referenceRegistry.registry_id,
+    reference_registry_version: referenceRegistry.registry_version,
+    reference_registry_checksum: referenceRegistry.declared_checksum,
+    fixture_set_id: fixtureSet.fixture_set_id,
+    fixture_set_version: fixtureSet.fixture_set_version,
+    fixture_set_checksum: fixtureSet.declared_checksum,
+    evaluator_registry_id: evaluatorRegistry.registry_id,
+    evaluator_registry_version: evaluatorRegistry.registry_version,
+    evaluator_registry_checksum: evaluatorRegistry.declared_checksum,
+    implementation_rules: implementationRules,
+    adequacy_evaluator: adequacyEvaluator,
+    release_blocker_issue_ids: [...blockerIds].sort(),
+  };
+}
+
 function isSourceRecord(value: unknown): boolean {
   return (
     hasV8Schema(value) &&
@@ -1222,6 +1434,7 @@ function isPipelineResultShape(value: unknown): value is JsonRecord {
 
 async function isQuickDesignV8ResultWire(
   value: unknown,
+  reviewedBundle: unknown,
 ): Promise<boolean> {
   if (
     !hasV8Schema(value) ||
@@ -1252,6 +1465,22 @@ async function isQuickDesignV8ResultWire(
   const artifactIdsByKind = new Map(
     value.artifacts.map((artifact) => [artifact.kind, artifact.artifact_id]),
   );
+  if (
+    !isConformanceBundle(reviewedBundle) ||
+    !Array.isArray(contexts) ||
+    contexts.length !== 1 ||
+    !isRecord(contexts[0]) ||
+    pythonJson(contexts[0].conformance_bundle_payload) !== pythonJson(reviewedBundle)
+  ) {
+    return false;
+  }
+  const expectedManifest = await expectedExecutionManifest(reviewedBundle);
+  if (
+    expectedManifest === undefined ||
+    pythonJson(pipeline.execution_manifest) !== pythonJson(expectedManifest)
+  ) {
+    return false;
+  }
   return (
     isKnowledgeValue(plannedSnapshot) &&
     plannedSnapshot.knowledge_state === "PRESENT" &&
@@ -1260,9 +1489,6 @@ async function isQuickDesignV8ResultWire(
     plan.sample_sheet_ref === artifactIdsByKind.get("SAMPLE_SHEET") &&
     plan.methods_draft_ref === artifactIdsByKind.get("METHODS_DRAFT") &&
     plan.id_convention_ref === artifactIdsByKind.get("ID_CONVENTION") &&
-    Array.isArray(contexts) &&
-    contexts.length === 1 &&
-    isRecord(contexts[0]) &&
     pythonJson(contexts[0].result_payload) === pythonJson(pipeline) &&
     pythonJson(pipeline.execution_manifest) === pythonJson(report.execution_manifest) &&
     Array.isArray(report.claim_sets) &&
@@ -1432,7 +1658,10 @@ async function isGuidedBuildResponse(
     value.submission_audit_snapshot.knowledge_state !== "PRESENT" ||
     !isQuickDesignSubmission(value.submission_audit_snapshot.value) ||
     value.canonical_result.knowledge_state !== "PRESENT" ||
-    !(await isQuickDesignV8ResultWire(value.canonical_result.value)) ||
+    !(await isQuickDesignV8ResultWire(
+      value.canonical_result.value,
+      value.review_snapshot.conformance_bundle_payload,
+    )) ||
     value.confirmed_snapshot_checksum.knowledge_state !== "PRESENT" ||
     typeof value.confirmed_snapshot_checksum.value !== "string" ||
     !/^[0-9a-f]{64}$/.test(value.confirmed_snapshot_checksum.value)
