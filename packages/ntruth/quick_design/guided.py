@@ -19,7 +19,11 @@ from pydantic import BaseModel, Field, JsonValue, field_validator, model_validat
 from pydantic_core import TzInfo
 
 from ntruth.derivation_theory.contracts import ConformanceBundle
-from ntruth.derivation_theory.runtime import load_runtime_bundle
+from ntruth.derivation_theory.runtime import (
+    load_runtime_bundle,
+    require_reviewed_evaluator_bundle,
+    verify_runtime_bundle,
+)
 from ntruth.mvt_a.stage_schema import assert_no_final_scientific_fields
 from ntruth.pipeline_v8 import V8PipelineRequest
 from ntruth.quick_design.v8 import (
@@ -290,6 +294,28 @@ class GuidedQuickDesignDraft(KernelModel):
         return self
 
 
+class GuidedQuickDesignReviewSnapshot(KernelModel):
+    """Typed review bytes; never an executable Quick Design submission."""
+
+    draft: GuidedQuickDesignDraft
+    conformance_bundle_payload: dict[NonBlankStr, JsonValue]
+    is_execution_capability: Literal[False] = False
+
+    @property
+    def conformance_bundle(self) -> ConformanceBundle:
+        return ConformanceBundle.model_validate(self.conformance_bundle_payload)
+
+    @model_validator(mode="after")
+    def _verified_review_assets(self) -> Self:
+        require_reviewed_evaluator_bundle(self.conformance_bundle)
+        report = verify_runtime_bundle(self.conformance_bundle)
+        if not report.passed:
+            raise ValueError(
+                "guided review snapshot conformance bundle/profile failed independent verification"
+            )
+        return self
+
+
 class GuidedQuickDesignConfirmation(KernelModel):
     preview_checksum: str = Field(pattern=r"^[0-9a-f]{64}$")
     review_focus_predicate_id: NonBlankStr
@@ -348,6 +374,7 @@ class GuidedQuickDesignBuildResponse(KernelModel):
     action: GuidedBuildAction
     state: GuidedBuildState
     preview_checksum: str = Field(pattern=r"^[0-9a-f]{64}$")
+    review_snapshot: GuidedQuickDesignReviewSnapshot
     summary: GuidedQuickDesignSummary
     visible_questions: tuple[GuidedTheoryQuestion, ...] = Field(max_length=3)
     question_queue: tuple[GuidedTheoryQuestion, ...] = Field(min_length=1)
@@ -361,21 +388,14 @@ class GuidedQuickDesignBuildResponse(KernelModel):
     def _preview_or_submission(self) -> Self:
         if self.visible_questions != self.question_queue[:3]:
             raise ValueError("visible questions must be the first three retained queue entries")
-        submission_state = self.submission_audit_snapshot.knowledge_state
-        result_state = self.canonical_result.knowledge_state
-        checksum_state = self.confirmed_snapshot_checksum.knowledge_state
         if self.action is GuidedBuildAction.PREVIEW:
-            if (
-                submission_state is not KnowledgeState.UNKNOWN
-                or result_state is not KnowledgeState.UNKNOWN
-                or checksum_state is not KnowledgeState.UNKNOWN
-                or self.state is not GuidedBuildState.REVIEW_REQUIRED
-            ):
+            if self.state is not GuidedBuildState.REVIEW_REQUIRED:
                 raise ValueError("PREVIEW must retain REVIEW_REQUIRED without an executable result")
+            _assert_preview_guided_closure(self)
         elif (
-            submission_state is not KnowledgeState.PRESENT
-            or result_state is not KnowledgeState.PRESENT
-            or checksum_state is not KnowledgeState.PRESENT
+            self.submission_audit_snapshot.knowledge_state is not KnowledgeState.PRESENT
+            or self.canonical_result.knowledge_state is not KnowledgeState.PRESENT
+            or self.confirmed_snapshot_checksum.knowledge_state is not KnowledgeState.PRESENT
             or self.state is not GuidedBuildState.BUILT
             or self.submission_audit_snapshot.value is None
             or self.canonical_result.value is None
@@ -661,6 +681,84 @@ def _confirmed_snapshot_checksum(
             "submission_audit_snapshot": submission.model_dump(mode="json"),
             "canonical_result": result.model_dump(mode="json"),
         }
+    )
+
+
+def _canonical_review_snapshot(
+    snapshot: GuidedQuickDesignReviewSnapshot,
+) -> GuidedQuickDesignReviewSnapshot:
+    """Revalidate the complete review bytes, including governed bundle/profile assets."""
+
+    try:
+        return GuidedQuickDesignReviewSnapshot.model_validate(
+            snapshot.model_dump(mode="python", round_trip=True, warnings="none")
+        )
+    except ValueError as exc:
+        raise ValueError("guided review snapshot bundle/profile closure failed") from exc
+
+
+def _preview_knowledge_envelopes(
+    *,
+    query_id: str,
+) -> tuple[
+    KnowledgeValue[QuickDesignV8Submission],
+    KnowledgeValue[QuickDesignV8Result],
+    KnowledgeValue[str],
+]:
+    return (
+        KnowledgeValue[QuickDesignV8Submission](
+            knowledge_state=KnowledgeState.UNKNOWN,
+            rationale="PREVIEW is review-only; no confirmed submission audit snapshot exists.",
+            query_scope_id=query_id,
+        ),
+        KnowledgeValue[QuickDesignV8Result](
+            knowledge_state=KnowledgeState.UNKNOWN,
+            rationale="PREVIEW does not execute the canonical Quick Design lane.",
+            query_scope_id=query_id,
+        ),
+        KnowledgeValue[str](
+            knowledge_state=KnowledgeState.UNKNOWN,
+            rationale="A confirmed snapshot checksum exists only after atomic CONFIRM.",
+            query_scope_id=query_id,
+        ),
+    )
+
+
+def _confirmed_knowledge_envelopes(
+    *,
+    preview_checksum: str,
+    query_id: str,
+    submission: QuickDesignV8Submission,
+    result: QuickDesignV8Result,
+) -> tuple[
+    KnowledgeValue[QuickDesignV8Submission],
+    KnowledgeValue[QuickDesignV8Result],
+    KnowledgeValue[str],
+]:
+    evidence_ids = tuple(record.evidence_id for record in submission.input_ledger.evidence_records)
+    return (
+        KnowledgeValue[QuickDesignV8Submission](
+            knowledge_state=KnowledgeState.PRESENT,
+            value=submission,
+            evidence_ids=evidence_ids,
+            query_scope_id=query_id,
+        ),
+        KnowledgeValue[QuickDesignV8Result](
+            knowledge_state=KnowledgeState.PRESENT,
+            value=result,
+            evidence_ids=evidence_ids,
+            query_scope_id=query_id,
+        ),
+        KnowledgeValue[str](
+            knowledge_state=KnowledgeState.PRESENT,
+            value=_confirmed_snapshot_checksum(
+                preview_checksum=preview_checksum,
+                submission=submission,
+                result=result,
+            ),
+            evidence_ids=evidence_ids,
+            query_scope_id=query_id,
+        ),
     )
 
 
@@ -1629,34 +1727,21 @@ def _build_submission(
     return submission
 
 
-def _assert_confirmed_guided_closure(response: GuidedQuickDesignBuildResponse) -> None:
-    """Re-derive every confirmed projection from its embedded governed inputs."""
+def _rederive_guided_preview(
+    response: GuidedQuickDesignBuildResponse,
+) -> tuple[
+    GuidedQuickDesignReviewSnapshot,
+    str,
+    str,
+    str,
+    tuple[ProspectiveArtifact, ...],
+    tuple[GuidedTheoryQuestion, ...],
+    GuidedQuickDesignSummary,
+]:
+    """Verify governed review bytes and compare every public preview projection."""
 
-    submission = response.submission_audit_snapshot.value
-    result = response.canonical_result.value
-    if submission is None or result is None:  # guarded by the response state contract
-        raise ValueError("guided confirmed closure requires submission and result values")
-
-    contexts = result.report_bundle.verified_pipeline_contexts
-    if len(contexts) != 1:
-        raise ValueError("guided confirmed closure requires exactly one verified pipeline context")
+    snapshot = _canonical_review_snapshot(response.review_snapshot)
     try:
-        bundle = contexts[0].conformance_bundle
-    except ValueError as exc:
-        raise ValueError("guided confirmed closure has an invalid conformance bundle") from exc
-
-    evidence_records = submission.input_ledger.evidence_records
-    if len(evidence_records) != 1:
-        raise ValueError("guided confirmed closure requires exactly one guided evidence record")
-    evidence = evidence_records[0]
-    try:
-        draft_payload = json.loads(evidence.original_text)
-    except (TypeError, json.JSONDecodeError) as exc:
-        raise ValueError("guided confirmed closure draft snapshot is not valid JSON") from exc
-    if type(draft_payload) is not dict:
-        raise ValueError("guided confirmed closure draft snapshot must be a JSON object")
-    try:
-        draft = GuidedQuickDesignDraft.model_validate(draft_payload)
         (
             preview_checksum,
             block_id,
@@ -1665,25 +1750,88 @@ def _assert_confirmed_guided_closure(response: GuidedQuickDesignBuildResponse) -
             _preview_predicates,
             question_queue,
             summary,
-        ) = _build_preview_parts(draft, bundle)
+        ) = _build_preview_parts(snapshot.draft, snapshot.conformance_bundle)
     except ValueError as exc:
-        raise ValueError("guided confirmed closure preview re-derivation failed") from exc
+        raise ValueError("guided preview closure re-derivation failed") from exc
+    if response.preview_checksum != preview_checksum:
+        raise ValueError("guided preview closure checksum mismatch")
+    if response.summary != summary:
+        raise ValueError("guided preview closure summary mismatch")
+    if response.question_queue != question_queue:
+        raise ValueError("guided preview closure question queue mismatch")
+    if response.visible_questions != question_queue[:3]:
+        raise ValueError("guided preview closure visible question projection mismatch")
+    if response.artifact_previews != artifact_previews:
+        raise ValueError("guided preview closure artifact projection mismatch")
+    return (
+        snapshot,
+        preview_checksum,
+        block_id,
+        query_id,
+        artifact_previews,
+        question_queue,
+        summary,
+    )
 
+
+def _assert_preview_guided_closure(response: GuidedQuickDesignBuildResponse) -> None:
+    """Keep PREVIEW completely reproducible and incapable of carrying execution output."""
+
+    _, _, _, query_id, _, _, _ = _rederive_guided_preview(response)
+    expected = _preview_knowledge_envelopes(query_id=query_id)
+    actual = (
+        response.submission_audit_snapshot,
+        response.canonical_result,
+        response.confirmed_snapshot_checksum,
+    )
+    if actual != expected:
+        raise ValueError("guided PREVIEW closure envelope metadata differs from review-only state")
+
+
+def _assert_confirmed_guided_closure(response: GuidedQuickDesignBuildResponse) -> None:
+    """Re-derive every confirmed projection and complete KnowledgeValue envelope."""
+
+    submission = response.submission_audit_snapshot.value
+    result = response.canonical_result.value
+    if submission is None or result is None:  # guarded by the response state contract
+        raise ValueError("guided confirmed closure requires submission and result values")
+    (
+        snapshot,
+        preview_checksum,
+        block_id,
+        query_id,
+        artifact_previews,
+        question_queue,
+        _summary,
+    ) = _rederive_guided_preview(response)
+    bundle = snapshot.conformance_bundle
+
+    contexts = result.report_bundle.verified_pipeline_contexts
+    if len(contexts) != 1:
+        raise ValueError("guided confirmed closure requires exactly one verified pipeline context")
+    try:
+        result_bundle = contexts[0].conformance_bundle
+    except ValueError as exc:
+        raise ValueError("guided confirmed closure has an invalid conformance bundle") from exc
+    if result_bundle != bundle:
+        raise ValueError("guided confirmed closure result uses a different review bundle/profile")
+
+    evidence_records = submission.input_ledger.evidence_records
+    if len(evidence_records) != 1:
+        raise ValueError("guided confirmed closure requires exactly one guided evidence record")
+    evidence = evidence_records[0]
     expected_evidence_id = stable_id("EV-QD-REVIEW", preview_checksum)
+    expected_draft_text = json.dumps(
+        snapshot.draft.model_dump(mode="json"),
+        sort_keys=True,
+        ensure_ascii=False,
+    )
     if (
-        response.preview_checksum != preview_checksum
-        or evidence.evidence_id != expected_evidence_id
+        evidence.evidence_id != expected_evidence_id
         or evidence.locator != f"guided-review://{preview_checksum}"
+        or evidence.original_text != expected_draft_text
     ):
         raise ValueError("guided confirmed closure preview/evidence binding mismatch")
-    if response.summary != summary:
-        raise ValueError("guided confirmed closure summary mismatch")
-    if response.question_queue != question_queue:
-        raise ValueError("guided confirmed closure question queue mismatch")
-    if response.visible_questions != question_queue[:3]:
-        raise ValueError("guided confirmed closure visible question projection mismatch")
-    if response.artifact_previews != artifact_previews:
-        raise ValueError("guided confirmed closure artifact preview mismatch")
 
     primary_question_ids = tuple(
         question.question_id for question in submission.questions if question.primary
@@ -1712,7 +1860,7 @@ def _assert_confirmed_guided_closure(response: GuidedQuickDesignBuildResponse) -
 
     reconstructed_request = GuidedQuickDesignBuildRequest(
         action=GuidedBuildAction.CONFIRM,
-        draft=draft,
+        draft=snapshot.draft,
         confirmation=GuidedQuickDesignConfirmation(
             preview_checksum=preview_checksum,
             review_focus_predicate_id=focus_predicate_ids[0],
@@ -1745,6 +1893,32 @@ def _assert_confirmed_guided_closure(response: GuidedQuickDesignBuildResponse) -
     if reconstructed_result != result:
         raise ValueError("guided confirmed closure result differs from canonical re-execution")
 
+    expected_envelopes = _confirmed_knowledge_envelopes(
+        preview_checksum=preview_checksum,
+        query_id=query_id,
+        submission=reconstructed_submission,
+        result=reconstructed_result,
+    )
+    actual_envelopes = (
+        response.submission_audit_snapshot,
+        response.canonical_result,
+        response.confirmed_snapshot_checksum,
+    )
+    for label, actual, expected in zip(
+        (
+            "submission_audit_snapshot",
+            "canonical_result",
+            "confirmed_snapshot_checksum",
+        ),
+        actual_envelopes,
+        expected_envelopes,
+        strict=True,
+    ):
+        if actual != expected:
+            raise ValueError(
+                f"guided confirmed closure {label} complete envelope metadata mismatch"
+            )
+
 
 def build_guided_quick_design(
     request: GuidedQuickDesignBuildRequest,
@@ -1754,7 +1928,14 @@ def build_guided_quick_design(
     """Preview or confirm one deterministic guided draft without a legacy resolver."""
 
     request = _canonical_guided_request(request)
-    bundle = conformance_bundle or load_runtime_bundle()
+    review_snapshot = GuidedQuickDesignReviewSnapshot(
+        draft=request.draft,
+        conformance_bundle_payload=(conformance_bundle or load_runtime_bundle()).model_dump(
+            mode="json",
+            exclude_unset=True,
+        ),
+    )
+    bundle = review_snapshot.conformance_bundle
     (
         preview_checksum,
         block_id,
@@ -1765,20 +1946,12 @@ def build_guided_quick_design(
         summary,
     ) = _build_preview_parts(request.draft, bundle)
     if request.action is GuidedBuildAction.PREVIEW:
-        submission_audit_snapshot: KnowledgeValue[QuickDesignV8Submission] = KnowledgeValue(
-            knowledge_state=KnowledgeState.UNKNOWN,
-            rationale=("PREVIEW is review-only; no confirmed submission audit snapshot exists."),
-            query_scope_id=query_id,
-        )
-        canonical_result: KnowledgeValue[QuickDesignV8Result] = KnowledgeValue(
-            knowledge_state=KnowledgeState.UNKNOWN,
-            rationale="PREVIEW does not execute the canonical Quick Design lane.",
-            query_scope_id=query_id,
-        )
-        confirmed_snapshot_checksum: KnowledgeValue[str] = KnowledgeValue(
-            knowledge_state=KnowledgeState.UNKNOWN,
-            rationale="A confirmed snapshot checksum exists only after atomic CONFIRM.",
-            query_scope_id=query_id,
+        (
+            submission_audit_snapshot,
+            canonical_result,
+            confirmed_snapshot_checksum,
+        ) = _preview_knowledge_envelopes(
+            query_id=query_id,
         )
     else:
         built = _build_submission(
@@ -1790,33 +1963,19 @@ def build_guided_quick_design(
             artifact_previews=artifact_previews,
             question_queue=question_queue,
         )
-        evidence_ids = tuple(record.evidence_id for record in built.input_ledger.evidence_records)
         result = run_quick_design_v8(
             built,
             conformance_bundle=bundle,
         )
-        snapshot_checksum = _confirmed_snapshot_checksum(
+        (
+            submission_audit_snapshot,
+            canonical_result,
+            confirmed_snapshot_checksum,
+        ) = _confirmed_knowledge_envelopes(
             preview_checksum=preview_checksum,
+            query_id=query_id,
             submission=built,
             result=result,
-        )
-        submission_audit_snapshot = KnowledgeValue(
-            knowledge_state=KnowledgeState.PRESENT,
-            value=built,
-            evidence_ids=evidence_ids,
-            query_scope_id=query_id,
-        )
-        canonical_result = KnowledgeValue(
-            knowledge_state=KnowledgeState.PRESENT,
-            value=result,
-            evidence_ids=evidence_ids,
-            query_scope_id=query_id,
-        )
-        confirmed_snapshot_checksum = KnowledgeValue(
-            knowledge_state=KnowledgeState.PRESENT,
-            value=snapshot_checksum,
-            evidence_ids=evidence_ids,
-            query_scope_id=query_id,
         )
     return GuidedQuickDesignBuildResponse(
         action=request.action,
@@ -1826,6 +1985,7 @@ def build_guided_quick_design(
             else GuidedBuildState.BUILT
         ),
         preview_checksum=preview_checksum,
+        review_snapshot=review_snapshot,
         summary=summary,
         visible_questions=question_queue[:3],
         question_queue=question_queue,
@@ -1866,6 +2026,7 @@ __all__ = [
     "GuidedQuickDesignBuildResponse",
     "GuidedQuickDesignConfirmation",
     "GuidedQuickDesignDraft",
+    "GuidedQuickDesignReviewSnapshot",
     "GuidedQuickDesignSummary",
     "GuidedTextAnswer",
     "GuidedTheoryQuestion",
