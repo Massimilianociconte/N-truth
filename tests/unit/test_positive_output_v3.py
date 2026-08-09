@@ -1,4 +1,7 @@
-"""Contratti del report positivo e non certificante introdotto dal PRD v3."""
+"""Contratti del report positivo e non certificante introdotto dal PRD v3.
+
+Questi test esercitano esplicitamente il contratto DEPRECATED_V7_ADAPTER.
+"""
 
 from __future__ import annotations
 
@@ -7,7 +10,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from ntruth.ingest.project import Project
-from ntruth.pipeline import analyze_project
+from ntruth.pipeline import analyze_project_v7_adapter
 from ntruth.reporting import render_html, write_all
 
 METHODS = (
@@ -22,7 +25,7 @@ ProjectFactory = Callable[..., Project]
 def test_positive_output_separates_layers_and_is_non_certifying(
     make_project: ProjectFactory,
 ) -> None:
-    result = analyze_project(make_project({"methods.md": METHODS}))
+    result = analyze_project_v7_adapter(make_project({"methods.md": METHODS}))
     block = result.report.blocks[0]
     output = result.report.positive_outputs[block.id]
 
@@ -55,7 +58,7 @@ def test_positive_output_separates_layers_and_is_non_certifying(
 def test_positive_methods_output_is_bilingual_and_does_not_choose_a_model(
     make_project: ProjectFactory,
 ) -> None:
-    result = analyze_project(make_project({"methods.md": METHODS}), lang="en")
+    result = analyze_project_v7_adapter(make_project({"methods.md": METHODS}), lang="en")
     output = result.report.positive_outputs[result.report.blocks[0].id]
 
     assert output.methods_statement.language == "en"
@@ -69,7 +72,7 @@ def test_write_all_includes_logically_identical_json_and_yaml(
     make_project: ProjectFactory,
     tmp_path: Path,
 ) -> None:
-    result = analyze_project(make_project({"methods.md": METHODS}))
+    result = analyze_project_v7_adapter(make_project({"methods.md": METHODS}))
     written = write_all(result.report, tmp_path / "out")
 
     assert "yaml" in written

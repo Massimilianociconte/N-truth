@@ -3,6 +3,7 @@
 Il file atteso e uno snapshot di regressione del software, non un gold corpus
 scientifico e non una valutazione expert-reviewed. Il checksum copre l'intero
 report; la proiezione rende leggibili le differenze piu importanti.
+L'analisi esercita esplicitamente il contratto DEPRECATED_V7_ADAPTER.
 """
 
 from __future__ import annotations
@@ -13,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from ntruth.ingest.project import Project
-from ntruth.pipeline import analyze_project
+from ntruth.pipeline import analyze_project_v7_adapter
 from ntruth.reporting import report_to_dict
 
 METHODS = (
@@ -124,7 +125,7 @@ def test_report_matches_reviewed_software_snapshot(make_project: ProjectFactory)
         name="report-golden-v3",
         project_name="golden-v3",
     )
-    actual = report_to_dict(analyze_project(project).report)
+    actual = report_to_dict(analyze_project_v7_adapter(project).report)
     expected = json.loads(GOLDEN_PATH.read_text(encoding="utf-8"))
 
     assert expected["fixture_kind"] == "deterministic_software_snapshot_not_expert_gold"
