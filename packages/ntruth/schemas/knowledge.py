@@ -6,15 +6,16 @@ import json
 import warnings
 from collections.abc import Mapping, Sequence, Set
 from enum import StrEnum
-from typing import Any, Self
+from typing import Any, Self, cast
 
 from pydantic import (
     BaseModel,
+    GetCoreSchemaHandler,
     PydanticDeprecatedSince20,
     SerializerFunctionWrapHandler,
-    model_serializer,
     model_validator,
 )
+from pydantic_core import core_schema
 
 from ntruth.schemas.kernel import KernelModel, NonBlankStr
 
@@ -98,12 +99,57 @@ class KnowledgeValue[T](KernelModel):
     claim_scope_id: NonBlankStr | None = None
     query_scope_id: NonBlankStr | None = None
 
+    @classmethod
+    def __get_pydantic_core_schema__(
+        cls,
+        source: Any,
+        handler: GetCoreSchemaHandler,
+    ) -> core_schema.CoreSchema:
+        schema = handler(source)
+
+        def serialize_revalidated(
+            candidate: object,
+            serializer: SerializerFunctionWrapHandler,
+        ) -> Any:
+            if type(candidate) is dict:
+                raw = candidate
+                raw_fields = tuple(dict.keys(raw))
+                if any(type(field_name) is not str for field_name in raw_fields) or set(
+                    raw_fields
+                ) != set(cls.model_fields):
+                    raise TypeError("undeclared or missing KnowledgeValue serialized field")
+                checked = cls.model_validate(raw)
+            else:
+                if not isinstance(candidate, KnowledgeValue):
+                    raise TypeError("invalid KnowledgeValue serialized value")
+                checked = cls.model_validate(KnowledgeValue._raw_contract_payload(candidate))
+                object.__setattr__(
+                    checked,
+                    "__pydantic_fields_set__",
+                    set(
+                        object.__getattribute__(
+                            candidate,
+                            "__pydantic_fields_set__",
+                        )
+                    ),
+                )
+            return serializer(checked)
+
+        return cast(
+            core_schema.CoreSchema,
+            {
+                **schema,
+                "serialization": core_schema.wrap_serializer_function_ser_schema(
+                    serialize_revalidated
+                ),
+            },
+        )
+
     @staticmethod
     def _non_default_contract_fields(state: Mapping[str, Any]) -> set[str]:
         non_default = {"knowledge_state"}
         if not (
-            type(state.get("schema_version")) is str
-            and state.get("schema_version") == "8.0.0"
+            type(state.get("schema_version")) is str and state.get("schema_version") == "8.0.0"
         ):
             non_default.add("schema_version")
         if state.get("value") is not None:
@@ -122,6 +168,7 @@ class KnowledgeValue[T](KernelModel):
         return non_default
 
     def _raw_contract_payload(self) -> dict[str, Any]:
+        KnowledgeValue._assert_no_undeclared_public_slot_state(self)
         state = object.__getattribute__(self, "__dict__")
         if type(state) is not dict:
             raise TypeError("invalid KnowledgeValue runtime state")
@@ -137,7 +184,7 @@ class KnowledgeValue[T](KernelModel):
         if object.__getattribute__(self, "__pydantic_private__") is not None:
             raise TypeError("undeclared private model state")
         fields_set = object.__getattribute__(self, "__pydantic_fields_set__")
-        required_fields = self._non_default_contract_fields(state)
+        required_fields = KnowledgeValue._non_default_contract_fields(state)
         if (
             type(fields_set) is not set
             or any(type(field_name) is not str for field_name in fields_set)
@@ -147,12 +194,35 @@ class KnowledgeValue[T](KernelModel):
             raise TypeError("invalid KnowledgeValue field-set metadata")
         return dict(state)
 
+    def _assert_no_undeclared_public_slot_state(self) -> None:
+        declared_fields = set(type(self).model_fields)
+        for model_type in type(self).__mro__:
+            if model_type is KnowledgeValue:
+                break
+            slots = model_type.__dict__.get("__slots__", ())
+            if type(slots) is str:
+                slot_names = (slots,)
+            elif type(slots) is tuple:
+                slot_names = slots
+            else:
+                raise TypeError("invalid KnowledgeValue slotted model state")
+            for slot_name in slot_names:
+                if type(slot_name) is not str:
+                    raise TypeError("invalid KnowledgeValue slotted model state")
+                if slot_name.startswith("_") or slot_name in declared_fields:
+                    continue
+                try:
+                    object.__getattribute__(self, slot_name)
+                except AttributeError:
+                    continue
+                raise TypeError("undeclared public slotted model state")
+
     def _revalidated_for_boundary(self) -> Self:
-        return type(self).model_validate(self._raw_contract_payload())
+        return type(self).model_validate(KnowledgeValue._raw_contract_payload(self))
 
     def _assert_runtime_provenance_identity(self) -> None:
-        state = self._raw_contract_payload()
-        self._assert_provenance_fields(state)
+        state = KnowledgeValue._raw_contract_payload(self)
+        KnowledgeValue._assert_provenance_fields(state)
 
     @staticmethod
     def _assert_provenance_fields(state: Mapping[str, Any]) -> None:
@@ -176,16 +246,8 @@ class KnowledgeValue[T](KernelModel):
     def copy(
         self,
         *,
-        include: Set[int]
-        | Set[str]
-        | Mapping[int, Any]
-        | Mapping[str, Any]
-        | None = None,
-        exclude: Set[int]
-        | Set[str]
-        | Mapping[int, Any]
-        | Mapping[str, Any]
-        | None = None,
+        include: Set[int] | Set[str] | Mapping[int, Any] | Mapping[str, Any] | None = None,
+        exclude: Set[int] | Set[str] | Mapping[int, Any] | Mapping[str, Any] | None = None,
         update: Mapping[str, Any] | None = None,
         deep: bool = False,
     ) -> Self:
@@ -201,7 +263,7 @@ class KnowledgeValue[T](KernelModel):
                 "partial KnowledgeValue copies are forbidden; use model_dump followed by "
                 "model_validate"
             )
-        return self.model_copy(update=update, deep=deep)
+        return KnowledgeValue.model_copy(self, update=update, deep=deep)
 
     def model_copy(
         self,
@@ -209,14 +271,15 @@ class KnowledgeValue[T](KernelModel):
         update: Mapping[str, Any] | None = None,
         deep: bool = False,
     ) -> Self:
-        self._revalidated_for_boundary()
+        KnowledgeValue._revalidated_for_boundary(self)
         copied = BaseModel.model_copy(self, update=update, deep=deep)
-        if update is None:
-            return copied
         copied_state = object.__getattribute__(copied, "__dict__")
         if type(copied_state) is not dict:
             raise TypeError("invalid KnowledgeValue runtime state")
         checked = type(self).model_validate(dict(copied_state))
+        KnowledgeValue._raw_contract_payload(copied)
+        if update is None:
+            return copied
         object.__setattr__(
             checked,
             "__pydantic_fields_set__",
@@ -224,45 +287,24 @@ class KnowledgeValue[T](KernelModel):
         )
         return checked
 
-    @model_serializer(mode="wrap")
-    def _serialize_validated_provenance(
-        self,
-        handler: SerializerFunctionWrapHandler,
-    ) -> Any:
-        candidate: object = self
-        if type(candidate) is dict:
-            raw = candidate
-            raw_fields = tuple(dict.keys(raw))
-            if (
-                any(type(field_name) is not str for field_name in raw_fields)
-                or set(raw_fields) != set(KnowledgeValue.model_fields)
-            ):
-                raise TypeError("undeclared or missing KnowledgeValue serialized field")
-            KnowledgeValue[object].model_validate(raw)
-            return raw
-        self._assert_runtime_provenance_identity()
-        return handler(self)
-
     def model_dump(self, **kwargs: Any) -> dict[str, Any]:
         """Serialize only after reconstructing a complete valid value."""
 
-        self._revalidated_for_boundary()
+        KnowledgeValue._revalidated_for_boundary(self)
         return BaseModel.model_dump(self, **kwargs)
 
     def model_dump_json(self, **kwargs: Any) -> str:
         """Serialize JSON only after reconstructing a complete valid value."""
 
-        self._revalidated_for_boundary()
+        KnowledgeValue._revalidated_for_boundary(self)
         return BaseModel.model_dump_json(self, **kwargs)
 
     def __getstate__(self) -> dict[str, Any]:
-        checked = self._revalidated_for_boundary()
+        checked = KnowledgeValue._revalidated_for_boundary(self)
         return {
             "format": _KNOWLEDGE_VALUE_PICKLE_FORMAT,
-            "payload": checked._raw_contract_payload(),
-            "fields_set": set(
-                object.__getattribute__(self, "__pydantic_fields_set__")
-            ),
+            "payload": KnowledgeValue._raw_contract_payload(checked),
+            "fields_set": set(object.__getattribute__(self, "__pydantic_fields_set__")),
         }
 
     def __setstate__(self, state: dict[str, Any]) -> None:
