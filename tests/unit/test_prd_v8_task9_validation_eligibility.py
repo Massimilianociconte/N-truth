@@ -33,25 +33,9 @@ def _dataset(*, validation_model_selection: bool) -> PreparedDataset:
     )
 
 
-def test_validation_without_model_selection_eligibility_fails_closed_at_export(
-    tmp_path: Path,
-) -> None:
-    dataset = _dataset(validation_model_selection=False)
-    validation = next(
-        prepared for prepared in dataset.records if prepared.split is CorpusSplit.VALIDATION
-    )
-    assert validation.record.training_eligible is True
-    assert validation.record.model_selection_eligible is False
-
-    output = tmp_path / "invalid-validation"
-    with pytest.raises(
-        MLXPipelineError,
-        match=r"VALIDATION.*model-selection.*validation loss.*checkpoint",
-    ):
-        export_mlx_dataset(dataset, output)
-
-    assert output.exists()
-    assert not any(output.iterdir())
+def test_validation_without_model_selection_eligibility_fails_closed_before_export() -> None:
+    with pytest.raises(ValueError, match=r"VALIDATION.*model[_-]selection"):
+        _dataset(validation_model_selection=False)
 
 
 @pytest.mark.parametrize("mutated_surface", ("prepared_record", "source_manifest"))
@@ -85,7 +69,7 @@ def test_export_revalidates_validation_eligibility_after_preparation(
             }
         )
 
-    with pytest.raises(MLXPipelineError, match=r"VALIDATION.*model-selection"):
+    with pytest.raises(MLXPipelineError, match=r"VALIDATION.*model[_-]selection"):
         export_mlx_dataset(forged, tmp_path / "forged-validation")
 
 

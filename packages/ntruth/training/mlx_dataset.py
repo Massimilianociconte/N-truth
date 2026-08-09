@@ -113,12 +113,20 @@ def _assert_validation_export_eligibility(dataset: PreparedDataset) -> None:
             )
 
 
+def _revalidate_export_dataset(dataset: PreparedDataset) -> PreparedDataset:
+    try:
+        return PreparedDataset.model_validate(dataset.model_dump(mode="python"))
+    except (TypeError, ValueError) as exc:
+        raise MLXPipelineError(f"dataset MLX non valido al confine export: {exc}") from exc
+
+
 def export_mlx_dataset(dataset: PreparedDataset, output_dir: Path) -> dict[str, Any]:
     """Scrive split MLX e manifest, senza duplicare le sorgenti raw."""
 
     if output_dir.exists() and any(output_dir.iterdir()):
         raise MLXPipelineError(f"directory output non vuota: {output_dir}")
     output_dir.mkdir(parents=True, exist_ok=True)
+    dataset = _revalidate_export_dataset(dataset)
     _assert_validation_export_eligibility(dataset)
     by_split: dict[CorpusSplit, list[dict[str, Any]]] = {
         CorpusSplit.TRAIN: [],
@@ -167,6 +175,10 @@ def export_mlx_dataset(dataset: PreparedDataset, output_dir: Path) -> dict[str, 
         and bool(by_split[CorpusSplit.VALIDATION])
         and all(
             prepared.record.training_eligible
+            and (
+                prepared.split is not CorpusSplit.VALIDATION
+                or prepared.record.model_selection_eligible
+            )
             for prepared in dataset.records
             if prepared.split in by_split
         ),

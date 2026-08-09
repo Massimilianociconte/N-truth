@@ -120,6 +120,7 @@ def _record(
         training_eligible=eligible
         and requested_split not in {CorpusSplit.TEST, CorpusSplit.EXTERNAL_CHALLENGE},
         evaluation_eligible=requested_split is CorpusSplit.TEST,
+        model_selection_eligible=eligible and requested_split in {None, CorpusSplit.VALIDATION},
         split=requested_split or CorpusSplit.UNASSIGNED,
     )
 

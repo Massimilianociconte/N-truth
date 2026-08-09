@@ -1141,7 +1141,11 @@ def _source_manifest_split_ids(source: DatasetManifest) -> dict[str, tuple[str, 
     grouped: dict[str, list[str]] = {name: [] for name in _SPLIT_FILES}
     for record in source.records:
         split_name = _SOURCE_SPLIT_NAMES.get(record.split.value)
-        if split_name is not None and record.training_eligible:
+        if (
+            split_name is not None
+            and record.training_eligible
+            and (record.split is not CorpusSplit.VALIDATION or record.model_selection_eligible)
+        ):
             grouped[split_name].append(record.record_id)
     return {name: tuple(sorted(values)) for name, values in grouped.items()}
 
@@ -1267,7 +1271,11 @@ def _validate_real_snapshot_source(
     derived_approved = (
         bool(source_ids["train"])
         and bool(source_ids["valid"])
-        and all(record.training_eligible for record in training_members)
+        and all(
+            record.training_eligible
+            and (record.split is not CorpusSplit.VALIDATION or record.model_selection_eligible)
+            for record in training_members
+        )
     )
     if manifest.get("training_approved") is not derived_approved:
         raise MLXPipelineError(
@@ -1397,7 +1405,19 @@ def validate_mlx_dataset(data_dir: Path, *, smoke_test: bool = False) -> dict[st
 
     integrity = validate_snapshot_integrity(data_dir, smoke_test=smoke_test)
     manifest = integrity["manifest"]
-    approved = manifest["training_approved"] is True
+    source_approved = True
+    if not smoke_test:
+        try:
+            source = DatasetManifest.model_validate(integrity["source_manifest"])
+        except (TypeError, ValueError) as exc:
+            raise MLXPipelineError(f"manifest sorgente runtime non valido: {exc}") from exc
+        source_ids = _source_manifest_split_ids(source)
+        if tuple(integrity["split_record_ids"]["valid"]) != source_ids["valid"]:
+            raise MLXPipelineError(
+                "record_id valid non coincidono con VALIDATION training/model-selection eligible"
+            )
+        source_approved = bool(source_ids["train"]) and bool(source_ids["valid"])
+    approved = manifest["training_approved"] is True and source_approved
     leakage_free = manifest["leakage_check_passed"] is True
     if not smoke_test and (not approved or not leakage_free):
         raise MLXPipelineError(

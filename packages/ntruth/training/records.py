@@ -235,6 +235,14 @@ class SupervisedRecord(FrozenModel):
             CorpusSplit.EXTERNAL_CHALLENGE,
         }:
             raise ValueError(f"{self.split.name} split cannot have training_eligible=true")
+        if (
+            self.split is CorpusSplit.VALIDATION
+            and self.training_eligible
+            and not self.model_selection_eligible
+        ):
+            raise ValueError(
+                "VALIDATION training_eligible=true requires model_selection_eligible=true"
+            )
         if self.split in {CorpusSplit.TEST, CorpusSplit.EXTERNAL_CHALLENGE} and (
             self.model_selection_eligible
         ):
@@ -378,6 +386,14 @@ class PreparedRecord(FrozenModel):
             self.record.training_eligible
         ):
             raise ValueError(f"{self.split.name} prepared record cannot be training-eligible")
+        if (
+            self.split is CorpusSplit.VALIDATION
+            and self.record.training_eligible
+            and not self.record.model_selection_eligible
+        ):
+            raise ValueError(
+                "VALIDATION prepared training record requires model-selection eligibility"
+            )
         if self.split in {CorpusSplit.TEST, CorpusSplit.EXTERNAL_CHALLENGE} and (
             self.record.model_selection_eligible
         ):
@@ -428,6 +444,14 @@ class ManifestRecord(FrozenModel):
             self.training_eligible
         ):
             raise ValueError(f"{self.split.name} manifest record cannot be training-eligible")
+        if (
+            self.split is CorpusSplit.VALIDATION
+            and self.training_eligible
+            and not self.model_selection_eligible
+        ):
+            raise ValueError(
+                "VALIDATION manifest training record requires model-selection eligibility"
+            )
         if self.split in {CorpusSplit.TEST, CorpusSplit.EXTERNAL_CHALLENGE} and (
             self.model_selection_eligible
         ):
@@ -529,6 +553,14 @@ class DatasetManifest(FrozenModel):
                 record.training_eligible
             ):
                 raise ValueError(f"{record.split.name} manifest membership cannot train")
+            if (
+                record.split is CorpusSplit.VALIDATION
+                and record.training_eligible
+                and not record.model_selection_eligible
+            ):
+                raise ValueError(
+                    "VALIDATION manifest membership requires model-selection eligibility"
+                )
             if record.split in {CorpusSplit.TEST, CorpusSplit.EXTERNAL_CHALLENGE} and (
                 record.model_selection_eligible
             ):
@@ -591,6 +623,14 @@ class PreparedDataset(FrozenModel):
             raise ValueError("record preparati e manifest non coincidono")
         for record_id, prepared in prepared_by_id.items():
             entry = manifest_by_id[record_id]
+            if (
+                prepared.split is CorpusSplit.VALIDATION
+                and prepared.record.training_eligible
+                and not prepared.record.model_selection_eligible
+            ):
+                raise ValueError(
+                    "VALIDATION prepared membership requires model-selection eligibility"
+                )
             if (
                 prepared.split is not entry.split
                 or prepared.leakage_group_id != entry.leakage_group_id
