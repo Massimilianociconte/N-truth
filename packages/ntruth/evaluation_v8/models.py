@@ -13,7 +13,7 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Annotated, Any, Literal, Self
 
-from pydantic import Field, PydanticDeprecatedSince20, model_validator
+from pydantic import BaseModel, Field, PydanticDeprecatedSince20, model_validator
 
 from ntruth.schemas.claims import DeterminabilityState
 from ntruth.schemas.core import content_checksum
@@ -27,6 +27,7 @@ EVALUATION_REFERENCE_REVIEW_ISSUE_ID = "SRR-V8-EVAL-REFERENCE"
 EVALUATION_SCIENTIFIC_HOLD_ISSUE_ID = "SRR-V8-EVAL-SCIENTIFIC-HOLD"
 CONFORMANCE_REFERENCE_REVIEW_ISSUE_ID = "SRR-V8-CONFORMANCE-REFERENCE-NONSCIENTIFIC"
 REFERENCE_STABILITY_REVIEW_ISSUE_ID = "SRR-V8-REFERENCE-STABILITY"
+_EVALUATION_PICKLE_FORMAT = "ntruth-evaluation-output-v1"
 PARTIAL_CLAIM_MATCH_REVIEW_ISSUE_ID = "SRR-V8-PARTIAL-CLAIM-MATCH"
 EVALUATION_PROCESS_METRICS_REVIEW_ISSUE_ID = "SRR-V8-EVAL-PROCESS-METRICS"
 FALSE_CERTAINTY_PROTOCOL_REVIEW_ISSUE_ID = "SRR-V8-FALSE-CERTAINTY-PROTOCOL"
@@ -478,6 +479,15 @@ class ReferenceStabilityArtifactReference(KernelModel):
 class _RevalidatedEvaluationOutput(KernelModel):
     """Keep governed evaluation outputs valid across every public copy boundary."""
 
+    def _revalidated_for_serialization(self) -> Self:
+        payload = BaseModel.model_dump(
+            self,
+            mode="python",
+            round_trip=True,
+            warnings="none",
+        )
+        return type(self).model_validate(payload)
+
     @classmethod
     def model_construct(cls, _fields_set: set[str] | None = None, **values: Any) -> Self:
         """Retain the public API without exposing Pydantic's validation bypass."""
@@ -521,6 +531,42 @@ class _RevalidatedEvaluationOutput(KernelModel):
         if update is not None:
             payload.update(update)
         return type(self).model_validate(payload)
+
+    def model_dump(self, **kwargs: Any) -> dict[str, Any]:
+        """Serialize only after reconstructing a fully validated governed output."""
+
+        checked = self._revalidated_for_serialization()
+        return BaseModel.model_dump(checked, **kwargs)
+
+    def model_dump_json(self, **kwargs: Any) -> str:
+        """Serialize JSON only after reconstructing the governed output."""
+
+        checked = self._revalidated_for_serialization()
+        return BaseModel.model_dump_json(checked, **kwargs)
+
+    def __getstate__(self) -> dict[Any, Any]:
+        """Emit a validated, generic-class-free pickle envelope."""
+
+        checked = self._revalidated_for_serialization()
+        return {
+            "format": _EVALUATION_PICKLE_FORMAT,
+            "payload": BaseModel.model_dump(
+                checked,
+                mode="python",
+                round_trip=True,
+                warnings="error",
+            ),
+        }
+
+    def __setstate__(self, state: dict[Any, Any]) -> None:
+        """Reject raw Pydantic pickle state and validate the governed envelope."""
+
+        if type(state) is not dict or set(state) != {"format", "payload"}:
+            raise TypeError("invalid governed evaluation pickle state")
+        if state["format"] != _EVALUATION_PICKLE_FORMAT or type(state["payload"]) is not dict:
+            raise ValueError("unsupported governed evaluation pickle envelope")
+        checked = type(self).model_validate(state["payload"])
+        BaseModel.__setstate__(self, BaseModel.__getstate__(checked))
 
 
 class IndependentReportReference(_RevalidatedEvaluationOutput):
@@ -598,7 +644,9 @@ class IndependentReportReference(_RevalidatedEvaluationOutput):
                 set(self.evidence_ids)
             ):
                 raise ValueError("partial-equivalence ledger has dangling evidence IDs")
-        expected = content_checksum(self.model_dump(mode="json", exclude={"content_checksum"}))
+        expected = content_checksum(
+            BaseModel.model_dump(self, mode="json", exclude={"content_checksum"})
+        )
         if self.content_checksum != expected:
             raise ValueError("independent reference checksum mismatch")
         return self
@@ -789,7 +837,11 @@ class EndToEndEvaluationReport(_RevalidatedEvaluationOutput):
                     "unclosed false-certainty protocol or severity requires its review blocker"
                 )
         expected = content_checksum(
-            self.model_dump(mode="json", exclude={"evaluation_id", "content_checksum"})
+            BaseModel.model_dump(
+                self,
+                mode="json",
+                exclude={"evaluation_id", "content_checksum"},
+            )
         )
         if self.content_checksum != expected:
             raise ValueError("end-to-end evaluation checksum mismatch")
@@ -987,7 +1039,11 @@ class BlindResidualAuditResult(_RevalidatedEvaluationOutput):
         if self.blocker.issue_id != EVALUATION_SCIENTIFIC_HOLD_ISSUE_ID:
             raise ValueError("residual audit must retain the scientific HOLD blocker")
         expected = content_checksum(
-            self.model_dump(mode="json", exclude={"result_id", "content_checksum"})
+            BaseModel.model_dump(
+                self,
+                mode="json",
+                exclude={"result_id", "content_checksum"},
+            )
         )
         if self.content_checksum != expected:
             raise ValueError("residual audit result checksum mismatch")
@@ -1113,7 +1169,11 @@ class ReferenceStabilityReport(_RevalidatedEvaluationOutput):
         ):
             raise ValueError("unclosed reference stability requires UNKNOWN and its blocker")
         expected = content_checksum(
-            self.model_dump(mode="json", exclude={"artifact_id", "content_checksum"})
+            BaseModel.model_dump(
+                self,
+                mode="json",
+                exclude={"artifact_id", "content_checksum"},
+            )
         )
         if self.content_checksum != expected:
             raise ValueError("reference stability report checksum mismatch")
