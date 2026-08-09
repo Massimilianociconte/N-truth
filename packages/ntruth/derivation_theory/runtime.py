@@ -5,7 +5,9 @@ from __future__ import annotations
 import hashlib
 import inspect
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel, Field, JsonValue, field_validator, model_validator
 
@@ -66,11 +68,11 @@ _REVIEWED_THEORY_VERSION = "0.1.0"
 _REVIEWED_THEORY_CHECKSUM = "aa37639893e2ba7732496f2eb6a121291e0aad2d3bae51501c8f1ea9e9b6464f"
 _REVIEWED_RULEBOOK_ID = "ntruth-v8-core"
 _REVIEWED_RULEBOOK_VERSION = "0.1.0"
-_REVIEWED_RULEBOOK_CHECKSUM = "84194ecabae815fca34fbe6dd86223b7cffbf126423d0e241cfae3725d2c39be"
+_REVIEWED_RULEBOOK_CHECKSUM = "384503ea0d0475d12c75f228a8e9e5abf621e1810b40582ec50645046b63589b"
 _REVIEWED_EVALUATOR_REGISTRY_ID = "ntruth-reviewed-evaluator-registry"
 _REVIEWED_EVALUATOR_REGISTRY_VERSION = "0.1.0"
 _REVIEWED_EVALUATOR_REGISTRY_CHECKSUM = (
-    "a8353a1d5743f5fdcbeec7cff389da3bff60908b6d2a609c78a0fd4b6f0a0fff"
+    "99c751a944149c0ba14b2c7c866b436839a38f741a5bc9a2f7e7c65851cca808"
 )
 _REVIEWED_EVALUATOR_VERSION = "0.1.0"
 _REVIEWED_RULE_ID_BY_CLAUSE = {
@@ -136,22 +138,105 @@ def _reviewed_bundle_identity(bundle: ConformanceBundle) -> bool:
     )
 
 
-def _derivation_code_checksum(clause_id: str) -> str:
-    """Hash the executable source transitively used by every clause evaluator."""
+def _derivation_dependencies() -> tuple[
+    dict[str, Any],
+    dict[str, type[BaseModel]],
+]:
+    executable_dependencies: dict[str, Any] = {
+        "stable_id": stable_id,
+        "selected_count_record": _selected_count_record,
+        "required_values": _required_values,
+        "state_for": _state_for,
+        "count_payload": _count_payload,
+        "resolved_payload": _resolved_payload,
+        "derive_clause_claims": _derive_clause_claims,
+        "derive_claim_set": derive_claim_set,
+    }
+    contract_dependencies: dict[str, type[BaseModel]] = {
+        "kernel_model": KernelModel,
+        "v8_derivation_input": V8DerivationInput,
+        "query_causal_event_aggregate": QueryCausalEventAggregate,
+        "canonical_count_record": CanonicalCountRecord,
+        "canonical_count_registry": CanonicalCountRegistry,
+        "profile_coverage_statement": ProfileCoverageStatement,
+        "scenario_coverage": ScenarioCoverage,
+        "support_descriptor": SupportDescriptor,
+        "theory_clause": TheoryClause,
+        "conformance_rule": V8ConformanceRule,
+        "inferential_query": InferentialQuery,
+        "experiment_graph": V8ExperimentGraph,
+        "derived_claim": DerivedClaim,
+        "derived_claim_set": DerivedClaimSet,
+        "execution_manifest": V8ExecutionManifest,
+    }
+    return executable_dependencies, contract_dependencies
 
-    source = "\n".join(
-        inspect.getsource(function)
-        for function in (
-            _selected_count_record,
-            _required_values,
-            _state_for,
-            _count_payload,
-            _resolved_payload,
-            _derive_clause_claims,
-            derive_claim_set,
-        )
+
+@lru_cache(maxsize=16)
+def _derivation_dependency_checksum(cache_token: tuple[int, ...]) -> str:
+    """Hash one live dependency closure; ``cache_token`` invalidates runtime drift."""
+
+    del cache_token
+    executable_dependencies, contract_dependencies = _derivation_dependencies()
+
+    try:
+        executable_sources = {
+            name: inspect.getsource(dependency)
+            for name, dependency in executable_dependencies.items()
+        }
+        contract_sources = {
+            name: inspect.getsource(dependency)
+            for name, dependency in contract_dependencies.items()
+        }
+        contract_schemas = {
+            name: dependency.model_json_schema()
+            for name, dependency in contract_dependencies.items()
+        }
+        contract_sources["knowledge_value"] = inspect.getsource(KnowledgeValue)
+        contract_schemas["knowledge_value_json"] = KnowledgeValue[JsonValue].model_json_schema()
+
+        dependency_modules: dict[str, str] = {}
+        for dependency in (*executable_dependencies.values(), *contract_dependencies.values()):
+            module = inspect.getmodule(dependency)
+            if module is not None and module.__name__ != __name__:
+                dependency_modules[module.__name__] = inspect.getsource(module)
+        knowledge_module = inspect.getmodule(KnowledgeValue)
+        if knowledge_module is not None:
+            dependency_modules[knowledge_module.__name__] = inspect.getsource(knowledge_module)
+    except (OSError, TypeError, ValueError):
+        raise V8EvaluatorReviewRequired() from None
+
+    return canonical_checksum(
+        {
+            "manifest_version": "ntruth-v8-derivation-dependency-closure-1",
+            "executables": executable_sources,
+            "contract_sources": contract_sources,
+            "contract_schemas": contract_schemas,
+            "dependency_modules": dependency_modules,
+            "reviewed_rule_ids": _REVIEWED_RULE_ID_BY_CLAUSE,
+            "reviewed_rule_checksums": _REVIEWED_RULE_CHECKSUM_BY_ID,
+            "claim_state_review_issue_id": CLAIM_STATE_REVIEW_ISSUE_ID,
+        }
     )
-    return canonical_checksum({"clause_id": clause_id, "python_source": source})
+
+
+def _derivation_code_checksum(clause_id: str) -> str:
+    """Hash the reviewed live evaluator and its scientific contract closure."""
+
+    executable_dependencies, contract_dependencies = _derivation_dependencies()
+    cache_token = (
+        id(inspect.getsource),
+        *(id(value) for value in executable_dependencies.values()),
+        *(id(value) for value in contract_dependencies.values()),
+        id(KnowledgeValue),
+    )
+    dependency_checksum = _derivation_dependency_checksum(cache_token)
+    return canonical_checksum(
+        {
+            "clause_id": clause_id,
+            "dependency_closure_checksum": dependency_checksum,
+        }
+    )
 
 
 def _reviewed_derivation_artifact(
