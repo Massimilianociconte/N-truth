@@ -14,6 +14,7 @@ from ntruth.derivation_theory.runtime import (
     derive_claim_set,
     verify_runtime_bundle,
 )
+from ntruth.runtime_tree import ExactRuntimeTreeError, canonicalize_exact_model
 from ntruth.schemas.claims import DerivedClaimSet
 from ntruth.schemas.count_registry import (
     CanonicalCountKind,
@@ -21,16 +22,18 @@ from ntruth.schemas.count_registry import (
     CountQuantifier,
 )
 from ntruth.schemas.execution import V8ExecutionManifest
-from ntruth.schemas.graph_v8 import V8GraphNodeType
+from ntruth.schemas.graph_v8 import V8GraphNodeType, V8GraphRelation, V8GraphRelationType
 from ntruth.schemas.kernel import KernelModel, NonBlankStr
 from ntruth.schemas.knowledge import KnowledgeState, KnowledgeValue
 
 
 class V8VerificationCode(StrEnum):
+    RUNTIME_TREE_MISMATCH = "RUNTIME_TREE_MISMATCH"
     MISSING_EXPLICIT_PREDICATE = "MISSING_EXPLICIT_PREDICATE"
     MISSING_SUPPORT_DESCRIPTOR = "MISSING_SUPPORT_DESCRIPTOR"
     CROSS_QUERY_SCOPE = "CROSS_QUERY_SCOPE"
     GRAPH_SCOPE_MISMATCH = "GRAPH_SCOPE_MISMATCH"
+    GRAPH_TOPOLOGY_MISMATCH = "GRAPH_TOPOLOGY_MISMATCH"
     CAUSAL_SCOPE_MISMATCH = "CAUSAL_SCOPE_MISMATCH"
     PROFILE_SCOPE_MISMATCH = "PROFILE_SCOPE_MISMATCH"
     PROFILE_COVERAGE_INCOMPLETE = "PROFILE_COVERAGE_INCOMPLETE"
@@ -77,6 +80,102 @@ def _fact_issue(
         theory_clause_id=clause_id,
         predicate_id=predicate_id,
     )
+
+
+def _runtime_tree_failure() -> V8VerificationReport:
+    return V8VerificationReport(
+        passed=False,
+        highest_completed_stage="NONE",
+        failed_stage="FACT_VERIFICATION",
+        issues=(
+            _fact_issue(
+                V8VerificationCode.RUNTIME_TREE_MISMATCH,
+                "Request or conformance bundle is not an exact canonical runtime tree.",
+            ),
+        ),
+    )
+
+
+def _canonical_runtime_inputs(
+    request: object,
+    conformance_bundle: object,
+) -> tuple[V8DerivationInput, ConformanceBundle] | None:
+    try:
+        canonical_request = canonicalize_exact_model(
+            request,
+            V8DerivationInput,
+            path="$.request",
+        )
+        canonical_bundle = canonicalize_exact_model(
+            conformance_bundle,
+            ConformanceBundle,
+            path="$.conformance_bundle",
+        )
+    except ExactRuntimeTreeError:
+        return None
+    return canonical_request, canonical_bundle
+
+
+def _graph_topology_issues(request: V8DerivationInput) -> tuple[str, ...]:
+    graph = request.graph
+    nodes_by_id = {node.node_id: node for node in graph.nodes}
+    errors: list[str] = []
+    if any(relation.source_node_id == relation.target_node_id for relation in graph.relations):
+        errors.append("Graph relations cannot be self-referential")
+
+    structural_types = {
+        V8GraphRelationType.NESTED_IN,
+        V8GraphRelationType.CONTAINED_IN,
+        V8GraphRelationType.DERIVED_FROM,
+    }
+    adjacency: dict[str, set[str]] = {node_id: set() for node_id in nodes_by_id}
+    incoming: dict[str, int] = {node_id: 0 for node_id in nodes_by_id}
+    for relation in graph.relations:
+        if relation.relation_type not in structural_types:
+            continue
+        if relation.target_node_id not in adjacency[relation.source_node_id]:
+            adjacency[relation.source_node_id].add(relation.target_node_id)
+            incoming[relation.target_node_id] += 1
+    ready = [node_id for node_id, degree in incoming.items() if degree == 0]
+    visited = 0
+    while ready:
+        node_id = ready.pop()
+        visited += 1
+        for target_id in adjacency[node_id]:
+            incoming[target_id] -= 1
+            if incoming[target_id] == 0:
+                ready.append(target_id)
+    if visited != len(nodes_by_id):
+        errors.append("NESTED_IN/CONTAINED_IN/DERIVED_FROM relations must be acyclic")
+
+    query_ids = {
+        node.node_id for node in graph.nodes if node.node_type is V8GraphNodeType.INFERENTIAL_QUERY
+    }
+    block_ids = {
+        node.node_id for node in graph.nodes if node.node_type is V8GraphNodeType.EXPERIMENT_BLOCK
+    }
+    links_by_query: dict[str, list[V8GraphRelation]] = {query_id: [] for query_id in query_ids}
+    for relation in graph.relations:
+        if (
+            relation.relation_type is V8GraphRelationType.NESTED_IN
+            and relation.source_node_id in query_ids
+            and relation.target_node_id in block_ids
+        ):
+            links_by_query[relation.source_node_id].append(relation)
+    if any(len(relations) != 1 for relations in links_by_query.values()):
+        errors.append("Each InferentialQuery requires exactly one NESTED_IN block binding")
+    current_links = links_by_query.get(request.query.id, [])
+    if len(current_links) == 1:
+        link = current_links[0]
+        if (
+            link.target_node_id != request.experiment_block_id
+            or link.query_scope.knowledge_state is not KnowledgeState.PRESENT
+            or link.query_scope.value != request.query.id
+            or link.factor_scope.knowledge_state is not KnowledgeState.NOT_APPLICABLE
+            or link.decisive_attributes.knowledge_state is not KnowledgeState.NOT_APPLICABLE
+        ):
+            errors.append("InferentialQuery NESTED_IN binding has incompatible block or scope")
+    return tuple(errors)
 
 
 def _scientific_value_signature(value: KnowledgeValue[Any]) -> tuple[str, str]:
@@ -171,6 +270,10 @@ def verify_v8_pipeline_request(
 ) -> V8VerificationReport:
     """Close graph/query/count/coverage/version facts before derivation."""
 
+    canonical = _canonical_runtime_inputs(request, conformance_bundle)
+    if canonical is None:
+        return _runtime_tree_failure()
+    request, conformance_bundle = canonical
     issues: list[V8VerificationIssue] = []
     theory = conformance_bundle.theory
     block_nodes = {
@@ -188,6 +291,13 @@ def verify_v8_pipeline_request(
             _fact_issue(
                 V8VerificationCode.GRAPH_SCOPE_MISMATCH,
                 "Graph must contain the requested block and InferentialQuery.",
+            )
+        )
+    for mismatch in _graph_topology_issues(request):
+        issues.append(
+            _fact_issue(
+                V8VerificationCode.GRAPH_TOPOLOGY_MISMATCH,
+                mismatch,
             )
         )
     if (
@@ -341,6 +451,10 @@ def verify_v8_derived_claim_set(
 ) -> V8VerificationReport:
     """Join every claim byte back to request, Theory, Rulebook and execution pins."""
 
+    canonical = _canonical_runtime_inputs(request, conformance_bundle)
+    if canonical is None:
+        return _runtime_tree_failure()
+    request, conformance_bundle = canonical
     conformance = verify_runtime_bundle(conformance_bundle)
     if not conformance.passed:
         return V8VerificationReport(

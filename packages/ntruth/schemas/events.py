@@ -109,11 +109,62 @@ class EventRegistry(KernelModel):
         if len(set(event_ids)) != len(event_ids):
             raise ValueError("duplicate event_id")
         known = set(event_ids)
+        raw_contracts: set[tuple[str, str, TemporalRelation]] = set()
+        pair_contracts: dict[frozenset[str], tuple[str, object]] = {}
+        strict_edges: set[tuple[str, str]] = set()
         for timing in self.relative_timings:
             if timing.subject_event_id not in known:
                 raise ValueError(f"unknown subject_event_id: {timing.subject_event_id}")
             if timing.reference_event_id not in known:
                 raise ValueError(f"unknown reference_event_id: {timing.reference_event_id}")
+            if timing.subject_event_id == timing.reference_event_id:
+                raise ValueError("temporal relation cannot reference the same event")
+            raw_contract = (
+                timing.subject_event_id,
+                timing.reference_event_id,
+                timing.relation,
+            )
+            if raw_contract in raw_contracts:
+                raise ValueError("duplicate temporal relation")
+            raw_contracts.add(raw_contract)
+
+            pair = frozenset((timing.subject_event_id, timing.reference_event_id))
+            if timing.relation is TemporalRelation.BEFORE:
+                normalized: tuple[str, object] = (
+                    "STRICT_ORDER",
+                    (timing.subject_event_id, timing.reference_event_id),
+                )
+                strict_edges.add((timing.subject_event_id, timing.reference_event_id))
+            elif timing.relation is TemporalRelation.AFTER:
+                normalized = (
+                    "STRICT_ORDER",
+                    (timing.reference_event_id, timing.subject_event_id),
+                )
+                strict_edges.add((timing.reference_event_id, timing.subject_event_id))
+            else:
+                normalized = ("SYMMETRIC", timing.relation)
+            prior = pair_contracts.get(pair)
+            if prior is not None and prior != normalized:
+                raise ValueError("conflicting temporal relations for the same event pair")
+            pair_contracts[pair] = normalized
+
+        adjacency: dict[str, set[str]] = {event_id: set() for event_id in event_ids}
+        incoming: dict[str, int] = {event_id: 0 for event_id in event_ids}
+        for subject, reference in strict_edges:
+            if reference not in adjacency[subject]:
+                adjacency[subject].add(reference)
+                incoming[reference] += 1
+        ready = [event_id for event_id, degree in incoming.items() if degree == 0]
+        visited = 0
+        while ready:
+            event_id = ready.pop()
+            visited += 1
+            for reference in adjacency[event_id]:
+                incoming[reference] -= 1
+                if incoming[reference] == 0:
+                    ready.append(reference)
+        if visited != len(event_ids):
+            raise ValueError("temporal strict-order cycle")
         return self
 
     def event(self, event_id: str) -> DesignEvent:

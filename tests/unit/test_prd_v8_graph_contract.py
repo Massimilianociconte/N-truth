@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from pydantic import ValidationError
+from pydantic import JsonValue, ValidationError
 
 from ntruth.schemas.graph_v8 import (
     V8ExperimentGraph,
@@ -12,6 +12,7 @@ from ntruth.schemas.graph_v8 import (
     V8GraphRelation,
     V8GraphRelationType,
 )
+from ntruth.schemas.knowledge import KnowledgeState, KnowledgeValue
 
 
 def test_v8_node_vocabulary_equals_section_8_4_minimum() -> None:
@@ -86,9 +87,25 @@ def test_v8_experiment_graph_is_versioned_and_referentially_closed() -> None:
     query = V8GraphNode(node_id="IQ-01", node_type=V8GraphNodeType.INFERENTIAL_QUERY)
     relation = V8GraphRelation(
         relation_id="REL-01",
-        relation_type=V8GraphRelationType.CONTAINED_IN,
+        relation_type=V8GraphRelationType.NESTED_IN,
         source_node_id="IQ-01",
         target_node_id="EB-01",
+        query_scope=KnowledgeValue[str](
+            knowledge_state=KnowledgeState.PRESENT,
+            value="IQ-01",
+            evidence_ids=("EV-GRAPH-01",),
+            query_scope_id="IQ-01",
+        ),
+        factor_scope=KnowledgeValue[str](
+            knowledge_state=KnowledgeState.NOT_APPLICABLE,
+            rationale="InferentialQuery nesting is not factor-scoped.",
+            query_scope_id="IQ-01",
+        ),
+        decisive_attributes=KnowledgeValue[dict[str, JsonValue]](
+            knowledge_state=KnowledgeState.NOT_APPLICABLE,
+            rationale="InferentialQuery nesting has no additional attributes.",
+            query_scope_id="IQ-01",
+        ),
     )
     graph = V8ExperimentGraph(nodes=(block, query), relations=(relation,))
     assert graph.schema_version == "8.0.0"

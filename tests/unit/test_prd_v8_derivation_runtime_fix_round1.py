@@ -201,6 +201,13 @@ def _exact_view(edge_types: tuple[V8GraphRelationType, ...]) -> object:
             relation_type=relation_type,
             source_node_id="a",
             target_node_id="b",
+            query_scope=base._graph_query_scope("b"),
+            factor_scope=base._graph_not_applicable(
+                "b", "This equality fixture is not factor-scoped."
+            ),
+            decisive_attributes=base._graph_not_applicable(
+                "b", "This equality fixture has no additional attributes."
+            ),
         )
         for index, relation_type in enumerate(edge_types)
     )

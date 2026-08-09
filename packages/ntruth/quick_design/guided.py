@@ -63,7 +63,13 @@ from ntruth.schemas.events import (
     RelativeTiming,
     TemporalRelation,
 )
-from ntruth.schemas.graph_v8 import V8ExperimentGraph, V8GraphNode, V8GraphNodeType
+from ntruth.schemas.graph_v8 import (
+    V8ExperimentGraph,
+    V8GraphNode,
+    V8GraphNodeType,
+    V8GraphRelation,
+    V8GraphRelationType,
+)
 from ntruth.schemas.kernel import KernelModel, NonBlankStr
 from ntruth.schemas.knowledge import KnowledgeState, KnowledgeValue
 from ntruth.schemas.prospective import (
@@ -1562,7 +1568,28 @@ def _build_submission(
             nodes=(
                 V8GraphNode(node_id=block_id, node_type=V8GraphNodeType.EXPERIMENT_BLOCK),
                 V8GraphNode(node_id=query_id, node_type=V8GraphNodeType.INFERENTIAL_QUERY),
-            )
+            ),
+            relations=(
+                V8GraphRelation(
+                    relation_id=stable_id("REL-QD-NESTED", query_id, block_id),
+                    relation_type=V8GraphRelationType.NESTED_IN,
+                    source_node_id=query_id,
+                    target_node_id=block_id,
+                    query_scope=_present(
+                        query_id,
+                        evidence_id=evidence_id,
+                        query_id=query_id,
+                    ),
+                    factor_scope=_not_applicable(
+                        "InferentialQuery-to-block nesting is not factor-scoped.",
+                        query_id=query_id,
+                    ),
+                    decisive_attributes=_not_applicable(
+                        "InferentialQuery-to-block nesting has no additional decisive attributes.",
+                        query_id=query_id,
+                    ),
+                ),
+            ),
         ),
         query=query,
         causal_aggregate=causal_aggregate,

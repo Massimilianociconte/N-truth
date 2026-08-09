@@ -73,6 +73,31 @@ def _unknown(rationale: str) -> KnowledgeValue[Any]:
     )
 
 
+def _not_applicable(rationale: str) -> KnowledgeValue[Any]:
+    return KnowledgeValue(
+        knowledge_state=KnowledgeState.NOT_APPLICABLE,
+        rationale=rationale,
+        query_scope_id=QUERY_ID,
+    )
+
+
+def _graph_query_scope(query_id: str) -> KnowledgeValue[str]:
+    return KnowledgeValue[str](
+        knowledge_state=KnowledgeState.PRESENT,
+        value=query_id,
+        evidence_ids=("EV-GRAPH-SCOPE",),
+        query_scope_id=query_id,
+    )
+
+
+def _graph_not_applicable(query_id: str, rationale: str) -> KnowledgeValue[Any]:
+    return KnowledgeValue[Any](
+        knowledge_state=KnowledgeState.NOT_APPLICABLE,
+        rationale=rationale,
+        query_scope_id=query_id,
+    )
+
+
 def _query() -> InferentialQuery:
     return InferentialQuery(
         id=QUERY_ID,
@@ -287,7 +312,22 @@ def _request(
             nodes=(
                 V8GraphNode(node_id=BLOCK_ID, node_type=V8GraphNodeType.EXPERIMENT_BLOCK),
                 V8GraphNode(node_id=QUERY_ID, node_type=V8GraphNodeType.INFERENTIAL_QUERY),
-            )
+            ),
+            relations=(
+                V8GraphRelation(
+                    relation_id="REL-IQ-BLOCK-RUNTIME-001",
+                    relation_type=V8GraphRelationType.NESTED_IN,
+                    source_node_id=QUERY_ID,
+                    target_node_id=BLOCK_ID,
+                    query_scope=_present(QUERY_ID),
+                    factor_scope=_not_applicable(
+                        "InferentialQuery-to-block nesting is not factor-scoped."
+                    ),
+                    decisive_attributes=_not_applicable(
+                        "InferentialQuery-to-block nesting has no additional attributes."
+                    ),
+                ),
+            ),
         ),
         query=_query(),
         causal_aggregate=_causal_aggregate(interference=interference),
@@ -508,9 +548,16 @@ def test_exact_graph_equality_is_identifier_invariant_and_semantic() -> None:
             relations=(
                 V8GraphRelation(
                     relation_id="left-edge",
-                    relation_type=V8GraphRelationType.CONTAINED_IN,
+                    relation_type=V8GraphRelationType.NESTED_IN,
                     source_node_id="left-query",
                     target_node_id="left-block",
+                    query_scope=_graph_query_scope("left-query"),
+                    factor_scope=_graph_not_applicable(
+                        "left-query", "Query nesting is not factor-scoped."
+                    ),
+                    decisive_attributes=_graph_not_applicable(
+                        "left-query", "Query nesting has no additional attributes."
+                    ),
                 ),
             ),
         ),
@@ -532,9 +579,16 @@ def test_exact_graph_equality_is_identifier_invariant_and_semantic() -> None:
             relations=(
                 V8GraphRelation(
                     relation_id="renamed-edge",
-                    relation_type=V8GraphRelationType.CONTAINED_IN,
+                    relation_type=V8GraphRelationType.NESTED_IN,
                     source_node_id="renamed-2",
                     target_node_id="renamed-1",
+                    query_scope=_graph_query_scope("renamed-2"),
+                    factor_scope=_graph_not_applicable(
+                        "renamed-2", "Query nesting is not factor-scoped."
+                    ),
+                    decisive_attributes=_graph_not_applicable(
+                        "renamed-2", "Query nesting has no additional attributes."
+                    ),
                 ),
             ),
         ),

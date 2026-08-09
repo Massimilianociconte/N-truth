@@ -11,6 +11,7 @@ from ntruth.derivation_theory.runtime import (
     verify_runtime_bundle,
 )
 from ntruth.rules.v8_engine import evaluate_design_adequacy
+from ntruth.runtime_tree import ExactRuntimeTreeError, canonicalize_exact_model
 from ntruth.schemas.adequacy import DesignAdequacyEvaluation, DesignAdequacyFinding
 from ntruth.schemas.claims import DerivedClaimSet
 from ntruth.schemas.coverage import (
@@ -82,8 +83,25 @@ def run_v8_pipeline(
 ) -> V8PipelineResult:
     """Run only with one complete, content-addressed, conformant bundle."""
 
-    from ntruth.verifier.v8 import verify_v8_derived_claim_set, verify_v8_pipeline_request
+    from ntruth.verifier.v8 import (
+        _runtime_tree_failure,
+        verify_v8_derived_claim_set,
+        verify_v8_pipeline_request,
+    )
 
+    try:
+        request = canonicalize_exact_model(
+            request,
+            V8DerivationInput,
+            path="$.request",
+        )
+        conformance_bundle = canonicalize_exact_model(
+            conformance_bundle,
+            ConformanceBundle,
+            path="$.conformance_bundle",
+        )
+    except ExactRuntimeTreeError as error:
+        raise V8PipelineVerificationError(_runtime_tree_failure()) from error
     require_reviewed_evaluator_bundle(conformance_bundle)
     conformance = verify_runtime_bundle(conformance_bundle)
     if not conformance.passed:

@@ -220,6 +220,11 @@ class QueryCausalEventAggregate(KernelModel):
 
     @model_validator(mode="after")
     def _resolve_typed_event_references(self) -> Self:
+        if any(
+            event.experiment_block_id != self.experiment_block_id
+            for event in self.event_registry.events
+        ):
+            raise ValueError("every event registry entry must share the aggregate Experiment Block")
         expected_types: tuple[
             tuple[str, type[EventRecord]],
             ...,

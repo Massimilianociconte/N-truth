@@ -5,9 +5,10 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Self
 
-from pydantic import Field, model_validator
+from pydantic import Field, JsonValue, model_validator
 
 from ntruth.schemas.kernel import KernelModel, NonBlankStr
+from ntruth.schemas.knowledge import KnowledgeState, KnowledgeValue
 
 
 class V8GraphNodeType(StrEnum):
@@ -82,6 +83,22 @@ class V8GraphRelation(KernelModel):
     relation_type: V8GraphRelationType
     source_node_id: NonBlankStr
     target_node_id: NonBlankStr
+    query_scope: KnowledgeValue[NonBlankStr]
+    factor_scope: KnowledgeValue[NonBlankStr]
+    decisive_attributes: KnowledgeValue[dict[NonBlankStr, JsonValue]]
+
+    @model_validator(mode="after")
+    def _coherent_scope_metadata(self) -> Self:
+        scoped_values = (self.query_scope, self.factor_scope, self.decisive_attributes)
+        metadata = {value.query_scope_id for value in scoped_values}
+        if None in metadata or len(metadata) != 1:
+            raise ValueError("graph relation KnowledgeValue query scopes must match")
+        if (
+            self.query_scope.knowledge_state is KnowledgeState.PRESENT
+            and self.query_scope.value != self.query_scope.query_scope_id
+        ):
+            raise ValueError("PRESENT graph query_scope must equal its query_scope_id")
+        return self
 
 
 class V8ExperimentGraph(KernelModel):
@@ -96,12 +113,50 @@ class V8ExperimentGraph(KernelModel):
         relation_ids = [relation.relation_id for relation in self.relations]
         if len(set(relation_ids)) != len(relation_ids):
             raise ValueError("duplicate v8 graph relation_id")
-        known_nodes = set(node_ids)
+        nodes_by_id = {node.node_id: node for node in self.nodes}
+        known_nodes = set(nodes_by_id)
         for relation in self.relations:
             if relation.source_node_id not in known_nodes:
                 raise ValueError(f"unknown source_node_id: {relation.source_node_id}")
             if relation.target_node_id not in known_nodes:
                 raise ValueError(f"unknown target_node_id: {relation.target_node_id}")
+            if relation.query_scope.knowledge_state is KnowledgeState.PRESENT:
+                query_scope = relation.query_scope.value
+                if not isinstance(query_scope, str):
+                    raise ValueError("PRESENT query_scope must contain an identifier")
+                query_node = nodes_by_id.get(query_scope)
+                if (
+                    query_node is None
+                    or query_node.node_type is not V8GraphNodeType.INFERENTIAL_QUERY
+                ):
+                    raise ValueError("PRESENT query_scope must reference an InferentialQuery node")
+            if relation.factor_scope.knowledge_state is KnowledgeState.PRESENT:
+                factor_scope = relation.factor_scope.value
+                if not isinstance(factor_scope, str):
+                    raise ValueError("PRESENT factor_scope must contain an identifier")
+                factor_node = nodes_by_id.get(factor_scope)
+                if factor_node is None or factor_node.node_type is not V8GraphNodeType.FACTOR:
+                    raise ValueError("PRESENT factor_scope must reference a Factor node")
+
+            source = nodes_by_id[relation.source_node_id]
+            target = nodes_by_id[relation.target_node_id]
+            if (
+                source.node_type is V8GraphNodeType.INFERENTIAL_QUERY
+                and target.node_type is V8GraphNodeType.EXPERIMENT_BLOCK
+            ):
+                if relation.relation_type is not V8GraphRelationType.NESTED_IN:
+                    raise ValueError("InferentialQuery-to-block binding requires NESTED_IN")
+                if (
+                    relation.query_scope.knowledge_state is not KnowledgeState.PRESENT
+                    or relation.query_scope.value != source.node_id
+                    or relation.factor_scope.knowledge_state is not KnowledgeState.NOT_APPLICABLE
+                    or relation.decisive_attributes.knowledge_state
+                    is not KnowledgeState.NOT_APPLICABLE
+                ):
+                    raise ValueError(
+                        "InferentialQuery-to-block NESTED_IN requires PRESENT query scope "
+                        "and NOT_APPLICABLE factor/attribute scopes"
+                    )
         return self
 
 
