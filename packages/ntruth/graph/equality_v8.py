@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from collections import Counter
 from collections.abc import Mapping
 from typing import Any
@@ -20,36 +19,24 @@ from ntruth.schemas.kernel import KernelModel, NonBlankStr
 from ntruth.schemas.knowledge import KnowledgeValue
 from ntruth.schemas.support import ScientificReviewRequirement
 
-_GRAPH_IDENTIFIER_TOKENS = frozenset(
+_NODE_REFERENCE_FIELD_NAMES = frozenset(
     {
-        "aggregate",
-        "application",
-        "assignment",
-        "block",
-        "challenge",
-        "claim",
-        "condition",
-        "confirmation",
-        "contrast",
-        "count",
-        "endpoint",
-        "event",
-        "evidence",
-        "exclusion",
-        "exposure",
-        "factor",
-        "level",
-        "measurement",
+        "anchor",
+        "anchors",
+        "id",
+        "ids",
+        "member",
+        "members",
         "node",
-        "observation",
-        "pool",
-        "preparation",
-        "query",
-        "sensitivity",
-        "source",
-        "split",
-        "unit",
+        "nodes",
+        "reference",
+        "references",
     }
+)
+_NODE_REFERENCE_FIELD_SUFFIXES = tuple(f"_{name}" for name in _NODE_REFERENCE_FIELD_NAMES)
+_NODE_REFERENCE_MAPPING_FIELD_NAMES = frozenset({"member", "members"})
+_NODE_REFERENCE_MAPPING_FIELD_SUFFIXES = tuple(
+    f"_{name}" for name in _NODE_REFERENCE_MAPPING_FIELD_NAMES
 )
 
 
@@ -88,6 +75,8 @@ def _networkx_graph(view: ExactGraphView) -> nx.MultiDiGraph[str]:
         )
         for node in view.graph.nodes
     }
+    if len(set(node_identities.values())) != len(node_identities):
+        raise _UnaddressableGraphValue("ambiguous graph semantic identity")
     graph: nx.MultiDiGraph[str] = nx.MultiDiGraph()
     for node in view.graph.nodes:
         identity = semantics[node.node_id]
@@ -118,27 +107,31 @@ def _networkx_graph(view: ExactGraphView) -> nx.MultiDiGraph[str]:
     return graph
 
 
-def _looks_like_graph_identifier(value: str) -> bool:
-    if any(character.isspace() for character in value):
-        return False
-    parts = tuple(filter(None, re.split(r"[-_:/.]+", value.casefold())))
-    return len(parts) > 1 and bool(_GRAPH_IDENTIFIER_TOKENS.intersection(parts))
-
-
 def _field_requires_node_reference(field_name: str) -> bool:
     normalized = field_name.casefold()
-    return normalized == "id" or normalized.endswith("_id") or normalized.endswith("_ids")
+    return normalized in _NODE_REFERENCE_FIELD_NAMES or normalized.endswith(
+        _NODE_REFERENCE_FIELD_SUFFIXES
+    )
+
+
+def _field_maps_node_references(field_name: str) -> bool:
+    normalized = field_name.casefold()
+    return normalized in _NODE_REFERENCE_MAPPING_FIELD_NAMES or normalized.endswith(
+        _NODE_REFERENCE_MAPPING_FIELD_SUFFIXES
+    )
 
 
 def _readdress_scientific_mapping_key(
     key: str,
     node_identities: Mapping[str, tuple[str, str, str]],
+    *,
+    require_node_reference: bool,
 ) -> object:
     identity = node_identities.get(key)
     if identity is not None:
         return {"type": "node_identity", "value": identity}
-    if not _field_requires_node_reference(key) and _looks_like_graph_identifier(key):
-        raise _UnaddressableGraphValue("unresolved graph identifier mapping key")
+    if require_node_reference:
+        raise _UnaddressableGraphValue("unresolved graph node-reference mapping key")
     return {"type": "str", "value": key}
 
 
@@ -147,8 +140,11 @@ def _readdress_scientific_payload(
     node_identities: Mapping[str, tuple[str, str, str]],
     *,
     require_node_reference: bool = False,
-    detect_ambiguous_identifier: bool = True,
+    mapping_keys_are_node_references: bool = False,
+    active: set[int] | None = None,
 ) -> object:
+    if active is None:
+        active = set()
     if raw is None:
         return {"type": "none"}
     if type(raw) is bool:
@@ -158,67 +154,93 @@ def _readdress_scientific_payload(
     if type(raw) is float:
         return {"type": "float", "value": raw}
     if type(raw) is str:
-        identity = node_identities.get(raw)
-        if identity is not None:
-            return {"type": "node_identity", "value": identity}
-        if require_node_reference or (
-            detect_ambiguous_identifier and _looks_like_graph_identifier(raw)
-        ):
-            raise _UnaddressableGraphValue("unresolved graph identifier")
+        node_identity = node_identities.get(raw)
+        if node_identity is not None:
+            return {"type": "node_identity", "value": node_identity}
+        if require_node_reference:
+            raise _UnaddressableGraphValue("unresolved graph node reference")
         return {"type": "str", "value": raw}
     if isinstance(raw, Mapping):
         if type(raw) is not dict:
             raise _UnaddressableGraphValue("non-builtin scientific mapping")
-        keys = tuple(dict.keys(raw))
-        if any(type(key) is not str for key in keys):
-            raise _UnaddressableGraphValue("non-string scientific mapping key")
-        items = [
-            [
-                _readdress_scientific_mapping_key(key, node_identities),
-                _readdress_scientific_payload(
-                    dict.__getitem__(raw, key),
-                    node_identities,
-                    require_node_reference=_field_requires_node_reference(key),
-                    detect_ambiguous_identifier=detect_ambiguous_identifier,
-                ),
+        container_identity = id(raw)
+        if container_identity in active:
+            raise _UnaddressableGraphValue("recursive scientific mapping")
+        active.add(container_identity)
+        try:
+            keys = tuple(dict.keys(raw))
+            if any(type(key) is not str for key in keys):
+                raise _UnaddressableGraphValue("non-string scientific mapping key")
+            items = [
+                [
+                    _readdress_scientific_mapping_key(
+                        key,
+                        node_identities,
+                        require_node_reference=mapping_keys_are_node_references,
+                    ),
+                    _readdress_scientific_payload(
+                        dict.__getitem__(raw, key),
+                        node_identities,
+                        require_node_reference=_field_requires_node_reference(key),
+                        mapping_keys_are_node_references=_field_maps_node_references(key),
+                        active=active,
+                    ),
+                ]
+                for key in keys
             ]
-            for key in keys
-        ]
-        items.sort(key=canonical_checksum)
-        return {
-            "type": "dict",
-            "items": items,
-        }
+            items.sort(key=canonical_checksum)
+            return {
+                "type": "dict",
+                "items": items,
+            }
+        finally:
+            active.remove(container_identity)
     if isinstance(raw, list):
         if type(raw) is not list:
             raise _UnaddressableGraphValue("non-builtin scientific list")
-        return {
-            "type": "list",
-            "items": [
-                _readdress_scientific_payload(
-                    item,
-                    node_identities,
-                    require_node_reference=require_node_reference,
-                    detect_ambiguous_identifier=detect_ambiguous_identifier,
-                )
-                for item in raw
-            ],
-        }
+        container_identity = id(raw)
+        if container_identity in active:
+            raise _UnaddressableGraphValue("recursive scientific list")
+        active.add(container_identity)
+        try:
+            return {
+                "type": "list",
+                "items": [
+                    _readdress_scientific_payload(
+                        item,
+                        node_identities,
+                        require_node_reference=require_node_reference,
+                        mapping_keys_are_node_references=mapping_keys_are_node_references,
+                        active=active,
+                    )
+                    for item in raw
+                ],
+            }
+        finally:
+            active.remove(container_identity)
     if isinstance(raw, tuple):
         if type(raw) is not tuple:
             raise _UnaddressableGraphValue("non-builtin scientific tuple")
-        return {
-            "type": "tuple",
-            "items": [
-                _readdress_scientific_payload(
-                    item,
-                    node_identities,
-                    require_node_reference=require_node_reference,
-                    detect_ambiguous_identifier=detect_ambiguous_identifier,
-                )
-                for item in raw
-            ],
-        }
+        container_identity = id(raw)
+        if container_identity in active:
+            raise _UnaddressableGraphValue("recursive scientific tuple")
+        active.add(container_identity)
+        try:
+            return {
+                "type": "tuple",
+                "items": [
+                    _readdress_scientific_payload(
+                        item,
+                        node_identities,
+                        require_node_reference=require_node_reference,
+                        mapping_keys_are_node_references=mapping_keys_are_node_references,
+                        active=active,
+                    )
+                    for item in raw
+                ],
+            }
+        finally:
+            active.remove(container_identity)
     raise _UnaddressableGraphValue("unsupported scientific runtime type")
 
 
@@ -245,7 +267,6 @@ def _scientific_edge_value(
         "claim_scope_id": _readdress_scientific_payload(
             value.claim_scope_id,
             node_identities,
-            detect_ambiguous_identifier=False,
         ),
         "query_scope_id": _readdress_scientific_payload(
             value.query_scope_id,
