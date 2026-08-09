@@ -18,9 +18,16 @@ function jsonResponse(body: unknown): Response {
 }
 
 function canonicalResponse(): QuickDesignV8Response {
-  return structuredClone(
-    canonicalFixture.response,
-  ) as unknown as QuickDesignV8Response;
+  return {
+    planned_design: structuredClone(canonicalFixture.response.planned_design),
+    report: structuredClone(canonicalFixture.response.report_bundle),
+    artifacts: structuredClone(canonicalFixture.response.artifacts),
+    contract: {
+      code: "PRD_V8",
+      version: "8.0.0",
+      strategy_module_status: "HANDOFF_ONLY",
+    },
+  } as unknown as QuickDesignV8Response;
 }
 
 function validDraft(): GuidedQuickDesignDraft {
@@ -193,7 +200,7 @@ async function previewResponse(
         ? pythonSerializedDraft(draft)
         : structuredClone(draft),
       conformance_bundle_payload: structuredClone(
-        canonicalFixture.response.report.verified_pipeline_contexts[0]
+        canonicalFixture.response.report_bundle.verified_pipeline_contexts[0]
           .conformance_bundle_payload,
       ),
       is_execution_capability: false,
@@ -229,6 +236,45 @@ async function previewResponse(
   );
   await readdressPreview(response);
   return response;
+}
+
+async function confirmedResponse(
+  draft: GuidedQuickDesignDraft,
+): Promise<Record<string, unknown>> {
+  const response = await previewResponse(draft, true);
+  const present = (value: unknown) => ({
+    schema_version: "8.0.0",
+    knowledge_state: "PRESENT",
+    value,
+    conflicting_values: [],
+    evidence_ids: ["EV-GUIDED-001"],
+    source_scope_ids: [],
+    rationale: null,
+    claim_scope_id: null,
+    query_scope_id: "IQ-GUIDED-001",
+  });
+  response.action = "CONFIRM";
+  response.state = "BUILT";
+  const submission = structuredClone(canonicalFixture.submission);
+  const result = structuredClone(canonicalFixture.response);
+  response.submission_audit_snapshot = present(submission);
+  response.canonical_result = present(result);
+  response.confirmed_snapshot_checksum = present("0".repeat(64));
+  await readdressConfirmedSnapshot(response);
+  return response;
+}
+
+async function readdressConfirmedSnapshot(response: Record<string, unknown>): Promise<void> {
+  const submission = response.submission_audit_snapshot as Record<string, unknown>;
+  const result = response.canonical_result as Record<string, unknown>;
+  const confirmed = response.confirmed_snapshot_checksum as Record<string, unknown>;
+  confirmed.value = await sha256Hex(
+    pythonJson({
+      preview_checksum: response.preview_checksum,
+      submission_audit_snapshot: submission.value,
+      canonical_result: result.value,
+    }),
+  );
 }
 
 function pythonJson(value: unknown): string {
@@ -290,6 +336,73 @@ async function expectCanonicalRejection(
 }
 
 describe("PRD v8 Desktop strict runtime boundaries", () => {
+  it("accepts and normalizes the genuine Python QuickDesignV8Result wire tree", async () => {
+    const draft = validDraft();
+    const response = await confirmedResponse(draft);
+    const fetchMock = vi.fn(async () => jsonResponse(response));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      api.buildQuickDesignSubmission({ action: "CONFIRM", draft }),
+    ).resolves.toMatchObject({
+      action: "CONFIRM",
+      state: "BUILT",
+      canonical_result: {
+        knowledge_state: "PRESENT",
+        value: {
+          planned_design: canonicalFixture.response.planned_design,
+          report: canonicalFixture.response.report_bundle,
+          artifacts: canonicalFixture.response.artifacts,
+          contract: {
+            code: "PRD_V8",
+            version: "8.0.0",
+            strategy_module_status: "HANDOFF_ONLY",
+            guided_confirmation: true,
+          },
+        },
+      },
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["report bundle", (wire: Record<string, unknown>) => {
+      const report = wire.report_bundle as Record<string, unknown>;
+      const claimSets = report.claim_sets as Array<Record<string, unknown>>;
+      claimSets[0].claim_set_id = "CLAIM-SET-FORGED";
+    }],
+    ["pipeline execution manifest", (wire: Record<string, unknown>) => {
+      const pipeline = wire.pipeline_result as Record<string, unknown>;
+      const manifest = pipeline.execution_manifest as Record<string, unknown>;
+      manifest.manifest_id = "MANIFEST-FORGED-BUT-SHAPED";
+    }],
+    ["pipeline claim set", (wire: Record<string, unknown>) => {
+      const pipeline = wire.pipeline_result as Record<string, unknown>;
+      const claimSet = pipeline.claim_set as Record<string, unknown>;
+      claimSet.claim_set_id = "CLAIM-SET-FORGED-BUT-SHAPED";
+    }],
+    ["planned design", (wire: Record<string, unknown>) => {
+      const plan = wire.planned_design as Record<string, unknown>;
+      plan.plan_id = "PLAN-FORGED";
+    }],
+    ["artifact", (wire: Record<string, unknown>) => {
+      const artifacts = wire.artifacts as Array<Record<string, unknown>>;
+      artifacts[0].content = `${String(artifacts[0].content)}forged-row\n`;
+    }],
+  ])("rejects a hostile Python wire %s mismatch", async (_label, mutate) => {
+    const draft = validDraft();
+    const response = await confirmedResponse(draft);
+    const canonicalResult = response.canonical_result as Record<string, unknown>;
+    const wire = canonicalResult.value as Record<string, unknown>;
+    mutate(wire);
+    await readdressConfirmedSnapshot(response);
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(response)));
+
+    await expect(
+      api.buildQuickDesignSubmission({ action: "CONFIRM", draft }),
+    ).rejects.toThrow(/malformed PRD v8 build response/);
+  });
+
   it("accepts the genuine Python model_dump draft defaults in PREVIEW", async () => {
     const draft = validDraft();
     const response = await previewResponse(draft, true);

@@ -14,8 +14,20 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 const artifactPreviews = canonicalFixture.response.artifacts;
-const profileKnownGaps = canonicalFixture.response.report.verified_pipeline_contexts[0]
+const profileKnownGaps = canonicalFixture.response.report_bundle.verified_pipeline_contexts[0]
   .conformance_bundle_payload.profile_closure.known_gaps;
+function canonicalResponse(): QuickDesignV8Response {
+  return {
+    planned_design: structuredClone(canonicalFixture.response.planned_design),
+    report: structuredClone(canonicalFixture.response.report_bundle),
+    artifacts: structuredClone(canonicalFixture.response.artifacts),
+    contract: {
+      code: "PRD_V8",
+      version: "8.0.0",
+      strategy_module_status: "HANDOFF_ONLY",
+    },
+  } as unknown as QuickDesignV8Response;
+}
 const questions = ["assignment_separability_support", "experimental_unit_instances", "source_diversity", "external_replication"].map(
   (predicateId, index) => ({
     schema_version: "8.0.0",
@@ -73,7 +85,7 @@ function builderResponse(action: "PREVIEW" | "CONFIRM", draft: unknown = {}) {
       schema_version: "8.0.0",
       draft,
       conformance_bundle_payload:
-        canonicalFixture.response.report.verified_pipeline_contexts[0]
+        canonicalFixture.response.report_bundle.verified_pipeline_contexts[0]
           .conformance_bundle_payload,
       is_execution_capability: false,
     },
@@ -226,6 +238,16 @@ async function sealBuilderResponse(
     artifacts: artifacts.map((artifact) => artifact.content_checksum),
     summary,
   });
+  if (response.action === "CONFIRM") {
+    const submission = response.submission_audit_snapshot as Record<string, unknown>;
+    const result = response.canonical_result as Record<string, unknown>;
+    const confirmed = response.confirmed_snapshot_checksum as Record<string, unknown>;
+    confirmed.value = await sha256Hex({
+      preview_checksum: response.preview_checksum,
+      submission_audit_snapshot: submission.value,
+      canonical_result: result.value,
+    });
+  }
 }
 
 function change(label: string, value: string): void {
@@ -422,7 +444,7 @@ describe("PRD v8 guided desktop flow", () => {
       "execution_manifest",
     ] as const;
     for (const field of incompleteFields) {
-      const malformed = structuredClone(canonicalFixture.response) as Record<string, unknown>;
+      const malformed = canonicalResponse() as unknown as Record<string, unknown>;
       delete (malformed.report as Record<string, unknown>)[field];
       vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(malformed)));
       await expect(
@@ -432,7 +454,7 @@ describe("PRD v8 guided desktop flow", () => {
       ).rejects.toThrow(/malformed PRD_V8 ReportBundle/);
     }
 
-    const crossQuery = structuredClone(canonicalFixture.response);
+    const crossQuery = canonicalResponse();
     crossQuery.report.query_sections[0].claim_set.inferential_query_id = "IQ-FORGED";
     vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(crossQuery)));
     await expect(
@@ -483,7 +505,7 @@ describe("PRD v8 guided desktop flow", () => {
   });
 
   it("renders query-section lineage, evidence content and PRESENT review records", () => {
-    const rich = structuredClone(canonicalFixture.response) as unknown as QuickDesignV8Response;
+    const rich = canonicalResponse();
     const section = rich.report.query_sections[0];
     const claim = section.claim_set.claims[0];
     claim.claim_id = "CLAIM-QUERY-SECTION-SENTINEL";

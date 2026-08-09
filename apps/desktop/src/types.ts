@@ -799,7 +799,34 @@ export interface QuickDesignV8Response {
     code: "PRD_V8";
     version: string;
     strategy_module_status: "HANDOFF_ONLY";
+    guided_confirmation?: true;
   };
+}
+
+export interface QuickDesignV8PipelineResultWire {
+  schema_version: "8.0.0";
+  execution_manifest: ReportBundleV8["execution_manifest"];
+  claim_set: DerivedClaimSetV8;
+  design_adequacy_evaluations: DesignAdequacyEvaluationV8[];
+  report_resolution: ReportBundleV8["report_resolution"];
+  profile_coverage: ReportBundleV8["profile_coverage"];
+  scenario_coverages: ReportBundleV8["scenario_coverages"];
+  stage_order: [
+    "FACT_VERIFICATION",
+    "THEORY_DERIVATION",
+    "CLAIM_VERIFICATION",
+    "RULE_ADEQUACY",
+    "REPORT_RESOLUTION",
+  ];
+}
+
+/** Exact Python `QuickDesignV8Result.model_dump(mode="json")` wire tree. */
+export interface QuickDesignV8ResultWire {
+  schema_version: "8.0.0";
+  planned_design: { plan_id: string; content_checksum: string; [field: string]: unknown };
+  pipeline_result: QuickDesignV8PipelineResultWire;
+  report_bundle: ReportBundleV8;
+  artifacts: ProspectiveArtifactV8[];
 }
 
 export interface AuditEntry {

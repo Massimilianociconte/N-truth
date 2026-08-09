@@ -13,7 +13,16 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-const V8_RESPONSE = canonicalFixture.response;
+const V8_RESPONSE = {
+  planned_design: canonicalFixture.response.planned_design,
+  report: canonicalFixture.response.report_bundle,
+  artifacts: canonicalFixture.response.artifacts,
+  contract: {
+    code: "PRD_V8",
+    version: "8.0.0",
+    strategy_module_status: "HANDOFF_ONLY",
+  },
+} as const;
 
 function privacyAudit() {
   return {

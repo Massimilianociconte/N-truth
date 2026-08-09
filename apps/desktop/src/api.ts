@@ -9,6 +9,7 @@ import type {
   PrivacyAudit,
   ProspectiveArtifactV8,
   QuickDesignV8Response,
+  QuickDesignV8ResultWire,
   QuickDesignV8Submission,
   Report,
   ShareReadiness,
@@ -281,15 +282,15 @@ function hasExactKeys(
 
 const REVIEWED_CONFORMANCE_ASSET_PINS = {
   theory: "aa37639893e2ba7732496f2eb6a121291e0aad2d3bae51501c8f1ea9e9b6464f",
-  rulebook: "84194ecabae815fca34fbe6dd86223b7cffbf126423d0e241cfae3725d2c39be",
+  rulebook: "384503ea0d0475d12c75f228a8e9e5abf621e1810b40582ec50645046b63589b",
   profile_closure: "1080f48e37b719351554c406d85e8cce7c2106f9f01ee5b8168413f57a747698",
   reference_registry: "7e573af256a1365ca0e3892786f80a6a8f62710ce0e4dc39d1dfef24d2089db3",
   fixture_set: "f7a9b4c0a009fcbf1ae4c7a2bb3b15d8392225cb6e040ec17e2187cb396918e6",
-  evaluator_registry: "a8353a1d5743f5fdcbeec7cff389da3bff60908b6d2a609c78a0fd4b6f0a0fff",
+  evaluator_registry: "99c751a944149c0ba14b2c7c866b436839a38f741a5bc9a2f7e7c65851cca808",
 } as const;
 
 const REVIEWED_CONFORMANCE_BUNDLE_CHECKSUM =
-  "f7a188507124794e0a5704f64a8672904056d0b750329159ea11b3b9973ec049";
+  "61aba9c25a31a9cebc612fe13197f99a042526f1f589a47a8e62e25a04f07e65";
 
 function isConformanceBundle(value: unknown): value is JsonRecord {
   if (
@@ -1110,6 +1111,175 @@ async function isCanonicalQuickDesignResponse(
   );
 }
 
+const QUICK_DESIGN_RESULT_KEYS = [
+  "schema_version",
+  "planned_design",
+  "pipeline_result",
+  "report_bundle",
+  "artifacts",
+] as const;
+
+const PLANNED_DESIGN_KEYS = [
+  "schema_version",
+  "plan_id",
+  "content_checksum",
+  "experiment_block_id",
+  "inferential_queries",
+  "query_checksums",
+  "sources",
+  "evidence_records",
+  "confirmation_events",
+  "event_registry",
+  "count_records",
+  "sample_sheet_ref",
+  "methods_draft_ref",
+  "id_convention_ref",
+  "user_confirmation_scopes",
+] as const;
+
+const PIPELINE_RESULT_KEYS = [
+  "schema_version",
+  "execution_manifest",
+  "claim_set",
+  "design_adequacy_evaluations",
+  "report_resolution",
+  "profile_coverage",
+  "scenario_coverages",
+  "stage_order",
+] as const;
+
+const PIPELINE_STAGE_ORDER = [
+  "FACT_VERIFICATION",
+  "THEORY_DERIVATION",
+  "CLAIM_VERIFICATION",
+  "RULE_ADEQUACY",
+  "REPORT_RESOLUTION",
+] as const;
+
+function normalizeQuickDesignV8Result(
+  value: QuickDesignV8ResultWire,
+): QuickDesignV8Response {
+  return {
+    planned_design: value.planned_design,
+    report: value.report_bundle,
+    artifacts: value.artifacts,
+    contract: {
+      code: "PRD_V8",
+      version: "8.0.0",
+      strategy_module_status: "HANDOFF_ONLY",
+      guided_confirmation: true,
+    },
+  };
+}
+
+async function isAddressedPlannedDesign(value: unknown): Promise<boolean> {
+  if (
+    !hasV8Schema(value) ||
+    !hasExactKeys(value, PLANNED_DESIGN_KEYS) ||
+    !isNonEmptyString(value.plan_id) ||
+    !isSha256(value.content_checksum) ||
+    value.plan_id !== `PLAN-${value.content_checksum.slice(0, 20)}` ||
+    !isNonEmptyString(value.experiment_block_id) ||
+    !Array.isArray(value.inferential_queries) ||
+    value.inferential_queries.length !== 1 ||
+    !value.inferential_queries.every(
+      (query) => isRecord(query) && isNonEmptyString(query.id),
+    ) ||
+    !isStringArray(value.query_checksums) ||
+    value.query_checksums.length !== value.inferential_queries.length ||
+    !isNonEmptyString(value.sample_sheet_ref) ||
+    !isNonEmptyString(value.methods_draft_ref) ||
+    !isNonEmptyString(value.id_convention_ref)
+  ) {
+    return false;
+  }
+  const queryChecksums = await Promise.all(
+    value.inferential_queries.map((query) => contentChecksum(query)),
+  );
+  const { plan_id: _planId, content_checksum: _checksum, ...addressed } = value;
+  return (
+    pythonJson(queryChecksums) === pythonJson(value.query_checksums) &&
+    (await contentChecksum(addressed)) === value.content_checksum
+  );
+}
+
+function isPipelineResultShape(value: unknown): value is JsonRecord {
+  return (
+    hasV8Schema(value) &&
+    hasExactKeys(value, PIPELINE_RESULT_KEYS) &&
+    isExecutionManifest(value.execution_manifest) &&
+    isClaimSet(value.claim_set) &&
+    Array.isArray(value.design_adequacy_evaluations) &&
+    value.design_adequacy_evaluations.every(isAdequacyEvaluation) &&
+    isRecord(value.report_resolution) &&
+    isKnowledgeValue(value.report_resolution.resolution) &&
+    isProfileCoverage(value.profile_coverage) &&
+    Array.isArray(value.scenario_coverages) &&
+    value.scenario_coverages.every(isScenarioCoverage) &&
+    pythonJson(value.stage_order) === pythonJson(PIPELINE_STAGE_ORDER)
+  );
+}
+
+async function isQuickDesignV8ResultWire(
+  value: unknown,
+): Promise<boolean> {
+  if (
+    !hasV8Schema(value) ||
+    !hasExactKeys(value, QUICK_DESIGN_RESULT_KEYS) ||
+    !(await isAddressedPlannedDesign(value.planned_design)) ||
+    !isPipelineResultShape(value.pipeline_result) ||
+    !isRecord(value.report_bundle) ||
+    !hasExactArtifactShapes(value.artifacts)
+  ) {
+    return false;
+  }
+  const plan = value.planned_design;
+  const pipeline = value.pipeline_result;
+  const report = value.report_bundle;
+  const normalized = normalizeQuickDesignV8Result(
+    value as unknown as QuickDesignV8ResultWire,
+  );
+  if (!(await isCanonicalQuickDesignResponse(normalized))) return false;
+
+  const designContext = report.design_record_context;
+  const plannedSnapshot = isRecord(designContext)
+    ? designContext.planned_design_record
+    : undefined;
+  const contexts = report.verified_pipeline_contexts;
+  const ledgers = isKnowledgeValue(report.prospective_input_ledgers)
+    ? report.prospective_input_ledgers.value
+    : undefined;
+  const artifactIdsByKind = new Map(
+    value.artifacts.map((artifact) => [artifact.kind, artifact.artifact_id]),
+  );
+  return (
+    isKnowledgeValue(plannedSnapshot) &&
+    plannedSnapshot.knowledge_state === "PRESENT" &&
+    pythonJson(plannedSnapshot.value) === pythonJson(plan) &&
+    isRecord(plan) &&
+    plan.sample_sheet_ref === artifactIdsByKind.get("SAMPLE_SHEET") &&
+    plan.methods_draft_ref === artifactIdsByKind.get("METHODS_DRAFT") &&
+    plan.id_convention_ref === artifactIdsByKind.get("ID_CONVENTION") &&
+    Array.isArray(contexts) &&
+    contexts.length === 1 &&
+    isRecord(contexts[0]) &&
+    pythonJson(contexts[0].result_payload) === pythonJson(pipeline) &&
+    pythonJson(pipeline.execution_manifest) === pythonJson(report.execution_manifest) &&
+    Array.isArray(report.claim_sets) &&
+    report.claim_sets.length === 1 &&
+    pythonJson(pipeline.claim_set) === pythonJson(report.claim_sets[0]) &&
+    pythonJson(pipeline.design_adequacy_evaluations) ===
+      pythonJson(report.design_adequacy_evaluations) &&
+    pythonJson(pipeline.report_resolution) === pythonJson(report.report_resolution) &&
+    pythonJson(pipeline.profile_coverage) === pythonJson(report.profile_coverage) &&
+    pythonJson(pipeline.scenario_coverages) === pythonJson(report.scenario_coverages) &&
+    Array.isArray(ledgers) &&
+    ledgers.length === 1 &&
+    isRecord(ledgers[0]) &&
+    pythonJson(ledgers[0].artifacts) === pythonJson(value.artifacts)
+  );
+}
+
 function canonicalGuidedTextAnswer(value: unknown): JsonRecord {
   const answer = value as JsonRecord;
   return answer.status === "PROVIDED"
@@ -1256,18 +1426,28 @@ async function isGuidedBuildResponse(
       value.confirmed_snapshot_checksum.value == null
     );
   }
+  if (
+    value.action !== "CONFIRM" ||
+    value.state !== "BUILT" ||
+    value.submission_audit_snapshot.knowledge_state !== "PRESENT" ||
+    !isQuickDesignSubmission(value.submission_audit_snapshot.value) ||
+    value.canonical_result.knowledge_state !== "PRESENT" ||
+    !(await isQuickDesignV8ResultWire(value.canonical_result.value)) ||
+    value.confirmed_snapshot_checksum.knowledge_state !== "PRESENT" ||
+    typeof value.confirmed_snapshot_checksum.value !== "string" ||
+    !/^[0-9a-f]{64}$/.test(value.confirmed_snapshot_checksum.value)
+  ) {
+    return false;
+  }
+  const rawResult = value.canonical_result.value as QuickDesignV8ResultWire;
+  const expectedConfirmedChecksum = await contentChecksum({
+    preview_checksum: value.preview_checksum,
+    submission_audit_snapshot: value.submission_audit_snapshot.value,
+    canonical_result: rawResult,
+  });
   return (
-    value.action === "CONFIRM" &&
-    value.state === "BUILT" &&
-    value.submission_audit_snapshot.knowledge_state === "PRESENT" &&
-    isQuickDesignSubmission(value.submission_audit_snapshot.value) &&
-    value.canonical_result.knowledge_state === "PRESENT" &&
-    (await isCanonicalQuickDesignResponse(value.canonical_result.value)) &&
-    value.confirmed_snapshot_checksum.knowledge_state === "PRESENT" &&
-    typeof value.confirmed_snapshot_checksum.value === "string" &&
-    /^[0-9a-f]{64}$/.test(value.confirmed_snapshot_checksum.value) &&
-    pythonJson(value.artifact_previews) ===
-      pythonJson((value.canonical_result.value as QuickDesignV8Response).artifacts)
+    expectedConfirmedChecksum === value.confirmed_snapshot_checksum.value &&
+    pythonJson(value.artifact_previews) === pythonJson(rawResult.artifacts)
   );
 }
 
@@ -1397,6 +1577,21 @@ export async function buildQuickDesignSubmission(
   });
   if (!(await isGuidedBuildResponse(result, payload.draft))) {
     throw new Error("The guided endpoint returned a malformed PRD v8 build response.");
+  }
+  if (
+    isRecord(result) &&
+    result.action === "CONFIRM" &&
+    isKnowledgeValue(result.canonical_result) &&
+    result.canonical_result.knowledge_state === "PRESENT"
+  ) {
+    const wire = result.canonical_result.value as QuickDesignV8ResultWire;
+    return {
+      ...(result as unknown as GuidedQuickDesignBuildResponse),
+      canonical_result: {
+        ...result.canonical_result,
+        value: normalizeQuickDesignV8Result(wire),
+      } as KnowledgeValue<QuickDesignV8Response>,
+    };
   }
   return result as GuidedQuickDesignBuildResponse;
 }
