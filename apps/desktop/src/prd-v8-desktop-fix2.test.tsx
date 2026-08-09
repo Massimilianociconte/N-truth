@@ -70,9 +70,9 @@ function builderResponse(action: "PREVIEW" | "CONFIRM", draft: unknown = {}) {
     review_snapshot: {
       schema_version: "8.0.0",
       draft,
-      conformance_bundle_payload: {
-        fixture_payload_marker: "CONFORMANCE-BUNDLE-AUDIT-BYTES-NOT-A-CAPABILITY",
-      },
+      conformance_bundle_payload:
+        canonicalFixture.response.report.verified_pipeline_contexts[0]
+          .conformance_bundle_payload,
       is_execution_capability: false,
     },
     submission_is_execution_capability: false,
@@ -286,6 +286,7 @@ describe("PRD v8 guided desktop flow", () => {
     ).not.toBeInTheDocument();
     expect(screen.queryByText("Demo storica · dati sintetici")).not.toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: /Scarica artefatto/ })).toHaveLength(3);
+    expect(screen.getByRole("button", { name: "Importa fonti" })).toHaveFocus();
   });
 
   it("fails closed on malformed canonical responses and neutralizes hostile v7 verdicts", async () => {
@@ -413,9 +414,15 @@ describe("PRD v8 guided desktop flow", () => {
       {
         predicate_id: "predicate-reference-sentinel",
         predicate_value: {
+          schema_version: "8.0.0",
           knowledge_state: "PRESENT",
           value: "predicate-value-sentinel",
+          conflicting_values: [],
           evidence_ids: ["EV-PREDICATE-SENTINEL"],
+          source_scope_ids: [],
+          rationale: null,
+          claim_scope_id: null,
+          query_scope_id: section.inferential_query.id,
         },
       },
     ];
@@ -431,9 +438,15 @@ describe("PRD v8 guided desktop flow", () => {
       ["sensitivities", "sensitivity-record-sentinel"],
     ] as const) {
       const state = {
+        schema_version: "8.0.0" as const,
         knowledge_state: "PRESENT" as const,
         value: [{ record: value }],
+        conflicting_values: [],
         evidence_ids: ["EV-REVIEW-SENTINEL"],
+        source_scope_ids: [],
+        rationale: null,
+        claim_scope_id: null,
+        query_scope_id: section.inferential_query.id,
       };
       rich.report[field] = state;
       section[field] = state;

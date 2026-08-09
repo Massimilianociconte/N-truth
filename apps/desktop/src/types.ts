@@ -296,14 +296,15 @@ export type ScientificKnowledgeState =
   | "CONFLICTING";
 
 export interface KnowledgeValue<T = unknown> {
+  schema_version: "8.0.0";
   knowledge_state: ScientificKnowledgeState;
-  value?: T | null;
-  conflicting_values?: unknown[];
-  rationale?: string | null;
-  evidence_ids?: string[];
-  source_scope_ids?: string[];
-  claim_scope_id?: string | null;
-  query_scope_id?: string | null;
+  value: T | null;
+  conflicting_values: unknown[];
+  rationale: string | null;
+  evidence_ids: string[];
+  source_scope_ids: string[];
+  claim_scope_id: string | null;
+  query_scope_id: string | null;
 }
 
 export interface BlockReviewOutput {
@@ -499,6 +500,7 @@ export interface GuidedQuickDesignDraft {
 }
 
 export interface GuidedTheoryQuestionV8 {
+  schema_version: "8.0.0";
   question_id: string;
   predicate_id: string;
   theory_clause_ids: string[];
@@ -507,11 +509,21 @@ export interface GuidedTheoryQuestionV8 {
   text: string;
   priority_state: "UNREVIEWED";
   priority_review: {
+    schema_version: "8.0.0";
     issue_id: string;
     status: "SCIENTIFIC_REVIEW_REQUIRED";
     rationale: string;
   };
   evidence_required: KnowledgeValue<string[]>;
+}
+
+export interface GuidedConformanceBundleV8 {
+  theory: Record<string, unknown>;
+  rulebook: Record<string, unknown>;
+  profile_closure: Record<string, unknown>;
+  reference_registry: Record<string, unknown>;
+  fixture_set: Record<string, unknown>;
+  evaluator_registry: Record<string, unknown>;
 }
 
 export interface GuidedQuickDesignBuildResponse {
@@ -538,7 +550,7 @@ export interface GuidedQuickDesignBuildResponse {
   review_snapshot: {
     schema_version: "8.0.0";
     draft: GuidedQuickDesignDraft;
-    conformance_bundle_payload: Record<string, unknown>;
+    conformance_bundle_payload: GuidedConformanceBundleV8;
     is_execution_capability: false;
   };
   submission_audit_snapshot: KnowledgeValue<QuickDesignV8Submission>;
@@ -616,6 +628,7 @@ export interface StatisticalHandoffV8 {
 }
 
 export interface ReportQuestionV8 {
+  schema_version: "8.0.0";
   question_id: string;
   inferential_query_id: string;
   text: string;
@@ -623,32 +636,73 @@ export interface ReportQuestionV8 {
   primary: boolean;
 }
 
+export interface VerifiedPipelineContextV8 {
+  schema_version: "8.0.0";
+  context_id: string;
+  content_checksum: string;
+  request_payload: Record<string, unknown>;
+  result_payload: Record<string, unknown>;
+  conformance_bundle_payload: GuidedConformanceBundleV8;
+  conformance_bundle_checksum: string;
+}
+
+export interface SourceRecordV8 {
+  schema_version: "8.0.0";
+  source_id: string;
+  source_context: string;
+  source_class: {
+    schema_version: "8.0.0";
+    token: string;
+    registry_id: string;
+    unknown_reason?: string | null;
+  };
+  source_version: string;
+}
+
+export interface EvidenceRecordV8 {
+  schema_version: "8.0.0";
+  evidence_id: string;
+  source_id: string;
+  evidence_type: string;
+  locator: string;
+  original_text: string;
+}
+
+export interface ProspectiveInputLedgerV8 {
+  schema_version: "8.0.0";
+  ledger_id: string;
+  content_checksum: string;
+  request_payload: Record<string, unknown>;
+  request_checksum: string;
+  sources: SourceRecordV8[];
+  evidence_records: EvidenceRecordV8[];
+  confirmation_events: Array<Record<string, unknown>>;
+  support_bindings: Array<Record<string, unknown>>;
+  artifacts: ProspectiveArtifactV8[];
+}
+
 export interface ReportBundleV8 {
+  schema_version: "8.0.0";
   report_id: string;
   content_checksum: string;
+  verified_pipeline_contexts: VerifiedPipelineContextV8[];
   epistemic_boundary: string;
   design_record_context: {
+    schema_version: "8.0.0";
     mode: string;
-    planned_design_record: KnowledgeValue<{ plan_id: string; content_checksum: string }>;
+    planned_design_record: KnowledgeValue<{
+      plan_id: string;
+      content_checksum: string;
+      [field: string]: unknown;
+    }>;
     executed_design_record: KnowledgeValue<Record<string, unknown>>;
     reconciliation_record: KnowledgeValue<Record<string, unknown>>;
+    retrospective_source_ids: KnowledgeValue<string[]>;
     [field: string]: unknown;
   };
-  source_records: Array<{
-    source_id: string;
-    source_context: string;
-    source_class: { token: string; registry_id: string };
-    source_version: string;
-    [field: string]: unknown;
-  }>;
-  evidence_records: Array<{
-    evidence_id: string;
-    source_id: string;
-    evidence_type: string;
-    locator: string;
-    original_text: string;
-    [field: string]: unknown;
-  }>;
+  prospective_input_ledgers: KnowledgeValue<ProspectiveInputLedgerV8[]>;
+  source_records: SourceRecordV8[];
+  evidence_records: EvidenceRecordV8[];
   query_sections: Array<{
     inferential_query: { id: string; profile_id: string; [field: string]: unknown };
     claim_set: DerivedClaimSetV8;
@@ -706,6 +760,7 @@ export interface ReportBundleV8 {
     relations: Array<Record<string, unknown>>;
   };
   execution_manifest: {
+    schema_version: "8.0.0";
     manifest_id: string;
     theory_id: string;
     theory_version: string;
@@ -713,6 +768,20 @@ export interface ReportBundleV8 {
     rulebook_id: string;
     rulebook_version: string;
     rulebook_checksum: string;
+    profile_closure_asset_id: string;
+    profile_closure_asset_version: string;
+    profile_closure_checksum: string;
+    reference_registry_id: string;
+    reference_registry_version: string;
+    reference_registry_checksum: string;
+    fixture_set_id: string;
+    fixture_set_version: string;
+    fixture_set_checksum: string;
+    evaluator_registry_id: string;
+    evaluator_registry_version: string;
+    evaluator_registry_checksum: string;
+    implementation_rules: Array<Record<string, unknown>>;
+    adequacy_evaluator: Record<string, unknown>;
     release_blocker_issue_ids: string[];
     [field: string]: unknown;
   };

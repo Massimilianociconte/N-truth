@@ -751,6 +751,11 @@ export function App() {
     );
   };
 
+  const closeImport = () => {
+    setShowImport(false);
+    window.setTimeout(() => importButtonRef.current?.focus(), 0);
+  };
+
   const onAnalysis = (response: AnalysisResponse) => {
     setQuickDesignResult(undefined);
     setReport(response.report);
@@ -762,7 +767,7 @@ export function App() {
     setSelectedEvidenceId(undefined);
     setUiLanguage(response.report.language === "en" ? "en" : "it");
     setDomainAcknowledged(!response.domain_transparency.requires_acknowledgement);
-    setShowImport(false);
+    closeImport();
     setNotice(response.ingest_summary);
     setAudit({});
     setCorrectionState({});
@@ -780,13 +785,8 @@ export function App() {
     setAudit({});
     setCorrectionState({});
     setCandidateExports({});
-    setShowImport(false);
+    closeImport();
     setNotice(`PRD v8 ReportBundle ${response.report.report_id} compilato.`);
-  };
-
-  const closeImport = () => {
-    setShowImport(false);
-    window.setTimeout(() => importButtonRef.current?.focus(), 0);
   };
 
   const reviewed = report.blocks.filter((item) => item.corrections.length > 0).length;
@@ -1193,6 +1193,9 @@ export function ReportBundleV8View({
 }) {
   const report = result.report;
   const planned = report.design_record_context.planned_design_record;
+  const executed = report.design_record_context.executed_design_record;
+  const reconciliation = report.design_record_context.reconciliation_record;
+  const prospectiveLedgers = report.prospective_input_ledgers;
   const handoffItems = report.statistical_handoff.items;
   const labels = language === "it"
     ? {
@@ -1253,7 +1256,38 @@ export function ReportBundleV8View({
             <div><dt>Design mode</dt><dd>{report.design_record_context.mode}</dd></div>
             <div><dt>Planned design state</dt><dd>{planned.knowledge_state}</dd></div>
             {planned.value && <div><dt>Plan ID</dt><dd><code>{planned.value.plan_id}</code></dd></div>}
+            <div><dt>Executed design state</dt><dd>{executed.knowledge_state}</dd></div>
+            <div><dt>Reconciliation state</dt><dd>{reconciliation.knowledge_state}</dd></div>
+            <div><dt>Prospective ledger state</dt><dd>{prospectiveLedgers.knowledge_state}</dd></div>
           </dl>
+          <KnowledgeStateValue value={executed} />
+          <KnowledgeStateValue value={reconciliation} />
+          <details>
+            <summary>Verified pipeline lineage · {report.verified_pipeline_contexts.length}</summary>
+            <ul>
+              {report.verified_pipeline_contexts.map((context) => (
+                <li key={context.context_id}>
+                  <code>{context.context_id}</code>
+                  <small>context checksum: <code>{context.content_checksum}</code></small>
+                  <small>conformance bundle: <code>{context.conformance_bundle_checksum}</code></small>
+                </li>
+              ))}
+            </ul>
+          </details>
+          {prospectiveLedgers.knowledge_state === "PRESENT" && prospectiveLedgers.value && (
+            <details>
+              <summary>Prospective input ledgers · {prospectiveLedgers.value.length}</summary>
+              <ul>
+                {prospectiveLedgers.value.map((ledger) => (
+                  <li key={ledger.ledger_id}>
+                    <code>{ledger.ledger_id}</code>
+                    <small>ledger checksum: <code>{ledger.content_checksum}</code></small>
+                    <small>request checksum: <code>{ledger.request_checksum}</code></small>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
           <div className="v8-record-list">
             {report.source_records.map((source) => (
               <article key={source.source_id} aria-label={`Source ${source.source_id}`}>
@@ -1489,7 +1523,9 @@ export function ReportBundleV8View({
           <dl className="v8-definition-grid">
             <div><dt>Manifest</dt><dd><code>{report.execution_manifest.manifest_id}</code></dd></div>
             <div><dt>Theory</dt><dd>{report.execution_manifest.theory_id} · {report.execution_manifest.theory_version}</dd></div>
+            <div><dt>Theory checksum</dt><dd><code>{report.execution_manifest.theory_checksum}</code></dd></div>
             <div><dt>Rulebook</dt><dd>{report.execution_manifest.rulebook_id} · {report.execution_manifest.rulebook_version}</dd></div>
+            <div><dt>Rulebook checksum</dt><dd><code>{report.execution_manifest.rulebook_checksum}</code></dd></div>
             <div><dt>Release blockers</dt><dd>{report.execution_manifest.release_blocker_issue_ids.join(" · ")}</dd></div>
           </dl>
         </section>
