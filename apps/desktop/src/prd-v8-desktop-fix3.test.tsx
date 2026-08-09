@@ -96,7 +96,64 @@ const guidedQuestion = {
   },
 } as const;
 
-async function previewResponse(draft: GuidedQuickDesignDraft): Promise<Record<string, unknown>> {
+function pythonSerializedDraft(draft: GuidedQuickDesignDraft): Record<string, unknown> {
+  const textAnswer = (answer: Record<string, unknown>) => ({
+    schema_version: "8.0.0",
+    status: answer.status,
+    value: answer.value ?? null,
+    rationale: answer.rationale ?? null,
+  });
+  const idSetAnswer = (answer: Record<string, unknown>) => ({
+    schema_version: "8.0.0",
+    status: answer.status,
+    values: answer.values ?? [],
+    rationale: answer.rationale ?? null,
+  });
+  const serialized = structuredClone(draft) as unknown as Record<string, unknown>;
+  serialized.schema_version = "8.0.0";
+  for (const field of [
+    "source_description",
+    "preparation_description",
+    "biological_source_unit_type",
+    "candidate_unit_type",
+    "assignment_unit_type",
+    "application_unit_type",
+    "intervention_id",
+    "effective_exposure_unit_type",
+    "exposure_pathway",
+    "exposure_container",
+    "planned_unit_type",
+  ]) {
+    serialized[field] = textAnswer(serialized[field] as Record<string, unknown>);
+  }
+  for (const field of ["assignment_unit_ids", "application_unit_ids", "exposed_unit_ids"]) {
+    serialized[field] = idSetAnswer(serialized[field] as Record<string, unknown>);
+  }
+  const timing = serialized.assignment_to_application_timing as Record<string, unknown>;
+  serialized.assignment_to_application_timing = {
+    schema_version: "8.0.0",
+    status: timing.status,
+    relation: timing.relation ?? null,
+    rationale: timing.rationale ?? null,
+  };
+  serialized.interference = {
+    schema_version: "8.0.0",
+    ...(serialized.interference as Record<string, unknown>),
+  };
+  serialized.planned_groups = (
+    serialized.planned_groups as Array<Record<string, unknown>>
+  ).map((group) => ({
+    schema_version: "8.0.0",
+    ...group,
+    cohort_id: textAnswer(group.cohort_id as Record<string, unknown>),
+  }));
+  return serialized;
+}
+
+async function previewResponse(
+  draft: GuidedQuickDesignDraft,
+  pythonSerializedSnapshot = false,
+): Promise<Record<string, unknown>> {
   const unknown = (rationale: string) => ({
     schema_version: "8.0.0",
     knowledge_state: "UNKNOWN",
@@ -132,7 +189,9 @@ async function previewResponse(draft: GuidedQuickDesignDraft): Promise<Record<st
     artifact_previews: structuredClone(canonicalFixture.response.artifacts),
     review_snapshot: {
       schema_version: "8.0.0",
-      draft: structuredClone(draft),
+      draft: pythonSerializedSnapshot
+        ? pythonSerializedDraft(draft)
+        : structuredClone(draft),
       conformance_bundle_payload: structuredClone(
         canonicalFixture.response.report.verified_pipeline_contexts[0]
           .conformance_bundle_payload,
@@ -231,6 +290,35 @@ async function expectCanonicalRejection(
 }
 
 describe("PRD v8 Desktop strict runtime boundaries", () => {
+  it("accepts the genuine Python model_dump draft defaults in PREVIEW", async () => {
+    const draft = validDraft();
+    const response = await previewResponse(draft, true);
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(response)));
+
+    await expect(
+      api.buildQuickDesignSubmission({ action: "PREVIEW", draft }),
+    ).resolves.toMatchObject({
+      action: "PREVIEW",
+      state: "REVIEW_REQUIRED",
+      preview_checksum: response.preview_checksum,
+    });
+  });
+
+  it("rejects a non-default value hidden in Python materialized draft fields", async () => {
+    const draft = validDraft();
+    const response = await previewResponse(draft, true);
+    const snapshot = response.review_snapshot as Record<string, unknown>;
+    const serializedDraft = snapshot.draft as Record<string, unknown>;
+    const source = serializedDraft.source_description as Record<string, unknown>;
+    source.rationale = "FORGED-NON-DEFAULT-RATIONALE";
+    await readdressPreview(response);
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(response)));
+
+    await expect(
+      api.buildQuickDesignSubmission({ action: "PREVIEW", draft }),
+    ).rejects.toThrow(/malformed PRD v8 build response/);
+  });
+
   it("rejects a forged PREVIEW checksum and detached summary", async () => {
     const draft = validDraft();
     const response = await previewResponse(draft);

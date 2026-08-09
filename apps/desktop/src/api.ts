@@ -1110,15 +1110,73 @@ async function isCanonicalQuickDesignResponse(
   );
 }
 
-function normalizedAuditDraft(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(normalizedAuditDraft);
-  if (!isRecord(value)) return value;
-  return Object.fromEntries(
-    Object.keys(value)
-      .filter((key) => key !== "schema_version" || value[key] !== "8.0.0")
-      .sort()
-      .map((key) => [key, normalizedAuditDraft(value[key])]),
-  );
+function canonicalGuidedTextAnswer(value: unknown): JsonRecord {
+  const answer = value as JsonRecord;
+  return answer.status === "PROVIDED"
+    ? { status: "PROVIDED", value: answer.value }
+    : { status: "NOT_AVAILABLE", rationale: answer.rationale };
+}
+
+function canonicalGuidedIdSetAnswer(value: unknown): JsonRecord {
+  const answer = value as JsonRecord;
+  return answer.status === "PROVIDED"
+    ? { status: "PROVIDED", values: answer.values }
+    : { status: "NOT_AVAILABLE", rationale: answer.rationale };
+}
+
+function canonicalGuidedTimingAnswer(value: unknown): JsonRecord {
+  const answer = value as JsonRecord;
+  return answer.status === "PROVIDED"
+    ? { status: "PROVIDED", relation: answer.relation }
+    : { status: "NOT_AVAILABLE", rationale: answer.rationale };
+}
+
+function canonicalSemanticGuidedDraft(value: unknown): JsonRecord {
+  const draft = value as JsonRecord;
+  const groups = draft.planned_groups as JsonRecord[];
+  return {
+    template_id: draft.template_id,
+    block_title: draft.block_title,
+    source_description: canonicalGuidedTextAnswer(draft.source_description),
+    preparation_description: canonicalGuidedTextAnswer(draft.preparation_description),
+    biological_source_unit_type: canonicalGuidedTextAnswer(
+      draft.biological_source_unit_type,
+    ),
+    candidate_unit_type: canonicalGuidedTextAnswer(draft.candidate_unit_type),
+    factor_id: draft.factor_id,
+    factor_levels: draft.factor_levels,
+    contrast_id: draft.contrast_id,
+    endpoint_id: draft.endpoint_id,
+    timepoint_id: draft.timepoint_id,
+    estimand: draft.estimand,
+    population_scope: draft.population_scope,
+    inference_level: draft.inference_level,
+    assignment_unit_type: canonicalGuidedTextAnswer(draft.assignment_unit_type),
+    assignment_unit_ids: canonicalGuidedIdSetAnswer(draft.assignment_unit_ids),
+    application_unit_type: canonicalGuidedTextAnswer(draft.application_unit_type),
+    application_unit_ids: canonicalGuidedIdSetAnswer(draft.application_unit_ids),
+    intervention_id: canonicalGuidedTextAnswer(draft.intervention_id),
+    effective_exposure_unit_type: canonicalGuidedTextAnswer(
+      draft.effective_exposure_unit_type,
+    ),
+    exposed_unit_ids: canonicalGuidedIdSetAnswer(draft.exposed_unit_ids),
+    exposure_pathway: canonicalGuidedTextAnswer(draft.exposure_pathway),
+    exposure_container: canonicalGuidedTextAnswer(draft.exposure_container),
+    interference: {
+      status: (draft.interference as JsonRecord).status,
+      rationale: (draft.interference as JsonRecord).rationale,
+    },
+    assignment_to_application_timing: canonicalGuidedTimingAnswer(
+      draft.assignment_to_application_timing,
+    ),
+    planned_unit_type: canonicalGuidedTextAnswer(draft.planned_unit_type),
+    planned_groups: groups.map((group) => ({
+      group_id: group.group_id,
+      cohort_id: canonicalGuidedTextAnswer(group.cohort_id),
+      factor_level: group.factor_level,
+      planned_count: group.planned_count,
+    })),
+  };
 }
 
 async function isGuidedBuildResponse(
@@ -1157,8 +1215,8 @@ async function isGuidedBuildResponse(
     !isGuidedDraft(expectedDraft) ||
     !isConformanceBundle(value.review_snapshot.conformance_bundle_payload) ||
     value.review_snapshot.is_execution_capability !== false ||
-    pythonJson(normalizedAuditDraft(value.review_snapshot.draft)) !==
-      pythonJson(normalizedAuditDraft(expectedDraft)) ||
+    pythonJson(canonicalSemanticGuidedDraft(value.review_snapshot.draft)) !==
+      pythonJson(canonicalSemanticGuidedDraft(expectedDraft)) ||
     !isKnowledgeValue(value.submission_audit_snapshot) ||
     !isKnowledgeValue(value.canonical_result) ||
     !isKnowledgeValue(value.confirmed_snapshot_checksum)
