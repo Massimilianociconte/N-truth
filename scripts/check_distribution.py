@@ -102,6 +102,8 @@ def check_wheel(path: Path) -> None:
                 "ntruth/conformance/assets/"
                 "implementation-conformance-fixtures-simple-cell-culture-0.1.0.json"
             ),
+            ("ntruth/conformance/assets/prd-v8-example-conformance-registry-8.0.0.json"),
+            "ntruth/schemas/assets/prd-v8-kernel-schemas-8.0.0.json",
         ),
         prefixes=(
             "ntruth/_ui/assets/",
@@ -138,6 +140,11 @@ def check_sdist(path: Path) -> None:
                 f"{root}/packages/ntruth/conformance/assets/"
                 "implementation-conformance-fixtures-simple-cell-culture-0.1.0.json"
             ),
+            (
+                f"{root}/packages/ntruth/conformance/assets/"
+                "prd-v8-example-conformance-registry-8.0.0.json"
+            ),
+            (f"{root}/packages/ntruth/schemas/assets/prd-v8-kernel-schemas-8.0.0.json"),
         ),
         prefixes=(f"{root}/apps/desktop/dist/assets/",),
     )

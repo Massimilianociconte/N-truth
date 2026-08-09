@@ -1,6 +1,22 @@
 """Contratti dati di N-Truth. Tutto il resto del sistema dipende solo da qui."""
 
 from ntruth.schemas.adequacy import DesignAdequacyEvaluation, DesignAdequacyFinding
+from ntruth.schemas.block_boundary import (
+    BlockBoundaryChangeKind,
+    BlockBoundaryCriterion,
+    BlockBoundaryPredicate,
+    BlockBoundaryStatus,
+    BoundaryChangeReference,
+    ExperimentBlockBoundaryChangeLedger,
+    ExperimentBlockBoundaryChangeRecord,
+    ExperimentBlockBoundaryRecord,
+    InternalQueryRepresentability,
+    append_experiment_block_boundary_change_ledger,
+    build_experiment_block_boundary_change,
+    build_experiment_block_boundary_change_ledger,
+    verify_experiment_block_boundaries,
+    verify_experiment_block_boundary_change_ledger,
+)
 from ntruth.schemas.causal_context import QueryCausalContext, QueryCausalEventAggregate
 from ntruth.schemas.claims import (
     DerivedClaim,
@@ -212,6 +228,12 @@ from ntruth.schemas.rules import (
     Ruleset,
     normalize_predicate,
 )
+from ntruth.schemas.schema_snapshot import (
+    KernelSchemaSnapshot,
+    build_kernel_schema_snapshot,
+    load_installed_kernel_schema_snapshot,
+    load_kernel_schema_snapshot_file,
+)
 from ntruth.schemas.support import (
     SOURCE_CLASS_REGISTRY_ID,
     SUPPORT_GRADE_VOCABULARY_APPENDIX_R_1,
@@ -256,7 +278,12 @@ __all__ = [
     "AssetStatus",
     "AssignmentEvent",
     "AuthorityType",
+    "BlockBoundaryChangeKind",
+    "BlockBoundaryCriterion",
+    "BlockBoundaryPredicate",
+    "BlockBoundaryStatus",
     "BlockSummary",
+    "BoundaryChangeReference",
     "BundleFileReference",
     "BundleFileRole",
     "CanonicalCountKind",
@@ -308,6 +335,9 @@ __all__ = [
     "ExecutedDesignRecord",
     "ExecutedInputLedger",
     "ExperimentBlock",
+    "ExperimentBlockBoundaryChangeLedger",
+    "ExperimentBlockBoundaryChangeRecord",
+    "ExperimentBlockBoundaryRecord",
     "ExperimentBundleManifest",
     "ExposureEvent",
     "Factor",
@@ -325,9 +355,11 @@ __all__ = [
     "InferenceTarget",
     "InferenceTargetStatus",
     "InferentialQuery",
+    "InternalQueryRepresentability",
     "IrrelevantPredicate",
     "KernelIdentity",
     "KernelModel",
+    "KernelSchemaSnapshot",
     "KnowledgeState",
     "KnowledgeValue",
     "LicenseManifest",
@@ -417,9 +449,13 @@ __all__ = [
     "V8GraphRelationType",
     "VerifiedPipelineContext",
     "Versions",
+    "append_experiment_block_boundary_change_ledger",
     "build_executed_design",
     "build_executed_input_ledger",
+    "build_experiment_block_boundary_change",
+    "build_experiment_block_boundary_change_ledger",
     "build_handoff_item",
+    "build_kernel_schema_snapshot",
     "build_planned_design",
     "build_prospective_artifact",
     "build_prospective_input_ledger",
@@ -432,6 +468,8 @@ __all__ = [
     "explicit_absence",
     "independent_n_presentation_alias",
     "kernel_json_schemas",
+    "load_installed_kernel_schema_snapshot",
+    "load_kernel_schema_snapshot_file",
     "make_node_id",
     "make_relation_id",
     "normalize_predicate",
@@ -439,5 +477,7 @@ __all__ = [
     "reconcile_plan_execution",
     "resolve_report_claim_sets",
     "stable_id",
+    "verify_experiment_block_boundaries",
+    "verify_experiment_block_boundary_change_ledger",
     "write_kernel_json_schemas",
 ]

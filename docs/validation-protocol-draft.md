@@ -1,5 +1,11 @@
 # Validation Protocol — preregistration draft v3
 
+> **HISTORICAL_NON_NORMATIVE.** Questa bozza PRD v3 non è il protocollo v8 e le sue
+> numerosità (incluso 150–250) non sono correnti, preregistrate o approvate. Il
+> repository v8 non ha avviato validazione scientifica. Vedere
+> [prd-v8-data-training-evaluation-boundary.md](prd-v8-data-training-evaluation-boundary.md)
+> e il Scientific Review Register.
+
 **Stato:** template non preregistrato, non approvato e non eseguito. Deve essere
 completato e congelato da biostatistico, wet-lab lead e evaluation custodian prima di
 aprire qualsiasi test. Nessun numero in questo documento è un risultato N-Truth.

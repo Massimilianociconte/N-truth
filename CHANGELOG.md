@@ -6,6 +6,26 @@ ontologia; queste versioni possono avanzare indipendentemente.
 
 ## [Unreleased]
 
+### PRD v8.0 migration
+
+- Migrated the repository to the PRD v8 semantic kernel: query-scoped
+  `DerivedClaimSet`, claim-specific determinability, independent design adequacy,
+  open-world `KnowledgeState`, structured coverage and canonical count registry.
+- Separated Derivation Theory, Rulebook, conformance fixtures and unavailable
+  external reference/gold assets; runtime derivation and adequacy implementations are
+  pinned and fail closed on unreviewed drift.
+- Added candidate-only parser boundaries, protected TEST/EXTERNAL views, Reality Gate
+  v8 custody contracts, neutral planned/executed reports and a `HANDOFF_ONLY`
+  statistical interface. Training and External Challenge use remain `HOLD`.
+- Added a guided, non-JSON Quick Design PREVIEW/CONFIRM workflow. Confirmation emits
+  the canonical result atomically, keeps its audit snapshot non-executable and exposes
+  question priority/evidence ordering as the explicit `SRR-V8-025` review gap.
+- Added packaged runtime-derived JSON Schema, verbatim expected-negative PRD examples,
+  machine-readable current-to-target architecture truth and explicit CI gates.
+- Qualified incompatible v7 behavior behind warning-emitting
+  `DEPRECATED_V7_ADAPTER` surfaces. Current engineering status is
+  `IMPLEMENTED_WITH_EXPLICIT_BLOCKERS`; no scientific validation is claimed.
+
 ### Documentation
 
 - Full documentation refresh (2026-08-02): verified status snapshot

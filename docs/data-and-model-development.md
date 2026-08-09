@@ -1,5 +1,10 @@
 # Dati, annotazione e sviluppo del modello
 
+> **HISTORICAL_NON_NORMATIVE.** Questo piano usa contratti e quantità PRD v3/v7 e non
+> è una guida operativa PRD v8. Non autorizza acquisizione, training, evaluation o
+> External Challenge. Il confine corrente è
+> [prd-v8-data-training-evaluation-boundary.md](prd-v8-data-training-evaluation-boundary.md).
+
 ## Stato verificabile
 
 Il repository contiene una pipeline riproducibile per preparare annotazioni autorizzate,

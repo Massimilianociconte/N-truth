@@ -1,7 +1,9 @@
-"""Modello di autorita umana e conflitto (PRD v7 §0.3, §0.4, §8.6, NFR-25).
+"""Shared authority vocabulary plus explicitly historical PRD v7 records.
 
-Una fonte di livello superiore NON cancella una fonte incompatibile: genera o
-aggiorna un ConflictRecord. Gli eventi di autorita sono append-only e immutabili.
+``AuthorityType`` is an orthogonal PRD v8 axis and carries no precedence. The
+remaining record types and ``AUTHORITY_PRECEDENCE`` are retained only for named
+``DEPRECATED_V7_ADAPTER`` surfaces; canonical v8 records live in
+``ntruth.schemas.support`` and ``ntruth.schemas.report_bundle``.
 """
 
 from __future__ import annotations
@@ -16,7 +18,7 @@ from ntruth.schemas.core import FrozenModel, content_checksum, stable_id
 
 
 class AuthorityType(StrEnum):
-    """Tipi di autorita (PRD v7 §0.4)."""
+    """PRD v8 authority-type vocabulary; declaration order implies no ranking."""
 
     SYSTEM_INFERENCE = "SYSTEM_INFERENCE"
     ANNOTATOR_CONFIRMATION = "ANNOTATOR_CONFIRMATION"
@@ -27,10 +29,11 @@ class AuthorityType(StrEnum):
     RULE_DERIVATION = "RULE_DERIVATION"
 
 
-#: Ordine di precedenza tra tipi di autorita (PRD v7 §0.3, livelli 2-6).
+#: ``DEPRECATED_V7_ADAPTER`` precedence (PRD v7 §0.3, levels 2-6).
 #: Le regole scientifiche approvate precedono tutto e vivono nel ruleset, non qui.
 #: Indice minore = precedenza maggiore. SYSTEM_INFERENCE e RULE_DERIVATION non
 #: sono fonti di verita e restano fuori classifica.
+#: Canonical v8 code must never import this ranking.
 AUTHORITY_PRECEDENCE: tuple[AuthorityType, ...] = (
     AuthorityType.EXPERT_ADJUDICATION,
     AuthorityType.AUTHOR_CLARIFICATION,

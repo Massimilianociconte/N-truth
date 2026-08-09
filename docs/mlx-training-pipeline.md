@@ -1,5 +1,11 @@
 # Pipeline locale MLX/Metal
 
+> **HISTORICAL_NON_NORMATIVE.** Gli esempi `ParserAIOutput` v2, le vecchie eligibility
+> e i comandi in questo documento non costituiscono il contratto PRD v8 né
+> autorizzazione al training. La corsia corrente usa `ParserCandidateOutput` dentro
+> `GoldParserTarget`, protegge TEST/EXTERNAL_CHALLENGE e resta HOLD. Vedere
+> [prd-v8-data-training-evaluation-boundary.md](prd-v8-data-training-evaluation-boundary.md).
+
 Questa guida descrive la corsia opzionale e riproducibile per preparare i dati,
 eseguire un fine-tuning LoRA su base quantizzata, valutare e calibrare il parser AI
 di N-Truth su Apple Silicon. I comandi sono operativi; **il training scientifico sui

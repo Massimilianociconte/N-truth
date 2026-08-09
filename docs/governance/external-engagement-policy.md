@@ -1,5 +1,9 @@
 # External engagement policy (public)
 
+> **HISTORICAL_NON_NORMATIVE.** Questa policy usa ruoli/workstream PRD v7 e non è
+> autorità PRD v8. Vedere [../../GOVERNANCE.md](../../GOVERNANCE.md) e il
+> [confine v8 dati/training/evaluation](../prd-v8-data-training-evaluation-boundary.md).
+
 **Version:** 0.1
 **Updated:** 2026-08-03
 

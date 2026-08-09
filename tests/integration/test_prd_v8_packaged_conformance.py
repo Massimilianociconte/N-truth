@@ -53,8 +53,14 @@ def test_built_wheel_installs_and_conforms_from_package_resources(tmp_path: Path
 from pathlib import Path
 import ntruth
 from ntruth.conformance import evaluate_conformance
+from ntruth.conformance.examples import (
+    evaluate_prd_v8_examples,
+    load_installed_prd_v8_example_registry,
+)
 from ntruth.derivation_theory import load_installed_bundle
 from ntruth.derivation_theory.runtime import build_execution_manifest, verify_runtime_bundle
+from ntruth.schemas.kernel import kernel_json_schemas
+from ntruth.schemas.schema_snapshot import load_installed_kernel_schema_snapshot
 
 assert Path(ntruth.__file__).resolve().is_relative_to(Path({str(target)!r}).resolve())
 bundle = load_installed_bundle()
@@ -63,11 +69,15 @@ assert report.passed, report.failures
 runtime_report = verify_runtime_bundle(bundle)
 assert runtime_report.passed, runtime_report.failures
 manifest = build_execution_manifest(bundle, runtime_report)
+example_report = evaluate_prd_v8_examples(load_installed_prd_v8_example_registry())
+schema_snapshot = load_installed_kernel_schema_snapshot()
 assert len(bundle.theory.clauses) == 7
 assert len(bundle.fixture_set.fixture_pins) == 21
 assert len(bundle.evaluator_registry.artifact_pins) == 8
 assert len(manifest.implementation_rules) == 7
 assert manifest.evaluator_registry_checksum == bundle.evaluator_registry.declared_checksum
+assert example_report.passed, example_report.failures
+assert schema_snapshot.schemas == kernel_json_schemas()
 print(bundle.rulebook.declared_checksum)
 """
     env = os.environ.copy()

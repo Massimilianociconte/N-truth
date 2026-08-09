@@ -1,5 +1,10 @@
 # Data Management Plan — draft v0.1 / PRD v3
 
+> **HISTORICAL_NON_NORMATIVE.** Questa bozza PRD v3 non autorizza acquisizione o uso
+> di dati nel contratto v8. Vedere [../GOVERNANCE.md](../GOVERNANCE.md),
+> [privacy-dpia-screening.md](privacy-dpia-screening.md) e
+> [prd-v8-data-training-evaluation-boundary.md](prd-v8-data-training-evaluation-boundary.md).
+
 **Stato:** bozza operativa; richiede approvazione del data steward prima di acquisire dati reali.
 
 ## Scopo e minimizzazione

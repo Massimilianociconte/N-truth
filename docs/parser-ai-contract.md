@@ -1,5 +1,10 @@
 # Contratto parser AI v2.0.0
 
+> **HISTORICAL_NON_NORMATIVE.** Questo documento descrive il contratto v2/PRD v3 e
+> non è una guida corrente. Il parser canonico PRD v8 è `ParserCandidateOutput`, non
+> include `determinability`, e il target supervisionato è `GoldParserTarget`. Vedere
+> [prd-v8-data-training-evaluation-boundary.md](prd-v8-data-training-evaluation-boundary.md).
+
 Questo documento descrive il confine stabile previsto dal PRD scientifico v3,
 sezione 13. Il package `ntruth.parser_ai` non include pesi e non effettua chiamate di
 rete. La corsia opzionale `ntruth.training` usa questi stessi modelli Pydantic per
