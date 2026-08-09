@@ -114,7 +114,7 @@ def hard_verify_candidates(
     if bundle is not None:
         try:
             verify_candidate_experiment_block_boundaries(bundle)
-        except ValueError as exc:
+        except Exception as exc:
             errors.append(
                 StageIssue(
                     code=StageErrorCode.VERIFIER_DISAGREEMENT,
@@ -123,6 +123,11 @@ def hard_verify_candidates(
                         fallback="candidate experiment-block boundary validation failed",
                     ),
                 )
+            )
+            return HardVerifierResult(
+                passed=False,
+                errors=tuple(errors),
+                checks_run=checks,
             )
 
     return HardVerifierResult(passed=not errors, errors=tuple(errors), checks_run=checks)
