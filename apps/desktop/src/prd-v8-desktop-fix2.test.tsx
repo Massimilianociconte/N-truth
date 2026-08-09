@@ -14,6 +14,8 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 const artifactPreviews = canonicalFixture.response.artifacts;
+const profileKnownGaps = canonicalFixture.response.report.verified_pipeline_contexts[0]
+  .conformance_bundle_payload.profile_closure.known_gaps;
 const questions = ["assignment_separability_support", "experimental_unit_instances", "source_diversity", "external_replication"].map(
   (predicateId, index) => ({
     schema_version: "8.0.0",
@@ -151,6 +153,81 @@ function builderResponse(action: "PREVIEW" | "CONFIRM", draft: unknown = {}) {
   };
 }
 
+function pythonJson(value: unknown): string {
+  if (value === null || typeof value === "boolean" || typeof value === "number") {
+    return JSON.stringify(value);
+  }
+  if (typeof value === "string") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(pythonJson).join(", ")}]`;
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}: ${pythonJson(record[key])}`)
+      .join(", ")}}`;
+  }
+  throw new Error("not JSON serializable");
+}
+
+async function sha256Hex(value: unknown): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(pythonJson(value)),
+  );
+  return Array.from(
+    new Uint8Array(digest),
+    (byte) => byte.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
+async function stableId(prefix: string, ...parts: string[]): Promise<string> {
+  const digest = await sha256Hex(parts);
+  return `${prefix}-${digest.slice(0, 12)}`;
+}
+
+async function sealBuilderResponse(
+  response: Record<string, unknown>,
+  draft: Record<string, unknown>,
+): Promise<void> {
+  const summary = response.summary as Record<string, unknown>;
+  const groups = draft.planned_groups as Array<Record<string, unknown>>;
+  const blockId = await stableId(
+    "BLOCK-QD",
+    String(draft.template_id),
+    String(draft.block_title),
+  );
+  summary.experiment_block_id = blockId;
+  summary.inferential_query_id = await stableId(
+    "IQ-QD",
+    blockId,
+    String(draft.factor_id),
+    String(draft.contrast_id),
+    String(draft.endpoint_id),
+    String(draft.timepoint_id),
+    String(draft.estimand),
+    String(draft.population_scope),
+    String(draft.inference_level),
+  );
+  summary.planned_group_count = groups.length;
+  summary.planned_unit_total = groups.reduce(
+    (total, group) => total + Number(group.planned_count),
+    0,
+  );
+  const snapshot = response.review_snapshot as Record<string, unknown>;
+  const bundle = snapshot.conformance_bundle_payload as Record<string, unknown>;
+  const profile = bundle.profile_closure as Record<string, unknown>;
+  const theory = bundle.theory as Record<string, unknown>;
+  summary.known_profile_gaps = structuredClone(profile.known_gaps);
+  const artifacts = response.artifact_previews as Array<Record<string, unknown>>;
+  response.preview_checksum = await sha256Hex({
+    draft: snapshot.draft,
+    theory_checksum: theory.declared_checksum,
+    questions: response.question_queue,
+    artifacts: artifacts.map((artifact) => artifact.content_checksum),
+    summary,
+  });
+}
+
 function change(label: string, value: string): void {
   fireEvent.change(screen.getByRole("textbox", { name: label }), {
     target: { value },
@@ -227,7 +304,7 @@ async function completeGuidedFlow(fetchMock: ReturnType<typeof vi.fn>): Promise<
   expect(screen.getByRole("spinbutton", { name: "Conteggio gruppo 1" })).toBeDisabled();
   expect(screen.getAllByRole("radio", { name: /Theory rationale/ })).toHaveLength(3);
   expect(screen.getAllByText(/UNREVIEWED/)).toHaveLength(3);
-  expect(screen.getByText("SRR-V8-008")).toBeInTheDocument();
+  expect(screen.getByText(profileKnownGaps.join(" · "))).toBeInTheDocument();
   expect(screen.getByText("Coda completa · 4")).toBeInTheDocument();
   expect(screen.getAllByRole("button", { name: /Scarica/ })).toHaveLength(3);
   fireEvent.click(screen.getAllByRole("radio", { name: /Theory rationale/ })[0]);
@@ -238,12 +315,18 @@ async function completeGuidedFlow(fetchMock: ReturnType<typeof vi.fn>): Promise<
 
 describe("PRD v8 guided desktop flow", () => {
   it("consumes the atomic CONFIRM result without a second canonical POST", async () => {
+    let reviewedPreviewChecksum = "";
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.includes("/v1/health")) return jsonResponse({ status: "ok", version: "test" });
       if (url === "/v8/quick-design/build-submission") {
         const request = JSON.parse(String(init?.body));
-        return jsonResponse(builderResponse(request.action, request.draft));
+        const response = builderResponse(request.action, request.draft) as Record<string, unknown>;
+        await sealBuilderResponse(response, request.draft);
+        if (request.action === "PREVIEW") {
+          reviewedPreviewChecksum = String(response.preview_checksum);
+        }
+        return jsonResponse(response);
       }
       throw new Error(`unexpected request: ${url}`);
     });
@@ -257,7 +340,7 @@ describe("PRD v8 guided desktop flow", () => {
     );
     expect(buildCalls).toHaveLength(2);
     const confirmBody = JSON.parse(String(buildCalls[1][1]?.body));
-    expect(confirmBody.confirmation.preview_checksum).toBe("a".repeat(64));
+    expect(confirmBody.confirmation.preview_checksum).toBe(reviewedPreviewChecksum);
     expect(confirmBody.confirmation.review_focus_predicate_id).toBe(
       "assignment_separability_support",
     );

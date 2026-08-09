@@ -96,7 +96,7 @@ const guidedQuestion = {
   },
 } as const;
 
-function previewResponse(draft: GuidedQuickDesignDraft): Record<string, unknown> {
+async function previewResponse(draft: GuidedQuickDesignDraft): Promise<Record<string, unknown>> {
   const unknown = (rationale: string) => ({
     schema_version: "8.0.0",
     knowledge_state: "UNKNOWN",
@@ -108,7 +108,7 @@ function previewResponse(draft: GuidedQuickDesignDraft): Record<string, unknown>
     claim_scope_id: null,
     query_scope_id: "IQ-GUIDED-001",
   });
-  return {
+  const response: Record<string, unknown> = {
     schema_version: "8.0.0",
     contract_code: "NTRUTH_QUICK_DESIGN_GUIDED_V8",
     contract_version: "8.0.0",
@@ -144,6 +144,77 @@ function previewResponse(draft: GuidedQuickDesignDraft): Record<string, unknown>
     canonical_result: unknown("PREVIEW does not execute the canonical lane."),
     confirmed_snapshot_checksum: unknown("Checksum exists only after CONFIRM."),
   };
+  const summary = response.summary as Record<string, unknown>;
+  const blockId = await stableId("BLOCK-QD", draft.template_id, draft.block_title);
+  summary.experiment_block_id = blockId;
+  summary.inferential_query_id = await stableId(
+    "IQ-QD",
+    blockId,
+    draft.factor_id,
+    draft.contrast_id,
+    draft.endpoint_id,
+    draft.timepoint_id,
+    draft.estimand,
+    draft.population_scope,
+    draft.inference_level,
+  );
+  summary.planned_group_count = draft.planned_groups.length;
+  summary.planned_unit_total = draft.planned_groups.reduce(
+    (total, group) => total + group.planned_count,
+    0,
+  );
+  const snapshot = response.review_snapshot as Record<string, unknown>;
+  const bundle = snapshot.conformance_bundle_payload as Record<string, unknown>;
+  summary.known_profile_gaps = structuredClone(
+    (bundle.profile_closure as Record<string, unknown>).known_gaps,
+  );
+  await readdressPreview(response);
+  return response;
+}
+
+function pythonJson(value: unknown): string {
+  if (value === null || typeof value === "boolean" || typeof value === "number") {
+    return JSON.stringify(value);
+  }
+  if (typeof value === "string") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(pythonJson).join(", ")}]`;
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}: ${pythonJson(record[key])}`)
+      .join(", ")}}`;
+  }
+  throw new Error("not JSON serializable");
+}
+
+async function readdressPreview(response: Record<string, unknown>): Promise<void> {
+  const snapshot = response.review_snapshot as Record<string, unknown>;
+  const bundle = snapshot.conformance_bundle_payload as Record<string, unknown>;
+  const theory = bundle.theory as Record<string, unknown>;
+  const artifacts = response.artifact_previews as Array<Record<string, unknown>>;
+  response.preview_checksum = await sha256Hex(
+    pythonJson({
+      draft: snapshot.draft,
+      theory_checksum: theory.declared_checksum,
+      questions: response.question_queue,
+      artifacts: artifacts.map((artifact) => artifact.content_checksum),
+      summary: response.summary,
+    }),
+  );
+}
+
+async function sha256Hex(input: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
+  return Array.from(
+    new Uint8Array(digest),
+    (byte) => byte.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
+async function stableId(prefix: string, ...parts: string[]): Promise<string> {
+  const digest = await sha256Hex(pythonJson(parts));
+  return `${prefix}-${digest.slice(0, 12)}`;
 }
 
 async function expectCanonicalRejection(
@@ -160,6 +231,44 @@ async function expectCanonicalRejection(
 }
 
 describe("PRD v8 Desktop strict runtime boundaries", () => {
+  it("rejects a forged PREVIEW checksum and detached summary", async () => {
+    const draft = validDraft();
+    const response = await previewResponse(draft);
+    response.preview_checksum = "0".repeat(64);
+    response.summary = {
+      ...(response.summary as Record<string, unknown>),
+      experiment_block_id: "FORGED-BLOCK",
+      inferential_query_id: "FORGED-QUERY",
+      planned_group_count: -7,
+      planned_unit_total: -9,
+      known_profile_gaps: ["FORGED-GAP"],
+    };
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(response)));
+
+    await expect(
+      api.buildQuickDesignSubmission({ action: "PREVIEW", draft }),
+    ).rejects.toThrow(/malformed PRD v8 build response/);
+  });
+
+  it("rejects a readdressed PREVIEW with wrong stable IDs, counts, and profile gaps", async () => {
+    const draft = validDraft();
+    const response = await previewResponse(draft);
+    response.summary = {
+      ...(response.summary as Record<string, unknown>),
+      experiment_block_id: "BLOCK-QD-READDRESSED",
+      inferential_query_id: "IQ-QD-READDRESSED",
+      planned_group_count: 7,
+      planned_unit_total: 9,
+      known_profile_gaps: ["READDRESSED-GAP"],
+    };
+    await readdressPreview(response);
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(response)));
+
+    await expect(
+      api.buildQuickDesignSubmission({ action: "PREVIEW", draft }),
+    ).rejects.toThrow(/malformed PRD v8 build response/);
+  });
+
   it.each([
     ["report schema_version", (response: QuickDesignV8Response) => {
       delete (response.report as unknown as Record<string, unknown>).schema_version;
@@ -200,7 +309,7 @@ describe("PRD v8 Desktop strict runtime boundaries", () => {
     }],
   ])("rejects PREVIEW with %s", async (_name, mutate) => {
     const draft = validDraft();
-    const response = previewResponse(draft);
+    const response = await previewResponse(draft);
     mutate(response);
     vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(response)));
     await expect(
@@ -215,7 +324,7 @@ describe("PRD v8 Desktop strict runtime boundaries", () => {
     } as GuidedQuickDesignDraft;
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => jsonResponse(previewResponse(invalidDraft))),
+      vi.fn(async () => jsonResponse(await previewResponse(invalidDraft))),
     );
     await expect(
       api.buildQuickDesignSubmission({ action: "PREVIEW", draft: invalidDraft }),

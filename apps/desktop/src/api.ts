@@ -248,6 +248,11 @@ async function contentChecksum(value: unknown): Promise<string | undefined> {
   }
 }
 
+async function stableId(prefix: string, ...parts: string[]): Promise<string | undefined> {
+  const digest = await contentChecksum(parts);
+  return digest === undefined ? undefined : `${prefix}-${digest.slice(0, 12)}`;
+}
+
 async function compactChecksum(value: unknown): Promise<string | undefined> {
   try {
     return await sha256(compactCanonicalJson(value));
@@ -494,6 +499,86 @@ function isGuidedQuestion(value: unknown): boolean {
     isNonEmptyString(value.priority_review.rationale) &&
     isKnowledgeValue(value.evidence_required)
   );
+}
+
+function isSortedUniqueStringArray(value: unknown): value is string[] {
+  return (
+    hasUniqueStrings(value) &&
+    pythonJson(value) === pythonJson([...value].sort())
+  );
+}
+
+async function hasCanonicalGuidedPreviewProjection(value: JsonRecord): Promise<boolean> {
+  if (
+    !isRecord(value.review_snapshot) ||
+    !isGuidedDraft(value.review_snapshot.draft) ||
+    !isConformanceBundle(value.review_snapshot.conformance_bundle_payload) ||
+    !hasV8Schema(value.summary) ||
+    !Array.isArray(value.question_queue) ||
+    !Array.isArray(value.artifact_previews)
+  ) {
+    return false;
+  }
+  const draft = value.review_snapshot.draft;
+  const bundle = value.review_snapshot.conformance_bundle_payload;
+  const summary = value.summary;
+  const profileClosure = bundle.profile_closure;
+  const theory = bundle.theory;
+  const providedFields = summary.provided_field_ids;
+  const unknownFields = summary.unknown_field_ids;
+  if (
+    !isRecord(profileClosure) ||
+    !isRecord(theory) ||
+    !hasUniqueStrings(profileClosure.known_gaps, 1) ||
+    !isSortedUniqueStringArray(providedFields) ||
+    !isSortedUniqueStringArray(unknownFields) ||
+    providedFields.some((field) => unknownFields.includes(field))
+  ) {
+    return false;
+  }
+  const canonicalDraft = draft as JsonRecord;
+  const groups = canonicalDraft.planned_groups as JsonRecord[];
+  const blockId = await stableId(
+    "BLOCK-QD",
+    String(canonicalDraft.template_id),
+    String(canonicalDraft.block_title),
+  );
+  const queryId =
+    blockId === undefined
+      ? undefined
+      : await stableId(
+          "IQ-QD",
+          blockId,
+          String(canonicalDraft.factor_id),
+          String(canonicalDraft.contrast_id),
+          String(canonicalDraft.endpoint_id),
+          String(canonicalDraft.timepoint_id),
+          String(canonicalDraft.estimand),
+          String(canonicalDraft.population_scope),
+          String(canonicalDraft.inference_level),
+        );
+  if (
+    blockId === undefined ||
+    queryId === undefined ||
+    summary.experiment_block_id !== blockId ||
+    summary.inferential_query_id !== queryId ||
+    summary.planned_group_count !== groups.length ||
+    summary.planned_unit_total !==
+      groups.reduce((total, group) => total + Number(group.planned_count), 0) ||
+    pythonJson(summary.known_profile_gaps) !== pythonJson(profileClosure.known_gaps)
+  ) {
+    return false;
+  }
+  const checksum = await contentChecksum({
+    draft: canonicalDraft,
+    theory_checksum: theory.declared_checksum,
+    questions: value.question_queue,
+    artifacts: (value.artifact_previews as JsonRecord[]).map(
+      (artifact) => artifact.content_checksum,
+    ),
+    summary,
+  });
+  return checksum !== undefined && value.preview_checksum === checksum;
 }
 
 function isQuickDesignSubmission(value: unknown): value is QuickDesignV8Submission {
@@ -1097,7 +1182,8 @@ async function isGuidedBuildResponse(
     !(await hasExactArtifacts(value.artifact_previews)) ||
     !(await hasValidConformanceAssetChecksums(
       value.review_snapshot.conformance_bundle_payload,
-    ))
+    )) ||
+    !(await hasCanonicalGuidedPreviewProjection(value))
   ) {
     return false;
   }
