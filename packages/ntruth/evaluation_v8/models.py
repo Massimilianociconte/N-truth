@@ -7,11 +7,13 @@ reference can never be promoted to scientific evidence.
 
 from __future__ import annotations
 
+import warnings
+from collections.abc import Mapping, Set
 from decimal import Decimal
 from enum import StrEnum
-from typing import Annotated, Self
+from typing import Annotated, Any, Literal, Self
 
-from pydantic import Field, model_validator
+from pydantic import Field, PydanticDeprecatedSince20, model_validator
 
 from ntruth.schemas.claims import DeterminabilityState
 from ntruth.schemas.core import content_checksum
@@ -473,7 +475,55 @@ class ReferenceStabilityArtifactReference(KernelModel):
     report_scope_id: NonBlankStr
 
 
-class IndependentReportReference(KernelModel):
+class _RevalidatedEvaluationOutput(KernelModel):
+    """Keep governed evaluation outputs valid across every public copy boundary."""
+
+    @classmethod
+    def model_construct(cls, _fields_set: set[str] | None = None, **values: Any) -> Self:
+        """Retain the public API without exposing Pydantic's validation bypass."""
+
+        del _fields_set
+        return cls.model_validate(values)
+
+    def copy(
+        self,
+        *,
+        include: Set[int] | Set[str] | Mapping[int, Any] | Mapping[str, Any] | None = None,
+        exclude: Set[int] | Set[str] | Mapping[int, Any] | Mapping[str, Any] | None = None,
+        update: Mapping[str, Any] | None = None,
+        deep: bool = False,
+    ) -> Self:
+        """Deprecated compatibility copy that retains complete output validation."""
+
+        warnings.warn(
+            "The `copy` method is deprecated; use `model_copy` instead.",
+            category=PydanticDeprecatedSince20,
+            stacklevel=2,
+        )
+        if include is not None or exclude is not None:
+            raise TypeError(
+                "partial evaluation output copies are forbidden; use model_dump followed by "
+                "model_validate"
+            )
+        return self.model_copy(update=update, deep=deep)
+
+    def model_copy(
+        self,
+        *,
+        update: Mapping[str, Any] | None = None,
+        deep: bool = False,
+    ) -> Self:
+        payload = (
+            super()
+            .model_copy(deep=deep)
+            .model_dump(mode="python", round_trip=True, warnings="none")
+        )
+        if update is not None:
+            payload.update(update)
+        return type(self).model_validate(payload)
+
+
+class IndependentReportReference(_RevalidatedEvaluationOutput):
     reference_id: NonBlankStr
     content_checksum: Sha256
     purpose: IndependentReferencePurpose
@@ -640,14 +690,14 @@ class ResidualEvent(KernelModel):
     impact_on_claim: NonBlankStr
 
 
-class EndToEndEvaluationReport(KernelModel):
+class EndToEndEvaluationReport(_RevalidatedEvaluationOutput):
     evaluation_id: NonBlankStr
     content_checksum: Sha256
     report_scope_id: NonBlankStr
     observed_snapshot_checksum: Sha256
     reference_checksum: KnowledgeValue[Sha256]
     status: EvaluationStatus
-    scientific_use_permitted: bool
+    scientific_use_permitted: Literal[False] = False
     denominators: KnowledgeValue[EvaluationDenominators]
     complete_report_match: KnowledgeValue[bool]
     global_report_resolution_match: KnowledgeValue[bool]
@@ -891,7 +941,7 @@ class ResidualAuditFinding(KernelModel):
         return self
 
 
-class BlindResidualAuditResult(KernelModel):
+class BlindResidualAuditResult(_RevalidatedEvaluationOutput):
     result_id: NonBlankStr
     content_checksum: Sha256
     protocol: BlindResidualAuditProtocol
@@ -899,7 +949,7 @@ class BlindResidualAuditResult(KernelModel):
     decisive_error_count: KnowledgeValue[AuditCountSummary]
     false_certainty_count: KnowledgeValue[AuditCountSummary]
     human_review_introduced_error_count: KnowledgeValue[AuditCountSummary]
-    scientific_use_permitted: bool = False
+    scientific_use_permitted: Literal[False] = False
     blocker: ScientificReviewRequirement
 
     @model_validator(mode="after")
@@ -1004,7 +1054,7 @@ class ReferenceStabilityComponentRecord(KernelModel):
         return self
 
 
-class ReferenceStabilityReport(KernelModel):
+class ReferenceStabilityReport(_RevalidatedEvaluationOutput):
     artifact_id: NonBlankStr
     report_id: NonBlankStr
     content_checksum: Sha256

@@ -313,7 +313,7 @@ def test_report_evaluation_retains_every_denominator_and_false_certainty_residua
     assert "SRR-V8-CONFORMANCE-REFERENCE-NONSCIENTIFIC" in {
         item.issue_id for item in result.blockers
     }
-    with pytest.raises(ValidationError, match="not a scientific release authority"):
+    with pytest.raises(ValidationError, match="False"):
         type(result).model_validate(
             result.model_copy(update={"scientific_use_permitted": True}).model_dump(mode="python")
         )

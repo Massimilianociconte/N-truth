@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from collections import Counter
-from contextlib import suppress
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
+
+from pydantic import ValidationError
+from pydantic_core import to_jsonable_python
 
 from ntruth.evaluation_v8.models import (
     CONFORMANCE_REFERENCE_REVIEW_ISSUE_ID,
@@ -52,12 +54,19 @@ from ntruth.evaluation_v8.models import (
 )
 from ntruth.schemas.claims import DeterminabilityState
 from ntruth.schemas.core import content_checksum
+from ntruth.schemas.kernel import KERNEL_SCHEMA_VERSION
 from ntruth.schemas.knowledge import KnowledgeState, KnowledgeValue
 from ntruth.schemas.report_resolution import TrivialExplicitReportResolutionPolicy
 from ntruth.schemas.support import ScientificReviewRequirement
 
 if TYPE_CHECKING:
     from ntruth.schemas.report_bundle import ReportBundle
+
+
+def _addressed_fields_checksum(fields: dict[str, Any]) -> str:
+    """Hash builder fields without constructing an intentionally invalid draft model."""
+
+    return content_checksum(to_jsonable_python({"schema_version": KERNEL_SCHEMA_VERSION, **fields}))
 
 
 def _not_applicable_checksum(*, scope: str, rationale: str) -> KnowledgeValue[str]:
@@ -250,6 +259,20 @@ def build_independent_report_reference(
 ) -> IndependentReportReference:
     """Address a reference and make conformance-only purpose non-upgradable."""
 
+    purpose = IndependentReferencePurpose(purpose)
+    snapshot = ReportEvaluationSnapshot.model_validate(
+        snapshot.model_dump(mode="python", round_trip=True, warnings="none")
+    )
+    if reference_stability_report is not None:
+        reference_stability_report = ReferenceStabilityReport.model_validate(
+            reference_stability_report.model_dump(mode="python", round_trip=True, warnings="none")
+        )
+    if partial_claim_equivalences is not None:
+        partial_claim_equivalences = KnowledgeValue[
+            tuple[PartialClaimEquivalence, ...]
+        ].model_validate(
+            partial_claim_equivalences.model_dump(mode="python", round_trip=True, warnings="none")
+        )
     if reference_stability_report_checksum is not None:
         raise ValueError(
             "raw reference-stability checksum is not authoritative; resolve the addressed report"
@@ -302,8 +325,7 @@ def build_independent_report_reference(
         "reference_stability_report": reference_stability_value,
         "partial_claim_equivalences": partial_claim_equivalences,
     }
-    draft = IndependentReportReference.model_construct(content_checksum="0" * 64, **fields)
-    checksum = content_checksum(draft.model_dump(mode="json", exclude={"content_checksum"}))
+    checksum = _addressed_fields_checksum(fields)
     return IndependentReportReference(content_checksum=checksum, **fields)
 
 
@@ -354,12 +376,7 @@ def build_reference_stability_report(
         "reference_stability_conclusion": conclusion,
         "blocker": blocker,
     }
-    draft = ReferenceStabilityReport.model_construct(
-        artifact_id="REFERENCE-STABILITY-PENDING", content_checksum="0" * 64, **fields
-    )
-    checksum = content_checksum(
-        draft.model_dump(mode="json", exclude={"artifact_id", "content_checksum"})
-    )
+    checksum = _addressed_fields_checksum(fields)
     return ReferenceStabilityReport(
         artifact_id=f"REFERENCE-STABILITY-{checksum[:20]}",
         content_checksum=checksum,
@@ -402,6 +419,15 @@ def summarize_blind_residual_audit(
 ) -> BlindResidualAuditResult:
     """Summarize a closed blind sample without imputing unknown findings as no error."""
 
+    protocol = BlindResidualAuditProtocol.model_validate(
+        protocol.model_dump(mode="python", round_trip=True, warnings="none")
+    )
+    findings = tuple(
+        ResidualAuditFinding.model_validate(
+            finding.model_dump(mode="python", round_trip=True, warnings="none")
+        )
+        for finding in findings
+    )
     summaries = {
         "decisive_error_count": _summarize_audit_boolean(
             protocol=protocol, findings=findings, field_name="decisive_error"
@@ -428,12 +454,7 @@ def summarize_blind_residual_audit(
             ),
         ),
     }
-    draft = BlindResidualAuditResult.model_construct(
-        result_id="RESIDUAL-AUDIT-PENDING", content_checksum="0" * 64, **fields
-    )
-    checksum = content_checksum(
-        draft.model_dump(mode="json", exclude={"result_id", "content_checksum"})
-    )
+    checksum = _addressed_fields_checksum(fields)
     return BlindResidualAuditResult(
         result_id=f"RESIDUAL-AUDIT-{checksum[:20]}", content_checksum=checksum, **fields
     )
@@ -643,14 +664,7 @@ def _false_certainty_residuals(
 
 
 def _build_end_to_end_report(fields: dict[str, Any]) -> EndToEndEvaluationReport:
-    draft = EndToEndEvaluationReport.model_construct(
-        evaluation_id="E2E-PENDING",
-        content_checksum="0" * 64,
-        **fields,
-    )
-    checksum = content_checksum(
-        draft.model_dump(mode="json", exclude={"evaluation_id", "content_checksum"})
-    )
+    checksum = _addressed_fields_checksum(fields)
     return EndToEndEvaluationReport(
         evaluation_id=f"E2E-{checksum[:20]}",
         content_checksum=checksum,
@@ -1063,16 +1077,30 @@ def _reference_stability_is_resolved(
     reference: IndependentReportReference,
     reports: tuple[ReferenceStabilityReport, ...],
 ) -> bool:
-    addressed = reference.reference_stability_report
+    try:
+        checked_reference = IndependentReportReference.model_validate(
+            reference.model_dump(mode="python", round_trip=True, warnings="none")
+        )
+        checked_reports = tuple(
+            ReferenceStabilityReport.model_validate(
+                report.model_dump(mode="python", round_trip=True, warnings="none")
+            )
+            for report in reports
+        )
+    except (AttributeError, TypeError, ValidationError, ValueError):
+        return False
+    addressed = checked_reference.reference_stability_report
     if addressed.knowledge_state is not KnowledgeState.PRESENT or addressed.value is None:
         return False
-    matches = [report for report in reports if report.artifact_id == addressed.value.artifact_id]
+    matches = [
+        report for report in checked_reports if report.artifact_id == addressed.value.artifact_id
+    ]
     if len(matches) != 1:
         return False
     report = matches[0]
     return (
         report.content_checksum == addressed.value.content_checksum
-        and report.report_id == addressed.value.report_scope_id == reference.report_scope_id
+        and report.report_id == addressed.value.report_scope_id == checked_reference.report_scope_id
         and report.component_evidence_complete
         and report.interpretation_policy.knowledge_state is KnowledgeState.PRESENT
         and report.reference_stability_conclusion.knowledge_state is KnowledgeState.PRESENT
@@ -1091,6 +1119,19 @@ def evaluate_end_to_end(
 ) -> EndToEndEvaluationReport:
     """Score a complete report or emit explicit UNKNOWNs when reference is absent."""
 
+    observed = ReportEvaluationSnapshot.model_validate(
+        observed.model_dump(mode="python", round_trip=True, warnings="none")
+    )
+    reference_value = KnowledgeValue[IndependentReportReference].model_validate(
+        reference_value.model_dump(mode="python", round_trip=True, warnings="none")
+    )
+    if false_certainty_protocol is not None:
+        try:
+            false_certainty_protocol = FalseCertaintyMetricProtocol.model_validate(
+                false_certainty_protocol.model_dump(mode="python", round_trip=True, warnings="none")
+            )
+        except (AttributeError, TypeError, ValidationError, ValueError):
+            false_certainty_protocol = None
     if reference_value.query_scope_id != observed.report_id:
         raise ValueError("reference KnowledgeValue belongs to another report scope")
     if (
@@ -1336,11 +1377,6 @@ def evaluate_end_to_end(
     summary_denominator: KnowledgeValue[int]
     summary_event_count: KnowledgeValue[int]
     summary_rate: KnowledgeValue[Decimal]
-    if false_certainty_protocol is not None:
-        with suppress(AttributeError, TypeError, ValueError):
-            FalseCertaintyMetricProtocol.model_validate(
-                false_certainty_protocol.model_dump(mode="python")
-            )
     if false_certainty_classification_closed:
         summary_event_count = KnowledgeValue[int](
             knowledge_state=KnowledgeState.PRESENT,
