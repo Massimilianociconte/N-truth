@@ -32,6 +32,14 @@ class HardVerifierResult(FrozenModel):
     checks_run: tuple[str, ...] = ()
 
 
+def _stable_error_detail(exc: ValueError, *, fallback: str) -> str:
+    try:
+        detail = str(exc)
+        return detail if detail.strip() else fallback
+    except Exception:
+        return fallback
+
+
 def hard_verify_candidates(
     bundle: ParserCandidateOutput | None,
 ) -> HardVerifierResult:
@@ -57,7 +65,10 @@ def hard_verify_candidates(
     except ValueError as exc:
         error = StageIssue(
             code=StageErrorCode.VERIFIER_DISAGREEMENT,
-            detail=str(exc),
+            detail=_stable_error_detail(
+                exc,
+                fallback="candidate parser payload failed canonical validation",
+            ),
         )
         return HardVerifierResult(
             passed=False,
@@ -105,7 +116,10 @@ def hard_verify_candidates(
             errors.append(
                 StageIssue(
                     code=StageErrorCode.VERIFIER_DISAGREEMENT,
-                    detail=str(exc),
+                    detail=_stable_error_detail(
+                        exc,
+                        fallback="candidate experiment-block boundary validation failed",
+                    ),
                 )
             )
 
@@ -158,7 +172,15 @@ def hard_verify_candidates_v7(bundle: ParserCandidateBundle) -> HardVerifierResu
     try:
         assert_no_final_scientific_fields(bundle.model_dump(mode="json"))
     except ValueError as exc:
-        errors.append(StageIssue(code=StageErrorCode.VERIFIER_DISAGREEMENT, detail=str(exc)))
+        errors.append(
+            StageIssue(
+                code=StageErrorCode.VERIFIER_DISAGREEMENT,
+                detail=_stable_error_detail(
+                    exc,
+                    fallback="legacy candidate payload failed structural validation",
+                ),
+            )
+        )
     if not any(
         (
             bundle.entities,
