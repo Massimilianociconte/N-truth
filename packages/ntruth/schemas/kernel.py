@@ -47,9 +47,28 @@ def kernel_json_schemas() -> dict[str, dict[str, Any]]:
         ExperimentBlockBoundaryChangeRecord,
         ExperimentBlockBoundaryRecord,
     )
+    from ntruth.schemas.causal_context import QueryCausalContext, QueryCausalEventAggregate
     from ntruth.schemas.claims import DerivedClaim, DerivedClaimSet
+    from ntruth.schemas.count_registry import (
+        CanonicalCountRecord,
+        CanonicalCountRegistry,
+        CountInterval,
+        CountScope,
+        CountScopeIdentity,
+    )
     from ntruth.schemas.coverage import ProfileCoverageStatement, ScenarioCoverage
+    from ntruth.schemas.events import (
+        ApplicationEvent,
+        AssignmentEvent,
+        EventRegistry,
+        ExposureEvent,
+        ObservationEvent,
+        PoolEvent,
+        RelativeTiming,
+        SplitEvent,
+    )
     from ntruth.schemas.execution import V8ExecutionManifest
+    from ntruth.schemas.graph_v8 import V8ExperimentGraph, V8GraphNode, V8GraphRelation
     from ntruth.schemas.knowledge import KnowledgeValue
     from ntruth.schemas.prospective import (
         ConfirmationTarget,
@@ -61,6 +80,7 @@ def kernel_json_schemas() -> dict[str, dict[str, Any]]:
         ProspectiveInputLedger,
         SupportEvidenceBinding,
     )
+    from ntruth.schemas.query import InferentialQuery
     from ntruth.schemas.report_bundle import (
         ConflictRecord,
         HandoffItem,
@@ -80,6 +100,25 @@ def kernel_json_schemas() -> dict[str, dict[str, Any]]:
     models: dict[str, type[BaseModel]] = {
         "kernel_identity": KernelIdentity,
         "knowledge_value": KnowledgeValue[JsonValue],
+        "inferential_query": InferentialQuery,
+        "count_interval": CountInterval,
+        "count_scope_identity": CountScopeIdentity,
+        "count_scope": CountScope,
+        "canonical_count_record": CanonicalCountRecord,
+        "canonical_count_registry": CanonicalCountRegistry,
+        "assignment_event": AssignmentEvent,
+        "application_event": ApplicationEvent,
+        "exposure_event": ExposureEvent,
+        "split_event": SplitEvent,
+        "pool_event": PoolEvent,
+        "observation_event": ObservationEvent,
+        "relative_timing": RelativeTiming,
+        "event_registry": EventRegistry,
+        "query_causal_context": QueryCausalContext,
+        "query_causal_event_aggregate": QueryCausalEventAggregate,
+        "v8_graph_node": V8GraphNode,
+        "v8_graph_relation": V8GraphRelation,
+        "v8_experiment_graph": V8ExperimentGraph,
         "block_boundary_predicate": BlockBoundaryPredicate,
         "boundary_change_reference": BoundaryChangeReference,
         "experiment_block_boundary_record": ExperimentBlockBoundaryRecord,

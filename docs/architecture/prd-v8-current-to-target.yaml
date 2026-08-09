@@ -13,7 +13,7 @@
       "public_api": ["python:ntruth.schemas.kernel:KernelModel", "python:ntruth.schemas.knowledge:KnowledgeValue"],
       "owner": "semantic-kernel",
       "adr_paths": ["docs/adr/0013-prd-v8-scientific-contract-migration.md"],
-      "test_paths": ["tests/unit/test_prd_v8_kernel_contracts.py", "tests/unit/test_prd_v8_kernel_fix_round1.py"],
+      "test_paths": ["tests/unit/test_prd_v8_kernel_contracts.py", "tests/unit/test_prd_v8_kernel_fix_round1.py", "tests/integration/test_prd_v8_task8_fix1_repository_truth.py"],
       "evidence_paths": ["docs/audits/prd-v8-full-migration/FINAL_IMPLEMENTATION_MATRIX.md"],
       "blocker_ids": []
     },
@@ -61,7 +61,7 @@
       "public_api": ["python:ntruth.schemas.query:InferentialQuery", "python:ntruth.schemas.claims:DerivedClaim", "python:ntruth.schemas.claims:DerivedClaimSet", "python:ntruth.pipeline_v8:run_v8_pipeline"],
       "owner": "semantic-kernel",
       "adr_paths": ["docs/adr/0013-prd-v8-scientific-contract-migration.md"],
-      "test_paths": ["tests/unit/test_prd_v8_derivation_runtime.py", "tests/unit/test_prd_v8_derivation_runtime_fix_round2.py"],
+      "test_paths": ["tests/unit/test_prd_v8_derivation_runtime.py", "tests/unit/test_prd_v8_derivation_runtime_fix_round2.py", "tests/integration/test_prd_v8_task8_fix1_repository_truth.py"],
       "evidence_paths": ["docs/audits/prd-v8-full-migration/SCIENTIFIC_REVIEW_REGISTER.md"],
       "blocker_ids": ["SRR-V8-014", "SRR-V8-023", "SRR-V8-024"]
     },
@@ -73,7 +73,7 @@
       "public_api": ["python:ntruth.schemas.count_registry:CanonicalCountRegistry", "python:ntruth.schemas.count_registry:CanonicalCountRecord", "python:ntruth.migrations.v7_to_v8:migrate_v7_count_kind"],
       "owner": "count-theory-reviewers",
       "adr_paths": ["docs/adr/0013-prd-v8-scientific-contract-migration.md"],
-      "test_paths": ["tests/unit/test_prd_v8_count_registry.py", "tests/unit/test_prd_v8_count_event_migrations.py"],
+      "test_paths": ["tests/unit/test_prd_v8_count_registry.py", "tests/unit/test_prd_v8_count_event_migrations.py", "tests/integration/test_prd_v8_task8_fix1_repository_truth.py"],
       "evidence_paths": ["docs/audits/prd-v8-full-migration/SCIENTIFIC_REVIEW_REGISTER.md"],
       "blocker_ids": ["SRR-V8-011"]
     },
@@ -109,7 +109,7 @@
       "public_api": ["python:ntruth.schemas.events:EventRegistry", "python:ntruth.schemas.events:AssignmentEvent", "python:ntruth.schemas.events:ApplicationEvent", "python:ntruth.schemas.events:ExposureEvent", "python:ntruth.schemas.causal_context:QueryCausalContext"],
       "owner": "semantic-kernel",
       "adr_paths": ["docs/adr/0013-prd-v8-scientific-contract-migration.md"],
-      "test_paths": ["tests/unit/test_prd_v8_events_and_graph.py", "tests/unit/test_prd_v8_count_event_migrations.py"],
+      "test_paths": ["tests/unit/test_prd_v8_events_and_graph.py", "tests/unit/test_prd_v8_count_event_migrations.py", "tests/integration/test_prd_v8_task8_fix1_repository_truth.py"],
       "evidence_paths": ["docs/audits/prd-v8-full-migration/SCIENTIFIC_REVIEW_REGISTER.md"],
       "blocker_ids": ["SRR-V8-017"]
     },
@@ -272,24 +272,24 @@
     {
       "component_id": "prd-examples-and-schema",
       "current_paths": ["packages/ntruth/conformance/examples.py", "packages/ntruth/schemas/schema_snapshot.py"],
-      "target": "Packaged runtime-derived schemas plus verbatim expected-negative and explicitly blocked engineering-canonical examples",
+      "target": "Packaged runtime-derived exact 52-contract Kernel schema taxonomy plus verbatim expected-negative and explicitly blocked engineering-canonical examples",
       "status": "PARTIAL",
-      "public_api": ["python:ntruth.conformance.examples:load_installed_prd_v8_example_registry", "python:ntruth.schemas.schema_snapshot:load_installed_kernel_schema_snapshot"],
+      "public_api": ["python:ntruth.conformance.examples:load_installed_prd_v8_example_registry", "python:ntruth.schemas.kernel:kernel_json_schemas", "python:ntruth.schemas.schema_snapshot:load_installed_kernel_schema_snapshot"],
       "owner": "contract-governance",
       "adr_paths": ["docs/adr/0013-prd-v8-scientific-contract-migration.md"],
-      "test_paths": ["tests/integration/test_prd_v8_task8_repository_truth.py"],
+      "test_paths": ["tests/integration/test_prd_v8_task8_repository_truth.py", "tests/integration/test_prd_v8_task8_fix1_repository_truth.py"],
       "evidence_paths": ["packages/ntruth/conformance/assets/prd-v8-example-conformance-registry-8.0.0.json", "docs/audits/prd-v8-full-migration/SCIENTIFIC_REVIEW_REGISTER.md"],
       "blocker_ids": ["SRR-V8-001", "SRR-V8-002", "SRR-V8-003", "SRR-V8-004", "SRR-V8-005", "SRR-V8-006", "SRR-V8-007", "SRR-V8-008", "SRR-V8-015", "SRR-V8-018"]
     },
     {
       "component_id": "repository-contract-truth",
       "current_paths": ["packages/ntruth/governance/repository_truth.py", "scripts/check_prd_v8_contracts.py", ".github/workflows/ci.yml"],
-      "target": "Release-blocking semantic validation of current paths, public APIs, registered blockers, PRD excerpts, runtime schemas and all 88 requirements",
+      "target": "Release-blocking exact-set validation of 25 components, role-specific paths, public APIs, registered blockers, PRD excerpts, runtime schemas and all 88 requirements",
       "status": "IMPLEMENTED",
-      "public_api": ["python:ntruth.governance.repository_truth:validate_current_target_map", "python:ntruth.conformance.examples:evaluate_prd_v8_examples", "python:ntruth.schemas.schema_snapshot:load_installed_kernel_schema_snapshot"],
+      "public_api": ["python:ntruth.governance.repository_truth:CANONICAL_COMPONENT_IDS", "python:ntruth.governance.repository_truth:validate_current_target_map", "python:ntruth.conformance.examples:evaluate_prd_v8_examples", "python:ntruth.schemas.schema_snapshot:load_installed_kernel_schema_snapshot"],
       "owner": "contract-governance",
       "adr_paths": ["docs/adr/0013-prd-v8-scientific-contract-migration.md"],
-      "test_paths": ["tests/integration/test_prd_v8_task8_repository_truth.py", "tests/integration/test_prd_v8_packaged_conformance.py"],
+      "test_paths": ["tests/integration/test_prd_v8_task8_repository_truth.py", "tests/integration/test_prd_v8_task8_fix1_repository_truth.py", "tests/integration/test_prd_v8_packaged_conformance.py"],
       "evidence_paths": ["docs/audits/prd-v8-full-migration/FINAL_IMPLEMENTATION_MATRIX.md", "docs/audits/prd-v8-full-migration/SCIENTIFIC_REVIEW_REGISTER.md"],
       "blocker_ids": []
     },

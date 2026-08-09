@@ -14,6 +14,35 @@ from pathlib import Path
 from typing import Any
 
 MAP_STATUSES = frozenset({"IMPLEMENTED", "PARTIAL", "MISSING", "INCOMPATIBLE", "LEGACY"})
+CANONICAL_COMPONENT_IDS = frozenset(
+    {
+        "canonical-count-registry",
+        "core-semantic-kernel",
+        "corrections-rederivation",
+        "coverage-contracts",
+        "derivation-theory",
+        "desktop-v8",
+        "evaluation-residual-cluster",
+        "event-causal-context",
+        "experiment-block-boundary",
+        "external-challenge-custody",
+        "graph-equality",
+        "guided-quick-design-v8",
+        "ingest-safety",
+        "orthogonal-evidence-support",
+        "parser-candidate-boundary",
+        "planned-executed-reporting",
+        "prd-examples-and-schema",
+        "protected-training-boundary",
+        "query-scoped-claims",
+        "reality-gate-v8",
+        "repository-contract-truth",
+        "rulebook-conformance",
+        "statistical-handoff",
+        "v7-compatibility",
+        "v7-to-v8-migrations",
+    }
+)
 REQUIRED_COMPONENT_FIELDS = frozenset(
     {
         "component_id",
@@ -33,6 +62,28 @@ SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 BLOCKER_RE = re.compile(r"^SRR-V8-[0-9]{3}$")
 REGISTER_ROW_RE = re.compile(r"^\| (SRR-V8-[0-9]{3}) \|", re.MULTILINE)
 HTTP_METHODS = frozenset({"DELETE", "GET", "PATCH", "POST", "PUT"})
+PATH_ROLE_PATTERNS = {
+    "current_paths": (
+        re.compile(r"^packages/ntruth/(?:[^/]+/)*[^/]+\.py$"),
+        re.compile(r"^apps/desktop/src/(?:[^/]+/)*[^/]+\.tsx?$"),
+        re.compile(r"^scripts/[^/]+\.py$"),
+        re.compile(r"^\.github/workflows/[^/]+\.ya?ml$"),
+        re.compile(r"^(?:rulesets|theories)/[^/]+\.json$"),
+    ),
+    "adr_paths": (re.compile(r"^docs/adr/[0-9]{4}-[^/]+\.md$"),),
+    "test_paths": (
+        re.compile(r"^tests/(?:integration|security|unit)/(?:[^/]+/)*test_[^/]+\.py$"),
+        re.compile(r"^apps/desktop/src/(?:[^/]+/)*[^/]+\.test\.tsx?$"),
+    ),
+    "evidence_paths": (
+        re.compile(r"^docs/audits/prd-v8-full-migration/[^/]+\.md$"),
+        re.compile(r"^docs/training/DECISION-[^/]+\.md$"),
+        re.compile(r"^docs/architecture/prd-v7-migration-map\.md$"),
+        re.compile(r"^theories/[^/]+\.json$"),
+        re.compile(r"^packages/ntruth/conformance/assets/[^/]+\.json$"),
+        re.compile(r"^apps/desktop/src/test-fixtures/[^/]+\.json$"),
+    ),
+}
 
 
 @dataclass(frozen=True)
@@ -51,7 +102,17 @@ def _string_list(value: Any, *, field: str, component_id: str) -> tuple[str, ...
         or any(not isinstance(item, str) or not item.strip() for item in value)
     ):
         raise ValueError(f"{component_id}.{field} must be a non-empty string list")
+    if len(set(value)) != len(value):
+        raise ValueError(f"{component_id}.{field} must contain unique strings")
     return tuple(value)
+
+
+def _path_role_diagnostic(relative: str, *, field: str, component_id: str) -> str | None:
+    if field == "current_paths" and ("/test-fixtures/" in relative or ".test." in relative):
+        return f"{component_id}.{field} has non-implementation path: {relative}"
+    if any(pattern.fullmatch(relative) for pattern in PATH_ROLE_PATTERNS[field]):
+        return None
+    return f"{component_id}.{field} has non-{field.removesuffix('_paths')} path: {relative}"
 
 
 def _public_api_diagnostic(reference: str, *, component_id: str) -> str | None:
@@ -181,6 +242,10 @@ def validate_current_target_map(path: Path, *, repository_root: Path) -> Current
                 for relative in _string_list(
                     component.get(field), field=field, component_id=component_id
                 ):
+                    if diagnostic := _path_role_diagnostic(
+                        relative, field=field, component_id=component_id
+                    ):
+                        diagnostics.append(diagnostic)
                     candidate = (repository_root / relative).resolve()
                     try:
                         candidate.relative_to(repository_root.resolve())
@@ -193,6 +258,15 @@ def validate_current_target_map(path: Path, *, repository_root: Path) -> Current
             diagnostics.append(str(exc))
     if len(set(component_ids)) != len(component_ids):
         diagnostics.append("architecture map component_id values must be unique")
+    component_id_set = set(component_ids)
+    if missing_components := sorted(CANONICAL_COMPONENT_IDS - component_id_set):
+        diagnostics.append(
+            "architecture map missing canonical components: " + ", ".join(missing_components)
+        )
+    if unexpected_components := sorted(component_id_set - CANONICAL_COMPONENT_IDS):
+        diagnostics.append(
+            "architecture map has unexpected components: " + ", ".join(unexpected_components)
+        )
 
     return CurrentTargetMapValidation(
         valid=not diagnostics,
@@ -204,6 +278,7 @@ def validate_current_target_map(path: Path, *, repository_root: Path) -> Current
 
 
 __all__ = [
+    "CANONICAL_COMPONENT_IDS",
     "MAP_STATUSES",
     "CurrentTargetMapValidation",
     "validate_current_target_map",

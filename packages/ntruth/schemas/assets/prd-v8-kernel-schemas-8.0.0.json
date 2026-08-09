@@ -1,8 +1,558 @@
 {
-  "declared_checksum": "607985609d0867c4ab52a59521cec323204c59acc09554a464a842e8ed989b86",
+  "declared_checksum": "f790b9a6c08d9695db3cc19f3766172f53e0aef77a9bf8000d367b9c78362f55",
   "generated_from": "ntruth.schemas.kernel.kernel_json_schemas",
   "schema_version": "8.0.0",
   "schemas": {
+    "application_event": {
+      "$defs": {
+        "KnowledgeState": {
+          "enum": [
+            "PRESENT",
+            "ABSENT_EXPLICIT",
+            "NOT_REPORTED",
+            "UNKNOWN",
+            "NOT_APPLICABLE",
+            "CONFLICTING"
+          ],
+          "title": "KnowledgeState",
+          "type": "string"
+        },
+        "KnowledgeValue_Annotated_str__StringConstraints__": {
+          "additionalProperties": false,
+          "properties": {
+            "claim_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Claim Scope Id"
+            },
+            "conflicting_values": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Conflicting Values",
+              "type": "array"
+            },
+            "evidence_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Evidence Ids",
+              "type": "array"
+            },
+            "knowledge_state": {
+              "$ref": "#/$defs/KnowledgeState"
+            },
+            "query_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Query Scope Id"
+            },
+            "rationale": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Rationale"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "source_scope_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Source Scope Ids",
+              "type": "array"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Value"
+            }
+          },
+          "required": [
+            "knowledge_state"
+          ],
+          "title": "KnowledgeValue[Annotated[str, StringConstraints]]",
+          "type": "object"
+        },
+        "KnowledgeValue_tuple_Annotated_str__StringConstraints___________": {
+          "additionalProperties": false,
+          "properties": {
+            "claim_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Claim Scope Id"
+            },
+            "conflicting_values": {
+              "default": [],
+              "items": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "title": "Conflicting Values",
+              "type": "array"
+            },
+            "evidence_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Evidence Ids",
+              "type": "array"
+            },
+            "knowledge_state": {
+              "$ref": "#/$defs/KnowledgeState"
+            },
+            "query_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Query Scope Id"
+            },
+            "rationale": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Rationale"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "source_scope_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Source Scope Ids",
+              "type": "array"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "items": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Value"
+            }
+          },
+          "required": [
+            "knowledge_state"
+          ],
+          "title": "KnowledgeValue[tuple[Annotated[str, StringConstraints], ...]]",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "application_unit_ids": {
+          "$ref": "#/$defs/KnowledgeValue_tuple_Annotated_str__StringConstraints___________"
+        },
+        "application_unit_type": {
+          "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+        },
+        "event_id": {
+          "minLength": 1,
+          "title": "Event Id",
+          "type": "string"
+        },
+        "event_type": {
+          "const": "ApplicationEvent",
+          "default": "ApplicationEvent",
+          "title": "Event Type",
+          "type": "string"
+        },
+        "evidence_refs": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Evidence Refs",
+          "type": "array"
+        },
+        "experiment_block_id": {
+          "minLength": 1,
+          "title": "Experiment Block Id",
+          "type": "string"
+        },
+        "factor_id": {
+          "minLength": 1,
+          "title": "Factor Id",
+          "type": "string"
+        },
+        "intervention_id": {
+          "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+        },
+        "schema_version": {
+          "const": "8.0.0",
+          "default": "8.0.0",
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "event_id",
+        "experiment_block_id",
+        "evidence_refs",
+        "factor_id",
+        "intervention_id",
+        "application_unit_type",
+        "application_unit_ids"
+      ],
+      "title": "ApplicationEvent",
+      "type": "object"
+    },
+    "assignment_event": {
+      "$defs": {
+        "KnowledgeState": {
+          "enum": [
+            "PRESENT",
+            "ABSENT_EXPLICIT",
+            "NOT_REPORTED",
+            "UNKNOWN",
+            "NOT_APPLICABLE",
+            "CONFLICTING"
+          ],
+          "title": "KnowledgeState",
+          "type": "string"
+        },
+        "KnowledgeValue_Annotated_str__StringConstraints__": {
+          "additionalProperties": false,
+          "properties": {
+            "claim_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Claim Scope Id"
+            },
+            "conflicting_values": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Conflicting Values",
+              "type": "array"
+            },
+            "evidence_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Evidence Ids",
+              "type": "array"
+            },
+            "knowledge_state": {
+              "$ref": "#/$defs/KnowledgeState"
+            },
+            "query_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Query Scope Id"
+            },
+            "rationale": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Rationale"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "source_scope_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Source Scope Ids",
+              "type": "array"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Value"
+            }
+          },
+          "required": [
+            "knowledge_state"
+          ],
+          "title": "KnowledgeValue[Annotated[str, StringConstraints]]",
+          "type": "object"
+        },
+        "KnowledgeValue_tuple_Annotated_str__StringConstraints___________": {
+          "additionalProperties": false,
+          "properties": {
+            "claim_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Claim Scope Id"
+            },
+            "conflicting_values": {
+              "default": [],
+              "items": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "title": "Conflicting Values",
+              "type": "array"
+            },
+            "evidence_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Evidence Ids",
+              "type": "array"
+            },
+            "knowledge_state": {
+              "$ref": "#/$defs/KnowledgeState"
+            },
+            "query_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Query Scope Id"
+            },
+            "rationale": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Rationale"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "source_scope_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Source Scope Ids",
+              "type": "array"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "items": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Value"
+            }
+          },
+          "required": [
+            "knowledge_state"
+          ],
+          "title": "KnowledgeValue[tuple[Annotated[str, StringConstraints], ...]]",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "assigned_unit_ids": {
+          "$ref": "#/$defs/KnowledgeValue_tuple_Annotated_str__StringConstraints___________"
+        },
+        "assigned_unit_type": {
+          "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+        },
+        "event_id": {
+          "minLength": 1,
+          "title": "Event Id",
+          "type": "string"
+        },
+        "event_type": {
+          "const": "AssignmentEvent",
+          "default": "AssignmentEvent",
+          "title": "Event Type",
+          "type": "string"
+        },
+        "evidence_refs": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Evidence Refs",
+          "type": "array"
+        },
+        "experiment_block_id": {
+          "minLength": 1,
+          "title": "Experiment Block Id",
+          "type": "string"
+        },
+        "factor_id": {
+          "minLength": 1,
+          "title": "Factor Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "8.0.0",
+          "default": "8.0.0",
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "event_id",
+        "experiment_block_id",
+        "evidence_refs",
+        "factor_id",
+        "assigned_unit_type",
+        "assigned_unit_ids"
+      ],
+      "title": "AssignmentEvent",
+      "type": "object"
+    },
     "block_boundary_predicate": {
       "$defs": {
         "BlockBoundaryCriterion": {
@@ -74,6 +624,1086 @@
         "sha256"
       ],
       "title": "BoundaryChangeReference",
+      "type": "object"
+    },
+    "canonical_count_record": {
+      "$defs": {
+        "CanonicalCountKind": {
+          "description": "The sole normative vocabulary from PRD v8 §7.9.",
+          "enum": [
+            "declared_n",
+            "planned_unit_count",
+            "allocated_unit_count",
+            "treated_unit_count",
+            "observed_unit_count",
+            "excluded_unit_count",
+            "analyzed_unit_count",
+            "observational_measurement_count",
+            "analytical_row_count",
+            "experimental_unit_count",
+            "biological_source_count",
+            "diagnostic_effective_n"
+          ],
+          "title": "CanonicalCountKind",
+          "type": "string"
+        },
+        "CountInterval": {
+          "additionalProperties": false,
+          "properties": {
+            "lower": {
+              "minimum": 0,
+              "title": "Lower",
+              "type": "integer"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "upper": {
+              "minimum": 0,
+              "title": "Upper",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "lower",
+            "upper"
+          ],
+          "title": "CountInterval",
+          "type": "object"
+        },
+        "CountLifecyclePhase": {
+          "description": "Closed lifecycle labels; unknown legacy labels require scientific review.",
+          "enum": [
+            "planned",
+            "allocated",
+            "treated",
+            "observed",
+            "excluded",
+            "analyzed"
+          ],
+          "title": "CountLifecyclePhase",
+          "type": "string"
+        },
+        "CountOrigin": {
+          "enum": [
+            "SOURCE_DECLARATION",
+            "HUMAN_CONFIRMATION",
+            "RULE_DERIVATION",
+            "MIGRATED_LEGACY"
+          ],
+          "title": "CountOrigin",
+          "type": "string"
+        },
+        "CountQuantifier": {
+          "enum": [
+            "EXACT",
+            "LOWER_BOUND",
+            "UPPER_BOUND",
+            "APPROXIMATE",
+            "RANGE",
+            "UNKNOWN",
+            "NOT_REPORTED"
+          ],
+          "title": "CountQuantifier",
+          "type": "string"
+        },
+        "CountScope": {
+          "additionalProperties": false,
+          "description": "Explicit query/cohort/lifecycle scope with no bare scientific nulls.",
+          "properties": {
+            "cohort_id": {
+              "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+            },
+            "condition": {
+              "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+            },
+            "contrast_id": {
+              "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+            },
+            "endpoint_id": {
+              "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+            },
+            "factor_id": {
+              "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+            },
+            "group_id": {
+              "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+            },
+            "lifecycle_phase": {
+              "$ref": "#/$defs/KnowledgeValue_CountLifecyclePhase_"
+            },
+            "population_scope": {
+              "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+            },
+            "query_id": {
+              "minLength": 1,
+              "title": "Query Id",
+              "type": "string"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "timepoint_id": {
+              "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+            },
+            "unit_type": {
+              "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+            }
+          },
+          "required": [
+            "query_id",
+            "unit_type",
+            "factor_id",
+            "contrast_id",
+            "group_id",
+            "endpoint_id",
+            "timepoint_id",
+            "cohort_id",
+            "lifecycle_phase",
+            "population_scope",
+            "condition"
+          ],
+          "title": "CountScope",
+          "type": "object"
+        },
+        "KnowledgeState": {
+          "enum": [
+            "PRESENT",
+            "ABSENT_EXPLICIT",
+            "NOT_REPORTED",
+            "UNKNOWN",
+            "NOT_APPLICABLE",
+            "CONFLICTING"
+          ],
+          "title": "KnowledgeState",
+          "type": "string"
+        },
+        "KnowledgeValue_Annotated_str__StringConstraints__": {
+          "additionalProperties": false,
+          "properties": {
+            "claim_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Claim Scope Id"
+            },
+            "conflicting_values": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Conflicting Values",
+              "type": "array"
+            },
+            "evidence_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Evidence Ids",
+              "type": "array"
+            },
+            "knowledge_state": {
+              "$ref": "#/$defs/KnowledgeState"
+            },
+            "query_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Query Scope Id"
+            },
+            "rationale": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Rationale"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "source_scope_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Source Scope Ids",
+              "type": "array"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Value"
+            }
+          },
+          "required": [
+            "knowledge_state"
+          ],
+          "title": "KnowledgeValue[Annotated[str, StringConstraints]]",
+          "type": "object"
+        },
+        "KnowledgeValue_CountLifecyclePhase_": {
+          "additionalProperties": false,
+          "properties": {
+            "claim_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Claim Scope Id"
+            },
+            "conflicting_values": {
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/CountLifecyclePhase"
+              },
+              "title": "Conflicting Values",
+              "type": "array"
+            },
+            "evidence_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Evidence Ids",
+              "type": "array"
+            },
+            "knowledge_state": {
+              "$ref": "#/$defs/KnowledgeState"
+            },
+            "query_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Query Scope Id"
+            },
+            "rationale": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Rationale"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "source_scope_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Source Scope Ids",
+              "type": "array"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/CountLifecyclePhase"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            }
+          },
+          "required": [
+            "knowledge_state"
+          ],
+          "title": "KnowledgeValue[CountLifecyclePhase]",
+          "type": "object"
+        },
+        "KnowledgeValue_Union_Annotated_int__FieldInfo_annotation_NoneType__required_True__metadata__Strict_strict_True___Ge_ge_0______CountInterval__": {
+          "additionalProperties": false,
+          "properties": {
+            "claim_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Claim Scope Id"
+            },
+            "conflicting_values": {
+              "default": [],
+              "items": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "$ref": "#/$defs/CountInterval"
+                  }
+                ]
+              },
+              "title": "Conflicting Values",
+              "type": "array"
+            },
+            "evidence_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Evidence Ids",
+              "type": "array"
+            },
+            "knowledge_state": {
+              "$ref": "#/$defs/KnowledgeState"
+            },
+            "query_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Query Scope Id"
+            },
+            "rationale": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Rationale"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "source_scope_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Source Scope Ids",
+              "type": "array"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "$ref": "#/$defs/CountInterval"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Value"
+            }
+          },
+          "required": [
+            "knowledge_state"
+          ],
+          "title": "KnowledgeValue[Union[Annotated[int, FieldInfo(annotation=NoneType, required=True, metadata=[Strict(strict=True), Ge(ge=0)])], CountInterval]]",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "count_id": {
+          "minLength": 1,
+          "title": "Count Id",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/CanonicalCountKind"
+        },
+        "origin": {
+          "$ref": "#/$defs/CountOrigin"
+        },
+        "quantifier": {
+          "$ref": "#/$defs/CountQuantifier"
+        },
+        "registry_version": {
+          "const": "8.0.0",
+          "default": "8.0.0",
+          "title": "Registry Version",
+          "type": "string"
+        },
+        "rule_trace": {
+          "default": [],
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Rule Trace",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": "8.0.0",
+          "default": "8.0.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "scope": {
+          "$ref": "#/$defs/CountScope"
+        },
+        "source_evidence": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Source Evidence",
+          "type": "array"
+        },
+        "value": {
+          "$ref": "#/$defs/KnowledgeValue_Union_Annotated_int__FieldInfo_annotation_NoneType__required_True__metadata__Strict_strict_True___Ge_ge_0______CountInterval__"
+        }
+      },
+      "required": [
+        "count_id",
+        "kind",
+        "value",
+        "quantifier",
+        "scope",
+        "source_evidence",
+        "origin"
+      ],
+      "title": "CanonicalCountRecord",
+      "type": "object"
+    },
+    "canonical_count_registry": {
+      "$defs": {
+        "CanonicalCountKind": {
+          "description": "The sole normative vocabulary from PRD v8 §7.9.",
+          "enum": [
+            "declared_n",
+            "planned_unit_count",
+            "allocated_unit_count",
+            "treated_unit_count",
+            "observed_unit_count",
+            "excluded_unit_count",
+            "analyzed_unit_count",
+            "observational_measurement_count",
+            "analytical_row_count",
+            "experimental_unit_count",
+            "biological_source_count",
+            "diagnostic_effective_n"
+          ],
+          "title": "CanonicalCountKind",
+          "type": "string"
+        },
+        "CanonicalCountRecord": {
+          "additionalProperties": false,
+          "properties": {
+            "count_id": {
+              "minLength": 1,
+              "title": "Count Id",
+              "type": "string"
+            },
+            "kind": {
+              "$ref": "#/$defs/CanonicalCountKind"
+            },
+            "origin": {
+              "$ref": "#/$defs/CountOrigin"
+            },
+            "quantifier": {
+              "$ref": "#/$defs/CountQuantifier"
+            },
+            "registry_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Registry Version",
+              "type": "string"
+            },
+            "rule_trace": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Rule Trace",
+              "type": "array"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "scope": {
+              "$ref": "#/$defs/CountScope"
+            },
+            "source_evidence": {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "minItems": 1,
+              "title": "Source Evidence",
+              "type": "array"
+            },
+            "value": {
+              "$ref": "#/$defs/KnowledgeValue_Union_Annotated_int__FieldInfo_annotation_NoneType__required_True__metadata__Strict_strict_True___Ge_ge_0______CountInterval__"
+            }
+          },
+          "required": [
+            "count_id",
+            "kind",
+            "value",
+            "quantifier",
+            "scope",
+            "source_evidence",
+            "origin"
+          ],
+          "title": "CanonicalCountRecord",
+          "type": "object"
+        },
+        "CountInterval": {
+          "additionalProperties": false,
+          "properties": {
+            "lower": {
+              "minimum": 0,
+              "title": "Lower",
+              "type": "integer"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "upper": {
+              "minimum": 0,
+              "title": "Upper",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "lower",
+            "upper"
+          ],
+          "title": "CountInterval",
+          "type": "object"
+        },
+        "CountLifecyclePhase": {
+          "description": "Closed lifecycle labels; unknown legacy labels require scientific review.",
+          "enum": [
+            "planned",
+            "allocated",
+            "treated",
+            "observed",
+            "excluded",
+            "analyzed"
+          ],
+          "title": "CountLifecyclePhase",
+          "type": "string"
+        },
+        "CountOrigin": {
+          "enum": [
+            "SOURCE_DECLARATION",
+            "HUMAN_CONFIRMATION",
+            "RULE_DERIVATION",
+            "MIGRATED_LEGACY"
+          ],
+          "title": "CountOrigin",
+          "type": "string"
+        },
+        "CountQuantifier": {
+          "enum": [
+            "EXACT",
+            "LOWER_BOUND",
+            "UPPER_BOUND",
+            "APPROXIMATE",
+            "RANGE",
+            "UNKNOWN",
+            "NOT_REPORTED"
+          ],
+          "title": "CountQuantifier",
+          "type": "string"
+        },
+        "CountScope": {
+          "additionalProperties": false,
+          "description": "Explicit query/cohort/lifecycle scope with no bare scientific nulls.",
+          "properties": {
+            "cohort_id": {
+              "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+            },
+            "condition": {
+              "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+            },
+            "contrast_id": {
+              "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+            },
+            "endpoint_id": {
+              "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+            },
+            "factor_id": {
+              "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+            },
+            "group_id": {
+              "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+            },
+            "lifecycle_phase": {
+              "$ref": "#/$defs/KnowledgeValue_CountLifecyclePhase_"
+            },
+            "population_scope": {
+              "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+            },
+            "query_id": {
+              "minLength": 1,
+              "title": "Query Id",
+              "type": "string"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "timepoint_id": {
+              "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+            },
+            "unit_type": {
+              "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+            }
+          },
+          "required": [
+            "query_id",
+            "unit_type",
+            "factor_id",
+            "contrast_id",
+            "group_id",
+            "endpoint_id",
+            "timepoint_id",
+            "cohort_id",
+            "lifecycle_phase",
+            "population_scope",
+            "condition"
+          ],
+          "title": "CountScope",
+          "type": "object"
+        },
+        "KnowledgeState": {
+          "enum": [
+            "PRESENT",
+            "ABSENT_EXPLICIT",
+            "NOT_REPORTED",
+            "UNKNOWN",
+            "NOT_APPLICABLE",
+            "CONFLICTING"
+          ],
+          "title": "KnowledgeState",
+          "type": "string"
+        },
+        "KnowledgeValue_Annotated_str__StringConstraints__": {
+          "additionalProperties": false,
+          "properties": {
+            "claim_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Claim Scope Id"
+            },
+            "conflicting_values": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Conflicting Values",
+              "type": "array"
+            },
+            "evidence_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Evidence Ids",
+              "type": "array"
+            },
+            "knowledge_state": {
+              "$ref": "#/$defs/KnowledgeState"
+            },
+            "query_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Query Scope Id"
+            },
+            "rationale": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Rationale"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "source_scope_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Source Scope Ids",
+              "type": "array"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Value"
+            }
+          },
+          "required": [
+            "knowledge_state"
+          ],
+          "title": "KnowledgeValue[Annotated[str, StringConstraints]]",
+          "type": "object"
+        },
+        "KnowledgeValue_CountLifecyclePhase_": {
+          "additionalProperties": false,
+          "properties": {
+            "claim_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Claim Scope Id"
+            },
+            "conflicting_values": {
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/CountLifecyclePhase"
+              },
+              "title": "Conflicting Values",
+              "type": "array"
+            },
+            "evidence_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Evidence Ids",
+              "type": "array"
+            },
+            "knowledge_state": {
+              "$ref": "#/$defs/KnowledgeState"
+            },
+            "query_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Query Scope Id"
+            },
+            "rationale": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Rationale"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "source_scope_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Source Scope Ids",
+              "type": "array"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/CountLifecyclePhase"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            }
+          },
+          "required": [
+            "knowledge_state"
+          ],
+          "title": "KnowledgeValue[CountLifecyclePhase]",
+          "type": "object"
+        },
+        "KnowledgeValue_Union_Annotated_int__FieldInfo_annotation_NoneType__required_True__metadata__Strict_strict_True___Ge_ge_0______CountInterval__": {
+          "additionalProperties": false,
+          "properties": {
+            "claim_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Claim Scope Id"
+            },
+            "conflicting_values": {
+              "default": [],
+              "items": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "$ref": "#/$defs/CountInterval"
+                  }
+                ]
+              },
+              "title": "Conflicting Values",
+              "type": "array"
+            },
+            "evidence_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Evidence Ids",
+              "type": "array"
+            },
+            "knowledge_state": {
+              "$ref": "#/$defs/KnowledgeState"
+            },
+            "query_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Query Scope Id"
+            },
+            "rationale": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Rationale"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "source_scope_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Source Scope Ids",
+              "type": "array"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "$ref": "#/$defs/CountInterval"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Value"
+            }
+          },
+          "required": [
+            "knowledge_state"
+          ],
+          "title": "KnowledgeValue[Union[Annotated[int, FieldInfo(annotation=NoneType, required=True, metadata=[Strict(strict=True), Ge(ge=0)])], CountInterval]]",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "records": {
+          "items": {
+            "$ref": "#/$defs/CanonicalCountRecord"
+          },
+          "minItems": 1,
+          "title": "Records",
+          "type": "array"
+        },
+        "registry_version": {
+          "const": "8.0.0",
+          "default": "8.0.0",
+          "title": "Registry Version",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "8.0.0",
+          "default": "8.0.0",
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "records"
+      ],
+      "title": "CanonicalCountRegistry",
       "type": "object"
     },
     "confirmation_event": {
@@ -753,6 +2383,379 @@
         "rationale"
       ],
       "title": "ConflictRecord",
+      "type": "object"
+    },
+    "count_interval": {
+      "additionalProperties": false,
+      "properties": {
+        "lower": {
+          "minimum": 0,
+          "title": "Lower",
+          "type": "integer"
+        },
+        "schema_version": {
+          "const": "8.0.0",
+          "default": "8.0.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "upper": {
+          "minimum": 0,
+          "title": "Upper",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "lower",
+        "upper"
+      ],
+      "title": "CountInterval",
+      "type": "object"
+    },
+    "count_scope": {
+      "$defs": {
+        "CountLifecyclePhase": {
+          "description": "Closed lifecycle labels; unknown legacy labels require scientific review.",
+          "enum": [
+            "planned",
+            "allocated",
+            "treated",
+            "observed",
+            "excluded",
+            "analyzed"
+          ],
+          "title": "CountLifecyclePhase",
+          "type": "string"
+        },
+        "KnowledgeState": {
+          "enum": [
+            "PRESENT",
+            "ABSENT_EXPLICIT",
+            "NOT_REPORTED",
+            "UNKNOWN",
+            "NOT_APPLICABLE",
+            "CONFLICTING"
+          ],
+          "title": "KnowledgeState",
+          "type": "string"
+        },
+        "KnowledgeValue_Annotated_str__StringConstraints__": {
+          "additionalProperties": false,
+          "properties": {
+            "claim_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Claim Scope Id"
+            },
+            "conflicting_values": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Conflicting Values",
+              "type": "array"
+            },
+            "evidence_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Evidence Ids",
+              "type": "array"
+            },
+            "knowledge_state": {
+              "$ref": "#/$defs/KnowledgeState"
+            },
+            "query_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Query Scope Id"
+            },
+            "rationale": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Rationale"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "source_scope_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Source Scope Ids",
+              "type": "array"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Value"
+            }
+          },
+          "required": [
+            "knowledge_state"
+          ],
+          "title": "KnowledgeValue[Annotated[str, StringConstraints]]",
+          "type": "object"
+        },
+        "KnowledgeValue_CountLifecyclePhase_": {
+          "additionalProperties": false,
+          "properties": {
+            "claim_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Claim Scope Id"
+            },
+            "conflicting_values": {
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/CountLifecyclePhase"
+              },
+              "title": "Conflicting Values",
+              "type": "array"
+            },
+            "evidence_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Evidence Ids",
+              "type": "array"
+            },
+            "knowledge_state": {
+              "$ref": "#/$defs/KnowledgeState"
+            },
+            "query_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Query Scope Id"
+            },
+            "rationale": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Rationale"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "source_scope_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Source Scope Ids",
+              "type": "array"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/CountLifecyclePhase"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            }
+          },
+          "required": [
+            "knowledge_state"
+          ],
+          "title": "KnowledgeValue[CountLifecyclePhase]",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Explicit query/cohort/lifecycle scope with no bare scientific nulls.",
+      "properties": {
+        "cohort_id": {
+          "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+        },
+        "condition": {
+          "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+        },
+        "contrast_id": {
+          "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+        },
+        "endpoint_id": {
+          "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+        },
+        "factor_id": {
+          "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+        },
+        "group_id": {
+          "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+        },
+        "lifecycle_phase": {
+          "$ref": "#/$defs/KnowledgeValue_CountLifecyclePhase_"
+        },
+        "population_scope": {
+          "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+        },
+        "query_id": {
+          "minLength": 1,
+          "title": "Query Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "8.0.0",
+          "default": "8.0.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "timepoint_id": {
+          "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+        },
+        "unit_type": {
+          "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+        }
+      },
+      "required": [
+        "query_id",
+        "unit_type",
+        "factor_id",
+        "contrast_id",
+        "group_id",
+        "endpoint_id",
+        "timepoint_id",
+        "cohort_id",
+        "lifecycle_phase",
+        "population_scope",
+        "condition"
+      ],
+      "title": "CountScope",
+      "type": "object"
+    },
+    "count_scope_identity": {
+      "$defs": {
+        "KnowledgeState": {
+          "enum": [
+            "PRESENT",
+            "ABSENT_EXPLICIT",
+            "NOT_REPORTED",
+            "UNKNOWN",
+            "NOT_APPLICABLE",
+            "CONFLICTING"
+          ],
+          "title": "KnowledgeState",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Provenance-free scientific identity shared by every count comparison gate.",
+      "properties": {
+        "components": {
+          "items": {
+            "maxItems": 3,
+            "minItems": 3,
+            "prefixItems": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "$ref": "#/$defs/KnowledgeState"
+              },
+              {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            ],
+            "type": "array"
+          },
+          "maxItems": 10,
+          "minItems": 10,
+          "title": "Components",
+          "type": "array"
+        },
+        "query_id": {
+          "minLength": 1,
+          "title": "Query Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "8.0.0",
+          "default": "8.0.0",
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "query_id",
+        "components"
+      ],
+      "title": "CountScopeIdentity",
       "type": "object"
     },
     "derived_claim": {
@@ -3283,6 +5286,673 @@
         "review_requirement"
       ],
       "title": "DesignAdequacyEvaluation",
+      "type": "object"
+    },
+    "event_registry": {
+      "$defs": {
+        "ApplicationEvent": {
+          "additionalProperties": false,
+          "properties": {
+            "application_unit_ids": {
+              "$ref": "#/$defs/KnowledgeValue_tuple_Annotated_str__StringConstraints___________"
+            },
+            "application_unit_type": {
+              "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+            },
+            "event_id": {
+              "minLength": 1,
+              "title": "Event Id",
+              "type": "string"
+            },
+            "event_type": {
+              "const": "ApplicationEvent",
+              "default": "ApplicationEvent",
+              "title": "Event Type",
+              "type": "string"
+            },
+            "evidence_refs": {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "minItems": 1,
+              "title": "Evidence Refs",
+              "type": "array"
+            },
+            "experiment_block_id": {
+              "minLength": 1,
+              "title": "Experiment Block Id",
+              "type": "string"
+            },
+            "factor_id": {
+              "minLength": 1,
+              "title": "Factor Id",
+              "type": "string"
+            },
+            "intervention_id": {
+              "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            }
+          },
+          "required": [
+            "event_id",
+            "experiment_block_id",
+            "evidence_refs",
+            "factor_id",
+            "intervention_id",
+            "application_unit_type",
+            "application_unit_ids"
+          ],
+          "title": "ApplicationEvent",
+          "type": "object"
+        },
+        "AssignmentEvent": {
+          "additionalProperties": false,
+          "properties": {
+            "assigned_unit_ids": {
+              "$ref": "#/$defs/KnowledgeValue_tuple_Annotated_str__StringConstraints___________"
+            },
+            "assigned_unit_type": {
+              "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+            },
+            "event_id": {
+              "minLength": 1,
+              "title": "Event Id",
+              "type": "string"
+            },
+            "event_type": {
+              "const": "AssignmentEvent",
+              "default": "AssignmentEvent",
+              "title": "Event Type",
+              "type": "string"
+            },
+            "evidence_refs": {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "minItems": 1,
+              "title": "Evidence Refs",
+              "type": "array"
+            },
+            "experiment_block_id": {
+              "minLength": 1,
+              "title": "Experiment Block Id",
+              "type": "string"
+            },
+            "factor_id": {
+              "minLength": 1,
+              "title": "Factor Id",
+              "type": "string"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            }
+          },
+          "required": [
+            "event_id",
+            "experiment_block_id",
+            "evidence_refs",
+            "factor_id",
+            "assigned_unit_type",
+            "assigned_unit_ids"
+          ],
+          "title": "AssignmentEvent",
+          "type": "object"
+        },
+        "ExposureEvent": {
+          "additionalProperties": false,
+          "properties": {
+            "effective_exposure_unit": {
+              "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+            },
+            "event_id": {
+              "minLength": 1,
+              "title": "Event Id",
+              "type": "string"
+            },
+            "event_type": {
+              "const": "ExposureEvent",
+              "default": "ExposureEvent",
+              "title": "Event Type",
+              "type": "string"
+            },
+            "evidence_refs": {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "minItems": 1,
+              "title": "Evidence Refs",
+              "type": "array"
+            },
+            "experiment_block_id": {
+              "minLength": 1,
+              "title": "Experiment Block Id",
+              "type": "string"
+            },
+            "exposed_unit_ids": {
+              "$ref": "#/$defs/KnowledgeValue_tuple_Annotated_str__StringConstraints___________"
+            },
+            "exposure_container": {
+              "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+            },
+            "exposure_pathway": {
+              "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            }
+          },
+          "required": [
+            "event_id",
+            "experiment_block_id",
+            "evidence_refs",
+            "exposure_pathway",
+            "exposure_container",
+            "effective_exposure_unit",
+            "exposed_unit_ids"
+          ],
+          "title": "ExposureEvent",
+          "type": "object"
+        },
+        "KnowledgeState": {
+          "enum": [
+            "PRESENT",
+            "ABSENT_EXPLICIT",
+            "NOT_REPORTED",
+            "UNKNOWN",
+            "NOT_APPLICABLE",
+            "CONFLICTING"
+          ],
+          "title": "KnowledgeState",
+          "type": "string"
+        },
+        "KnowledgeValue_Annotated_str__StringConstraints__": {
+          "additionalProperties": false,
+          "properties": {
+            "claim_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Claim Scope Id"
+            },
+            "conflicting_values": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Conflicting Values",
+              "type": "array"
+            },
+            "evidence_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Evidence Ids",
+              "type": "array"
+            },
+            "knowledge_state": {
+              "$ref": "#/$defs/KnowledgeState"
+            },
+            "query_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Query Scope Id"
+            },
+            "rationale": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Rationale"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "source_scope_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Source Scope Ids",
+              "type": "array"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Value"
+            }
+          },
+          "required": [
+            "knowledge_state"
+          ],
+          "title": "KnowledgeValue[Annotated[str, StringConstraints]]",
+          "type": "object"
+        },
+        "KnowledgeValue_tuple_Annotated_str__StringConstraints___________": {
+          "additionalProperties": false,
+          "properties": {
+            "claim_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Claim Scope Id"
+            },
+            "conflicting_values": {
+              "default": [],
+              "items": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "title": "Conflicting Values",
+              "type": "array"
+            },
+            "evidence_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Evidence Ids",
+              "type": "array"
+            },
+            "knowledge_state": {
+              "$ref": "#/$defs/KnowledgeState"
+            },
+            "query_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Query Scope Id"
+            },
+            "rationale": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Rationale"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "source_scope_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Source Scope Ids",
+              "type": "array"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "items": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Value"
+            }
+          },
+          "required": [
+            "knowledge_state"
+          ],
+          "title": "KnowledgeValue[tuple[Annotated[str, StringConstraints], ...]]",
+          "type": "object"
+        },
+        "ObservationEvent": {
+          "additionalProperties": false,
+          "properties": {
+            "endpoint_id": {
+              "minLength": 1,
+              "title": "Endpoint Id",
+              "type": "string"
+            },
+            "event_id": {
+              "minLength": 1,
+              "title": "Event Id",
+              "type": "string"
+            },
+            "event_type": {
+              "const": "Observation",
+              "default": "Observation",
+              "title": "Event Type",
+              "type": "string"
+            },
+            "evidence_refs": {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "minItems": 1,
+              "title": "Evidence Refs",
+              "type": "array"
+            },
+            "experiment_block_id": {
+              "minLength": 1,
+              "title": "Experiment Block Id",
+              "type": "string"
+            },
+            "measured_on_unit_ids": {
+              "$ref": "#/$defs/KnowledgeValue_tuple_Annotated_str__StringConstraints___________"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "timepoint_id": {
+              "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+            }
+          },
+          "required": [
+            "event_id",
+            "experiment_block_id",
+            "evidence_refs",
+            "endpoint_id",
+            "measured_on_unit_ids",
+            "timepoint_id"
+          ],
+          "title": "ObservationEvent",
+          "type": "object"
+        },
+        "PoolEvent": {
+          "additionalProperties": false,
+          "properties": {
+            "event_id": {
+              "minLength": 1,
+              "title": "Event Id",
+              "type": "string"
+            },
+            "event_type": {
+              "const": "PoolEvent",
+              "default": "PoolEvent",
+              "title": "Event Type",
+              "type": "string"
+            },
+            "evidence_refs": {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "minItems": 1,
+              "title": "Evidence Refs",
+              "type": "array"
+            },
+            "experiment_block_id": {
+              "minLength": 1,
+              "title": "Experiment Block Id",
+              "type": "string"
+            },
+            "pooled_unit_id": {
+              "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "source_unit_ids": {
+              "$ref": "#/$defs/KnowledgeValue_tuple_Annotated_str__StringConstraints___________"
+            }
+          },
+          "required": [
+            "event_id",
+            "experiment_block_id",
+            "evidence_refs",
+            "source_unit_ids",
+            "pooled_unit_id"
+          ],
+          "title": "PoolEvent",
+          "type": "object"
+        },
+        "RelativeTiming": {
+          "additionalProperties": false,
+          "properties": {
+            "evidence_refs": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Evidence Refs",
+              "type": "array"
+            },
+            "rationale": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Rationale"
+            },
+            "reference_event_id": {
+              "minLength": 1,
+              "title": "Reference Event Id",
+              "type": "string"
+            },
+            "relation": {
+              "$ref": "#/$defs/TemporalRelation"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "subject_event_id": {
+              "minLength": 1,
+              "title": "Subject Event Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "subject_event_id",
+            "reference_event_id",
+            "relation"
+          ],
+          "title": "RelativeTiming",
+          "type": "object"
+        },
+        "SplitEvent": {
+          "additionalProperties": false,
+          "properties": {
+            "event_id": {
+              "minLength": 1,
+              "title": "Event Id",
+              "type": "string"
+            },
+            "event_type": {
+              "const": "SplitEvent",
+              "default": "SplitEvent",
+              "title": "Event Type",
+              "type": "string"
+            },
+            "evidence_refs": {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "minItems": 1,
+              "title": "Evidence Refs",
+              "type": "array"
+            },
+            "experiment_block_id": {
+              "minLength": 1,
+              "title": "Experiment Block Id",
+              "type": "string"
+            },
+            "resulting_unit_ids": {
+              "$ref": "#/$defs/KnowledgeValue_tuple_Annotated_str__StringConstraints___________"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "source_unit_ids": {
+              "$ref": "#/$defs/KnowledgeValue_tuple_Annotated_str__StringConstraints___________"
+            }
+          },
+          "required": [
+            "event_id",
+            "experiment_block_id",
+            "evidence_refs",
+            "source_unit_ids",
+            "resulting_unit_ids"
+          ],
+          "title": "SplitEvent",
+          "type": "object"
+        },
+        "TemporalRelation": {
+          "enum": [
+            "BEFORE",
+            "AFTER",
+            "SAME_EVENT",
+            "OVERLAPS",
+            "UNKNOWN"
+          ],
+          "title": "TemporalRelation",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "events": {
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/AssignmentEvent"
+              },
+              {
+                "$ref": "#/$defs/ApplicationEvent"
+              },
+              {
+                "$ref": "#/$defs/ExposureEvent"
+              },
+              {
+                "$ref": "#/$defs/SplitEvent"
+              },
+              {
+                "$ref": "#/$defs/PoolEvent"
+              },
+              {
+                "$ref": "#/$defs/ObservationEvent"
+              }
+            ]
+          },
+          "minItems": 1,
+          "title": "Events",
+          "type": "array"
+        },
+        "relative_timings": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/RelativeTiming"
+          },
+          "title": "Relative Timings",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": "8.0.0",
+          "default": "8.0.0",
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "events"
+      ],
+      "title": "EventRegistry",
       "type": "object"
     },
     "evidence_record": {
@@ -6586,6 +9256,281 @@
       "title": "ExperimentBlockBoundaryRecord",
       "type": "object"
     },
+    "exposure_event": {
+      "$defs": {
+        "KnowledgeState": {
+          "enum": [
+            "PRESENT",
+            "ABSENT_EXPLICIT",
+            "NOT_REPORTED",
+            "UNKNOWN",
+            "NOT_APPLICABLE",
+            "CONFLICTING"
+          ],
+          "title": "KnowledgeState",
+          "type": "string"
+        },
+        "KnowledgeValue_Annotated_str__StringConstraints__": {
+          "additionalProperties": false,
+          "properties": {
+            "claim_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Claim Scope Id"
+            },
+            "conflicting_values": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Conflicting Values",
+              "type": "array"
+            },
+            "evidence_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Evidence Ids",
+              "type": "array"
+            },
+            "knowledge_state": {
+              "$ref": "#/$defs/KnowledgeState"
+            },
+            "query_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Query Scope Id"
+            },
+            "rationale": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Rationale"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "source_scope_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Source Scope Ids",
+              "type": "array"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Value"
+            }
+          },
+          "required": [
+            "knowledge_state"
+          ],
+          "title": "KnowledgeValue[Annotated[str, StringConstraints]]",
+          "type": "object"
+        },
+        "KnowledgeValue_tuple_Annotated_str__StringConstraints___________": {
+          "additionalProperties": false,
+          "properties": {
+            "claim_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Claim Scope Id"
+            },
+            "conflicting_values": {
+              "default": [],
+              "items": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "title": "Conflicting Values",
+              "type": "array"
+            },
+            "evidence_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Evidence Ids",
+              "type": "array"
+            },
+            "knowledge_state": {
+              "$ref": "#/$defs/KnowledgeState"
+            },
+            "query_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Query Scope Id"
+            },
+            "rationale": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Rationale"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "source_scope_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Source Scope Ids",
+              "type": "array"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "items": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Value"
+            }
+          },
+          "required": [
+            "knowledge_state"
+          ],
+          "title": "KnowledgeValue[tuple[Annotated[str, StringConstraints], ...]]",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "effective_exposure_unit": {
+          "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+        },
+        "event_id": {
+          "minLength": 1,
+          "title": "Event Id",
+          "type": "string"
+        },
+        "event_type": {
+          "const": "ExposureEvent",
+          "default": "ExposureEvent",
+          "title": "Event Type",
+          "type": "string"
+        },
+        "evidence_refs": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Evidence Refs",
+          "type": "array"
+        },
+        "experiment_block_id": {
+          "minLength": 1,
+          "title": "Experiment Block Id",
+          "type": "string"
+        },
+        "exposed_unit_ids": {
+          "$ref": "#/$defs/KnowledgeValue_tuple_Annotated_str__StringConstraints___________"
+        },
+        "exposure_container": {
+          "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+        },
+        "exposure_pathway": {
+          "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+        },
+        "schema_version": {
+          "const": "8.0.0",
+          "default": "8.0.0",
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "event_id",
+        "experiment_block_id",
+        "evidence_refs",
+        "exposure_pathway",
+        "exposure_container",
+        "effective_exposure_unit",
+        "exposed_unit_ids"
+      ],
+      "title": "ExposureEvent",
+      "type": "object"
+    },
     "handoff_item": {
       "$defs": {
         "AuthorityType": {
@@ -6691,6 +9636,190 @@
         "inferential_query_id"
       ],
       "title": "HandoffItem",
+      "type": "object"
+    },
+    "inferential_query": {
+      "$defs": {
+        "KnowledgeState": {
+          "enum": [
+            "PRESENT",
+            "ABSENT_EXPLICIT",
+            "NOT_REPORTED",
+            "UNKNOWN",
+            "NOT_APPLICABLE",
+            "CONFLICTING"
+          ],
+          "title": "KnowledgeState",
+          "type": "string"
+        },
+        "KnowledgeValue_Annotated_str__StringConstraints__": {
+          "additionalProperties": false,
+          "properties": {
+            "claim_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Claim Scope Id"
+            },
+            "conflicting_values": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Conflicting Values",
+              "type": "array"
+            },
+            "evidence_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Evidence Ids",
+              "type": "array"
+            },
+            "knowledge_state": {
+              "$ref": "#/$defs/KnowledgeState"
+            },
+            "query_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Query Scope Id"
+            },
+            "rationale": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Rationale"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "source_scope_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Source Scope Ids",
+              "type": "array"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Value"
+            }
+          },
+          "required": [
+            "knowledge_state"
+          ],
+          "title": "KnowledgeValue[Annotated[str, StringConstraints]]",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "One versioned factor/contrast/endpoint/timepoint inferential scope.",
+      "properties": {
+        "compared_levels": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 2,
+          "title": "Compared Levels",
+          "type": "array"
+        },
+        "contrast_id": {
+          "minLength": 1,
+          "title": "Contrast Id",
+          "type": "string"
+        },
+        "effect_measure_or_estimand": {
+          "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+        },
+        "endpoint_id": {
+          "minLength": 1,
+          "title": "Endpoint Id",
+          "type": "string"
+        },
+        "factor_id": {
+          "minLength": 1,
+          "title": "Factor Id",
+          "type": "string"
+        },
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "inference_level": {
+          "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+        },
+        "inference_population": {
+          "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+        },
+        "profile_id": {
+          "minLength": 1,
+          "title": "Profile Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "8.0.0",
+          "default": "8.0.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "timepoint_id": {
+          "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+        }
+      },
+      "required": [
+        "id",
+        "profile_id",
+        "factor_id",
+        "contrast_id",
+        "compared_levels",
+        "endpoint_id",
+        "timepoint_id",
+        "effect_measure_or_estimand",
+        "inference_population",
+        "inference_level"
+      ],
+      "title": "InferentialQuery",
       "type": "object"
     },
     "kernel_identity": {
@@ -6835,6 +9964,279 @@
         "knowledge_state"
       ],
       "title": "KnowledgeValue[JsonValue]",
+      "type": "object"
+    },
+    "observation_event": {
+      "$defs": {
+        "KnowledgeState": {
+          "enum": [
+            "PRESENT",
+            "ABSENT_EXPLICIT",
+            "NOT_REPORTED",
+            "UNKNOWN",
+            "NOT_APPLICABLE",
+            "CONFLICTING"
+          ],
+          "title": "KnowledgeState",
+          "type": "string"
+        },
+        "KnowledgeValue_Annotated_str__StringConstraints__": {
+          "additionalProperties": false,
+          "properties": {
+            "claim_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Claim Scope Id"
+            },
+            "conflicting_values": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Conflicting Values",
+              "type": "array"
+            },
+            "evidence_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Evidence Ids",
+              "type": "array"
+            },
+            "knowledge_state": {
+              "$ref": "#/$defs/KnowledgeState"
+            },
+            "query_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Query Scope Id"
+            },
+            "rationale": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Rationale"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "source_scope_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Source Scope Ids",
+              "type": "array"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Value"
+            }
+          },
+          "required": [
+            "knowledge_state"
+          ],
+          "title": "KnowledgeValue[Annotated[str, StringConstraints]]",
+          "type": "object"
+        },
+        "KnowledgeValue_tuple_Annotated_str__StringConstraints___________": {
+          "additionalProperties": false,
+          "properties": {
+            "claim_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Claim Scope Id"
+            },
+            "conflicting_values": {
+              "default": [],
+              "items": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "title": "Conflicting Values",
+              "type": "array"
+            },
+            "evidence_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Evidence Ids",
+              "type": "array"
+            },
+            "knowledge_state": {
+              "$ref": "#/$defs/KnowledgeState"
+            },
+            "query_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Query Scope Id"
+            },
+            "rationale": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Rationale"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "source_scope_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Source Scope Ids",
+              "type": "array"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "items": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Value"
+            }
+          },
+          "required": [
+            "knowledge_state"
+          ],
+          "title": "KnowledgeValue[tuple[Annotated[str, StringConstraints], ...]]",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "endpoint_id": {
+          "minLength": 1,
+          "title": "Endpoint Id",
+          "type": "string"
+        },
+        "event_id": {
+          "minLength": 1,
+          "title": "Event Id",
+          "type": "string"
+        },
+        "event_type": {
+          "const": "Observation",
+          "default": "Observation",
+          "title": "Event Type",
+          "type": "string"
+        },
+        "evidence_refs": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Evidence Refs",
+          "type": "array"
+        },
+        "experiment_block_id": {
+          "minLength": 1,
+          "title": "Experiment Block Id",
+          "type": "string"
+        },
+        "measured_on_unit_ids": {
+          "$ref": "#/$defs/KnowledgeValue_tuple_Annotated_str__StringConstraints___________"
+        },
+        "schema_version": {
+          "const": "8.0.0",
+          "default": "8.0.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "timepoint_id": {
+          "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+        }
+      },
+      "required": [
+        "event_id",
+        "experiment_block_id",
+        "evidence_refs",
+        "endpoint_id",
+        "measured_on_unit_ids",
+        "timepoint_id"
+      ],
+      "title": "ObservationEvent",
       "type": "object"
     },
     "plan_execution_reconciliation": {
@@ -8917,6 +12319,273 @@
       "title": "PlannedDesignRecord",
       "type": "object"
     },
+    "pool_event": {
+      "$defs": {
+        "KnowledgeState": {
+          "enum": [
+            "PRESENT",
+            "ABSENT_EXPLICIT",
+            "NOT_REPORTED",
+            "UNKNOWN",
+            "NOT_APPLICABLE",
+            "CONFLICTING"
+          ],
+          "title": "KnowledgeState",
+          "type": "string"
+        },
+        "KnowledgeValue_Annotated_str__StringConstraints__": {
+          "additionalProperties": false,
+          "properties": {
+            "claim_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Claim Scope Id"
+            },
+            "conflicting_values": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Conflicting Values",
+              "type": "array"
+            },
+            "evidence_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Evidence Ids",
+              "type": "array"
+            },
+            "knowledge_state": {
+              "$ref": "#/$defs/KnowledgeState"
+            },
+            "query_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Query Scope Id"
+            },
+            "rationale": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Rationale"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "source_scope_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Source Scope Ids",
+              "type": "array"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Value"
+            }
+          },
+          "required": [
+            "knowledge_state"
+          ],
+          "title": "KnowledgeValue[Annotated[str, StringConstraints]]",
+          "type": "object"
+        },
+        "KnowledgeValue_tuple_Annotated_str__StringConstraints___________": {
+          "additionalProperties": false,
+          "properties": {
+            "claim_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Claim Scope Id"
+            },
+            "conflicting_values": {
+              "default": [],
+              "items": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "title": "Conflicting Values",
+              "type": "array"
+            },
+            "evidence_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Evidence Ids",
+              "type": "array"
+            },
+            "knowledge_state": {
+              "$ref": "#/$defs/KnowledgeState"
+            },
+            "query_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Query Scope Id"
+            },
+            "rationale": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Rationale"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "source_scope_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Source Scope Ids",
+              "type": "array"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "items": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Value"
+            }
+          },
+          "required": [
+            "knowledge_state"
+          ],
+          "title": "KnowledgeValue[tuple[Annotated[str, StringConstraints], ...]]",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "event_id": {
+          "minLength": 1,
+          "title": "Event Id",
+          "type": "string"
+        },
+        "event_type": {
+          "const": "PoolEvent",
+          "default": "PoolEvent",
+          "title": "Event Type",
+          "type": "string"
+        },
+        "evidence_refs": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Evidence Refs",
+          "type": "array"
+        },
+        "experiment_block_id": {
+          "minLength": 1,
+          "title": "Experiment Block Id",
+          "type": "string"
+        },
+        "pooled_unit_id": {
+          "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+        },
+        "schema_version": {
+          "const": "8.0.0",
+          "default": "8.0.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "source_unit_ids": {
+          "$ref": "#/$defs/KnowledgeValue_tuple_Annotated_str__StringConstraints___________"
+        }
+      },
+      "required": [
+        "event_id",
+        "experiment_block_id",
+        "evidence_refs",
+        "source_unit_ids",
+        "pooled_unit_id"
+      ],
+      "title": "PoolEvent",
+      "type": "object"
+    },
     "profile_coverage_statement": {
       "$defs": {
         "ScientificReviewRequirement": {
@@ -9761,6 +13430,1141 @@
         "artifacts"
       ],
       "title": "ProspectiveInputLedger",
+      "type": "object"
+    },
+    "query_causal_context": {
+      "$defs": {
+        "InterferenceStatus": {
+          "enum": [
+            "no_known_path",
+            "possible",
+            "documented",
+            "unknown"
+          ],
+          "title": "InterferenceStatus",
+          "type": "string"
+        },
+        "KnowledgeState": {
+          "enum": [
+            "PRESENT",
+            "ABSENT_EXPLICIT",
+            "NOT_REPORTED",
+            "UNKNOWN",
+            "NOT_APPLICABLE",
+            "CONFLICTING"
+          ],
+          "title": "KnowledgeState",
+          "type": "string"
+        },
+        "KnowledgeValue_Annotated_str__StringConstraints__": {
+          "additionalProperties": false,
+          "properties": {
+            "claim_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Claim Scope Id"
+            },
+            "conflicting_values": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Conflicting Values",
+              "type": "array"
+            },
+            "evidence_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Evidence Ids",
+              "type": "array"
+            },
+            "knowledge_state": {
+              "$ref": "#/$defs/KnowledgeState"
+            },
+            "query_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Query Scope Id"
+            },
+            "rationale": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Rationale"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "source_scope_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Source Scope Ids",
+              "type": "array"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Value"
+            }
+          },
+          "required": [
+            "knowledge_state"
+          ],
+          "title": "KnowledgeValue[Annotated[str, StringConstraints]]",
+          "type": "object"
+        },
+        "KnowledgeValue_InterferenceStatus_": {
+          "additionalProperties": false,
+          "properties": {
+            "claim_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Claim Scope Id"
+            },
+            "conflicting_values": {
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/InterferenceStatus"
+              },
+              "title": "Conflicting Values",
+              "type": "array"
+            },
+            "evidence_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Evidence Ids",
+              "type": "array"
+            },
+            "knowledge_state": {
+              "$ref": "#/$defs/KnowledgeState"
+            },
+            "query_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Query Scope Id"
+            },
+            "rationale": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Rationale"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "source_scope_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Source Scope Ids",
+              "type": "array"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/InterferenceStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            }
+          },
+          "required": [
+            "knowledge_state"
+          ],
+          "title": "KnowledgeValue[InterferenceStatus]",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Query-scoped v8 causal roles, stored without a scientific resolver.\n\nAssignment, application, effective exposure, experimental and biological-source\nunits are separate facts even when their reported labels happen to match.",
+      "properties": {
+        "application_event_id": {
+          "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+        },
+        "application_unit_type": {
+          "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+        },
+        "assignment_event_id": {
+          "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+        },
+        "assignment_unit_type": {
+          "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+        },
+        "biological_source_unit_type": {
+          "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+        },
+        "effective_exposure_unit_type": {
+          "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+        },
+        "experimental_unit_type": {
+          "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+        },
+        "exposure_event_id": {
+          "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+        },
+        "inferential_query_id": {
+          "minLength": 1,
+          "title": "Inferential Query Id",
+          "type": "string"
+        },
+        "interference_status": {
+          "$ref": "#/$defs/KnowledgeValue_InterferenceStatus_"
+        },
+        "schema_version": {
+          "const": "8.0.0",
+          "default": "8.0.0",
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "inferential_query_id",
+        "assignment_event_id",
+        "application_event_id",
+        "exposure_event_id",
+        "assignment_unit_type",
+        "application_unit_type",
+        "effective_exposure_unit_type",
+        "experimental_unit_type",
+        "biological_source_unit_type",
+        "interference_status"
+      ],
+      "title": "QueryCausalContext",
+      "type": "object"
+    },
+    "query_causal_event_aggregate": {
+      "$defs": {
+        "ApplicationEvent": {
+          "additionalProperties": false,
+          "properties": {
+            "application_unit_ids": {
+              "$ref": "#/$defs/KnowledgeValue_tuple_Annotated_str__StringConstraints___________"
+            },
+            "application_unit_type": {
+              "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+            },
+            "event_id": {
+              "minLength": 1,
+              "title": "Event Id",
+              "type": "string"
+            },
+            "event_type": {
+              "const": "ApplicationEvent",
+              "default": "ApplicationEvent",
+              "title": "Event Type",
+              "type": "string"
+            },
+            "evidence_refs": {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "minItems": 1,
+              "title": "Evidence Refs",
+              "type": "array"
+            },
+            "experiment_block_id": {
+              "minLength": 1,
+              "title": "Experiment Block Id",
+              "type": "string"
+            },
+            "factor_id": {
+              "minLength": 1,
+              "title": "Factor Id",
+              "type": "string"
+            },
+            "intervention_id": {
+              "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            }
+          },
+          "required": [
+            "event_id",
+            "experiment_block_id",
+            "evidence_refs",
+            "factor_id",
+            "intervention_id",
+            "application_unit_type",
+            "application_unit_ids"
+          ],
+          "title": "ApplicationEvent",
+          "type": "object"
+        },
+        "AssignmentEvent": {
+          "additionalProperties": false,
+          "properties": {
+            "assigned_unit_ids": {
+              "$ref": "#/$defs/KnowledgeValue_tuple_Annotated_str__StringConstraints___________"
+            },
+            "assigned_unit_type": {
+              "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+            },
+            "event_id": {
+              "minLength": 1,
+              "title": "Event Id",
+              "type": "string"
+            },
+            "event_type": {
+              "const": "AssignmentEvent",
+              "default": "AssignmentEvent",
+              "title": "Event Type",
+              "type": "string"
+            },
+            "evidence_refs": {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "minItems": 1,
+              "title": "Evidence Refs",
+              "type": "array"
+            },
+            "experiment_block_id": {
+              "minLength": 1,
+              "title": "Experiment Block Id",
+              "type": "string"
+            },
+            "factor_id": {
+              "minLength": 1,
+              "title": "Factor Id",
+              "type": "string"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            }
+          },
+          "required": [
+            "event_id",
+            "experiment_block_id",
+            "evidence_refs",
+            "factor_id",
+            "assigned_unit_type",
+            "assigned_unit_ids"
+          ],
+          "title": "AssignmentEvent",
+          "type": "object"
+        },
+        "EventRegistry": {
+          "additionalProperties": false,
+          "properties": {
+            "events": {
+              "items": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/AssignmentEvent"
+                  },
+                  {
+                    "$ref": "#/$defs/ApplicationEvent"
+                  },
+                  {
+                    "$ref": "#/$defs/ExposureEvent"
+                  },
+                  {
+                    "$ref": "#/$defs/SplitEvent"
+                  },
+                  {
+                    "$ref": "#/$defs/PoolEvent"
+                  },
+                  {
+                    "$ref": "#/$defs/ObservationEvent"
+                  }
+                ]
+              },
+              "minItems": 1,
+              "title": "Events",
+              "type": "array"
+            },
+            "relative_timings": {
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/RelativeTiming"
+              },
+              "title": "Relative Timings",
+              "type": "array"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            }
+          },
+          "required": [
+            "events"
+          ],
+          "title": "EventRegistry",
+          "type": "object"
+        },
+        "ExposureEvent": {
+          "additionalProperties": false,
+          "properties": {
+            "effective_exposure_unit": {
+              "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+            },
+            "event_id": {
+              "minLength": 1,
+              "title": "Event Id",
+              "type": "string"
+            },
+            "event_type": {
+              "const": "ExposureEvent",
+              "default": "ExposureEvent",
+              "title": "Event Type",
+              "type": "string"
+            },
+            "evidence_refs": {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "minItems": 1,
+              "title": "Evidence Refs",
+              "type": "array"
+            },
+            "experiment_block_id": {
+              "minLength": 1,
+              "title": "Experiment Block Id",
+              "type": "string"
+            },
+            "exposed_unit_ids": {
+              "$ref": "#/$defs/KnowledgeValue_tuple_Annotated_str__StringConstraints___________"
+            },
+            "exposure_container": {
+              "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+            },
+            "exposure_pathway": {
+              "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            }
+          },
+          "required": [
+            "event_id",
+            "experiment_block_id",
+            "evidence_refs",
+            "exposure_pathway",
+            "exposure_container",
+            "effective_exposure_unit",
+            "exposed_unit_ids"
+          ],
+          "title": "ExposureEvent",
+          "type": "object"
+        },
+        "InterferenceStatus": {
+          "enum": [
+            "no_known_path",
+            "possible",
+            "documented",
+            "unknown"
+          ],
+          "title": "InterferenceStatus",
+          "type": "string"
+        },
+        "KnowledgeState": {
+          "enum": [
+            "PRESENT",
+            "ABSENT_EXPLICIT",
+            "NOT_REPORTED",
+            "UNKNOWN",
+            "NOT_APPLICABLE",
+            "CONFLICTING"
+          ],
+          "title": "KnowledgeState",
+          "type": "string"
+        },
+        "KnowledgeValue_Annotated_str__StringConstraints__": {
+          "additionalProperties": false,
+          "properties": {
+            "claim_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Claim Scope Id"
+            },
+            "conflicting_values": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Conflicting Values",
+              "type": "array"
+            },
+            "evidence_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Evidence Ids",
+              "type": "array"
+            },
+            "knowledge_state": {
+              "$ref": "#/$defs/KnowledgeState"
+            },
+            "query_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Query Scope Id"
+            },
+            "rationale": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Rationale"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "source_scope_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Source Scope Ids",
+              "type": "array"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Value"
+            }
+          },
+          "required": [
+            "knowledge_state"
+          ],
+          "title": "KnowledgeValue[Annotated[str, StringConstraints]]",
+          "type": "object"
+        },
+        "KnowledgeValue_InterferenceStatus_": {
+          "additionalProperties": false,
+          "properties": {
+            "claim_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Claim Scope Id"
+            },
+            "conflicting_values": {
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/InterferenceStatus"
+              },
+              "title": "Conflicting Values",
+              "type": "array"
+            },
+            "evidence_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Evidence Ids",
+              "type": "array"
+            },
+            "knowledge_state": {
+              "$ref": "#/$defs/KnowledgeState"
+            },
+            "query_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Query Scope Id"
+            },
+            "rationale": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Rationale"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "source_scope_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Source Scope Ids",
+              "type": "array"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/InterferenceStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            }
+          },
+          "required": [
+            "knowledge_state"
+          ],
+          "title": "KnowledgeValue[InterferenceStatus]",
+          "type": "object"
+        },
+        "KnowledgeValue_tuple_Annotated_str__StringConstraints___________": {
+          "additionalProperties": false,
+          "properties": {
+            "claim_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Claim Scope Id"
+            },
+            "conflicting_values": {
+              "default": [],
+              "items": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "title": "Conflicting Values",
+              "type": "array"
+            },
+            "evidence_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Evidence Ids",
+              "type": "array"
+            },
+            "knowledge_state": {
+              "$ref": "#/$defs/KnowledgeState"
+            },
+            "query_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Query Scope Id"
+            },
+            "rationale": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Rationale"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "source_scope_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Source Scope Ids",
+              "type": "array"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "items": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Value"
+            }
+          },
+          "required": [
+            "knowledge_state"
+          ],
+          "title": "KnowledgeValue[tuple[Annotated[str, StringConstraints], ...]]",
+          "type": "object"
+        },
+        "ObservationEvent": {
+          "additionalProperties": false,
+          "properties": {
+            "endpoint_id": {
+              "minLength": 1,
+              "title": "Endpoint Id",
+              "type": "string"
+            },
+            "event_id": {
+              "minLength": 1,
+              "title": "Event Id",
+              "type": "string"
+            },
+            "event_type": {
+              "const": "Observation",
+              "default": "Observation",
+              "title": "Event Type",
+              "type": "string"
+            },
+            "evidence_refs": {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "minItems": 1,
+              "title": "Evidence Refs",
+              "type": "array"
+            },
+            "experiment_block_id": {
+              "minLength": 1,
+              "title": "Experiment Block Id",
+              "type": "string"
+            },
+            "measured_on_unit_ids": {
+              "$ref": "#/$defs/KnowledgeValue_tuple_Annotated_str__StringConstraints___________"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "timepoint_id": {
+              "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+            }
+          },
+          "required": [
+            "event_id",
+            "experiment_block_id",
+            "evidence_refs",
+            "endpoint_id",
+            "measured_on_unit_ids",
+            "timepoint_id"
+          ],
+          "title": "ObservationEvent",
+          "type": "object"
+        },
+        "PoolEvent": {
+          "additionalProperties": false,
+          "properties": {
+            "event_id": {
+              "minLength": 1,
+              "title": "Event Id",
+              "type": "string"
+            },
+            "event_type": {
+              "const": "PoolEvent",
+              "default": "PoolEvent",
+              "title": "Event Type",
+              "type": "string"
+            },
+            "evidence_refs": {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "minItems": 1,
+              "title": "Evidence Refs",
+              "type": "array"
+            },
+            "experiment_block_id": {
+              "minLength": 1,
+              "title": "Experiment Block Id",
+              "type": "string"
+            },
+            "pooled_unit_id": {
+              "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "source_unit_ids": {
+              "$ref": "#/$defs/KnowledgeValue_tuple_Annotated_str__StringConstraints___________"
+            }
+          },
+          "required": [
+            "event_id",
+            "experiment_block_id",
+            "evidence_refs",
+            "source_unit_ids",
+            "pooled_unit_id"
+          ],
+          "title": "PoolEvent",
+          "type": "object"
+        },
+        "QueryCausalContext": {
+          "additionalProperties": false,
+          "description": "Query-scoped v8 causal roles, stored without a scientific resolver.\n\nAssignment, application, effective exposure, experimental and biological-source\nunits are separate facts even when their reported labels happen to match.",
+          "properties": {
+            "application_event_id": {
+              "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+            },
+            "application_unit_type": {
+              "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+            },
+            "assignment_event_id": {
+              "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+            },
+            "assignment_unit_type": {
+              "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+            },
+            "biological_source_unit_type": {
+              "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+            },
+            "effective_exposure_unit_type": {
+              "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+            },
+            "experimental_unit_type": {
+              "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+            },
+            "exposure_event_id": {
+              "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+            },
+            "inferential_query_id": {
+              "minLength": 1,
+              "title": "Inferential Query Id",
+              "type": "string"
+            },
+            "interference_status": {
+              "$ref": "#/$defs/KnowledgeValue_InterferenceStatus_"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            }
+          },
+          "required": [
+            "inferential_query_id",
+            "assignment_event_id",
+            "application_event_id",
+            "exposure_event_id",
+            "assignment_unit_type",
+            "application_unit_type",
+            "effective_exposure_unit_type",
+            "experimental_unit_type",
+            "biological_source_unit_type",
+            "interference_status"
+          ],
+          "title": "QueryCausalContext",
+          "type": "object"
+        },
+        "RelativeTiming": {
+          "additionalProperties": false,
+          "properties": {
+            "evidence_refs": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Evidence Refs",
+              "type": "array"
+            },
+            "rationale": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Rationale"
+            },
+            "reference_event_id": {
+              "minLength": 1,
+              "title": "Reference Event Id",
+              "type": "string"
+            },
+            "relation": {
+              "$ref": "#/$defs/TemporalRelation"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "subject_event_id": {
+              "minLength": 1,
+              "title": "Subject Event Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "subject_event_id",
+            "reference_event_id",
+            "relation"
+          ],
+          "title": "RelativeTiming",
+          "type": "object"
+        },
+        "SplitEvent": {
+          "additionalProperties": false,
+          "properties": {
+            "event_id": {
+              "minLength": 1,
+              "title": "Event Id",
+              "type": "string"
+            },
+            "event_type": {
+              "const": "SplitEvent",
+              "default": "SplitEvent",
+              "title": "Event Type",
+              "type": "string"
+            },
+            "evidence_refs": {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "minItems": 1,
+              "title": "Evidence Refs",
+              "type": "array"
+            },
+            "experiment_block_id": {
+              "minLength": 1,
+              "title": "Experiment Block Id",
+              "type": "string"
+            },
+            "resulting_unit_ids": {
+              "$ref": "#/$defs/KnowledgeValue_tuple_Annotated_str__StringConstraints___________"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "source_unit_ids": {
+              "$ref": "#/$defs/KnowledgeValue_tuple_Annotated_str__StringConstraints___________"
+            }
+          },
+          "required": [
+            "event_id",
+            "experiment_block_id",
+            "evidence_refs",
+            "source_unit_ids",
+            "resulting_unit_ids"
+          ],
+          "title": "SplitEvent",
+          "type": "object"
+        },
+        "TemporalRelation": {
+          "enum": [
+            "BEFORE",
+            "AFTER",
+            "SAME_EVENT",
+            "OVERLAPS",
+            "UNKNOWN"
+          ],
+          "title": "TemporalRelation",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Resolve causal event references and block boundaries without deriving consequences.",
+      "properties": {
+        "causal_context": {
+          "$ref": "#/$defs/QueryCausalContext"
+        },
+        "event_registry": {
+          "$ref": "#/$defs/EventRegistry"
+        },
+        "experiment_block_id": {
+          "minLength": 1,
+          "title": "Experiment Block Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "8.0.0",
+          "default": "8.0.0",
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "experiment_block_id",
+        "event_registry",
+        "causal_context"
+      ],
+      "title": "QueryCausalEventAggregate",
       "type": "object"
     },
     "query_report_section": {
@@ -13375,6 +18179,72 @@
         "questions"
       ],
       "title": "QueryReportSection",
+      "type": "object"
+    },
+    "relative_timing": {
+      "$defs": {
+        "TemporalRelation": {
+          "enum": [
+            "BEFORE",
+            "AFTER",
+            "SAME_EVENT",
+            "OVERLAPS",
+            "UNKNOWN"
+          ],
+          "title": "TemporalRelation",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "evidence_refs": {
+          "default": [],
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Evidence Refs",
+          "type": "array"
+        },
+        "rationale": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rationale"
+        },
+        "reference_event_id": {
+          "minLength": 1,
+          "title": "Reference Event Id",
+          "type": "string"
+        },
+        "relation": {
+          "$ref": "#/$defs/TemporalRelation"
+        },
+        "schema_version": {
+          "const": "8.0.0",
+          "default": "8.0.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "subject_event_id": {
+          "minLength": 1,
+          "title": "Subject Event Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "subject_event_id",
+        "reference_event_id",
+        "relation"
+      ],
+      "title": "RelativeTiming",
       "type": "object"
     },
     "report_bundle": {
@@ -20658,6 +25528,175 @@
       "title": "SourceRecord",
       "type": "object"
     },
+    "split_event": {
+      "$defs": {
+        "KnowledgeState": {
+          "enum": [
+            "PRESENT",
+            "ABSENT_EXPLICIT",
+            "NOT_REPORTED",
+            "UNKNOWN",
+            "NOT_APPLICABLE",
+            "CONFLICTING"
+          ],
+          "title": "KnowledgeState",
+          "type": "string"
+        },
+        "KnowledgeValue_tuple_Annotated_str__StringConstraints___________": {
+          "additionalProperties": false,
+          "properties": {
+            "claim_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Claim Scope Id"
+            },
+            "conflicting_values": {
+              "default": [],
+              "items": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "title": "Conflicting Values",
+              "type": "array"
+            },
+            "evidence_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Evidence Ids",
+              "type": "array"
+            },
+            "knowledge_state": {
+              "$ref": "#/$defs/KnowledgeState"
+            },
+            "query_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Query Scope Id"
+            },
+            "rationale": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Rationale"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "source_scope_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Source Scope Ids",
+              "type": "array"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "items": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Value"
+            }
+          },
+          "required": [
+            "knowledge_state"
+          ],
+          "title": "KnowledgeValue[tuple[Annotated[str, StringConstraints], ...]]",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "event_id": {
+          "minLength": 1,
+          "title": "Event Id",
+          "type": "string"
+        },
+        "event_type": {
+          "const": "SplitEvent",
+          "default": "SplitEvent",
+          "title": "Event Type",
+          "type": "string"
+        },
+        "evidence_refs": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Evidence Refs",
+          "type": "array"
+        },
+        "experiment_block_id": {
+          "minLength": 1,
+          "title": "Experiment Block Id",
+          "type": "string"
+        },
+        "resulting_unit_ids": {
+          "$ref": "#/$defs/KnowledgeValue_tuple_Annotated_str__StringConstraints___________"
+        },
+        "schema_version": {
+          "const": "8.0.0",
+          "default": "8.0.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "source_unit_ids": {
+          "$ref": "#/$defs/KnowledgeValue_tuple_Annotated_str__StringConstraints___________"
+        }
+      },
+      "required": [
+        "event_id",
+        "experiment_block_id",
+        "evidence_refs",
+        "source_unit_ids",
+        "resulting_unit_ids"
+      ],
+      "title": "SplitEvent",
+      "type": "object"
+    },
     "support_evidence_binding": {
       "$defs": {
         "AuthorityType": {
@@ -21269,6 +26308,304 @@
       "title": "V8ExecutionManifest",
       "type": "object"
     },
+    "v8_experiment_graph": {
+      "$defs": {
+        "V8GraphNode": {
+          "additionalProperties": false,
+          "properties": {
+            "node_id": {
+              "minLength": 1,
+              "title": "Node Id",
+              "type": "string"
+            },
+            "node_type": {
+              "$ref": "#/$defs/V8GraphNodeType"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            }
+          },
+          "required": [
+            "node_id",
+            "node_type"
+          ],
+          "title": "V8GraphNode",
+          "type": "object"
+        },
+        "V8GraphNodeType": {
+          "enum": [
+            "ExperimentBlock",
+            "UnitType",
+            "UnitInstance",
+            "BiologicalSource",
+            "Preparation",
+            "Factor",
+            "FactorLevel",
+            "Contrast",
+            "InferentialQuery",
+            "Endpoint",
+            "AssignmentEvent",
+            "ApplicationEvent",
+            "ExposureEvent",
+            "SplitEvent",
+            "PoolEvent",
+            "Observation",
+            "AnalysisAggregate",
+            "MeasurementProcess",
+            "EvidenceSpan",
+            "CountRecord",
+            "ExclusionRecord",
+            "ConflictRecord",
+            "ConfirmationEvent",
+            "QuestionRecord",
+            "ConditionRecord",
+            "RuleChallenge",
+            "DerivedClaim",
+            "SensitivityRecord",
+            "ProfileCoverageStatement"
+          ],
+          "title": "V8GraphNodeType",
+          "type": "string"
+        },
+        "V8GraphRelation": {
+          "additionalProperties": false,
+          "properties": {
+            "relation_id": {
+              "minLength": 1,
+              "title": "Relation Id",
+              "type": "string"
+            },
+            "relation_type": {
+              "$ref": "#/$defs/V8GraphRelationType"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "source_node_id": {
+              "minLength": 1,
+              "title": "Source Node Id",
+              "type": "string"
+            },
+            "target_node_id": {
+              "minLength": 1,
+              "title": "Target Node Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "relation_id",
+            "relation_type",
+            "source_node_id",
+            "target_node_id"
+          ],
+          "title": "V8GraphRelation",
+          "type": "object"
+        },
+        "V8GraphRelationType": {
+          "enum": [
+            "derived_from",
+            "nested_in",
+            "contained_in",
+            "allocated_to",
+            "applied_to",
+            "exposed_as",
+            "measured_on",
+            "observed_in",
+            "acquired_from",
+            "aggregated_to",
+            "belongs_to_group",
+            "excluded_from",
+            "supports",
+            "contradicts",
+            "split_from",
+            "pooled_from",
+            "paired_with",
+            "matched_with",
+            "blocked_by",
+            "crossed_with",
+            "same_source_as",
+            "repeated_measure_of",
+            "shares_exposure_with",
+            "may_interfere_with",
+            "generated_by",
+            "computed_from",
+            "segmented_into"
+          ],
+          "title": "V8GraphRelationType",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "nodes": {
+          "items": {
+            "$ref": "#/$defs/V8GraphNode"
+          },
+          "minItems": 1,
+          "title": "Nodes",
+          "type": "array"
+        },
+        "relations": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/V8GraphRelation"
+          },
+          "title": "Relations",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": "8.0.0",
+          "default": "8.0.0",
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "nodes"
+      ],
+      "title": "V8ExperimentGraph",
+      "type": "object"
+    },
+    "v8_graph_node": {
+      "$defs": {
+        "V8GraphNodeType": {
+          "enum": [
+            "ExperimentBlock",
+            "UnitType",
+            "UnitInstance",
+            "BiologicalSource",
+            "Preparation",
+            "Factor",
+            "FactorLevel",
+            "Contrast",
+            "InferentialQuery",
+            "Endpoint",
+            "AssignmentEvent",
+            "ApplicationEvent",
+            "ExposureEvent",
+            "SplitEvent",
+            "PoolEvent",
+            "Observation",
+            "AnalysisAggregate",
+            "MeasurementProcess",
+            "EvidenceSpan",
+            "CountRecord",
+            "ExclusionRecord",
+            "ConflictRecord",
+            "ConfirmationEvent",
+            "QuestionRecord",
+            "ConditionRecord",
+            "RuleChallenge",
+            "DerivedClaim",
+            "SensitivityRecord",
+            "ProfileCoverageStatement"
+          ],
+          "title": "V8GraphNodeType",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "node_id": {
+          "minLength": 1,
+          "title": "Node Id",
+          "type": "string"
+        },
+        "node_type": {
+          "$ref": "#/$defs/V8GraphNodeType"
+        },
+        "schema_version": {
+          "const": "8.0.0",
+          "default": "8.0.0",
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "node_id",
+        "node_type"
+      ],
+      "title": "V8GraphNode",
+      "type": "object"
+    },
+    "v8_graph_relation": {
+      "$defs": {
+        "V8GraphRelationType": {
+          "enum": [
+            "derived_from",
+            "nested_in",
+            "contained_in",
+            "allocated_to",
+            "applied_to",
+            "exposed_as",
+            "measured_on",
+            "observed_in",
+            "acquired_from",
+            "aggregated_to",
+            "belongs_to_group",
+            "excluded_from",
+            "supports",
+            "contradicts",
+            "split_from",
+            "pooled_from",
+            "paired_with",
+            "matched_with",
+            "blocked_by",
+            "crossed_with",
+            "same_source_as",
+            "repeated_measure_of",
+            "shares_exposure_with",
+            "may_interfere_with",
+            "generated_by",
+            "computed_from",
+            "segmented_into"
+          ],
+          "title": "V8GraphRelationType",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "relation_id": {
+          "minLength": 1,
+          "title": "Relation Id",
+          "type": "string"
+        },
+        "relation_type": {
+          "$ref": "#/$defs/V8GraphRelationType"
+        },
+        "schema_version": {
+          "const": "8.0.0",
+          "default": "8.0.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "source_node_id": {
+          "minLength": 1,
+          "title": "Source Node Id",
+          "type": "string"
+        },
+        "target_node_id": {
+          "minLength": 1,
+          "title": "Target Node Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "relation_id",
+        "relation_type",
+        "source_node_id",
+        "target_node_id"
+      ],
+      "title": "V8GraphRelation",
+      "type": "object"
+    },
     "verified_pipeline_context": {
       "$defs": {
         "JsonValue": {}
@@ -21340,5 +26677,5 @@
       "type": "object"
     }
   },
-  "snapshot_id": "KERNEL-SCHEMAS-607985609d0867c4ab52"
+  "snapshot_id": "KERNEL-SCHEMAS-f790b9a6c08d9695db3c"
 }
