@@ -55,11 +55,14 @@ def hard_verify_candidates(
         bundle = ParserCandidateOutput.assert_raw_candidate_only(bundle)
         assert_no_final_scientific_fields(bundle.model_dump(mode="json", warnings="none"))
     except ValueError as exc:
-        errors.append(
-            StageIssue(
-                code=StageErrorCode.VERIFIER_DISAGREEMENT,
-                detail=str(exc),
-            )
+        error = StageIssue(
+            code=StageErrorCode.VERIFIER_DISAGREEMENT,
+            detail=str(exc),
+        )
+        return HardVerifierResult(
+            passed=False,
+            errors=(error,),
+            checks_run=("forbidden_final_fields",),
         )
 
     # empty bundle is allowed only if notes explain abstention candidate

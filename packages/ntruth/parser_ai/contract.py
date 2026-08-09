@@ -37,71 +37,108 @@ def _raw_candidate_contract_tree(
 
     if seen is None:
         seen = set()
-    if isinstance(value, (BaseModel, Mapping, list, tuple, set, frozenset)):
-        identity = id(value)
+    tracked = isinstance(value, (BaseModel, Mapping, list, tuple, set, frozenset))
+    identity = id(value)
+    if tracked:
         if identity in seen:
-            return "<recursive-reference>"
+            raise ValueError("candidate runtime tree contains a recursive container cycle")
         seen.add(identity)
-    if isinstance(value, BaseModel):
-        raw_values = value.__dict__
-        declared_fields = type(value).model_fields
-        payload: dict[object, object] = {
-            field_name: _raw_candidate_contract_tree(raw_values[field_name], seen=seen)
-            for field_name in declared_fields
-            if field_name in raw_values
-        }
-        for field_name, item in raw_values.items():
-            if field_name in declared_fields or field_name.startswith("_"):
-                continue
-            payload[field_name] = _raw_candidate_contract_tree(item, seen=seen)
-        extra_values = value.__pydantic_extra__
-        if isinstance(extra_values, Mapping):
-            if type(extra_values) is not dict:
+    try:
+        if isinstance(value, BaseModel):
+            raw_values = value.__dict__
+            if type(raw_values) is not dict:
                 raise ValueError(
-                    "candidate runtime container type for Pydantic extras must be "
-                    f"exact builtin dict, got {type(extra_values).__name__}"
+                    "candidate runtime model state must be exact builtin dict, "
+                    f"got {type(raw_values).__name__}"
                 )
-            for field_name, item in extra_values.items():
-                if field_name.startswith("_"):
+            declared_fields = type(value).model_fields
+            payload: dict[object, object] = {
+                field_name: _raw_candidate_contract_tree(raw_values[field_name], seen=seen)
+                for field_name in declared_fields
+                if field_name in raw_values
+            }
+            for field_name in raw_values:
+                if not isinstance(field_name, str):
+                    raise ValueError(
+                        f"candidate runtime model state key {field_name!r} is not canonical"
+                    )
+                if field_name in declared_fields or field_name.startswith("_"):
                     continue
-                payload[field_name] = _raw_candidate_contract_tree(item, seen=seen)
-        return payload
-    if isinstance(value, Mapping):
-        if type(value) is not dict:
+                raise ValueError(
+                    "candidate runtime model has non-canonical undeclared public field "
+                    f"{field_name!r}"
+                )
+            extra_values = value.__pydantic_extra__
+            if extra_values is not None:
+                if type(extra_values) is not dict:
+                    raise ValueError(
+                        "candidate runtime container type for Pydantic extras must be "
+                        f"exact builtin dict, got {type(extra_values).__name__}"
+                    )
+                if extra_values:
+                    extra_field = next(iter(extra_values))
+                    raise ValueError(
+                        "candidate runtime model has non-canonical undeclared Pydantic "
+                        f"extra field {extra_field!r}"
+                    )
+                raise ValueError(
+                    "candidate runtime model has a non-canonical empty Pydantic extra store"
+                )
+            return payload
+        if isinstance(value, Mapping):
+            if type(value) is not dict:
+                raise ValueError(
+                    "candidate runtime container type must be exact builtin dict, "
+                    f"got {type(value).__name__}"
+                )
+            mapping_payload: dict[object, object] = {}
+            for key, item in value.items():
+                raw_key = _raw_candidate_contract_tree(key, seen=seen)
+                raw_item = _raw_candidate_contract_tree(item, seen=seen)
+                try:
+                    mapping_payload[raw_key] = raw_item
+                except TypeError as exc:
+                    raise ValueError("candidate runtime mapping key is not canonical") from exc
+            return mapping_payload
+        if isinstance(value, (list, tuple, set, frozenset)):
+            if type(value) not in {list, tuple, set, frozenset}:
+                raise ValueError(
+                    "candidate runtime container type must be an exact builtin, "
+                    f"got {type(value).__name__}"
+                )
+            return tuple(_raw_candidate_contract_tree(item, seen=seen) for item in value)
+        if isinstance(value, Enum):
+            enum_state = value.__dict__
+            if type(enum_state) is not dict:
+                raise ValueError(
+                    "candidate runtime enum state must be exact builtin dict, "
+                    f"got {type(enum_state).__name__}"
+                )
+            public_enum_fields = tuple(
+                field_name
+                for field_name in enum_state
+                if not isinstance(field_name, str) or not field_name.startswith("_")
+            )
+            if public_enum_fields:
+                raise ValueError(
+                    f"candidate runtime enum has non-canonical public state {public_enum_fields!r}"
+                )
+            return value
+        if isinstance(value, (str, int, float, bool, bytes)) and type(value) not in {
+            str,
+            int,
+            float,
+            bool,
+            bytes,
+        }:
             raise ValueError(
-                "candidate runtime container type must be exact builtin dict, "
+                "candidate runtime scalar type must be an exact builtin or canonical enum, "
                 f"got {type(value).__name__}"
             )
-        mapping_payload: dict[object, object] = {}
-        for key, item in value.items():
-            raw_key = _raw_candidate_contract_tree(key, seen=seen)
-            raw_item = _raw_candidate_contract_tree(item, seen=seen)
-            try:
-                mapping_payload[raw_key] = raw_item
-            except TypeError as exc:
-                raise ValueError("candidate runtime mapping key is not canonical") from exc
-        return mapping_payload
-    if isinstance(value, (list, tuple, set, frozenset)):
-        if type(value) not in {list, tuple, set, frozenset}:
-            raise ValueError(
-                "candidate runtime container type must be an exact builtin, "
-                f"got {type(value).__name__}"
-            )
-        return tuple(_raw_candidate_contract_tree(item, seen=seen) for item in value)
-    if isinstance(value, Enum):
         return value
-    if isinstance(value, (str, int, float, bool, bytes)) and type(value) not in {
-        str,
-        int,
-        float,
-        bool,
-        bytes,
-    }:
-        raise ValueError(
-            "candidate runtime scalar type must be an exact builtin or canonical enum, "
-            f"got {type(value).__name__}"
-        )
-    return value
+    finally:
+        if tracked:
+            seen.remove(identity)
 
 
 def _assert_exact_candidate_model_types(
@@ -773,7 +810,12 @@ class ParserCandidateOutput(FrozenModel):
     def assert_raw_candidate_only(self) -> ParserCandidateOutput:
         """Reject hidden final fields and return an exact canonical runtime tree."""
 
-        assert_no_final_scientific_fields(_raw_candidate_contract_tree(self))
+        try:
+            assert_no_final_scientific_fields(_raw_candidate_contract_tree(self))
+        except ValueError:
+            raise
+        except Exception as exc:
+            raise ValueError(f"candidate runtime tree is not canonical: {exc}") from exc
         if type(self) is not ParserCandidateOutput:
             raise ValueError(
                 "candidate runtime type at $ must be exact canonical ParserCandidateOutput, "
@@ -788,9 +830,11 @@ class ParserCandidateOutput(FrozenModel):
                     warnings="none",
                 )
             )
-        except TypeError as exc:
-            raise ValueError("candidate runtime tree cannot be canonicalized") from exc
-        _assert_exact_candidate_model_types(self, canonical)
+            _assert_exact_candidate_model_types(self, canonical)
+        except ValueError:
+            raise
+        except Exception as exc:
+            raise ValueError(f"candidate runtime tree cannot be canonicalized: {exc}") from exc
         return canonical
 
     @model_validator(mode="before")
