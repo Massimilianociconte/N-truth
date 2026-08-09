@@ -284,12 +284,12 @@
     {
       "component_id": "repository-contract-truth",
       "current_paths": ["packages/ntruth/governance/repository_truth.py", "scripts/check_prd_v8_contracts.py", ".github/workflows/ci.yml"],
-      "target": "Release-blocking exact-set validation of 25 components, role-specific paths, public APIs, registered blockers, PRD excerpts, runtime schemas and all 88 requirements",
+      "target": "Release-blocking exact-set validation of 25 reviewed component descriptors, role-specific paths, public APIs, registered blockers, PRD excerpts, runtime schemas and all 88 requirements",
       "status": "IMPLEMENTED",
-      "public_api": ["python:ntruth.governance.repository_truth:CANONICAL_COMPONENT_IDS", "python:ntruth.governance.repository_truth:validate_current_target_map", "python:ntruth.conformance.examples:evaluate_prd_v8_examples", "python:ntruth.schemas.schema_snapshot:load_installed_kernel_schema_snapshot"],
+      "public_api": ["python:ntruth.governance.repository_truth:CANONICAL_COMPONENT_DESCRIPTOR_SHA256", "python:ntruth.governance.repository_truth:CANONICAL_COMPONENT_IDS", "python:ntruth.governance.repository_truth:validate_current_target_map", "python:ntruth.conformance.examples:evaluate_prd_v8_examples", "python:ntruth.schemas.schema_snapshot:load_installed_kernel_schema_snapshot"],
       "owner": "contract-governance",
       "adr_paths": ["docs/adr/0013-prd-v8-scientific-contract-migration.md"],
-      "test_paths": ["tests/integration/test_prd_v8_task8_repository_truth.py", "tests/integration/test_prd_v8_task8_fix1_repository_truth.py", "tests/integration/test_prd_v8_packaged_conformance.py"],
+      "test_paths": ["tests/integration/test_prd_v8_task8_repository_truth.py", "tests/integration/test_prd_v8_task8_fix1_repository_truth.py", "tests/integration/test_prd_v8_task8_fix2_repository_truth.py", "tests/integration/test_prd_v8_packaged_conformance.py"],
       "evidence_paths": ["docs/audits/prd-v8-full-migration/FINAL_IMPLEMENTATION_MATRIX.md", "docs/audits/prd-v8-full-migration/SCIENTIFIC_REVIEW_REGISTER.md"],
       "blocker_ids": []
     },
