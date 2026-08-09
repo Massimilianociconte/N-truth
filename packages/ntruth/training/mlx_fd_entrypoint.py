@@ -78,7 +78,7 @@ def read_inherited_jsonl(
         descriptor = mapping[split]
         try:
             metadata = os.fstat(descriptor)
-        except OSError as exc:
+        except Exception as exc:
             raise InheritedFDContractError(f"inherited FD is not open for split {split}") from exc
         if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 0:
             raise InheritedFDContractError(
@@ -86,12 +86,12 @@ def read_inherited_jsonl(
             )
         try:
             duplicate = os.dup(descriptor)
-        except OSError as exc:
+        except Exception as exc:
             raise InheritedFDContractError(
                 f"inherited FD cannot be duplicated for split {split}"
             ) from exc
         try:
-            with os.fdopen(duplicate, "rb") as handle:
+            with os.fdopen(duplicate, "rb", closefd=False) as handle:
                 os.lseek(handle.fileno(), 0, os.SEEK_SET)
                 rows: list[dict[str, Any]] = []
                 for line_number, line in enumerate(handle, 1):
@@ -99,7 +99,7 @@ def read_inherited_jsonl(
                         continue
                     try:
                         row = json.loads(line)
-                    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                    except Exception as exc:
                         raise InheritedFDContractError(
                             f"inherited JSONL invalid at {split}:{line_number}"
                         ) from exc
@@ -108,8 +108,12 @@ def read_inherited_jsonl(
                             f"inherited JSONL row is not an object at {split}:{line_number}"
                         )
                     rows.append(row)
-        except (OSError, UnicodeError) as exc:
+        except InheritedFDContractError:
+            raise
+        except Exception as exc:
             raise InheritedFDContractError(f"inherited JSONL unreadable for split {split}") from exc
+        finally:
+            os.close(duplicate)
         if not rows:
             raise InheritedFDContractError(f"inherited JSONL is empty for split {split}")
         rows_by_split[split] = rows

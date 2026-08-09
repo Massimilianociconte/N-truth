@@ -18,7 +18,7 @@ from math import isclose
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import Field, JsonValue, ValidationError, field_validator, model_validator
+from pydantic import Field, JsonValue, field_validator, model_validator
 
 from ntruth.governance.lineage import CorpusSplit
 from ntruth.mvt_a.stage_schema import (
@@ -797,28 +797,40 @@ class DatasetFormatError(ValueError):
 def _iter_jsonl_physical_lines(payload: bytes) -> Iterator[tuple[int, bytes]]:
     """Yield LF-delimited bytes without treating other Unicode/newline values as framing."""
 
-    yield from enumerate(payload.split(b"\n"), start=1)
+    yield from enumerate(bytes.split(payload, b"\n"), start=1)
 
 
 def loads_supervised_jsonl(payload: str | bytes) -> tuple[SupervisedRecord, ...]:
     """Carica JSONL locale; le righe vuote sono ignorate ma mai emesse in output."""
 
-    if isinstance(payload, bytes):
+    if type(payload) is bytes:
         raw_payload = payload
-    else:
+    elif type(payload) is str:
         try:
-            raw_payload = payload.encode("utf-8")
-        except UnicodeEncodeError as error:
-            line_number = payload.count("\n", 0, error.start) + 1
-            raise DatasetFormatError(line_number, str(error)) from error
+            raw_payload = str.encode(payload, "utf-8")
+        except Exception as error:
+            line_number = (
+                str.count(payload, "\n", 0, error.start) + 1
+                if isinstance(error, UnicodeEncodeError)
+                else 1
+            )
+            raise DatasetFormatError(
+                line_number,
+                "payload JSONL testuale non codificabile in UTF-8",
+            ) from error
+    else:
+        raise DatasetFormatError(1, "payload JSONL deve usare str o bytes builtin")
     records: list[SupervisedRecord] = []
     for line_number, line in _iter_jsonl_physical_lines(raw_payload):
         if not line.strip():
             continue
         try:
             records.append(SupervisedRecord.model_validate_json(line))
-        except (ValidationError, ValueError) as error:
-            raise DatasetFormatError(line_number, str(error)) from error
+        except Exception as error:
+            raise DatasetFormatError(
+                line_number,
+                "record supervisionato JSONL non valido",
+            ) from error
     return tuple(records)
 
 
