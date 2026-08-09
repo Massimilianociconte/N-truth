@@ -58,11 +58,12 @@ def _raw_candidate_contract_tree(
                 if field_name in raw_values
             }
             for field_name in raw_values:
-                if not isinstance(field_name, str):
+                if type(field_name) is not str:
                     raise ValueError(
-                        f"candidate runtime model state key {field_name!r} is not canonical"
+                        "candidate runtime model state key must be exact builtin str, "
+                        f"got {type(field_name).__name__}"
                     )
-                if field_name in declared_fields or field_name.startswith("_"):
+                if field_name in declared_fields or str.startswith(field_name, "_"):
                     continue
                 raise ValueError(
                     "candidate runtime model has non-canonical undeclared public field "
@@ -114,14 +115,19 @@ def _raw_candidate_contract_tree(
                     "candidate runtime enum state must be exact builtin dict, "
                     f"got {type(enum_state).__name__}"
                 )
-            public_enum_fields = tuple(
-                field_name
-                for field_name in enum_state
-                if not isinstance(field_name, str) or not field_name.startswith("_")
-            )
+            public_enum_fields: list[str] = []
+            for field_name in enum_state:
+                if type(field_name) is not str:
+                    raise ValueError(
+                        "candidate runtime enum state key must be exact builtin str, "
+                        f"got {type(field_name).__name__}"
+                    )
+                if not str.startswith(field_name, "_"):
+                    public_enum_fields.append(field_name)
             if public_enum_fields:
                 raise ValueError(
-                    f"candidate runtime enum has non-canonical public state {public_enum_fields!r}"
+                    "candidate runtime enum has non-canonical public state "
+                    f"{tuple(public_enum_fields)!r}"
                 )
             return value
         if isinstance(value, (str, int, float, bool, bytes)) and type(value) not in {
