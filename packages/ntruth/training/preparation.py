@@ -71,6 +71,22 @@ def _raise_if_split_membership_is_unrepresentable(
         raise DatasetValidationError(structural)
 
 
+def _revalidate_source_record(record: SupervisedRecord) -> SupervisedRecord:
+    try:
+        payload = record.model_dump(mode="python", round_trip=True, warnings="error")
+        return SupervisedRecord.model_validate(payload)
+    except Exception as exc:
+        raise DatasetValidationError(
+            (
+                ValidationIssue(
+                    code="invalid_supervised_record",
+                    severity=IssueSeverity.ERROR,
+                    detail="SupervisedRecord non valido al confine di preparazione",
+                ),
+            )
+        ) from exc
+
+
 def prepare_dataset(
     records: Iterable[SupervisedRecord],
     *,
@@ -80,9 +96,10 @@ def prepare_dataset(
 
     active_config = config or PreparationConfig()
     source_records = tuple(records)
+    validated_records = tuple(_revalidate_source_record(record) for record in source_records)
     normalized_all = tuple(
         normalize_record(record, shingle_size=active_config.shingle_size)
-        for record in source_records
+        for record in validated_records
     )
 
     # Un ID ambiguo non puo essere rappresentato in manifest: e sempre fatale,

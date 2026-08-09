@@ -132,9 +132,11 @@ def export_mlx_dataset(dataset: PreparedDataset, output_dir: Path) -> dict[str, 
         CorpusSplit.TRAIN: [],
         CorpusSplit.VALIDATION: [],
     }
+    training_members: list[PreparedRecord] = []
     for prepared in dataset.records:
         if prepared.split in by_split and prepared.record.training_eligible:
             by_split[prepared.split].append(_chat_record(prepared))
+            training_members.append(prepared)
     for values in by_split.values():
         values.sort(key=lambda value: str(value["record_id"]))
 
@@ -174,13 +176,8 @@ def export_mlx_dataset(dataset: PreparedDataset, output_dir: Path) -> dict[str, 
         "training_approved": bool(by_split[CorpusSplit.TRAIN])
         and bool(by_split[CorpusSplit.VALIDATION])
         and all(
-            prepared.record.training_eligible
-            and (
-                prepared.split is not CorpusSplit.VALIDATION
-                or prepared.record.model_selection_eligible
-            )
-            for prepared in dataset.records
-            if prepared.split in by_split
+            prepared.split is not CorpusSplit.VALIDATION or prepared.record.model_selection_eligible
+            for prepared in training_members
         ),
         "leakage_check_passed": bool(dataset.records) and leakage_free,
         "synthetic_only": bool(synthetic) and all(synthetic),
