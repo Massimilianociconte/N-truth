@@ -101,7 +101,10 @@ def test_spreadsheet_formulas_are_flagged_in_the_document(
 
 
 def test_prompt_injection_is_reported_and_not_obeyed(make_project: ProjectFactory) -> None:
-    """Un documento non puo istruire il motore: il tentativo diventa un avviso."""
+    """Un documento non puo istruire il motore: il tentativo diventa un avviso.
+
+    La forma del risultato resta quella dell'esplicito DEPRECATED_V7_ADAPTER.
+    """
     project = make_project(
         {
             "m.md": (
@@ -116,9 +119,9 @@ def test_prompt_injection_is_reported_and_not_obeyed(make_project: ProjectFactor
             )
         }
     )
-    from ntruth.pipeline import analyze_project
+    from ntruth.pipeline import analyze_project_v7_adapter
 
-    result = analyze_project(project)
+    result = analyze_project_v7_adapter(project)
     warnings = " ".join(result.report.parser_warnings)
     assert "prompt injection" in warnings
     # Il motore continua ad applicare le regole: l'istruzione non ha effetto.
