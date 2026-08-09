@@ -44,6 +44,11 @@ def _chat_record(prepared: PreparedRecord) -> dict[str, Any]:
         )
     if not record.training_eligible:
         raise MLXPipelineError(f"record {record.record_id}: non training-eligible")
+    if prepared.split is CorpusSplit.VALIDATION and not record.model_selection_eligible:
+        raise MLXPipelineError(
+            f"record {record.record_id}: VALIDATION richiede model-selection eligibility "
+            "per validation loss e selezione checkpoint"
+        )
     try:
         parser_input = ParserAIInput.model_validate_json(record.input_text)
         parser_output = record.target.candidate_target
@@ -83,12 +88,38 @@ def _write_jsonl(path: Path, values: list[dict[str, Any]]) -> None:
     temporary.replace(path)
 
 
+def _assert_validation_export_eligibility(dataset: PreparedDataset) -> None:
+    manifest_by_id = {record.record_id: record for record in dataset.manifest.records}
+    for prepared in dataset.records:
+        if prepared.split is not CorpusSplit.VALIDATION:
+            continue
+        if not prepared.record.training_eligible:
+            continue
+        if not prepared.record.model_selection_eligible:
+            raise MLXPipelineError(
+                f"record {prepared.record.record_id}: VALIDATION richiede "
+                "model-selection eligibility per validation loss e selezione checkpoint"
+            )
+        manifest_record = manifest_by_id.get(prepared.record.record_id)
+        if (
+            manifest_record is None
+            or manifest_record.split is not CorpusSplit.VALIDATION
+            or not manifest_record.training_eligible
+            or not manifest_record.model_selection_eligible
+        ):
+            raise MLXPipelineError(
+                f"record {prepared.record.record_id}: VALIDATION source manifest richiede "
+                "model-selection eligibility per validation loss e selezione checkpoint"
+            )
+
+
 def export_mlx_dataset(dataset: PreparedDataset, output_dir: Path) -> dict[str, Any]:
     """Scrive split MLX e manifest, senza duplicare le sorgenti raw."""
 
     if output_dir.exists() and any(output_dir.iterdir()):
         raise MLXPipelineError(f"directory output non vuota: {output_dir}")
     output_dir.mkdir(parents=True, exist_ok=True)
+    _assert_validation_export_eligibility(dataset)
     by_split: dict[CorpusSplit, list[dict[str, Any]]] = {
         CorpusSplit.TRAIN: [],
         CorpusSplit.VALIDATION: [],

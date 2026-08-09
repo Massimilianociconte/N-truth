@@ -162,6 +162,7 @@ def _record(record_id: str, split: CorpusSplit) -> SupervisedRecord:
         annotation_status=AnnotationStatus.ADJUDICATED,
         training_eligible=split in {CorpusSplit.TRAIN, CorpusSplit.VALIDATION},
         evaluation_eligible=split is CorpusSplit.TEST,
+        model_selection_eligible=split is CorpusSplit.VALIDATION,
         split=split,
     )
 

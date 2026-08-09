@@ -256,7 +256,12 @@ def test_training_export_preserves_membership_but_never_reads_protected_content(
     protected = "PROTECTED-SENTINEL-MUST-NOT-BE-READ"
     records = (
         _record("a-train", CorpusSplit.TRAIN, training=True),
-        _record("b-valid", CorpusSplit.VALIDATION, training=True),
+        _record(
+            "b-valid",
+            CorpusSplit.VALIDATION,
+            training=True,
+            model_selection=True,
+        ),
         _record(
             "c-test",
             CorpusSplit.TEST,

@@ -126,6 +126,7 @@ def _record(
         training_eligible=training_eligible
         and split in {CorpusSplit.TRAIN, CorpusSplit.VALIDATION},
         evaluation_eligible=split is CorpusSplit.TEST,
+        model_selection_eligible=training_eligible and split is CorpusSplit.VALIDATION,
         split=split,
     )
 
