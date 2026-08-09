@@ -89,6 +89,11 @@ class KnowledgeValue[T](KernelModel):
 
     @model_validator(mode="after")
     def _open_world_invariants(self) -> KnowledgeValue[T]:
+        if len(set(self.evidence_ids)) != len(self.evidence_ids):
+            raise ValueError("evidence_ids must be unique and order-preserving")
+        if len(set(self.source_scope_ids)) != len(self.source_scope_ids):
+            raise ValueError("source_scope_ids must be unique and order-preserving")
+
         state = self.knowledge_state
         if state is KnowledgeState.PRESENT:
             ensure_unambiguous_scientific_payload(self.value)
