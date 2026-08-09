@@ -47,6 +47,7 @@ from ntruth.training.records import (
     DatasetManifest,
     PreparationReport,
     PreparedRecord,
+    _iter_jsonl_physical_lines,
 )
 
 PROFILE_SCHEMA_VERSION = "1.0.0"
@@ -876,13 +877,13 @@ def _jsonl_profile(path: Path) -> dict[str, Any]:
 
     record_ids: list[str] = []
     records: list[dict[str, Any]] = []
-    with path.open(encoding="utf-8") as handle:
+    with path.open("rb") as handle:
         for line_number, line in enumerate(handle, start=1):
             if not line.strip():
                 continue
             try:
                 value = json.loads(line)
-            except json.JSONDecodeError as exc:
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
                 raise MLXPipelineError(f"JSONL non valido {path}:{line_number}: {exc}") from exc
             messages = value.get("messages") if isinstance(value, dict) else None
             if (
@@ -1116,18 +1117,19 @@ def _verify_snapshot_counts(
 def _load_prepared_records(path: Path) -> tuple[PreparedRecord, ...]:
     records: list[PreparedRecord] = []
     try:
-        lines = path.read_text(encoding="utf-8").splitlines()
+        handle = path.open("rb")
     except OSError as exc:
         raise MLXPipelineError(f"prepared records non leggibili: {path}: {exc}") from exc
-    for line_number, line in enumerate(lines, start=1):
-        if not line.strip():
-            continue
-        try:
-            records.append(PreparedRecord.model_validate_json(line))
-        except ValueError as exc:
-            raise MLXPipelineError(
-                f"prepared record non valido {path}:{line_number}: {exc}"
-            ) from exc
+    with handle:
+        for line_number, line in enumerate(handle, start=1):
+            if not line.strip():
+                continue
+            try:
+                records.append(PreparedRecord.model_validate_json(line))
+            except ValueError as exc:
+                raise MLXPipelineError(
+                    f"prepared record non valido {path}:{line_number}: {exc}"
+                ) from exc
     identifiers = [record.record.record_id for record in records]
     duplicates = sorted(record_id for record_id, count in Counter(identifiers).items() if count > 1)
     if duplicates:
@@ -1535,16 +1537,12 @@ def iter_verified_jsonl(path: Path, *, expected_sha256: str) -> Iterator[dict[st
         os.close(descriptor)
     if hashlib.sha256(payload).hexdigest() != expected_sha256:
         raise MLXPipelineError(f"verified JSONL checksum changed: {path.name}")
-    try:
-        text = payload.decode("utf-8")
-    except UnicodeDecodeError as exc:
-        raise MLXPipelineError(f"verified JSONL is not UTF-8: {path.name}") from exc
-    for line_number, line in enumerate(text.splitlines(), 1):
+    for line_number, line in _iter_jsonl_physical_lines(payload):
         if not line.strip():
             continue
         try:
             value = json.loads(line)
-        except json.JSONDecodeError as exc:
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise MLXPipelineError(
                 f"verified JSONL invalid at {path.name}:{line_number}: {exc}"
             ) from exc
@@ -2128,13 +2126,13 @@ def run_training(
 
 
 def iter_jsonl(path: Path) -> Iterator[dict[str, Any]]:
-    with path.open(encoding="utf-8") as handle:
+    with path.open("rb") as handle:
         for line_number, line in enumerate(handle, start=1):
             if not line.strip():
                 continue
             try:
                 value = json.loads(line)
-            except json.JSONDecodeError as exc:
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
                 raise MLXPipelineError(f"JSONL non valido {path}:{line_number}: {exc}") from exc
             if not isinstance(value, dict):
                 raise MLXPipelineError(f"record non-oggetto in {path}:{line_number}")

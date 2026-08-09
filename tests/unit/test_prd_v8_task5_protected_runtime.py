@@ -36,7 +36,7 @@ def _write_protected_snapshot(
     payload_rows = rows if rows is not None else ({"record_id": "protected-1"},)
     payload_path = data_dir / filename
     payload_path.write_text(
-        "".join(json.dumps(row, sort_keys=True) + "\n" for row in payload_rows),
+        "".join(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n" for row in payload_rows),
         encoding="utf-8",
     )
     source_records = tuple(

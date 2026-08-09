@@ -219,17 +219,22 @@ def validate_protected_evaluation_snapshot(
     source_manifest = validate_protected_source_manifest(resolved_source, manifest)
     record_ids: list[str] = []
     try:
-        for line_number, line in enumerate(
-            payload_path.read_text(encoding="utf-8").splitlines(), 1
-        ):
+        handle = payload_path.open("rb")
+    except OSError as exc:
+        raise MLXPipelineError(f"protected evaluation payload invalid: {exc}") from exc
+    with handle:
+        for line_number, line in enumerate(handle, start=1):
             if not line.strip():
                 continue
-            row = json.loads(line)
-            if not isinstance(row, dict) or not isinstance(row.get("record_id"), str):
-                raise ValueError(f"row {line_number} has no record_id")
+            try:
+                row = json.loads(line)
+                if not isinstance(row, dict) or not isinstance(row.get("record_id"), str):
+                    raise ValueError("row has no record_id")
+            except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+                raise MLXPipelineError(
+                    f"protected evaluation payload invalid {payload_path}:{line_number}: {exc}"
+                ) from exc
             record_ids.append(row["record_id"])
-    except (OSError, json.JSONDecodeError, ValueError) as exc:
-        raise MLXPipelineError(f"protected evaluation payload invalid: {exc}") from exc
     if len(record_ids) != manifest.record_count or len(record_ids) != len(set(record_ids)):
         raise MLXPipelineError("protected evaluation record count/identity mismatch")
     if content_checksum(sorted(record_ids)) != manifest.record_ids_checksum:

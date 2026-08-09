@@ -11,6 +11,7 @@ import hashlib
 import json
 import re
 import unicodedata
+from collections.abc import Iterator
 from dataclasses import dataclass
 from enum import StrEnum
 from math import isclose
@@ -753,12 +754,18 @@ class DatasetFormatError(ValueError):
         super().__init__(f"riga JSONL {line_number}: {detail}")
 
 
+def _iter_jsonl_physical_lines(payload: bytes) -> Iterator[tuple[int, bytes]]:
+    """Yield LF-delimited bytes without treating other Unicode/newline values as framing."""
+
+    yield from enumerate(payload.split(b"\n"), start=1)
+
+
 def loads_supervised_jsonl(payload: str | bytes) -> tuple[SupervisedRecord, ...]:
     """Carica JSONL locale; le righe vuote sono ignorate ma mai emesse in output."""
 
-    text = payload.decode("utf-8") if isinstance(payload, bytes) else payload
+    raw_payload = payload if isinstance(payload, bytes) else payload.encode("utf-8")
     records: list[SupervisedRecord] = []
-    for line_number, line in enumerate(text.splitlines(), start=1):
+    for line_number, line in _iter_jsonl_physical_lines(raw_payload):
         if not line.strip():
             continue
         try:
