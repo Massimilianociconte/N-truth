@@ -172,9 +172,52 @@ def _derivation_dependencies() -> tuple[
     return executable_dependencies, contract_dependencies
 
 
+def _callable_runtime_token(value: object) -> tuple[int, int]:
+    return (id(value), id(getattr(value, "__code__", None)))
+
+
+def _schema_runtime_token(model: type[BaseModel]) -> tuple[int, ...]:
+    descriptor = inspect.getattr_static(model, "model_json_schema")
+    function = getattr(descriptor, "__func__", descriptor)
+    return (
+        id(model),
+        id(descriptor),
+        *_callable_runtime_token(function),
+        id(getattr(model, "__pydantic_core_schema__", None)),
+        id(getattr(model, "__pydantic_validator__", None)),
+        id(getattr(model, "__pydantic_serializer__", None)),
+        id(getattr(model, "__pydantic_fields__", None)),
+    )
+
+
+def _derivation_dependency_checksum() -> str:
+    """Hash the live closure with a cache key bound to executable/schema state."""
+
+    executable_dependencies, contract_dependencies = _derivation_dependencies()
+    try:
+        cache_token = (
+            *_callable_runtime_token(inspect.getsource),
+            *(
+                token
+                for dependency in executable_dependencies.values()
+                for token in _callable_runtime_token(dependency)
+            ),
+            *(
+                token
+                for dependency in contract_dependencies.values()
+                for token in _schema_runtime_token(dependency)
+            ),
+            *_schema_runtime_token(KnowledgeValue),
+            *_schema_runtime_token(KnowledgeValue[JsonValue]),
+        )
+    except Exception as exc:
+        raise V8EvaluatorReviewRequired() from exc
+    return _cached_derivation_dependency_checksum(cache_token)
+
+
 @lru_cache(maxsize=16)
-def _derivation_dependency_checksum(cache_token: tuple[int, ...]) -> str:
-    """Hash one live dependency closure; ``cache_token`` invalidates runtime drift."""
+def _cached_derivation_dependency_checksum(cache_token: tuple[int, ...]) -> str:
+    """Hash one dependency closure after its complete live identity was addressed."""
 
     del cache_token
     executable_dependencies, contract_dependencies = _derivation_dependencies()
@@ -203,8 +246,8 @@ def _derivation_dependency_checksum(cache_token: tuple[int, ...]) -> str:
         knowledge_module = inspect.getmodule(KnowledgeValue)
         if knowledge_module is not None:
             dependency_modules[knowledge_module.__name__] = inspect.getsource(knowledge_module)
-    except (OSError, TypeError, ValueError):
-        raise V8EvaluatorReviewRequired() from None
+    except Exception as exc:
+        raise V8EvaluatorReviewRequired() from exc
 
     return canonical_checksum(
         {
@@ -220,17 +263,15 @@ def _derivation_dependency_checksum(cache_token: tuple[int, ...]) -> str:
     )
 
 
-def _derivation_code_checksum(clause_id: str) -> str:
+def _derivation_code_checksum(
+    clause_id: str,
+    *,
+    dependency_checksum: str | None = None,
+) -> str:
     """Hash the reviewed live evaluator and its scientific contract closure."""
 
-    executable_dependencies, contract_dependencies = _derivation_dependencies()
-    cache_token = (
-        id(inspect.getsource),
-        *(id(value) for value in executable_dependencies.values()),
-        *(id(value) for value in contract_dependencies.values()),
-        id(KnowledgeValue),
-    )
-    dependency_checksum = _derivation_dependency_checksum(cache_token)
+    if dependency_checksum is None:
+        dependency_checksum = _derivation_dependency_checksum()
     return canonical_checksum(
         {
             "clause_id": clause_id,
@@ -243,6 +284,8 @@ def _reviewed_derivation_artifact(
     bundle: ConformanceBundle,
     clause: TheoryClause,
     rule: V8ConformanceRule,
+    *,
+    dependency_checksum: str | None = None,
 ) -> _EvaluatorArtifact:
     expected_rule_id = _REVIEWED_RULE_ID_BY_CLAUSE.get(clause.clause_id)
     expected_artifact_id = f"ntruth-python-derivation-{clause.clause_id}"
@@ -261,7 +304,11 @@ def _reviewed_derivation_artifact(
         or rule.rule_version != _REVIEWED_RULEBOOK_VERSION
         or rule.theory_clause_id != clause.clause_id
         or rule.theory_clause_version != clause.clause_version
-        or pin.implementation_source_digest != _derivation_code_checksum(clause.clause_id)
+        or pin.implementation_source_digest
+        != _derivation_code_checksum(
+            clause.clause_id,
+            dependency_checksum=dependency_checksum,
+        )
     ):
         raise V8EvaluatorReviewRequired(clause_id=clause.clause_id)
     return _EvaluatorArtifact(
@@ -448,27 +495,92 @@ def _checksum_failures(bundle: ConformanceBundle) -> tuple[ConformanceFailure, .
     return tuple(failures)
 
 
+def _evaluator_pin_failures(bundle: ConformanceBundle) -> tuple[ConformanceFailure, ...]:
+    """Resolve every live evaluator against the external reviewed registry pins."""
+
+    try:
+        dependency_checksum = _derivation_dependency_checksum()
+    except Exception:
+        dependency_checksum = None
+
+    clauses = {clause.clause_id: clause for clause in bundle.theory.clauses}
+    failures: list[ConformanceFailure] = []
+    for rule in bundle.rulebook.rules:
+        clause = clauses.get(rule.theory_clause_id)
+        if clause is None:
+            failures.append(
+                ConformanceFailure(
+                    code=ConformanceFailureCode.PIN_MISMATCH,
+                    clause_id=rule.theory_clause_id,
+                    rule_id=rule.rule_id,
+                    message="derivation evaluator cannot resolve its Theory clause",
+                )
+            )
+            continue
+        try:
+            if dependency_checksum is None:
+                raise V8EvaluatorReviewRequired(clause_id=clause.clause_id)
+            _reviewed_derivation_artifact(
+                bundle,
+                clause,
+                rule,
+                dependency_checksum=dependency_checksum,
+            )
+        except Exception:
+            failures.append(
+                ConformanceFailure(
+                    code=ConformanceFailureCode.PIN_MISMATCH,
+                    clause_id=clause.clause_id,
+                    rule_id=rule.rule_id,
+                    message="live derivation evaluator differs from its reviewed registry pin",
+                )
+            )
+
+    try:
+        _adequacy_pin(bundle)
+    except Exception:
+        failures.append(
+            ConformanceFailure(
+                code=ConformanceFailureCode.PIN_MISMATCH,
+                clause_id="DT-E-INTERFERENCE-ESTIMAND",
+                rule_id="V8-E-INTERFERENCE",
+                message="live adequacy evaluator differs from its reviewed registry pin",
+            )
+        )
+    return tuple(failures)
+
+
 def verify_runtime_bundle(bundle: ConformanceBundle) -> ConformanceReport:
     """Verify both cross-asset conformance and the bytes represented by each pin."""
 
     report = evaluate_conformance(bundle)
-    failures = (*report.failures, *_checksum_failures(bundle))
+    failures = (
+        *report.failures,
+        *_checksum_failures(bundle),
+        *_evaluator_pin_failures(bundle),
+    )
     return report.model_copy(update={"passed": not failures, "failures": failures})
 
 
 def require_reviewed_evaluator_bundle(bundle: ConformanceBundle) -> None:
     """Reject unregistered contract/registry successors before any runtime manifest exists."""
 
-    if not _reviewed_bundle_identity(bundle):
+    if not _reviewed_bundle_identity(bundle) or _evaluator_pin_failures(bundle):
         raise V8EvaluatorReviewRequired()
 
 
 def _rule_pins(bundle: ConformanceBundle) -> tuple[ImplementationRulePin, ...]:
     clauses = {clause.clause_id: clause for clause in bundle.theory.clauses}
+    dependency_checksum = _derivation_dependency_checksum()
     pins: list[ImplementationRulePin] = []
     for rule in bundle.rulebook.rules:
         clause = clauses[rule.theory_clause_id]
-        artifact = _reviewed_derivation_artifact(bundle, clause, rule)
+        artifact = _reviewed_derivation_artifact(
+            bundle,
+            clause,
+            rule,
+            dependency_checksum=dependency_checksum,
+        )
         pins.append(
             ImplementationRulePin(
                 theory_id=bundle.theory.theory_id,
@@ -522,8 +634,13 @@ def build_execution_manifest(
 ) -> V8ExecutionManifest:
     """Create the immutable join record for the exact verified execution bytes."""
 
-    rule_pins = _rule_pins(bundle)
-    adequacy_pin = _adequacy_pin(bundle)
+    try:
+        rule_pins = _rule_pins(bundle)
+        adequacy_pin = _adequacy_pin(bundle)
+    except V8EvaluatorReviewRequired:
+        raise
+    except Exception as exc:
+        raise V8EvaluatorReviewRequired() from exc
     manifest_id = stable_id(
         "v8-execution-manifest",
         bundle.theory.declared_checksum,
