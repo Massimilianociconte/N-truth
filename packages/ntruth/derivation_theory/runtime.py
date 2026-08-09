@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import inspect
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from types import CodeType
+from typing import Any, cast
 
 from pydantic import BaseModel, Field, JsonValue, field_validator, model_validator
 
@@ -62,6 +63,18 @@ from ntruth.schemas.query import InferentialQuery
 from ntruth.schemas.support import EvidenceBasis, ScientificReviewRequirement, SupportDescriptor
 
 CLAIM_STATE_REVIEW_ISSUE_ID = "SRR-V8-023"
+
+_PYDANTIC_CALLABLE_DECORATOR_GROUPS = (
+    "validators",
+    "field_validators",
+    "root_validators",
+    "field_serializers",
+    "model_serializers",
+    "model_validators",
+    "computed_fields",
+)
+_MAX_REVIEWED_CALLABLES = 256
+_MAX_REVIEWED_CALLABLE_BINDINGS = 1024
 
 _REVIEWED_THEORY_ID = "ntruth-derivation-theory"
 _REVIEWED_THEORY_VERSION = "0.1.0"
@@ -172,22 +185,211 @@ def _derivation_dependencies() -> tuple[
     return executable_dependencies, contract_dependencies
 
 
-def _callable_runtime_token(value: object) -> tuple[int, int]:
-    return (id(value), id(getattr(value, "__code__", None)))
+def _callable_runtime_identities(value: object) -> tuple[object, ...]:
+    identities: list[object] = [
+        value,
+        getattr(value, "__code__", None),
+        getattr(value, "__defaults__", None),
+        getattr(value, "__kwdefaults__", None),
+    ]
+    keyword_defaults = getattr(value, "__kwdefaults__", None)
+    if type(keyword_defaults) is dict:
+        for name in sorted(keyword_defaults):
+            identities.extend((name, keyword_defaults[name]))
+    closure = getattr(value, "__closure__", None)
+    identities.append(closure)
+    if type(closure) is tuple:
+        identities.extend(cell.cell_contents for cell in closure)
+    return tuple(identities)
 
 
-def _schema_runtime_token(model: type[BaseModel]) -> tuple[int, ...]:
+def _reviewed_constant_payload(value: object) -> object:
+    value_type = type(value)
+    if value is None or value is Ellipsis:
+        return {"type": "none" if value is None else "ellipsis"}
+    if value_type is bool:
+        return {"type": "bool", "value": value}
+    if value_type is int:
+        return {"type": "int", "value": str(value)}
+    if value_type is float:
+        return {"type": "float", "value": cast(float, value).hex()}
+    if value_type is complex:
+        complex_value = cast(complex, value)
+        return {
+            "type": "complex",
+            "real": complex_value.real.hex(),
+            "imag": complex_value.imag.hex(),
+        }
+    if value_type is str:
+        return {"type": "str", "value": value}
+    if value_type is bytes:
+        return {"type": "bytes", "value": cast(bytes, value).hex()}
+    if value_type is tuple:
+        tuple_value = cast(tuple[object, ...], value)
+        return {
+            "type": "tuple",
+            "items": [_reviewed_constant_payload(item) for item in tuple_value],
+        }
+    if value_type is frozenset:
+        frozenset_value = cast(frozenset[object], value)
+        items = [_reviewed_constant_payload(item) for item in frozenset_value]
+        return {
+            "type": "frozenset",
+            "items": sorted(items, key=canonical_checksum),
+        }
+    if value_type is slice:
+        slice_value = cast(slice, value)
+        return {
+            "type": "slice",
+            "start": _reviewed_constant_payload(slice_value.start),
+            "stop": _reviewed_constant_payload(slice_value.stop),
+            "step": _reviewed_constant_payload(slice_value.step),
+        }
+    if value_type is dict:
+        dict_value = cast(dict[object, object], value)
+        if any(type(key) is not str for key in dict_value):
+            raise TypeError("reviewed callable dictionaries require exact string keys")
+        string_dict = cast(dict[str, object], dict_value)
+        return {
+            "type": "dict",
+            "items": {
+                key: _reviewed_constant_payload(string_dict[key])
+                for key in sorted(string_dict)
+            },
+        }
+    if value_type is CodeType:
+        return {"type": "code", "value": _reviewed_code_payload(cast(CodeType, value))}
+    raise TypeError(f"unsupported reviewed callable constant: {value_type.__name__}")
+
+
+def _reviewed_code_payload(code: CodeType) -> dict[str, object]:
+    return {
+        "argcount": code.co_argcount,
+        "posonlyargcount": code.co_posonlyargcount,
+        "kwonlyargcount": code.co_kwonlyargcount,
+        "nlocals": code.co_nlocals,
+        "stacksize": code.co_stacksize,
+        "flags": code.co_flags,
+        "code": code.co_code.hex(),
+        "constants": [_reviewed_constant_payload(item) for item in code.co_consts],
+        "names": list(code.co_names),
+        "varnames": list(code.co_varnames),
+        "freevars": list(code.co_freevars),
+        "cellvars": list(code.co_cellvars),
+        "exception_table": code.co_exceptiontable.hex(),
+    }
+
+
+def _callable_semantic_checksum(function: Any) -> str:
+    closure = function.__closure__
+    return canonical_checksum(
+        {
+            "code": _reviewed_code_payload(function.__code__),
+            "defaults": _reviewed_constant_payload(function.__defaults__),
+            "kwdefaults": _reviewed_constant_payload(function.__kwdefaults__),
+            "closure": _reviewed_constant_payload(
+                tuple(cell.cell_contents for cell in closure) if closure is not None else None
+            ),
+        }
+    )
+
+
+def _unwrapped_function(value: object) -> object:
+    return getattr(value, "__func__", value)
+
+
+def _model_review_callables(
+    model: type[BaseModel],
+) -> tuple[tuple[str, object], ...]:
+    decorators = model.__pydantic_decorators__
+    dependencies: list[tuple[str, object]] = []
+    for group_name in _PYDANTIC_CALLABLE_DECORATOR_GROUPS:
+        group = getattr(decorators, group_name)
+        if type(group) is not dict:
+            raise TypeError("Pydantic decorator registry must remain an exact dict")
+        for decorator_name in sorted(group):
+            function = _unwrapped_function(group[decorator_name].func)
+            if not inspect.isfunction(function):
+                raise TypeError("reviewed Pydantic callables must remain Python functions")
+            dependencies.append(
+                (
+                    (
+                        f"model:{model.__module__}.{model.__qualname__}:"
+                        f"{group_name}:{decorator_name}"
+                    ),
+                    function,
+                )
+            )
+    return tuple(dependencies)
+
+
+def _reviewed_callable_closure(
+    executable_dependencies: dict[str, Any],
+    contract_dependencies: dict[str, type[BaseModel]],
+) -> tuple[tuple[str, Any], ...]:
+    """Resolve the bounded live callable-global graph used by reviewed execution."""
+
+    pending: list[tuple[str, object]] = [
+        (f"executable:{name}", _unwrapped_function(dependency))
+        for name, dependency in sorted(executable_dependencies.items())
+    ]
+    reviewed_models: dict[str, type[BaseModel]] = {
+        **contract_dependencies,
+        "knowledge_value": KnowledgeValue,
+        "knowledge_value_json": KnowledgeValue[JsonValue],
+    }
+    for name, model in sorted(reviewed_models.items()):
+        pending.extend(
+            (f"{name}:{binding}", function)
+            for binding, function in _model_review_callables(model)
+        )
+
+    dependencies: list[tuple[str, Any]] = []
+    expanded: set[int] = set()
+    while pending:
+        binding, candidate = pending.pop(0)
+        function = _unwrapped_function(candidate)
+        if not inspect.isfunction(function):
+            raise TypeError("reviewed executable dependencies must remain Python functions")
+        dependencies.append((binding, function))
+        if len(dependencies) > _MAX_REVIEWED_CALLABLE_BINDINGS:
+            raise ValueError("reviewed callable binding closure exceeds its fixed bound")
+
+        marker = id(function)
+        if marker in expanded:
+            continue
+        expanded.add(marker)
+        if len(expanded) > _MAX_REVIEWED_CALLABLES:
+            raise ValueError("reviewed callable closure exceeds its fixed bound")
+
+        global_values = function.__globals__
+        if type(global_values) is not dict:
+            raise TypeError("reviewed callable globals must remain an exact dict")
+        for global_name in sorted(set(function.__code__.co_names)):
+            referenced = _unwrapped_function(global_values.get(global_name))
+            if inspect.isfunction(referenced):
+                pending.append((f"{binding}->{global_name}", referenced))
+    return tuple(sorted(dependencies, key=lambda item: item[0]))
+
+
+def _schema_runtime_identities(model: type[BaseModel]) -> tuple[object, ...]:
     descriptor = inspect.getattr_static(model, "model_json_schema")
     function = getattr(descriptor, "__func__", descriptor)
     return (
-        id(model),
-        id(descriptor),
-        *_callable_runtime_token(function),
-        id(getattr(model, "__pydantic_core_schema__", None)),
-        id(getattr(model, "__pydantic_validator__", None)),
-        id(getattr(model, "__pydantic_serializer__", None)),
-        id(getattr(model, "__pydantic_fields__", None)),
+        model,
+        descriptor,
+        *_callable_runtime_identities(function),
+        getattr(model, "__pydantic_core_schema__", None),
+        getattr(model, "__pydantic_validator__", None),
+        getattr(model, "__pydantic_serializer__", None),
+        getattr(model, "__pydantic_fields__", None),
     )
+
+
+@dataclass(frozen=True)
+class _RuntimeCacheToken:
+    addresses: tuple[int, ...]
+    identities: tuple[object, ...] = field(compare=False, hash=False, repr=False)
 
 
 def _derivation_dependency_checksum() -> str:
@@ -195,20 +397,31 @@ def _derivation_dependency_checksum() -> str:
 
     executable_dependencies, contract_dependencies = _derivation_dependencies()
     try:
-        cache_token = (
-            *_callable_runtime_token(inspect.getsource),
+        callable_dependencies = _reviewed_callable_closure(
+            executable_dependencies,
+            contract_dependencies,
+        )
+        runtime_identities = (
+            *_callable_runtime_identities(inspect.getsource),
             *(
-                token
-                for dependency in executable_dependencies.values()
-                for token in _callable_runtime_token(dependency)
+                identity
+                for _binding, dependency in callable_dependencies
+                for identity in _callable_runtime_identities(dependency)
             ),
             *(
-                token
+                identity
                 for dependency in contract_dependencies.values()
-                for token in _schema_runtime_token(dependency)
+                for identity in _schema_runtime_identities(dependency)
             ),
-            *_schema_runtime_token(KnowledgeValue),
-            *_schema_runtime_token(KnowledgeValue[JsonValue]),
+            *_schema_runtime_identities(KnowledgeValue),
+            *_schema_runtime_identities(KnowledgeValue[JsonValue]),
+        )
+        cache_token = _RuntimeCacheToken(
+            addresses=(
+                len(callable_dependencies),
+                *(id(identity) for identity in runtime_identities),
+            ),
+            identities=runtime_identities,
         )
     except Exception as exc:
         raise V8EvaluatorReviewRequired() from exc
@@ -216,13 +429,27 @@ def _derivation_dependency_checksum() -> str:
 
 
 @lru_cache(maxsize=16)
-def _cached_derivation_dependency_checksum(cache_token: tuple[int, ...]) -> str:
+def _cached_derivation_dependency_checksum(cache_token: _RuntimeCacheToken) -> str:
     """Hash one dependency closure after its complete live identity was addressed."""
 
     del cache_token
     executable_dependencies, contract_dependencies = _derivation_dependencies()
 
     try:
+        callable_dependencies = _reviewed_callable_closure(
+            executable_dependencies,
+            contract_dependencies,
+        )
+        callable_sources = tuple(
+            {
+                "binding": binding,
+                "module": dependency.__module__,
+                "qualname": dependency.__qualname__,
+                "source": inspect.getsource(dependency),
+                "semantic_code_checksum": _callable_semantic_checksum(dependency),
+            }
+            for binding, dependency in callable_dependencies
+        )
         executable_sources = {
             name: inspect.getsource(dependency)
             for name, dependency in executable_dependencies.items()
@@ -251,8 +478,9 @@ def _cached_derivation_dependency_checksum(cache_token: tuple[int, ...]) -> str:
 
     return canonical_checksum(
         {
-            "manifest_version": "ntruth-v8-derivation-dependency-closure-1",
+            "manifest_version": "ntruth-v8-derivation-dependency-closure-2",
             "executables": executable_sources,
+            "callable_global_closure": callable_sources,
             "contract_sources": contract_sources,
             "contract_schemas": contract_schemas,
             "dependency_modules": dependency_modules,
@@ -465,7 +693,26 @@ def rule_content_checksum(rule: V8ConformanceRule) -> str:
     return canonical_checksum(rule.model_dump(mode="json", exclude_unset=True))
 
 
-def _checksum_failures(bundle: ConformanceBundle) -> tuple[ConformanceFailure, ...]:
+@dataclass(frozen=True)
+class _RuntimeFailureCheck:
+    failures: tuple[ConformanceFailure, ...]
+    error: Exception | None = None
+
+
+@dataclass(frozen=True)
+class _RuntimeBundlePreflight:
+    report: ConformanceReport
+    error: Exception | None = None
+
+
+def _ordinary_review_cause(error: Exception) -> Exception | None:
+    if isinstance(error, V8EvaluatorReviewRequired):
+        cause = error.__cause__
+        return cause if isinstance(cause, Exception) else None
+    return error
+
+
+def _checksum_check(bundle: ConformanceBundle) -> _RuntimeFailureCheck:
     assets = (
         ("Theory", bundle.theory, bundle.theory.declared_checksum),
         ("Rulebook", bundle.rulebook, bundle.rulebook.declared_checksum),
@@ -483,8 +730,14 @@ def _checksum_failures(bundle: ConformanceBundle) -> tuple[ConformanceFailure, .
         ),
     )
     failures: list[ConformanceFailure] = []
+    first_error: Exception | None = None
     for label, asset, declared in assets:
-        actual = _asset_content_checksum(asset)
+        try:
+            actual = _asset_content_checksum(asset)
+        except Exception as error:
+            actual = None
+            if first_error is None:
+                first_error = error
         if actual != declared:
             failures.append(
                 ConformanceFailure(
@@ -492,16 +745,18 @@ def _checksum_failures(bundle: ConformanceBundle) -> tuple[ConformanceFailure, .
                     message=f"{label} content checksum differs from its immutable declaration",
                 )
             )
-    return tuple(failures)
+    return _RuntimeFailureCheck(tuple(failures), first_error)
 
 
-def _evaluator_pin_failures(bundle: ConformanceBundle) -> tuple[ConformanceFailure, ...]:
+def _evaluator_pin_check(bundle: ConformanceBundle) -> _RuntimeFailureCheck:
     """Resolve every live evaluator against the external reviewed registry pins."""
 
+    first_error: Exception | None = None
     try:
         dependency_checksum = _derivation_dependency_checksum()
-    except Exception:
+    except Exception as error:
         dependency_checksum = None
+        first_error = _ordinary_review_cause(error)
 
     clauses = {clause.clause_id: clause for clause in bundle.theory.clauses}
     failures: list[ConformanceFailure] = []
@@ -526,7 +781,9 @@ def _evaluator_pin_failures(bundle: ConformanceBundle) -> tuple[ConformanceFailu
                 rule,
                 dependency_checksum=dependency_checksum,
             )
-        except Exception:
+        except Exception as error:
+            if first_error is None:
+                first_error = _ordinary_review_cause(error)
             failures.append(
                 ConformanceFailure(
                     code=ConformanceFailureCode.PIN_MISMATCH,
@@ -538,7 +795,9 @@ def _evaluator_pin_failures(bundle: ConformanceBundle) -> tuple[ConformanceFailu
 
     try:
         _adequacy_pin(bundle)
-    except Exception:
+    except Exception as error:
+        if first_error is None:
+            first_error = _ordinary_review_cause(error)
         failures.append(
             ConformanceFailure(
                 code=ConformanceFailureCode.PIN_MISMATCH,
@@ -547,26 +806,41 @@ def _evaluator_pin_failures(bundle: ConformanceBundle) -> tuple[ConformanceFailu
                 message="live adequacy evaluator differs from its reviewed registry pin",
             )
         )
-    return tuple(failures)
+    return _RuntimeFailureCheck(tuple(failures), first_error)
+
+
+def _fresh_runtime_preflight(bundle: ConformanceBundle) -> _RuntimeBundlePreflight:
+    """Recompute cross-asset, checksum, and live evaluator closure in one pass."""
+
+    try:
+        report = evaluate_conformance(bundle)
+    except Exception as error:
+        raise V8EvaluatorReviewRequired() from error
+    checksum_check = _checksum_check(bundle)
+    evaluator_check = _evaluator_pin_check(bundle)
+    failures = (
+        *report.failures,
+        *checksum_check.failures,
+        *evaluator_check.failures,
+    )
+    return _RuntimeBundlePreflight(
+        report=report.model_copy(update={"passed": not failures, "failures": failures}),
+        error=checksum_check.error or evaluator_check.error,
+    )
 
 
 def verify_runtime_bundle(bundle: ConformanceBundle) -> ConformanceReport:
     """Verify both cross-asset conformance and the bytes represented by each pin."""
 
-    report = evaluate_conformance(bundle)
-    failures = (
-        *report.failures,
-        *_checksum_failures(bundle),
-        *_evaluator_pin_failures(bundle),
-    )
-    return report.model_copy(update={"passed": not failures, "failures": failures})
+    return _fresh_runtime_preflight(bundle).report
 
 
 def require_reviewed_evaluator_bundle(bundle: ConformanceBundle) -> None:
     """Reject unregistered contract/registry successors before any runtime manifest exists."""
 
-    if not _reviewed_bundle_identity(bundle) or _evaluator_pin_failures(bundle):
-        raise V8EvaluatorReviewRequired()
+    preflight = _fresh_runtime_preflight(bundle)
+    if not _reviewed_bundle_identity(bundle) or not preflight.report.passed:
+        raise V8EvaluatorReviewRequired() from preflight.error
 
 
 def _rule_pins(bundle: ConformanceBundle) -> tuple[ImplementationRulePin, ...]:
@@ -634,6 +908,10 @@ def build_execution_manifest(
 ) -> V8ExecutionManifest:
     """Create the immutable join record for the exact verified execution bytes."""
 
+    del conformance
+    preflight = _fresh_runtime_preflight(bundle)
+    if not _reviewed_bundle_identity(bundle) or not preflight.report.passed:
+        raise V8EvaluatorReviewRequired() from preflight.error
     try:
         rule_pins = _rule_pins(bundle)
         adequacy_pin = _adequacy_pin(bundle)
@@ -675,7 +953,7 @@ def build_execution_manifest(
         evaluator_registry_checksum=bundle.evaluator_registry.declared_checksum,
         implementation_rules=rule_pins,
         adequacy_evaluator=adequacy_pin,
-        release_blocker_issue_ids=conformance.release_blocker_issue_ids,
+        release_blocker_issue_ids=preflight.report.release_blocker_issue_ids,
     )
 
 

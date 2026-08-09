@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ntruth.conformance.harness import ConformanceFailureCode
 from ntruth.derivation_theory.contracts import ConformanceBundle
 from ntruth.derivation_theory.runtime import (
     V8DerivationInput,
@@ -102,9 +103,14 @@ def run_v8_pipeline(
         )
     except ExactRuntimeTreeError as error:
         raise V8PipelineVerificationError(_runtime_tree_failure()) from error
-    require_reviewed_evaluator_bundle(conformance_bundle)
     conformance = verify_runtime_bundle(conformance_bundle)
     if not conformance.passed:
+        if any(
+            failure.code is not ConformanceFailureCode.PIN_MISMATCH
+            for failure in conformance.failures
+        ):
+            raise V8PipelineConformanceError(conformance)
+        require_reviewed_evaluator_bundle(conformance_bundle)
         raise V8PipelineConformanceError(conformance)
     manifest = build_execution_manifest(conformance_bundle, conformance)
     fact_verification = verify_v8_pipeline_request(
