@@ -298,8 +298,11 @@ export type ScientificKnowledgeState =
 export interface KnowledgeValue<T = unknown> {
   knowledge_state: ScientificKnowledgeState;
   value?: T | null;
+  conflicting_values?: unknown[];
   rationale?: string | null;
   evidence_ids?: string[];
+  source_scope_ids?: string[];
+  claim_scope_id?: string | null;
   query_scope_id?: string | null;
 }
 
@@ -418,22 +421,141 @@ export interface AnalysisResponse {
 }
 
 export interface QuickDesignV8Submission {
+  schema_version: "8.0.0";
   pipeline_request: Record<string, unknown>;
-  planned_sources: unknown[];
-  planned_event_registry?: Record<string, unknown>;
-  planned_unit_counts?: unknown[];
-  sample_sheet_csv?: string;
-  methods_draft?: string;
-  id_convention?: string;
-  user_confirmation_scopes?: string[];
-  ai_candidates?: KnowledgeValue<unknown[]>;
-  human_confirmations?: KnowledgeValue<unknown[]>;
-  conflicts?: KnowledgeValue<Array<Record<string, unknown>>>;
-  sensitivities?: KnowledgeValue<unknown[]>;
-  questions?: unknown[];
-  statistical_handoff?: StatisticalHandoffV8;
-  inference_limits?: string[];
-  [field: string]: unknown;
+  input_ledger: Record<string, unknown>;
+  planned_event_registry: Record<string, unknown>;
+  planned_unit_counts: Array<Record<string, unknown>>;
+  sample_sheet_csv: string;
+  methods_draft: string;
+  id_convention: string;
+  user_confirmation_scopes: string[];
+  ai_candidates: KnowledgeValue<unknown[]>;
+  conflicts: KnowledgeValue<Array<Record<string, unknown>>>;
+  sensitivities: KnowledgeValue<Array<Record<string, unknown>>>;
+  questions: ReportQuestionV8[];
+  statistical_handoff: StatisticalHandoffV8;
+  inference_limits: string[];
+}
+
+export interface ProspectiveArtifactV8 {
+  schema_version: "8.0.0";
+  artifact_id: string;
+  kind: "SAMPLE_SHEET" | "METHODS_DRAFT" | "ID_CONVENTION";
+  media_type: string;
+  content: string;
+  content_checksum: string;
+}
+
+export type GuidedAnswerStatus = "PROVIDED" | "NOT_AVAILABLE";
+
+export interface GuidedTextAnswer {
+  status: GuidedAnswerStatus;
+  value?: string;
+  rationale?: string;
+}
+
+export interface GuidedIdSetAnswer {
+  status: GuidedAnswerStatus;
+  values?: string[];
+  rationale?: string;
+}
+
+export interface GuidedQuickDesignDraft {
+  template_id: "simple_cell_culture";
+  block_title: string;
+  source_description: GuidedTextAnswer;
+  preparation_description: GuidedTextAnswer;
+  biological_source_unit_type: GuidedTextAnswer;
+  candidate_unit_type: GuidedTextAnswer;
+  factor_id: string;
+  factor_levels: string[];
+  contrast_id: string;
+  endpoint_id: string;
+  timepoint_id: string;
+  estimand: string;
+  population_scope: string;
+  inference_level: string;
+  assignment_unit_type: GuidedTextAnswer;
+  assignment_unit_ids: GuidedIdSetAnswer;
+  application_unit_type: GuidedTextAnswer;
+  application_unit_ids: GuidedIdSetAnswer;
+  intervention_id: GuidedTextAnswer;
+  effective_exposure_unit_type: GuidedTextAnswer;
+  exposed_unit_ids: GuidedIdSetAnswer;
+  exposure_pathway: GuidedTextAnswer;
+  exposure_container: GuidedTextAnswer;
+  interference: { status: "UNKNOWN" | "POSSIBLE"; rationale: string };
+  assignment_to_application_timing:
+    | { status: "PROVIDED"; relation: "BEFORE" | "AFTER" | "SAME_EVENT" | "OVERLAPS" }
+    | { status: "NOT_AVAILABLE"; rationale: string };
+  planned_unit_type: GuidedTextAnswer;
+  planned_groups: Array<{
+    group_id: string;
+    cohort_id: GuidedTextAnswer;
+    factor_level: string;
+    planned_count: number;
+  }>;
+}
+
+export interface GuidedTheoryQuestionV8 {
+  question_id: string;
+  predicate_id: string;
+  theory_clause_ids: string[];
+  required_predicate_rationales: string[];
+  known_gap_rationales: string[];
+  text: string;
+  priority_state: "UNREVIEWED";
+  priority_review: {
+    issue_id: string;
+    status: "SCIENTIFIC_REVIEW_REQUIRED";
+    rationale: string;
+  };
+  evidence_required: KnowledgeValue<string[]>;
+}
+
+export interface GuidedQuickDesignBuildResponse {
+  schema_version: "8.0.0";
+  contract_code: "NTRUTH_QUICK_DESIGN_GUIDED_V8";
+  contract_version: "8.0.0";
+  action: "PREVIEW" | "CONFIRM";
+  state: "REVIEW_REQUIRED" | "BUILT";
+  preview_checksum: string;
+  summary: {
+    experiment_block_id: string;
+    inferential_query_id: string;
+    provided_field_ids: string[];
+    unknown_field_ids: string[];
+    planned_group_count: number;
+    planned_unit_total: number;
+    known_profile_gaps: string[];
+    scenario_coverage_status: "NON_EXHAUSTIVE";
+    strategy_module_status: "HANDOFF_ONLY";
+  };
+  visible_questions: GuidedTheoryQuestionV8[];
+  question_queue: GuidedTheoryQuestionV8[];
+  artifact_previews: ProspectiveArtifactV8[];
+  review_snapshot: {
+    schema_version: "8.0.0";
+    draft: GuidedQuickDesignDraft;
+    conformance_bundle_payload: Record<string, unknown>;
+    is_execution_capability: false;
+  };
+  submission_audit_snapshot: KnowledgeValue<QuickDesignV8Submission>;
+  submission_is_execution_capability: false;
+  canonical_result: KnowledgeValue<QuickDesignV8Response>;
+  confirmed_snapshot_checksum: KnowledgeValue<string>;
+}
+
+export interface GuidedQuickDesignBuildRequest {
+  action: "PREVIEW" | "CONFIRM";
+  draft: GuidedQuickDesignDraft;
+  confirmation?: {
+    preview_checksum: string;
+    review_focus_predicate_id: string;
+    actor_role: string;
+    confirmed_at: string;
+  };
 }
 
 export interface DerivedClaimV8 {
@@ -448,8 +570,14 @@ export interface DerivedClaimV8 {
     [field: string]: unknown;
   };
   proof_trace: Array<{
+    step_id: string;
     theory_clause_id: string;
     rule_id: string;
+    predicate_references: Array<{
+      predicate_id: string;
+      predicate_value: KnowledgeValue;
+    }>;
+    input_record_references: Array<Record<string, unknown>>;
     [field: string]: unknown;
   }>;
   required_predicates: string[];
@@ -487,6 +615,14 @@ export interface StatisticalHandoffV8 {
   }>;
 }
 
+export interface ReportQuestionV8 {
+  question_id: string;
+  inferential_query_id: string;
+  text: string;
+  evidence_required: string[];
+  primary: boolean;
+}
+
 export interface ReportBundleV8 {
   report_id: string;
   content_checksum: string;
@@ -510,11 +646,21 @@ export interface ReportBundleV8 {
     source_id: string;
     evidence_type: string;
     locator: string;
+    original_text: string;
     [field: string]: unknown;
   }>;
   query_sections: Array<{
     inferential_query: { id: string; profile_id: string; [field: string]: unknown };
     claim_set: DerivedClaimSetV8;
+    adequacy_evaluations: DesignAdequacyEvaluationV8[];
+    count_record_ids: string[];
+    scenario_coverages: Array<Record<string, unknown>>;
+    profile_coverage: Record<string, unknown>;
+    ai_candidates: KnowledgeValue<Array<Record<string, unknown>>>;
+    human_confirmations: KnowledgeValue<Array<Record<string, unknown>>>;
+    conflicts: KnowledgeValue<Array<Record<string, unknown>>>;
+    sensitivities: KnowledgeValue<Array<Record<string, unknown>>>;
+    questions: ReportQuestionV8[];
     [field: string]: unknown;
   }>;
   claim_sets: DerivedClaimSetV8[];
@@ -550,13 +696,7 @@ export interface ReportBundleV8 {
     contract_review: { issue_id: string; status: string; rationale: string };
     [field: string]: unknown;
   };
-  questions: Array<{
-    question_id: string;
-    inferential_query_id: string;
-    text: string;
-    evidence_required: string[];
-    primary: boolean;
-  }>;
+  questions: ReportQuestionV8[];
   sensitivities: KnowledgeValue<Array<Record<string, unknown>>>;
   human_confirmations: KnowledgeValue<Array<Record<string, unknown>>>;
   conflicts: KnowledgeValue<Array<Record<string, unknown>>>;
@@ -585,6 +725,7 @@ export interface ReportBundleV8 {
 export interface QuickDesignV8Response {
   planned_design: { plan_id: string; [field: string]: unknown };
   report: ReportBundleV8;
+  artifacts: ProspectiveArtifactV8[];
   contract: {
     code: "PRD_V8";
     version: string;

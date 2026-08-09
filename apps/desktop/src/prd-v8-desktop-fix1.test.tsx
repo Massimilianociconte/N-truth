@@ -1,9 +1,10 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { App } from "./App";
+import { App, ReportBundleV8View } from "./App";
 import { DEMO_REPORT } from "./data/demo";
 import canonicalFixture from "./test-fixtures/quick-design-v8-canonical.json";
+import type { QuickDesignV8Response } from "./types";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -12,7 +13,6 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-const V8_SUBMISSION = canonicalFixture.submission;
 const V8_RESPONSE = canonicalFixture.response;
 
 function privacyAudit() {
@@ -43,31 +43,15 @@ function shareReadiness() {
 }
 
 describe("PRD v8 desktop canonical consumer and v7 boundary", () => {
-  it("posts QuickDesignV8Submission JSON only to /v8/quick-design and renders the canonical bundle", async () => {
-    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
-      const url = String(input);
-      if (url.includes("/v1/health")) return jsonResponse({ status: "ok", version: "test" });
-      if (url === "/v8/quick-design") return jsonResponse(V8_RESPONSE);
-      throw new Error(`unexpected request: ${url}`);
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    render(<App />);
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    fireEvent.click(screen.getByRole("button", { name: "Importa fonti" }));
-    fireEvent.change(
-      screen.getByRole("textbox", { name: "QuickDesignV8Submission JSON" }),
-      { target: { value: JSON.stringify(V8_SUBMISSION) } },
+  it("renders every canonical ReportBundle axis without a legacy adapter", () => {
+    render(
+      <ReportBundleV8View
+        result={V8_RESPONSE as unknown as QuickDesignV8Response}
+        language="it"
+      />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Compila Quick Design v8" }));
 
-    expect(await screen.findByRole("heading", { name: "ReportBundle v8" })).toBeInTheDocument();
-    const urls = fetchMock.mock.calls.map(([input]) => String(input));
-    expect(urls).toContain("/v8/quick-design");
-    expect(urls).not.toContain("/v7/analyze");
-    expect(urls).not.toContain("/v1/analyze");
-    const v8Call = fetchMock.mock.calls.find(([input]) => String(input) === "/v8/quick-design");
-    expect(JSON.parse(String(v8Call?.[1]?.body))).toEqual(V8_SUBMISSION);
+    expect(screen.getByRole("heading", { name: "ReportBundle v8" })).toBeInTheDocument();
 
     const canonicalReport = V8_RESPONSE.report;
     const claimSet = canonicalReport.claim_sets[0];

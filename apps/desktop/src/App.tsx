@@ -34,6 +34,7 @@ import {
   type FormEvent,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -48,10 +49,13 @@ import {
   health,
   navigateCorrection,
   preflight,
-  quickDesignV8,
   type InferenceTargetDraft,
 } from "./api";
 import { DEMO_REPORT } from "./data/demo";
+import {
+  downloadProspectiveArtifact,
+  QuickDesignWizard,
+} from "./QuickDesignWizard";
 import type {
   Alert,
   AnalysisResponse,
@@ -65,7 +69,6 @@ import type {
   KnowledgeValue,
   PrivacyAudit,
   QuickDesignV8Response,
-  QuickDesignV8Submission,
   Report,
   Severity,
   ShareReadiness,
@@ -221,6 +224,7 @@ export function App() {
   const [uiLanguage, setUiLanguage] = useState<"it" | "en">("it");
   const [apiState, setApiState] = useState<"checking" | "online" | "offline">("checking");
   const [showImport, setShowImport] = useState(false);
+  const importButtonRef = useRef<HTMLButtonElement>(null);
   const [sessionId, setSessionId] = useState<string>();
   const [artifacts, setArtifacts] = useState<Record<string, string>>({});
   const [audit, setAudit] = useState<Record<string, AuditEntry[]>>({});
@@ -769,8 +773,20 @@ export function App() {
   const onQuickDesign = (response: QuickDesignV8Response) => {
     setQuickDesignResult(response);
     setIsDemo(false);
+    setSessionId(undefined);
+    setArtifacts({});
+    setPrivacyAudit(undefined);
+    setShareReadiness(undefined);
+    setAudit({});
+    setCorrectionState({});
+    setCandidateExports({});
     setShowImport(false);
     setNotice(`PRD v8 ReportBundle ${response.report.report_id} compilato.`);
+  };
+
+  const closeImport = () => {
+    setShowImport(false);
+    window.setTimeout(() => importButtonRef.current?.focus(), 0);
   };
 
   const reviewed = report.blocks.filter((item) => item.corrections.length > 0).length;
@@ -820,7 +836,11 @@ export function App() {
           <div className="project-title">
             <BookOpen size={20} />
             <div>
-              <strong>{report.project_name}</strong>
+              <strong>
+                {quickDesignResult
+                  ? `Quick Design · ${quickDesignResult.report.report_id}`
+                  : report.project_name}
+              </strong>
               {isDemo && <span className="demo-label">{uiLanguage === "it" ? "Demo storica · dati sintetici" : "Historical demo · synthetic data"}</span>}
             </div>
           </div>
@@ -833,7 +853,11 @@ export function App() {
             >
               <Languages size={17} />{uiLanguage.toUpperCase()}
             </button>
-            <button className="button secondary" onClick={() => setShowImport(true)}>
+            <button
+              ref={importButtonRef}
+              className="button secondary"
+              onClick={() => setShowImport(true)}
+            >
               <Upload size={18} /> {uiLanguage === "it" ? "Importa fonti" : "Import sources"}
             </button>
           </div>
@@ -1129,7 +1153,7 @@ export function App() {
         <ImportDialog
           apiState={apiState}
           uiLanguage={uiLanguage}
-          onClose={() => setShowImport(false)}
+          onClose={closeImport}
           onAnalysis={onAnalysis}
           onQuickDesign={onQuickDesign}
         />
@@ -1160,7 +1184,7 @@ function KnowledgeStateValue({ value }: { value: KnowledgeValue }) {
   );
 }
 
-function ReportBundleV8View({
+export function ReportBundleV8View({
   result,
   language,
 }: {
@@ -1206,6 +1230,17 @@ function ReportBundleV8View({
           <span>{result.contract.code}</span>
           <span>{result.contract.version}</span>
           <span>{report.strategy_module_status}</span>
+          {result.artifacts.map((artifact) => (
+            <button
+              type="button"
+              className="button secondary compact"
+              key={artifact.artifact_id}
+              aria-label={`Scarica artefatto ${artifact.kind}`}
+              onClick={() => downloadProspectiveArtifact(artifact)}
+            >
+              <Download size={14} /> {artifact.kind}
+            </button>
+          ))}
         </div>
       </header>
 
@@ -1226,6 +1261,7 @@ function ReportBundleV8View({
                 <span>{source.source_context}</span>
                 <span>{source.source_class.token}</span>
                 <small>{source.source_class.registry_id}</small>
+                <small>{source.source_version}</small>
               </article>
             ))}
           </div>
@@ -1235,6 +1271,8 @@ function ReportBundleV8View({
               {report.evidence_records.map((evidence) => (
                 <li key={evidence.evidence_id}>
                   <code>{evidence.evidence_id}</code> · {evidence.evidence_type} · {evidence.source_id}
+                  <small>{evidence.locator}</small>
+                  <blockquote>{evidence.original_text}</blockquote>
                 </li>
               ))}
             </ul>
@@ -1253,9 +1291,16 @@ function ReportBundleV8View({
 
         <section className="v8-card v8-span-all" aria-label="Derived claims by inferential query">
           <h2>{labels.claims}</h2>
-          {report.claim_sets.map((claimSet) => (
+          {report.query_sections.map((querySection) => {
+            const claimSet = querySection.claim_set;
+            return (
             <section className="v8-query-section" key={claimSet.claim_set_id}>
-              <h3>{claimSet.inferential_query_id}</h3>
+              <h3>
+                {querySection.inferential_query.id} · {querySection.inferential_query.profile_id}
+              </h3>
+              <small>
+                counts: {querySection.count_record_ids.join(" · ")} · questions: {querySection.questions.length}
+              </small>
               <div className="v8-claim-grid">
                 {claimSet.claims.map((claim) => (
                   <article
@@ -1276,18 +1321,66 @@ function ReportBundleV8View({
                     <details>
                       <summary>Proof trace · {claim.proof_trace.length}</summary>
                       <ul>
-                        {claim.proof_trace.map((step, index) => (
-                          <li key={`${claim.claim_id}-proof-${index}`}>
-                            <code>{step.theory_clause_id}</code> → <code>{step.rule_id}</code>
+                        {claim.proof_trace.map((step) => (
+                          <li key={step.step_id}>
+                            <code>{step.step_id}</code> · <code>{step.theory_clause_id}</code> → <code>{step.rule_id}</code>
+                            <ul>
+                              {step.predicate_references.map((reference) => (
+                                <li key={`${step.step_id}-${reference.predicate_id}`}>
+                                  <code>{reference.predicate_id}</code> · {reference.predicate_value.knowledge_state}
+                                  {reference.predicate_value.evidence_ids?.length
+                                    ? ` · evidence ${reference.predicate_value.evidence_ids.join(" · ")}`
+                                    : ""}
+                                  {reference.predicate_value.value !== null && reference.predicate_value.value !== undefined
+                                    ? ` · ${scientificValueText(reference.predicate_value.value)}`
+                                    : ""}
+                                </li>
+                              ))}
+                              {step.input_record_references.map((reference, referenceIndex) => (
+                                <li key={`${step.step_id}-input-${referenceIndex}`}>
+                                  input: <code>{scientificValueText(reference)}</code>
+                                </li>
+                              ))}
+                            </ul>
                           </li>
                         ))}
                       </ul>
                     </details>
+                    <details>
+                      <summary>Predicate contract</summary>
+                      <strong>Required predicates</strong>
+                      <ul>{claim.required_predicates.map((predicate) => <li key={predicate}><code>{predicate}</code></li>)}</ul>
+                      <strong>Irrelevant predicates</strong>
+                      <ul>
+                        {claim.irrelevant_predicates.map((predicate) => (
+                          <li key={predicate.id}><code>{predicate.id}</code> · {predicate.rationale}</li>
+                        ))}
+                      </ul>
+                      <strong>Assumptions</strong>
+                      <ul>{claim.assumptions.map((assumption) => <li key={assumption}>{assumption}</li>)}</ul>
+                    </details>
                   </article>
                 ))}
               </div>
+              <details>
+                <summary>Query-scoped review records</summary>
+                <dl className="v8-definition-grid">
+                  <div><dt>AI</dt><dd>{querySection.ai_candidates.knowledge_state}</dd></div>
+                  <div><dt>Confirmations</dt><dd>{querySection.human_confirmations.knowledge_state}</dd></div>
+                  <div><dt>Conflicts</dt><dd>{querySection.conflicts.knowledge_state}</dd></div>
+                  <div><dt>Sensitivities</dt><dd>{querySection.sensitivities.knowledge_state}</dd></div>
+                </dl>
+                {[querySection.human_confirmations, querySection.conflicts, querySection.sensitivities]
+                  .filter((value) => value.knowledge_state === "PRESENT")
+                  .map((value, index) => (
+                    <pre key={`${claimSet.claim_set_id}-review-${index}`}>
+                      {JSON.stringify(value.value, null, 2)}
+                    </pre>
+                  ))}
+              </details>
             </section>
-          ))}
+            );
+          })}
         </section>
 
         <section className="v8-card v8-span-all" aria-label="Design adequacy evaluations">
@@ -1349,10 +1442,15 @@ function ReportBundleV8View({
             <div><dt>Conflicts</dt><dd>{report.conflicts.knowledge_state}</dd></div>
             <div><dt>AI candidates</dt><dd>{report.ai_candidates.map((item) => item.knowledge_state).join(" · ")}</dd></div>
           </dl>
+          {[report.sensitivities, report.human_confirmations, report.conflicts]
+            .filter((value) => value.knowledge_state === "PRESENT")
+            .map((value, index) => (
+              <pre key={`global-review-record-${index}`}>{JSON.stringify(value.value, null, 2)}</pre>
+            ))}
           <ul>
             {report.questions.map((question) => (
               <li key={question.question_id}>
-                <strong>{question.primary ? "Primary" : "Review"}</strong> · {question.text}
+                <strong>{question.primary ? "Review focus" : "Review"}</strong> · {question.text}
                 <small>{question.inferential_query_id} · evidence: {question.evidence_required.join(" · ")}</small>
               </li>
             ))}
@@ -2379,7 +2477,7 @@ function ImportDialog({
   onQuickDesign: (result: QuickDesignV8Response) => void;
 }) {
   const [mode, setMode] = useState<"v8" | "v7">("v8");
-  const [quickDesignJson, setQuickDesignJson] = useState("");
+  const dialogRef = useRef<HTMLElement>(null);
   const [source, setSource] = useState("");
   const [out, setOut] = useState("./ntruth-out");
   const [domain, setDomain] = useState("quantitative_microscopy");
@@ -2394,20 +2492,18 @@ function ImportDialog({
     preflight(domain).then(setDomainNotice).catch(() => undefined);
   }, [apiState, domain, mode]);
 
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
+  useEffect(() => {
+    const firstFocusable = dialogRef.current?.querySelector<HTMLElement>(
+      "button, input, select, textarea, [tabindex]:not([tabindex='-1'])",
+    );
+    firstFocusable?.focus();
+  }, []);
+
+  const submit = async (event?: FormEvent) => {
+    event?.preventDefault();
     setError(undefined);
     setBusy(true);
     try {
-      if (mode === "v8") {
-        const parsed = JSON.parse(quickDesignJson) as unknown;
-        if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-          throw new Error("QuickDesignV8Submission deve essere un oggetto JSON.");
-        }
-        const result = await quickDesignV8(parsed as QuickDesignV8Submission);
-        onQuickDesign(result);
-        return;
-      }
       const result = await analyzeV7({
         source: source.trim(),
         out: out.trim(),
@@ -2441,9 +2537,40 @@ function ImportDialog({
     }
   };
 
+  const handleDialogKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onClose();
+      return;
+    }
+    if (event.key !== "Tab" || !dialogRef.current) return;
+    const focusable = Array.from(
+      dialogRef.current.querySelectorAll<HTMLElement>(
+        "button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])",
+      ),
+    ).filter((element) => !element.hasAttribute("hidden"));
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && (document.activeElement === first || !dialogRef.current.contains(document.activeElement))) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+
   return (
     <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <section className="dialog" role="dialog" aria-modal="true" aria-labelledby="import-title">
+      <section
+        ref={dialogRef}
+        className="dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="import-title"
+        onKeyDown={handleDialogKeyDown}
+      >
         <div className="dialog-header">
           <div><span className="eyebrow">{uiLanguage === "it" ? "Nessun upload · elaborazione locale" : "No upload · local processing"}</span><h2 id="import-title">{uiLanguage === "it" ? "Compila o importa" : "Compile or import"}</h2></div>
           <button aria-label={uiLanguage === "it" ? "Chiudi" : "Close"} onClick={onClose}><X size={20} /></button>
@@ -2451,7 +2578,7 @@ function ImportDialog({
         {apiState !== "online" ? (
           <div className="offline-message"><Database size={22} /><div><strong>{uiLanguage === "it" ? "API locale non raggiungibile" : "Local API is unreachable"}</strong><p>{uiLanguage === "it" ? <>Avvia <code>ntruth-api</code>; nel frattempo resta disponibile la demo sintetica.</> : <>Start <code>ntruth-api</code>; the synthetic demo remains available.</>}</p></div></div>
         ) : (
-          <form onSubmit={submit} className="import-form">
+          <div className="import-form">
             <fieldset className="workflow-selector">
               <legend>{uiLanguage === "it" ? "Contratto di elaborazione" : "Processing contract"}</legend>
               <label>
@@ -2476,22 +2603,10 @@ function ImportDialog({
             {mode === "v8" ? (
               <>
                 <div className="canonical-contract-note">
-                  <strong>PRD v8 · /v8/quick-design</strong>
-                  <p>{uiLanguage === "it" ? "Invia un QuickDesignV8Submission strutturato. Non esiste fallback automatico al percorso storico." : "Submit a structured QuickDesignV8Submission. There is no automatic fallback to the historical path."}</p>
+                  <strong>PRD v8 · guided builder · canonical lane atomica</strong>
+                  <p>{uiLanguage === "it" ? "Il PREVIEW è solo revisione. CONFIRM esegue atomicamente il contratto canonico e conserva la submission esclusivamente come snapshot di audit non eseguibile." : "PREVIEW is review-only. CONFIRM atomically executes the canonical contract and retains the submission only as a non-executable audit snapshot."}</p>
                 </div>
-                <label className="field-label">
-                  QuickDesignV8Submission JSON
-                  <textarea
-                    autoFocus
-                    required
-                    rows={12}
-                    aria-label="QuickDesignV8Submission JSON"
-                    value={quickDesignJson}
-                    onChange={(event) => setQuickDesignJson(event.target.value)}
-                    placeholder='{ "schema_version": "8.0.0", "pipeline_request": { ... } }'
-                  />
-                  <small>{uiLanguage === "it" ? "Il backend valida integralmente schema, teoria, predicates e coverage." : "The backend validates schema, theory, predicates and coverage in full."}</small>
-                </label>
+                <QuickDesignWizard language={uiLanguage} onComplete={onQuickDesign} />
               </>
             ) : (
               <>
@@ -2530,14 +2645,23 @@ function ImportDialog({
                 )}
               </>
             )}
-            {error && <p className="form-error" role="alert">{error}</p>}
-            <div className="dialog-actions">
-              <button type="button" className="button secondary" onClick={onClose}>{uiLanguage === "it" ? "Annulla" : "Cancel"}</button>
-              <button className="button primary" disabled={busy || (mode === "v8" ? !quickDesignJson.trim() : !source.trim() || Boolean(domainNotice?.requires_acknowledgement && !acknowledged))}>
-                {busy ? <LoaderCircle className="spin" size={18} /> : <Beaker size={18} />} {mode === "v8" ? (uiLanguage === "it" ? "Compila Quick Design v8" : "Compile Quick Design v8") : (uiLanguage === "it" ? "Avvia analisi v7 deprecata" : "Start deprecated v7 analysis")}
-              </button>
-            </div>
-          </form>
+            {mode === "v7" && (
+              <>
+                {error && <p className="form-error" role="alert">{error}</p>}
+                <div className="dialog-actions">
+                  <button type="button" className="button secondary" onClick={onClose}>{uiLanguage === "it" ? "Annulla" : "Cancel"}</button>
+                  <button
+                    type="button"
+                    className="button primary"
+                    disabled={busy || !source.trim() || Boolean(domainNotice?.requires_acknowledgement && !acknowledged)}
+                    onClick={() => void submit()}
+                  >
+                    {busy ? <LoaderCircle className="spin" size={18} /> : <Beaker size={18} />} {uiLanguage === "it" ? "Avvia analisi v7 deprecata" : "Start deprecated v7 analysis"}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         )}
       </section>
     </div>
