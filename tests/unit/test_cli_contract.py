@@ -11,7 +11,7 @@ from ntruth.cli.main import app
 
 
 @pytest.mark.parametrize("language", ["it", "en"])
-def test_analyze_accepts_only_documented_languages(tmp_path: Path, language: str) -> None:
+def test_analyze_v7_accepts_only_documented_languages(tmp_path: Path, language: str) -> None:
     source = tmp_path / "methods.md"
     source.write_text(
         "# Methods\n\nThree independent donors were assigned to treatment.", encoding="utf-8"
@@ -20,7 +20,7 @@ def test_analyze_accepts_only_documented_languages(tmp_path: Path, language: str
     result = CliRunner().invoke(
         app,
         [
-            "analyze",
+            "analyze-v7",
             str(source),
             "--out",
             str(tmp_path / "out"),
@@ -32,9 +32,10 @@ def test_analyze_accepts_only_documented_languages(tmp_path: Path, language: str
     )
 
     assert result.exit_code == 0, result.output
+    assert "DEPRECATED_V7_ADAPTER" in result.output
 
 
-def test_analyze_rejects_unsupported_language_before_running(tmp_path: Path) -> None:
+def test_analyze_v7_rejects_unsupported_language_before_running(tmp_path: Path) -> None:
     source = tmp_path / "methods.md"
     source.write_text(
         "# Methods\n\nThree independent donors were assigned to treatment.", encoding="utf-8"
@@ -44,7 +45,7 @@ def test_analyze_rejects_unsupported_language_before_running(tmp_path: Path) -> 
     result = CliRunner().invoke(
         app,
         [
-            "analyze",
+            "analyze-v7",
             str(source),
             "--out",
             str(output),
@@ -55,6 +56,8 @@ def test_analyze_rejects_unsupported_language_before_running(tmp_path: Path) -> 
     )
 
     assert result.exit_code == 2
+    assert "--lang" in result.output
+    assert "fr" in result.output
     assert not output.exists()
 
 

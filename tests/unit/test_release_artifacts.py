@@ -87,6 +87,11 @@ def _write_sdist(
             "ntruth-0.1.0/packages/ntruth/conformance/assets/"
             "implementation-conformance-fixtures-simple-cell-culture-0.1.0.json"
         ),
+        (
+            "ntruth-0.1.0/packages/ntruth/conformance/assets/"
+            "prd-v8-example-conformance-registry-8.0.0.json"
+        ),
+        "ntruth-0.1.0/packages/ntruth/schemas/assets/prd-v8-kernel-schemas-8.0.0.json",
     ]
     if include_evaluator_registry:
         required.append("ntruth-0.1.0/theories/reviewed-evaluator-registry-0.1.0.json")
