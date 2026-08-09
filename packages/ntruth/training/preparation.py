@@ -71,20 +71,33 @@ def _raise_if_split_membership_is_unrepresentable(
         raise DatasetValidationError(structural)
 
 
+def _invalid_source_record_error() -> DatasetValidationError:
+    return DatasetValidationError(
+        (
+            ValidationIssue(
+                code="invalid_supervised_record",
+                severity=IssueSeverity.ERROR,
+                detail="SupervisedRecord non valido al confine di preparazione",
+            ),
+        )
+    )
+
+
+def _materialize_source_records(
+    records: Iterable[SupervisedRecord],
+) -> tuple[SupervisedRecord, ...]:
+    try:
+        return tuple(records)
+    except Exception as exc:
+        raise _invalid_source_record_error() from exc
+
+
 def _revalidate_source_record(record: SupervisedRecord) -> SupervisedRecord:
     try:
         payload = record.model_dump(mode="python", round_trip=True, warnings="error")
         return SupervisedRecord.model_validate(payload)
     except Exception as exc:
-        raise DatasetValidationError(
-            (
-                ValidationIssue(
-                    code="invalid_supervised_record",
-                    severity=IssueSeverity.ERROR,
-                    detail="SupervisedRecord non valido al confine di preparazione",
-                ),
-            )
-        ) from exc
+        raise _invalid_source_record_error() from exc
 
 
 def prepare_dataset(
@@ -95,7 +108,7 @@ def prepare_dataset(
     """Prepara un artefatto riproducibile senza addestrare o scaricare modelli."""
 
     active_config = config or PreparationConfig()
-    source_records = tuple(records)
+    source_records = _materialize_source_records(records)
     validated_records = tuple(_revalidate_source_record(record) for record in source_records)
     normalized_all = tuple(
         normalize_record(record, shingle_size=active_config.shingle_size)
