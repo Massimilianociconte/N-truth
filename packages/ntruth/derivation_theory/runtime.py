@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import dis
 import hashlib
 import inspect
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
-from types import CodeType
+from types import CodeType, ModuleType
 from typing import Any, cast
 
 from pydantic import BaseModel, Field, JsonValue, field_validator, model_validator
@@ -253,8 +254,7 @@ def _reviewed_constant_payload(value: object) -> object:
         return {
             "type": "dict",
             "items": {
-                key: _reviewed_constant_payload(string_dict[key])
-                for key in sorted(string_dict)
+                key: _reviewed_constant_payload(string_dict[key]) for key in sorted(string_dict)
             },
         }
     if value_type is CodeType:
@@ -323,6 +323,35 @@ def _model_review_callables(
     return tuple(dependencies)
 
 
+def _module_attribute_callables(function: Any) -> tuple[tuple[str, Any], ...]:
+    """Resolve Python functions reached through live module attribute loads."""
+
+    global_values = function.__globals__
+    if type(global_values) is not dict:
+        raise TypeError("reviewed callable globals must remain an exact dict")
+    instructions = tuple(dis.get_instructions(function))
+    dependencies: list[tuple[str, Any]] = []
+    for index, instruction in enumerate(instructions):
+        if instruction.opname != "LOAD_GLOBAL" or type(instruction.argval) is not str:
+            continue
+        value = global_values.get(instruction.argval)
+        if not isinstance(value, ModuleType):
+            continue
+        attribute_path = instruction.argval
+        for attribute_instruction in instructions[index + 1 :]:
+            if attribute_instruction.opname not in {"LOAD_ATTR", "LOAD_METHOD"}:
+                break
+            if type(attribute_instruction.argval) is not str:
+                raise TypeError("reviewed module attribute names must remain exact strings")
+            attribute_name = attribute_instruction.argval
+            value = inspect.getattr_static(value, attribute_name)
+            attribute_path = f"{attribute_path}.{attribute_name}"
+            candidate = _unwrapped_function(value)
+            if inspect.isfunction(candidate):
+                dependencies.append((attribute_path, candidate))
+    return tuple(dependencies)
+
+
 def _reviewed_callable_closure(
     executable_dependencies: dict[str, Any],
     contract_dependencies: dict[str, type[BaseModel]],
@@ -340,8 +369,7 @@ def _reviewed_callable_closure(
     }
     for name, model in sorted(reviewed_models.items()):
         pending.extend(
-            (f"{name}:{binding}", function)
-            for binding, function in _model_review_callables(model)
+            (f"{name}:{binding}", function) for binding, function in _model_review_callables(model)
         )
 
     dependencies: list[tuple[str, Any]] = []
@@ -369,6 +397,10 @@ def _reviewed_callable_closure(
             referenced = _unwrapped_function(global_values.get(global_name))
             if inspect.isfunction(referenced):
                 pending.append((f"{binding}->{global_name}", referenced))
+        pending.extend(
+            (f"{binding}->{attribute_path}", referenced)
+            for attribute_path, referenced in _module_attribute_callables(function)
+        )
     return tuple(sorted(dependencies, key=lambda item: item[0]))
 
 
@@ -389,6 +421,7 @@ def _schema_runtime_identities(model: type[BaseModel]) -> tuple[object, ...]:
 @dataclass(frozen=True)
 class _RuntimeCacheToken:
     addresses: tuple[int, ...]
+    semantic_fingerprints: tuple[str, ...]
     identities: tuple[object, ...] = field(compare=False, hash=False, repr=False)
 
 
@@ -420,6 +453,10 @@ def _derivation_dependency_checksum() -> str:
             addresses=(
                 len(callable_dependencies),
                 *(id(identity) for identity in runtime_identities),
+            ),
+            semantic_fingerprints=tuple(
+                _callable_semantic_checksum(dependency)
+                for _binding, dependency in callable_dependencies
             ),
             identities=runtime_identities,
         )
@@ -478,7 +515,7 @@ def _cached_derivation_dependency_checksum(cache_token: _RuntimeCacheToken) -> s
 
     return canonical_checksum(
         {
-            "manifest_version": "ntruth-v8-derivation-dependency-closure-2",
+            "manifest_version": "ntruth-v8-derivation-dependency-closure-3",
             "executables": executable_sources,
             "callable_global_closure": callable_sources,
             "contract_sources": contract_sources,

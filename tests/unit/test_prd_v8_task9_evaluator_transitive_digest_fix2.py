@@ -87,9 +87,7 @@ def _live_reviewed_bundle(monkeypatch: pytest.MonkeyPatch) -> Any:
             )
         }
     )
-    bundle = bundle.model_copy(
-        update={"rulebook": rulebook, "evaluator_registry": registry}
-    )
+    bundle = bundle.model_copy(update={"rulebook": rulebook, "evaluator_registry": registry})
     monkeypatch.setattr(runtime, "_REVIEWED_RULEBOOK_CHECKSUM", rulebook.declared_checksum)
     monkeypatch.setattr(
         runtime,
@@ -239,9 +237,7 @@ def test_code_constant_only_drift_changes_reviewed_digest(
     runtime._cached_derivation_dependency_checksum.cache_clear()
     reviewed = runtime._derivation_dependency_checksum()
     original_code = runtime.stable_id.__code__
-    drifted_constants = tuple(
-        ":" if value == "-" else value for value in original_code.co_consts
-    )
+    drifted_constants = tuple(":" if value == "-" else value for value in original_code.co_consts)
     drifted_code = original_code.replace(co_consts=drifted_constants)
     assert drifted_code.co_code == original_code.co_code
 
