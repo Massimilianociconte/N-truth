@@ -293,6 +293,14 @@ def test_every_partial_or_missing_requirement_names_a_registered_blocker() -> No
     (
         ("Human review remains required", "lacks a blocker ID"),
         ("Human review remains required (`SRR-V8-999`)", "unregistered blocker IDs"),
+        (
+            "Human review remains required (`SRR-V8-001`, `999`)",
+            "non-canonical blocker shorthand",
+        ),
+        (
+            "Human review remains required (`SRR-V8-001`\N{EN DASH}`999`)",
+            "non-canonical blocker shorthand",
+        ),
     ),
 )
 def test_contract_gate_rejects_missing_or_unregistered_matrix_blockers(

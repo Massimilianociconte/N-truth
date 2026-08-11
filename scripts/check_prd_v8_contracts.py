@@ -52,6 +52,7 @@ BASELINE_REQUIREMENT_RE = re.compile(r"^\| (V8-[^:|]+):", re.MULTILINE)
 FINAL_REQUIREMENT_RE = re.compile(r"^\| (V8-[^| ]+) \|", re.MULTILINE)
 REGISTER_ROW_RE = re.compile(r"^\| (SRR-V8-[0-9]{3}) \|", re.MULTILINE)
 BLOCKER_ID_RE = re.compile(r"SRR-V8-[0-9]{3}")
+BLOCKER_SHORTHAND_RE = re.compile(r"`[0-9]{3}`")
 FINAL_STATUS_VALUES = frozenset({"IMPLEMENTED", "PARTIAL", "MISSING"})
 HISTORICAL_NON_NORMATIVE_DOCUMENTS = (
     "docs/parser-ai-contract.md",
@@ -166,6 +167,10 @@ def _requirements_matrix_diagnostics(root: Path) -> tuple[str, ...]:
         requirement_id = cells[0]
         status = cells[3]
         statuses.append(status)
+        if BLOCKER_SHORTHAND_RE.search(cells[6]):
+            diagnostics.append(
+                f"{requirement_id}: non-canonical blocker shorthand; use complete SRR-V8-NNN IDs"
+            )
         blockers = set(BLOCKER_ID_RE.findall(cells[6]))
         if status in {"PARTIAL", "MISSING"} and not blockers:
             diagnostics.append(f"{requirement_id}: partial/missing row lacks a blocker ID")
