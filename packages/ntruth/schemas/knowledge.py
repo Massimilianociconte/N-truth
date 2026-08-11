@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import sys
-import typing
 import warnings
 from collections.abc import Callable, Mapping, Sequence, Set
 from enum import StrEnum
@@ -33,64 +32,16 @@ class KnowledgeState(StrEnum):
 
 
 _KNOWLEDGE_VALUE_PICKLE_FORMAT = "ntruth-knowledge-value-v1"
-_MISSING_TYPEVAR_DEFAULT = object()
 
 
-def _knowledge_value_pickle_argument(argument: object) -> tuple[str, object]:
+def _knowledge_value_pickle_argument(argument: object) -> object:
     if type(argument) is not TypeVar:
-        return "raw", argument
+        return argument
     module_name = argument.__module__
     module = sys.modules.get(module_name) if type(module_name) is str else None
-    if module is not None and getattr(module, argument.__name__, None) is argument:
-        return "raw", argument
-    default = getattr(argument, "__default__", _MISSING_TYPEVAR_DEFAULT)
-    no_default = getattr(typing, "NoDefault", _MISSING_TYPEVAR_DEFAULT)
-    has_default = default is not _MISSING_TYPEVAR_DEFAULT and default is not no_default
-    return (
-        "typevar",
-        (
-            argument.__name__,
-            argument.__constraints__,
-            argument.__bound__,
-            argument.__covariant__,
-            argument.__contravariant__,
-            argument.__infer_variance__,
-            has_default,
-            default if has_default else None,
-        ),
-    )
-
-
-def _restore_knowledge_value_pickle_argument(descriptor: object) -> object:
-    if type(descriptor) is not tuple or len(descriptor) != 2:
-        raise TypeError("invalid KnowledgeValue pickle specialization")
-    kind, payload = descriptor
-    if kind == "raw":
-        return payload
-    if kind != "typevar" or type(payload) is not tuple or len(payload) != 8:
-        raise TypeError("invalid KnowledgeValue pickle specialization")
-    name, constraints, bound, covariant, contravariant, infer_variance, has_default, default = (
-        payload
-    )
-    if (
-        type(name) is not str
-        or not name
-        or type(constraints) is not tuple
-        or type(covariant) is not bool
-        or type(contravariant) is not bool
-        or type(infer_variance) is not bool
-        or type(has_default) is not bool
-    ):
-        raise TypeError("invalid KnowledgeValue pickle specialization")
-    kwargs: dict[str, object] = {
-        "bound": bound,
-        "covariant": covariant,
-        "contravariant": contravariant,
-        "infer_variance": infer_variance,
-    }
-    if has_default:
-        kwargs["default"] = default
-    return cast(Any, TypeVar)(name, *constraints, **kwargs)
+    if module is None or getattr(module, argument.__name__, None) is not argument:
+        raise TypeError("KnowledgeValue TypeVar must be pickle-stable and importable")
+    return argument
 
 
 def _new_canonical_knowledge_value_for_pickle(
@@ -100,10 +51,9 @@ def _new_canonical_knowledge_value_for_pickle(
     if type(specialized) is not bool:
         raise TypeError("invalid KnowledgeValue pickle specialization")
     if specialized:
-        model_argument = _restore_knowledge_value_pickle_argument(argument)
         model_type = cast(
             type[KnowledgeValue[Any]],
-            cast(Any, KnowledgeValue).__class_getitem__(model_argument),
+            cast(Any, KnowledgeValue).__class_getitem__(argument),
         )
     else:
         if argument is not None:

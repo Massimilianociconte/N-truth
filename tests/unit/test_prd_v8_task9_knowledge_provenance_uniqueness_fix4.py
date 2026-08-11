@@ -6,7 +6,7 @@ import pickle
 import subprocess
 import sys
 from collections.abc import Callable
-from typing import Any, TypeVar
+from typing import Any
 
 import pytest
 
@@ -64,20 +64,11 @@ def _generic_knowledge[T](value: T) -> KnowledgeValue[T]:
     )
 
 
-def test_function_local_typevar_specialization_has_canonical_pickle_roundtrip() -> None:
+def test_function_local_typevar_specialization_fails_closed_at_pickle_boundary() -> None:
     original = _generic_knowledge("documented")
 
-    restored = pickle.loads(pickle.dumps(original))
-
-    original_argument = type(original).__pydantic_generic_metadata__["args"][0]
-    restored_argument = type(restored).__pydantic_generic_metadata__["args"][0]
-    assert restored == original
-    assert type(restored).__pydantic_generic_metadata__["origin"] is KnowledgeValue
-    assert isinstance(restored_argument, TypeVar)
-    assert restored_argument.__name__ == original_argument.__name__
-    assert restored_argument.__constraints__ == original_argument.__constraints__
-    assert restored_argument.__bound__ == original_argument.__bound__
-    assert restored_argument.__infer_variance__ is original_argument.__infer_variance__
+    with pytest.raises(TypeError, match=r"pickle-stable|importable"):
+        pickle.dumps(original)
 
 
 class _PickleWithState:
