@@ -27,7 +27,9 @@ def _bound_request() -> tuple[Any, Any]:
             "count_condition": base._present("confirmed_units"),
         }
     )
-    return runtime, request.model_copy(update={"predicate_values": predicates})
+    payload = request.model_dump(mode="python")
+    payload["predicate_values"] = predicates
+    return runtime, type(request).model_validate(payload)
 
 
 def _successor_request(request: Any) -> Any:
@@ -326,10 +328,12 @@ def test_count_join_rejects_instance_cardinality_mismatch_without_string_dedup()
 def test_typed_distinct_instance_ids_do_not_collide_through_stringification() -> None:
     runtime, request = _bound_request()
     predicates = dict(request.predicate_values)
-    predicates["experimental_unit_instances"] = base._present((1, "1"))
+    predicates["experimental_unit_instances"] = base._present([1, "1"])
+    payload = request.model_dump(mode="python")
+    payload["predicate_values"] = predicates
 
     result = runtime.run_v8_pipeline(
-        request.model_copy(update={"predicate_values": predicates}),
+        type(request).model_validate(payload),
         conformance_bundle=base.CANONICAL_BUNDLE,
     )
 

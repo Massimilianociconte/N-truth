@@ -20,6 +20,7 @@ from pydantic_core import TzInfo
 
 from ntruth.derivation_theory.contracts import ConformanceBundle
 from ntruth.derivation_theory.runtime import (
+    V8EvaluatorReviewRequired,
     load_runtime_bundle,
     require_reviewed_evaluator_bundle,
     verify_runtime_bundle,
@@ -313,7 +314,12 @@ class GuidedQuickDesignReviewSnapshot(KernelModel):
 
     @model_validator(mode="after")
     def _verified_review_assets(self) -> Self:
-        require_reviewed_evaluator_bundle(self.conformance_bundle)
+        try:
+            require_reviewed_evaluator_bundle(self.conformance_bundle)
+        except V8EvaluatorReviewRequired as error:
+            raise ValueError(
+                "guided review snapshot conformance bundle/profile failed independent verification"
+            ) from error
         report = verify_runtime_bundle(self.conformance_bundle)
         if not report.passed:
             raise ValueError(
