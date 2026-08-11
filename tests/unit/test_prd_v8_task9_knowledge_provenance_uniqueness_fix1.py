@@ -81,9 +81,7 @@ _STATE_PAYLOADS: tuple[tuple[str, dict[str, object]], ...] = (
 )
 
 
-_GENERIC_SPECIALIZATIONS: tuple[
-    tuple[str, type[KnowledgeValue[Any]], object], ...
-] = (
+_GENERIC_SPECIALIZATIONS: tuple[tuple[str, type[KnowledgeValue[Any]], object], ...] = (
     ("object", KnowledgeValue[object], "documented"),
     ("string", KnowledgeValue[str], "documented"),
     (
@@ -122,9 +120,7 @@ def test_duplicate_provenance_is_rejected_at_every_public_construction_boundary(
             with pytest.warns(PydanticDeprecatedSince20, match=r"copy.*deprecated"):
                 valid.copy(update={field_name: duplicate})
         else:
-            KnowledgeValue[object].model_construct(
-                **{**valid.__dict__, field_name: duplicate}
-            )
+            KnowledgeValue[object].model_construct(**{**valid.__dict__, field_name: duplicate})
 
 
 def _invalid_knowledge(
@@ -246,9 +242,7 @@ def test_invalid_provenance_cannot_cross_nested_serialization(
 def test_non_none_pydantic_extra_state_cannot_cross_serialization(
     extra_state: dict[str, object],
 ) -> None:
-    invalid = BaseModel.model_copy(
-        KnowledgeValue[object].model_validate(_STATE_PAYLOADS[0][1])
-    )
+    invalid = BaseModel.model_copy(KnowledgeValue[object].model_validate(_STATE_PAYLOADS[0][1]))
     object.__setattr__(invalid, "__pydantic_extra__", extra_state)
 
     with pytest.raises(TypeError, match="undeclared extra model state"):
@@ -256,9 +250,7 @@ def test_non_none_pydantic_extra_state_cannot_cross_serialization(
 
 
 def test_undeclared_public_runtime_state_cannot_cross_serialization() -> None:
-    invalid = BaseModel.model_copy(
-        KnowledgeValue[object].model_validate(_STATE_PAYLOADS[0][1])
-    )
+    invalid = BaseModel.model_copy(KnowledgeValue[object].model_validate(_STATE_PAYLOADS[0][1]))
     object.__getattribute__(invalid, "__dict__")["undeclared"] = "value"
 
     with pytest.raises(TypeError, match="undeclared or missing model field"):
@@ -407,8 +399,7 @@ def test_exclude_unset_dump_parity_and_field_set_are_preserved() -> None:
     )
 
     assert (
-        original.model_dump(mode="python", exclude_unset=True, round_trip=True)
-        == expected_python
+        original.model_dump(mode="python", exclude_unset=True, round_trip=True) == expected_python
     )
     assert original.model_dump_json(exclude_unset=True, round_trip=True) == expected_json
     assert original.__pydantic_fields_set__ == original_fields_set

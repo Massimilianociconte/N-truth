@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+import sys
+import typing
 import warnings
-from collections.abc import Mapping, Sequence, Set
+from collections.abc import Callable, Mapping, Sequence, Set
 from enum import StrEnum
-from typing import Any, Self, cast
+from typing import Any, Self, SupportsIndex, TypeVar, cast
 
 from pydantic import (
     BaseModel,
@@ -31,6 +33,84 @@ class KnowledgeState(StrEnum):
 
 
 _KNOWLEDGE_VALUE_PICKLE_FORMAT = "ntruth-knowledge-value-v1"
+_MISSING_TYPEVAR_DEFAULT = object()
+
+
+def _knowledge_value_pickle_argument(argument: object) -> tuple[str, object]:
+    if type(argument) is not TypeVar:
+        return "raw", argument
+    module_name = argument.__module__
+    module = sys.modules.get(module_name) if type(module_name) is str else None
+    if module is not None and getattr(module, argument.__name__, None) is argument:
+        return "raw", argument
+    default = getattr(argument, "__default__", _MISSING_TYPEVAR_DEFAULT)
+    no_default = getattr(typing, "NoDefault", _MISSING_TYPEVAR_DEFAULT)
+    has_default = default is not _MISSING_TYPEVAR_DEFAULT and default is not no_default
+    return (
+        "typevar",
+        (
+            argument.__name__,
+            argument.__constraints__,
+            argument.__bound__,
+            argument.__covariant__,
+            argument.__contravariant__,
+            argument.__infer_variance__,
+            has_default,
+            default if has_default else None,
+        ),
+    )
+
+
+def _restore_knowledge_value_pickle_argument(descriptor: object) -> object:
+    if type(descriptor) is not tuple or len(descriptor) != 2:
+        raise TypeError("invalid KnowledgeValue pickle specialization")
+    kind, payload = descriptor
+    if kind == "raw":
+        return payload
+    if kind != "typevar" or type(payload) is not tuple or len(payload) != 8:
+        raise TypeError("invalid KnowledgeValue pickle specialization")
+    name, constraints, bound, covariant, contravariant, infer_variance, has_default, default = (
+        payload
+    )
+    if (
+        type(name) is not str
+        or not name
+        or type(constraints) is not tuple
+        or type(covariant) is not bool
+        or type(contravariant) is not bool
+        or type(infer_variance) is not bool
+        or type(has_default) is not bool
+    ):
+        raise TypeError("invalid KnowledgeValue pickle specialization")
+    kwargs: dict[str, object] = {
+        "bound": bound,
+        "covariant": covariant,
+        "contravariant": contravariant,
+        "infer_variance": infer_variance,
+    }
+    if has_default:
+        kwargs["default"] = default
+    return cast(Any, TypeVar)(name, *constraints, **kwargs)
+
+
+def _new_canonical_knowledge_value_for_pickle(
+    specialized: bool,
+    argument: object,
+) -> KnowledgeValue[Any]:
+    if type(specialized) is not bool:
+        raise TypeError("invalid KnowledgeValue pickle specialization")
+    if specialized:
+        model_argument = _restore_knowledge_value_pickle_argument(argument)
+        model_type = cast(
+            type[KnowledgeValue[Any]],
+            cast(Any, KnowledgeValue).__class_getitem__(model_argument),
+        )
+    else:
+        if argument is not None:
+            raise TypeError("invalid KnowledgeValue pickle specialization")
+        model_type = cast(type[KnowledgeValue[Any]], KnowledgeValue)
+    KnowledgeValue._assert_canonical_model_type(model_type)
+    return object.__new__(model_type)
 
 
 def _blank_or_empty(value: object) -> bool:
@@ -334,6 +414,28 @@ class KnowledgeValue[T](KernelModel):
             "payload": KnowledgeValue._raw_contract_payload(checked),
             "fields_set": set(object.__getattribute__(self, "__pydantic_fields_set__")),
         }
+
+    def __reduce_ex__(
+        self,
+        protocol: SupportsIndex,
+    ) -> tuple[
+        Callable[[bool, object], KnowledgeValue[Any]],
+        tuple[bool, object],
+        dict[str, Any],
+    ]:
+        del protocol
+        state = self.__getstate__()
+        model_type = type(self)
+        descriptor: tuple[bool, object]
+        if model_type is KnowledgeValue:
+            descriptor = (False, None)
+        else:
+            metadata = model_type.__dict__.get("__pydantic_generic_metadata__")
+            arguments = None if type(metadata) is not dict else dict.get(metadata, "args")
+            if type(arguments) is not tuple or len(arguments) != 1:
+                raise TypeError("non-canonical KnowledgeValue pickle specialization")
+            descriptor = (True, _knowledge_value_pickle_argument(arguments[0]))
+        return _new_canonical_knowledge_value_for_pickle, descriptor, state
 
     def __setstate__(self, state: dict[str, Any]) -> None:
         KnowledgeValue._assert_canonical_model_type(type(self))
