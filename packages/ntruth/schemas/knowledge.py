@@ -17,6 +17,7 @@ from pydantic import (
 )
 from pydantic_core import core_schema
 
+from ntruth.runtime_tree import _compare_exact_tree
 from ntruth.schemas.kernel import KernelModel, NonBlankStr
 
 
@@ -112,6 +113,7 @@ class KnowledgeValue[T](KernelModel):
             serializer: SerializerFunctionWrapHandler,
         ) -> Any:
             if type(candidate) is dict:
+                KnowledgeValue._assert_canonical_model_type(cls)
                 raw = candidate
                 raw_fields = tuple(dict.keys(raw))
                 if any(type(field_name) is not str for field_name in raw_fields) or set(
@@ -167,8 +169,33 @@ class KnowledgeValue[T](KernelModel):
                 non_default.add(field_name)
         return non_default
 
+    @staticmethod
+    def _assert_canonical_model_type(model_type: type[object]) -> None:
+        if model_type is KnowledgeValue:
+            return
+        metadata = model_type.__dict__.get("__pydantic_generic_metadata__")
+        if type(metadata) is not dict:
+            raise TypeError("non-canonical KnowledgeValue subclass")
+        origin = dict.get(metadata, "origin")
+        arguments = dict.get(metadata, "args")
+        parameters = dict.get(metadata, "parameters")
+        if (
+            origin is not KnowledgeValue
+            or type(arguments) is not tuple
+            or len(arguments) != 1
+            or type(parameters) is not tuple
+        ):
+            raise TypeError("non-canonical KnowledgeValue subclass")
+        try:
+            canonical_type = KnowledgeValue.__class_getitem__(arguments[0])
+        except Exception as error:
+            raise TypeError("non-canonical KnowledgeValue subclass") from error
+        if model_type is not canonical_type:
+            raise TypeError("non-canonical KnowledgeValue subclass")
+
     def _raw_contract_payload(self) -> dict[str, Any]:
         KnowledgeValue._assert_no_undeclared_public_slot_state(self)
+        KnowledgeValue._assert_canonical_model_type(type(self))
         state = object.__getattribute__(self, "__dict__")
         if type(state) is not dict:
             raise TypeError("invalid KnowledgeValue runtime state")
@@ -278,13 +305,14 @@ class KnowledgeValue[T](KernelModel):
             raise TypeError("invalid KnowledgeValue runtime state")
         checked = type(self).model_validate(dict(copied_state))
         KnowledgeValue._raw_contract_payload(copied)
-        if update is None:
-            return copied
         object.__setattr__(
             checked,
             "__pydantic_fields_set__",
             set(object.__getattribute__(copied, "__pydantic_fields_set__")),
         )
+        if update is None:
+            _compare_exact_tree(copied, checked, path="$.knowledge_value_copy")
+            return copied
         return checked
 
     def model_dump(self, **kwargs: Any) -> dict[str, Any]:
@@ -308,6 +336,7 @@ class KnowledgeValue[T](KernelModel):
         }
 
     def __setstate__(self, state: dict[str, Any]) -> None:
+        KnowledgeValue._assert_canonical_model_type(type(self))
         if type(state) is not dict or set(state) != {
             "format",
             "payload",
