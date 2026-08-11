@@ -21,8 +21,8 @@ class _ApplicationKnowledge(KnowledgeValue[str]):
     application_note: str
 
 
-def _canonical_mapping_value() -> KnowledgeValue[dict[str, list[str]]]:
-    return KnowledgeValue[dict[str, list[str]]](
+def _canonical_mapping_value() -> KnowledgeValue[object]:
+    return KnowledgeValue[object](
         knowledge_state=KnowledgeState.PRESENT,
         value={"documented": ["value"]},
         evidence_ids=("EV-001",),
