@@ -324,7 +324,7 @@ def test_quick_design_v8_revalidates_tampered_submission_before_task4() -> None:
         update={"pipeline_request": request.model_copy(update={"graph": malformed_graph})}
     )
 
-    with pytest.raises(ValueError, match="graph does not contain"):
+    with pytest.raises(ValueError, match="unknown source_node_id"):
         module.run_quick_design_v8(
             malformed,
             conformance_bundle=load_canonical_bundle(runtime_fixture.REPOSITORY_ROOT),

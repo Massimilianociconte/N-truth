@@ -106,7 +106,32 @@ def _multi_query_report(*, conflicting_shared_source: bool = False) -> object:
         )
     registry = CanonicalCountRegistry(records=(*base.count_registry.records, *second_counts))
     second_node = base.graph.nodes[1].model_copy(update={"node_id": second_query_id})
-    graph = base.graph.model_copy(update={"nodes": (*base.graph.nodes, second_node)})
+    first_query_binding = next(
+        relation
+        for relation in base.graph.relations
+        if relation.source_node_id == base.query.id
+        and relation.target_node_id == base.experiment_block_id
+    )
+    second_query_binding = first_query_binding.model_copy(
+        update={
+            "relation_id": "REL-IQ-BLOCK-TASK6-MULTI-002",
+            "source_node_id": second_query_id,
+            "query_scope": first_query_binding.query_scope.model_copy(
+                update={
+                    "value": second_query_id,
+                    "query_scope_id": second_query_id,
+                }
+            ),
+            "factor_scope": rescope(first_query_binding.factor_scope),
+            "decisive_attributes": rescope(first_query_binding.decisive_attributes),
+        }
+    )
+    graph = base.graph.model_copy(
+        update={
+            "nodes": (*base.graph.nodes, second_node),
+            "relations": (*base.graph.relations, second_query_binding),
+        }
+    )
     first_request = V8PipelineRequest.model_validate(
         base.model_copy(update={"graph": graph, "count_registry": registry}).model_dump(
             mode="python"

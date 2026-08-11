@@ -185,7 +185,10 @@ def test_causal_event_aggregate_rejects_cross_block_reference() -> None:
 
     events = list(_events())
     events[0] = events[0].model_copy(update={"experiment_block_id": "EB-OTHER"})
-    with pytest.raises(ValidationError, match="cross-block assignment_event_id"):
+    with pytest.raises(
+        ValidationError,
+        match="every event registry entry must share the aggregate Experiment Block",
+    ):
         QueryCausalEventAggregate(
             experiment_block_id="EB-01",
             event_registry=EventRegistry(events=tuple(events)),
