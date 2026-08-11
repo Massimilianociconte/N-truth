@@ -106,21 +106,29 @@ def test_identifier_shaped_unmarked_scientific_literal_is_not_guessed_as_referen
     )
 
 
-@pytest.mark.parametrize("container_kind", ("list", "tuple"))
-def test_explicit_renamed_reference_containers_remain_identifier_invariant(
-    container_kind: str,
-) -> None:
+def test_explicit_renamed_reference_lists_remain_identifier_invariant() -> None:
     left_items: list[object] = ["left-unit-a", {"peer_node_id": "left-unit-b"}]
     right_items: list[object] = ["right-unit-a", {"peer_node_id": "right-unit-b"}]
-    left_value: object = left_items if container_kind == "list" else tuple(left_items)
-    right_value: object = right_items if container_kind == "list" else tuple(right_items)
 
     assert (
         exact_graph_equal(
-            _present_view("left", {"references": left_value}),
-            _present_view("right", {"references": right_value}),
+            _present_view("left", {"references": left_items}),
+            _present_view("right", {"references": right_items}),
         )
         is True
+    )
+
+
+def test_forged_tuple_reference_container_fails_closed() -> None:
+    left_items = ("left-unit-a", {"peer_node_id": "left-unit-b"})
+    right_items = ("right-unit-a", {"peer_node_id": "right-unit-b"})
+
+    assert (
+        exact_graph_equal(
+            _present_view("left", {"references": left_items}),
+            _present_view("right", {"references": right_items}),
+        )
+        is False
     )
 
 

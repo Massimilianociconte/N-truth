@@ -78,11 +78,12 @@ def _validated_graph_view(value: ExactGraphView, *, path: str) -> ExactGraphView
     payload = BaseModel.model_dump(
         value,
         mode="json",
-        exclude_unset=True,
+        exclude_unset=False,
         round_trip=True,
         warnings="none",
     )
     checked = ExactGraphView.model_validate(payload)
+    _require_same_exact_value(value.schema_version, checked.schema_version)
     if type(value.node_semantics) is not tuple:
         raise _UnaddressableGraphValue("non-canonical semantic identity container")
     for index, (raw_identity, checked_identity) in enumerate(
@@ -98,6 +99,7 @@ def _validated_graph_view(value: ExactGraphView, *, path: str) -> ExactGraphView
 
     if type(value.graph) is not V8ExperimentGraph:
         raise _UnaddressableGraphValue("non-canonical graph model")
+    _require_same_exact_value(value.graph.schema_version, checked.graph.schema_version)
     if type(value.graph.nodes) is not tuple or type(value.graph.relations) is not tuple:
         raise _UnaddressableGraphValue("non-canonical graph container")
     for index, (raw_node, checked_node) in enumerate(
@@ -111,6 +113,7 @@ def _validated_graph_view(value: ExactGraphView, *, path: str) -> ExactGraphView
         if canonical_node != checked_node:
             raise _UnaddressableGraphValue("graph node reconstruction mismatch")
     structural_fields = (
+        "schema_version",
         "relation_id",
         "relation_type",
         "source_node_id",
