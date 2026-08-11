@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import importlib
-import pickle
 from typing import Any, Literal
 
 import pytest
+from pydantic import BaseModel
 
 from ntruth.mvt_a.verifier import hard_verify_candidates
 from ntruth.parser_ai.contract import CandidateBlockBoundary, ParserCandidateOutput
@@ -17,7 +17,7 @@ class _SlottedParserCandidateOutput(ParserCandidateOutput):
     __slots__ = ("determinability",)
 
     def __getstate__(self) -> dict[str, Any]:
-        state = super().__getstate__()
+        state = BaseModel.__getstate__(self)
         state["slotted_determinability"] = self.determinability
         return state
 
@@ -31,7 +31,7 @@ class _SlottedCandidateBlockBoundary(CandidateBlockBoundary):
     __slots__ = ("rule_result",)
 
     def __getstate__(self) -> dict[str, Any]:
-        state = super().__getstate__()
+        state = BaseModel.__getstate__(self)
         state["slotted_rule_result"] = self.rule_result
         return state
 
@@ -94,10 +94,10 @@ def test_verifiers_reject_pickle_visible_public_slot_subclasses(
         forged = valid.model_copy(update={"block_boundaries": (forged_boundary,)})
         final_field = "rule_result"
 
-    restored = pickle.loads(pickle.dumps(forged))
+    restored = fix1._unsafe_candidate_pickle_roundtrip(forged)
     restored_target = restored if location == "root" else restored.block_boundaries[0]
     assert hasattr(restored_target, final_field)
-    assert final_field not in restored_target.model_dump(mode="python", warnings="none")
+    assert final_field not in type(restored_target).model_fields
 
     result = hard_verify_candidates(restored)
     assert result.passed is False

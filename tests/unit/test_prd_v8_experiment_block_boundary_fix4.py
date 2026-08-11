@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import importlib
-import pickle
 from typing import Any, Literal
 
 import pytest
@@ -102,7 +101,7 @@ def test_verifiers_reject_pickle_visible_container_subclass_final_fields(
         forged = ParserCandidateOutput.model_construct(**valid.__dict__)
         forged.__dict__[target_field] = container
 
-    restored = pickle.loads(pickle.dumps(forged))
+    restored = fix1._unsafe_candidate_pickle_roundtrip(forged)
     restored_container = restored.__dict__[target_field]
     assert getattr(restored_container, final_field) == final_value
 
@@ -132,7 +131,7 @@ def test_verifiers_reject_noncanonical_scalar_and_enum_runtime_types(
         )
         forged_candidate = candidate.model_copy(update={"boundary_predicates": (forged_predicate,)})
     forged = valid.model_copy(update={"block_boundaries": (forged_candidate,)})
-    restored = pickle.loads(pickle.dumps(forged))
+    restored = fix1._unsafe_candidate_pickle_roundtrip(forged)
 
     result = hard_verify_candidates(restored)
     assert result.passed is False
@@ -175,7 +174,7 @@ def test_verifiers_reject_pickle_visible_scalar_subclass_final_fields(
             forged_predicate.__dict__["criterion"] = scalar
         forged_candidate = candidate.model_copy(update={"boundary_predicates": (forged_predicate,)})
     forged = valid.model_copy(update={"block_boundaries": (forged_candidate,)})
-    restored = pickle.loads(pickle.dumps(forged))
+    restored = fix1._unsafe_candidate_pickle_roundtrip(forged)
 
     restored_candidate = restored.block_boundaries[0]
     restored_scalar = (

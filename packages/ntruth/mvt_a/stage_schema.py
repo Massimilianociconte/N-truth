@@ -12,7 +12,14 @@ import unicodedata
 from enum import StrEnum
 from typing import Any, Literal, Self
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    SerializerFunctionWrapHandler,
+    field_validator,
+    model_serializer,
+    model_validator,
+)
 
 from ntruth.schemas.core import FrozenModel
 
@@ -293,11 +300,40 @@ class MvtAStageOutput(FrozenModel):
             return None
         # Local import breaks the schema dependency cycle while retaining a
         # single active ParserCandidateOutput payload on validation/round-trip.
-        from ntruth.parser_ai.contract import ParserCandidateOutput
+        from ntruth.parser_ai.contract import canonicalize_parser_candidate_output
 
-        if isinstance(value, ParserCandidateOutput):
-            return value
-        return ParserCandidateOutput.model_validate(value)
+        return canonicalize_parser_candidate_output(value)
+
+    def _revalidated_for_serialization(self) -> MvtAStageOutput:
+        from ntruth.parser_ai.contract import canonicalize_candidate_boundary_model
+
+        return canonicalize_candidate_boundary_model(
+            self,
+            model_type=MvtAStageOutput,
+            boundary_name="MVT-A stage",
+        )
+
+    def model_dump(self, **kwargs: Any) -> dict[str, Any]:
+        """Serialize only after revalidating the complete candidate parent."""
+
+        self._revalidated_for_serialization()
+        return BaseModel.model_dump(self, **kwargs)
+
+    def model_dump_json(self, **kwargs: Any) -> str:
+        """Serialize JSON only after revalidating the candidate parent."""
+
+        self._revalidated_for_serialization()
+        return BaseModel.model_dump_json(self, **kwargs)
+
+    @model_serializer(mode="wrap")
+    def _serialize_after_raw_validation(
+        self,
+        handler: SerializerFunctionWrapHandler,
+    ) -> Any:
+        """Apply the exact raw gate when serialized inside another model."""
+
+        self._revalidated_for_serialization()
+        return handler(self)
 
     @model_validator(mode="after")
     def _status_matches_diagnostics(self) -> Self:

@@ -18,14 +18,26 @@ from math import isclose
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import Field, JsonValue, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    JsonValue,
+    SerializerFunctionWrapHandler,
+    field_validator,
+    model_serializer,
+    model_validator,
+)
 
 from ntruth.governance.lineage import CorpusSplit
 from ntruth.mvt_a.stage_schema import (
     ALLOWED_CANDIDATE_COUNT_KINDS,
     assert_no_final_scientific_fields,
 )
-from ntruth.parser_ai.contract import GoldParserTarget
+from ntruth.parser_ai.contract import (
+    GoldParserTarget,
+    canonicalize_candidate_boundary_model,
+    canonicalize_gold_parser_target,
+)
 from ntruth.schemas.core import FrozenModel, content_checksum
 from ntruth.training.custody import ExternalChallengeDependency
 
@@ -177,9 +189,37 @@ class SupervisedRecord(FrozenModel):
 
     @field_validator("target", mode="before")
     @classmethod
-    def _candidate_target_only(cls, value: Any) -> Any:
-        assert_no_final_scientific_fields(value)
-        return value
+    def _candidate_target_only(cls, value: Any) -> GoldParserTarget:
+        return canonicalize_gold_parser_target(value)
+
+    def _revalidated_for_serialization(self) -> SupervisedRecord:
+        return canonicalize_candidate_boundary_model(
+            self,
+            model_type=SupervisedRecord,
+            boundary_name="supervised record",
+        )
+
+    def model_dump(self, **kwargs: Any) -> dict[str, Any]:
+        """Serialize only after revalidating the complete supervised target."""
+
+        self._revalidated_for_serialization()
+        return BaseModel.model_dump(self, **kwargs)
+
+    def model_dump_json(self, **kwargs: Any) -> str:
+        """Serialize JSON only after revalidating the supervised target."""
+
+        self._revalidated_for_serialization()
+        return BaseModel.model_dump_json(self, **kwargs)
+
+    @model_serializer(mode="wrap")
+    def _serialize_after_raw_validation(
+        self,
+        handler: SerializerFunctionWrapHandler,
+    ) -> Any:
+        """Apply the exact raw gate when serialized inside another model."""
+
+        self._revalidated_for_serialization()
+        return handler(self)
 
     @field_validator("record_id", "task", "language", "input_text")
     @classmethod
@@ -369,6 +409,35 @@ class PreparedRecord(FrozenModel):
     near_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
     leakage_group_id: str
     split: CorpusSplit
+
+    def _revalidated_for_serialization(self) -> PreparedRecord:
+        return canonicalize_candidate_boundary_model(
+            self,
+            model_type=PreparedRecord,
+            boundary_name="prepared record",
+        )
+
+    def model_dump(self, **kwargs: Any) -> dict[str, Any]:
+        """Serialize only after validating the complete prepared record tree."""
+
+        self._revalidated_for_serialization()
+        return BaseModel.model_dump(self, **kwargs)
+
+    def model_dump_json(self, **kwargs: Any) -> str:
+        """Serialize JSON only after validating the complete prepared record tree."""
+
+        self._revalidated_for_serialization()
+        return BaseModel.model_dump_json(self, **kwargs)
+
+    @model_serializer(mode="wrap")
+    def _serialize_after_raw_validation(
+        self,
+        handler: SerializerFunctionWrapHandler,
+    ) -> Any:
+        """Apply the exact raw gate when serialized inside a prepared dataset."""
+
+        self._revalidated_for_serialization()
+        return handler(self)
 
     @model_validator(mode="after")
     def _split_and_eligibility(self) -> PreparedRecord:
@@ -613,6 +682,35 @@ class PreparedDataset(FrozenModel):
     manifest: DatasetManifest
     report: PreparationReport
 
+    def _revalidated_for_serialization(self) -> PreparedDataset:
+        return canonicalize_candidate_boundary_model(
+            self,
+            model_type=PreparedDataset,
+            boundary_name="prepared dataset",
+        )
+
+    def model_dump(self, **kwargs: Any) -> dict[str, Any]:
+        """Serialize only after validating the complete prepared dataset tree."""
+
+        self._revalidated_for_serialization()
+        return BaseModel.model_dump(self, **kwargs)
+
+    def model_dump_json(self, **kwargs: Any) -> str:
+        """Serialize JSON only after validating the complete prepared dataset tree."""
+
+        self._revalidated_for_serialization()
+        return BaseModel.model_dump_json(self, **kwargs)
+
+    @model_serializer(mode="wrap")
+    def _serialize_after_raw_validation(
+        self,
+        handler: SerializerFunctionWrapHandler,
+    ) -> Any:
+        """Apply the exact raw gate when serialized inside another model."""
+
+        self._revalidated_for_serialization()
+        return handler(self)
+
     @model_validator(mode="after")
     def _cross_check(self) -> PreparedDataset:
         prepared_by_id = {record.record.record_id: record for record in self.records}
@@ -632,7 +730,14 @@ class PreparedDataset(FrozenModel):
                     "VALIDATION prepared membership requires model-selection eligibility"
                 )
             if (
-                prepared.split is not entry.split
+                content_checksum(prepared.model_dump(mode="json")) != entry.record_checksum
+                or _manifest_input_checksum(prepared.record.input_text) != entry.input_checksum
+                or prepared.record.provenance.source_id != entry.source_id
+                or prepared.record.provenance.source_asset_id != entry.source_asset_id
+                or prepared.record.provenance.source_sha256 != entry.source_sha256
+                or prepared.record.provenance.governance_hash != entry.governance_hash
+                or prepared.record.provenance.synthetic != entry.synthetic
+                or prepared.split is not entry.split
                 or prepared.leakage_group_id != entry.leakage_group_id
                 or prepared.exact_fingerprint != entry.exact_fingerprint
                 or prepared.near_fingerprint != entry.near_fingerprint
@@ -690,6 +795,14 @@ class PreparedDataset(FrozenModel):
 
 _ZERO_WIDTH = str.maketrans("", "", "\u200b\u200c\u200d\ufeff")
 _TOKEN_RE = re.compile(r"\w+", flags=re.UNICODE)
+
+
+def _manifest_input_checksum(input_text: str) -> str:
+    try:
+        payload = json.loads(input_text)
+    except json.JSONDecodeError:
+        payload = input_text
+    return content_checksum(payload)
 
 
 def _sha256(payload: str) -> str:

@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import pickle
 from datetime import UTC, datetime
+from typing import Any
 
 import pytest
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 import ntruth.schemas.block_boundary as boundary
 from ntruth.mvt_a.verifier import hard_verify_candidates
@@ -24,6 +26,51 @@ from ntruth.schemas.support import (
     SupportGrade,
 )
 from ntruth.training.metrics import score_output
+
+
+def _restore_unchecked_candidate(
+    model_type: type[BaseModel],
+    state: dict[str, Any],
+    use_custom_setstate: bool,
+) -> BaseModel:
+    restored = model_type.__new__(model_type)
+    custom_setstate = model_type.__dict__.get("__setstate__")
+    if use_custom_setstate and custom_setstate is not None:
+        custom_setstate(restored, state)
+    else:
+        BaseModel.__setstate__(restored, state)
+    return restored
+
+
+class _UncheckedCandidatePickle:
+    def __init__(self, candidate: ParserCandidateOutput) -> None:
+        self.candidate = candidate
+
+    def __reduce__(
+        self,
+    ) -> tuple[
+        object,
+        tuple[type[BaseModel], dict[str, Any], bool],
+    ]:
+        model_type = type(self.candidate)
+        custom_getstate = (
+            None if model_type is ParserCandidateOutput else model_type.__dict__.get("__getstate__")
+        )
+        use_custom_state = custom_getstate is not None
+        state = (
+            custom_getstate(self.candidate)
+            if custom_getstate is not None
+            else BaseModel.__getstate__(self.candidate)
+        )
+        return _restore_unchecked_candidate, (model_type, state, use_custom_state)
+
+
+def _unsafe_candidate_pickle_roundtrip(
+    candidate: ParserCandidateOutput,
+) -> ParserCandidateOutput:
+    restored = pickle.loads(pickle.dumps(_UncheckedCandidatePickle(candidate)))
+    assert isinstance(restored, ParserCandidateOutput)
+    return restored
 
 
 def _support() -> SupportDescriptor:

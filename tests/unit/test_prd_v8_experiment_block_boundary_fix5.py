@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import importlib
-import pickle
 from typing import Any, Literal
 
 import pytest
@@ -78,7 +77,7 @@ def test_verifiers_reject_pickle_visible_undeclared_public_model_state(
         injection=injection,
         construction=construction,
     )
-    restored = pickle.loads(pickle.dumps(forged))
+    restored = fix1._unsafe_candidate_pickle_roundtrip(forged)
 
     if consumer == "hard":
         result = hard_verify_candidates(restored)
@@ -106,7 +105,7 @@ def test_verifiers_fail_closed_for_noncanonical_pydantic_extra_storage(
 
     valid = ParserCandidateOutput.model_validate(fix1._parser_payload()).model_copy()
     object.__setattr__(valid, "__pydantic_extra__", extra_values)
-    restored = pickle.loads(pickle.dumps(valid))
+    restored = fix1._unsafe_candidate_pickle_roundtrip(valid)
 
     if consumer == "hard":
         result = hard_verify_candidates(restored)
@@ -129,7 +128,7 @@ def test_verifiers_fail_closed_for_declared_field_container_cycles(
     cycle: list[object] = []
     cycle.append(cycle)
     forged = valid.model_copy(update={"block_boundaries": cycle})
-    restored = pickle.loads(pickle.dumps(forged))
+    restored = fix1._unsafe_candidate_pickle_roundtrip(forged)
 
     if consumer == "hard":
         result = hard_verify_candidates(restored)
@@ -152,7 +151,7 @@ def test_verifiers_reject_public_state_on_a_canonical_enum_member(
     criterion = valid.block_boundaries[0].boundary_predicates[0].criterion
     object.__setattr__(criterion, "determinability", "DETERMINATE")
     try:
-        restored = pickle.loads(pickle.dumps(valid))
+        restored = fix1._unsafe_candidate_pickle_roundtrip(valid)
         assert restored.block_boundaries[0].boundary_predicates[0].criterion is criterion
 
         if consumer == "hard":
@@ -173,7 +172,7 @@ def test_hard_verifier_stops_after_runtime_tree_canonicalization_failure() -> No
 
     valid = ParserCandidateOutput.model_validate(fix1._parser_payload())
     forged = valid.model_copy(update={"candidate_counts": 1})
-    restored = pickle.loads(pickle.dumps(forged))
+    restored = fix1._unsafe_candidate_pickle_roundtrip(forged)
 
     result = hard_verify_candidates(restored)
 

@@ -123,10 +123,10 @@ def _revalidate_export_dataset(dataset: PreparedDataset) -> PreparedDataset:
 def export_mlx_dataset(dataset: PreparedDataset, output_dir: Path) -> dict[str, Any]:
     """Scrive split MLX e manifest, senza duplicare le sorgenti raw."""
 
+    dataset = _revalidate_export_dataset(dataset)
     if output_dir.exists() and any(output_dir.iterdir()):
         raise MLXPipelineError(f"directory output non vuota: {output_dir}")
     output_dir.mkdir(parents=True, exist_ok=True)
-    dataset = _revalidate_export_dataset(dataset)
     _assert_validation_export_eligibility(dataset)
     by_split: dict[CorpusSplit, list[dict[str, Any]]] = {
         CorpusSplit.TRAIN: [],

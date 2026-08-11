@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import importlib
-import pickle
 from typing import Any, Literal
 
 import pytest
@@ -54,7 +53,7 @@ def test_verifiers_reject_pickle_visible_str_subclass_model_state_keys(
 
     valid = ParserCandidateOutput.model_validate(fix1._parser_payload())
     forged = _forge_model_state_key(valid, construction=construction, location=location)
-    restored = pickle.loads(pickle.dumps(forged))
+    restored = fix1._unsafe_candidate_pickle_roundtrip(forged)
     target = restored if location == "root" else restored.block_boundaries[0]
     hidden_key = next(key for key in target.__dict__ if type(key) is _PrivatePretendingStr)
     assert str(hidden_key) == "determinability"
@@ -83,7 +82,7 @@ def test_verifiers_reject_pickle_visible_str_subclass_enum_state_keys(
     hidden_key = _PrivatePretendingStr("determinability")
     criterion.__dict__[hidden_key] = "DETERMINATE"
     try:
-        restored = pickle.loads(pickle.dumps(forged))
+        restored = fix1._unsafe_candidate_pickle_roundtrip(forged)
         restored_criterion = restored.block_boundaries[0].boundary_predicates[0].criterion
         restored_key = next(
             key for key in restored_criterion.__dict__ if type(key) is _PrivatePretendingStr

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import importlib
-import pickle
 from typing import Any, Literal
 
 import pytest
@@ -64,7 +63,7 @@ def test_hard_verifier_rejects_pickle_visible_raw_final_fields(
         )
         forged = valid.model_copy(update={"block_boundaries": (forged_boundary,)})
 
-    restored = pickle.loads(pickle.dumps(forged))
+    restored = fix1._unsafe_candidate_pickle_roundtrip(forged)
     restored_target = restored if location == "root" else restored.block_boundaries[0]
     assert dict(restored_target)[field] == value
 
@@ -81,22 +80,26 @@ def test_hard_verifier_checks_pydantic_extra_storage_before_dumping() -> None:
     valid = ParserCandidateOutput.model_validate(fix1._parser_payload())
     forged = valid.model_copy()
     object.__setattr__(forged, "__pydantic_extra__", {"determinability": "DETERMINATE"})
-    restored = pickle.loads(pickle.dumps(forged))
+    restored = fix1._unsafe_candidate_pickle_roundtrip(forged)
 
     result = hard_verify_candidates(restored)
     assert result.passed is False
     assert any("determinability" in error.detail for error in result.errors)
 
 
-def test_hard_verifier_ignores_private_non_output_cache_attributes() -> None:
-    """Catches the raw guard treating a private implementation cache as parser output."""
+def test_hard_verifier_rejects_undeclared_private_cache_attributes() -> None:
+    """Catches an underscored cache laundering undeclared parser state."""
 
     valid = ParserCandidateOutput.model_validate(fix1._parser_payload())
     cached = valid.model_copy()
     cached.__dict__["_private_cache"] = {"determinability": "DETERMINATE"}
 
-    assert hard_verify_candidates(cached).passed is True
-    assert boundary.verify_candidate_experiment_block_boundaries(cached) == valid
+    result = hard_verify_candidates(cached)
+
+    assert result.passed is False
+    assert "undeclared" in result.errors[0].detail
+    with pytest.raises(ValueError, match="undeclared"):
+        boundary.verify_candidate_experiment_block_boundaries(cached)
 
 
 def test_change_ledger_rejects_consuming_one_split_with_two_merges() -> None:

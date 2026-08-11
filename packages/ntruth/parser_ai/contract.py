@@ -8,9 +8,18 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from enum import Enum
+from math import isnan
 from typing import Any, Literal, cast
 
-from pydantic import BaseModel, Field, JsonValue, model_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    JsonValue,
+    SerializerFunctionWrapHandler,
+    field_validator,
+    model_serializer,
+    model_validator,
+)
 
 from ntruth.mvt_a.stage_schema import (
     ALLOWED_CANDIDATE_COUNT_KINDS,
@@ -51,6 +60,8 @@ def _raw_candidate_contract_tree(
                     "candidate runtime model state must be exact builtin dict, "
                     f"got {type(raw_values).__name__}"
                 )
+            if object.__getattribute__(value, "__pydantic_private__") is not None:
+                raise ValueError("candidate runtime model has non-canonical Pydantic private state")
             declared_fields = type(value).model_fields
             payload: dict[object, object] = {
                 field_name: _raw_candidate_contract_tree(raw_values[field_name], seen=seen)
@@ -63,7 +74,7 @@ def _raw_candidate_contract_tree(
                         "candidate runtime model state key must be exact builtin str, "
                         f"got {type(field_name).__name__}"
                     )
-                if field_name in declared_fields or str.startswith(field_name, "_"):
+                if field_name in declared_fields:
                     continue
                 raise ValueError(
                     "candidate runtime model has non-canonical undeclared public field "
@@ -109,26 +120,57 @@ def _raw_candidate_contract_tree(
                 )
             return tuple(_raw_candidate_contract_tree(item, seen=seen) for item in value)
         if isinstance(value, Enum):
-            enum_state = value.__dict__
+            enum_state = object.__getattribute__(value, "__dict__")
             if type(enum_state) is not dict:
                 raise ValueError(
                     "candidate runtime enum state must be exact builtin dict, "
                     f"got {type(enum_state).__name__}"
                 )
-            public_enum_fields: list[str] = []
-            for field_name in enum_state:
-                if type(field_name) is not str:
-                    raise ValueError(
-                        "candidate runtime enum state key must be exact builtin str, "
-                        f"got {type(field_name).__name__}"
-                    )
-                if not str.startswith(field_name, "_"):
-                    public_enum_fields.append(field_name)
-            if public_enum_fields:
+            canonical_state_fields = {
+                "_value_",
+                "_name_",
+                "__objclass__",
+                "_sort_order_",
+            }
+            enum_state_fields = tuple(dict.keys(enum_state))
+            if (
+                any(type(field_name) is not str for field_name in enum_state_fields)
+                or set(enum_state_fields) != canonical_state_fields
+            ):
                 raise ValueError(
-                    "candidate runtime enum has non-canonical public state "
-                    f"{tuple(public_enum_fields)!r}"
+                    "candidate runtime enum has non-canonical undeclared or missing state"
                 )
+            enum_type = type(value)
+            member_names = enum_type.__dict__.get("_member_names_")
+            member_map = enum_type.__dict__.get("_member_map_")
+            value_map = enum_type.__dict__.get("_value2member_map_")
+            if (
+                type(member_names) is not list
+                or type(member_map) is not dict
+                or type(value_map) is not dict
+                or any(type(name) is not str for name in member_names)
+            ):
+                raise ValueError("candidate runtime enum definition is not canonical")
+            canonical_names = [
+                name for name in member_names if dict.__getitem__(member_map, name) is value
+            ]
+            canonical_values = [
+                member_value for member_value, member in dict.items(value_map) if member is value
+            ]
+            if len(canonical_names) != 1 or len(canonical_values) != 1:
+                raise ValueError("candidate runtime enum member is not canonical")
+            canonical_name = canonical_names[0]
+            canonical_value = canonical_values[0]
+            if (
+                type(enum_state["_name_"]) is not str
+                or enum_state["_name_"] != canonical_name
+                or enum_state["__objclass__"] is not enum_type
+                or type(enum_state["_sort_order_"]) is not int
+                or enum_state["_sort_order_"] != member_names.index(canonical_name)
+                or type(enum_state["_value_"]) is not type(canonical_value)
+                or enum_state["_value_"] != canonical_value
+            ):
+                raise ValueError("candidate runtime enum state is not canonical")
             return value
         if isinstance(value, (str, int, float, bool, bytes)) and type(value) not in {
             str,
@@ -168,11 +210,55 @@ def _assert_exact_candidate_model_types(
                 f"candidate runtime type at {path} must be exact canonical "
                 f"{type(canonical).__name__}, got {type(actual).__name__}"
             )
+        actual_fields_set = object.__getattribute__(actual, "__pydantic_fields_set__")
+        model_fields = type(canonical).model_fields
+        declared_fields = set(model_fields)
+        if (
+            type(actual_fields_set) is not set
+            or any(type(field_name) is not str for field_name in actual_fields_set)
+            or not actual_fields_set.issubset(declared_fields)
+        ):
+            raise ValueError(f"candidate runtime field-set metadata at {path} is not canonical")
         actual_values = actual.__dict__
         canonical_values = canonical.__dict__
-        for field_name in type(canonical).model_fields:
+        for field_name in model_fields:
             if field_name not in actual_values or field_name not in canonical_values:
                 raise ValueError(f"candidate runtime field {path}.{field_name} is not canonical")
+        required_fields = {
+            field_name for field_name, field in model_fields.items() if field.is_required()
+        }
+        if not required_fields.issubset(actual_fields_set):
+            raise ValueError(
+                f"candidate runtime field-set metadata at {path} omits a required field"
+            )
+        sparse_payload = {
+            field_name: _raw_candidate_contract_tree(actual_values[field_name])
+            for field_name in model_fields
+            if field_name in actual_fields_set
+        }
+        try:
+            sparse_canonical = type(canonical).model_validate(sparse_payload)
+        except Exception as exc:
+            raise ValueError(
+                f"candidate runtime field-set metadata at {path} cannot reconstruct defaults: {exc}"
+            ) from exc
+        sparse_values = sparse_canonical.__dict__
+        for field_name in model_fields:
+            if field_name in actual_fields_set:
+                continue
+            actual_value = actual_values[field_name]
+            default_value = sparse_values[field_name]
+            if type(actual_value) is not type(default_value) or actual_value != default_value:
+                raise ValueError(
+                    f"candidate runtime field-set metadata at {path} omits non-default "
+                    f"field {field_name!r}"
+                )
+        object.__setattr__(
+            canonical,
+            "__pydantic_fields_set__",
+            set(actual_fields_set),
+        )
+        for field_name in model_fields:
             _assert_exact_candidate_model_types(
                 actual_values[field_name],
                 canonical_values[field_name],
@@ -258,6 +344,55 @@ def _assert_exact_candidate_model_types(
             f"candidate runtime type at {path} must be exact canonical "
             f"{type(canonical).__name__}, got {type(actual).__name__}"
         )
+    if type(actual) is float and isnan(actual) and isnan(cast(float, canonical)):
+        return
+    scalar_values_match = actual == canonical
+    if type(scalar_values_match) is not bool or not scalar_values_match:
+        raise ValueError(f"candidate runtime scalar value at {path} is not canonical")
+
+
+def _canonicalize_exact_candidate_model(
+    value: object,
+    *,
+    model_type: type[BaseModel],
+    boundary_name: str,
+) -> BaseModel:
+    """Reject non-canonical runtime state, then rebuild an exact model tree."""
+
+    try:
+        raw_tree = _raw_candidate_contract_tree(value)
+        assert_no_final_scientific_fields(raw_tree)
+        if isinstance(value, BaseModel) and type(value) is not model_type:
+            raise ValueError(
+                f"{boundary_name} runtime type at $ must be exact canonical "
+                f"{model_type.__name__}, got {type(value).__name__}"
+            )
+        canonical = model_type.model_validate(raw_tree)
+        if type(value) is model_type:
+            _assert_exact_candidate_model_types(value, canonical)
+        return canonical
+    except ValueError:
+        raise
+    except Exception as exc:
+        raise ValueError(f"{boundary_name} runtime tree cannot be canonicalized: {exc}") from exc
+
+
+def canonicalize_candidate_boundary_model[CandidateBoundaryModelT: BaseModel](
+    value: object,
+    *,
+    model_type: type[CandidateBoundaryModelT],
+    boundary_name: str,
+) -> CandidateBoundaryModelT:
+    """Return a fresh exact model after the shared raw candidate-boundary gate."""
+
+    return cast(
+        CandidateBoundaryModelT,
+        _canonicalize_exact_candidate_model(
+            value,
+            model_type=model_type,
+            boundary_name=boundary_name,
+        ),
+    )
 
 
 class ParserAISectionInput(FrozenModel):
@@ -816,32 +951,42 @@ class ParserCandidateOutput(FrozenModel):
     def assert_raw_candidate_only(self) -> ParserCandidateOutput:
         """Reject hidden final fields and return an exact canonical runtime tree."""
 
-        try:
-            assert_no_final_scientific_fields(_raw_candidate_contract_tree(self))
-        except ValueError:
-            raise
-        except Exception as exc:
-            raise ValueError(f"candidate runtime tree is not canonical: {exc}") from exc
-        if type(self) is not ParserCandidateOutput:
-            raise ValueError(
-                "candidate runtime type at $ must be exact canonical ParserCandidateOutput, "
-                f"got {type(self).__name__}"
-            )
-        try:
-            canonical = ParserCandidateOutput.model_validate(
-                ParserCandidateOutput.model_dump(
-                    self,
-                    mode="python",
-                    round_trip=True,
-                    warnings="none",
-                )
-            )
-            _assert_exact_candidate_model_types(self, canonical)
-        except ValueError:
-            raise
-        except Exception as exc:
-            raise ValueError(f"candidate runtime tree cannot be canonicalized: {exc}") from exc
-        return canonical
+        return cast(
+            ParserCandidateOutput,
+            canonicalize_candidate_boundary_model(
+                self,
+                model_type=ParserCandidateOutput,
+                boundary_name="candidate",
+            ),
+        )
+
+    def model_dump(self, **kwargs: Any) -> dict[str, Any]:
+        """Serialize only after validating the complete raw candidate tree."""
+
+        self.assert_raw_candidate_only()
+        return BaseModel.model_dump(self, **kwargs)
+
+    def model_dump_json(self, **kwargs: Any) -> str:
+        """Serialize JSON only after validating the complete raw candidate tree."""
+
+        self.assert_raw_candidate_only()
+        return BaseModel.model_dump_json(self, **kwargs)
+
+    @model_serializer(mode="wrap")
+    def _serialize_after_raw_validation(
+        self,
+        handler: SerializerFunctionWrapHandler,
+    ) -> Any:
+        """Apply the raw gate when Pydantic serializes this model as a child."""
+
+        self.assert_raw_candidate_only()
+        return handler(self)
+
+    def __getstate__(self) -> dict[str, Any]:
+        """Reject hidden candidate state before entering a pickle envelope."""
+
+        checked = self.assert_raw_candidate_only()
+        return BaseModel.__getstate__(checked)
 
     @model_validator(mode="before")
     @classmethod
@@ -1005,6 +1150,19 @@ class ParserCandidateOutput(FrozenModel):
         return self
 
 
+def canonicalize_parser_candidate_output(value: Any) -> ParserCandidateOutput:
+    """Return a fresh exact candidate tree after inspecting all raw runtime state."""
+
+    return cast(
+        ParserCandidateOutput,
+        canonicalize_candidate_boundary_model(
+            value,
+            model_type=ParserCandidateOutput,
+            boundary_name="candidate",
+        ),
+    )
+
+
 class GoldSubmissionReference(FrozenModel):
     submission_id: str
     submission_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -1050,11 +1208,56 @@ class GoldParserTarget(FrozenModel):
     ]
     material_differences: tuple[GoldMaterialDifference, ...]
 
+    @field_validator("candidate_target", mode="before")
+    @classmethod
+    def _canonical_candidate_target(cls, value: Any) -> ParserCandidateOutput:
+        return canonicalize_parser_candidate_output(value)
+
     @model_validator(mode="before")
     @classmethod
     def _raw_candidate_only(cls, value: Any) -> Any:
         assert_no_final_scientific_fields(value)
         return value
+
+    def assert_raw_candidate_only(self) -> GoldParserTarget:
+        """Return fresh exact gold and candidate trees after raw-state inspection."""
+
+        return cast(
+            GoldParserTarget,
+            canonicalize_candidate_boundary_model(
+                self,
+                model_type=GoldParserTarget,
+                boundary_name="gold target",
+            ),
+        )
+
+    def model_dump(self, **kwargs: Any) -> dict[str, Any]:
+        """Serialize only after validating the complete raw gold tree."""
+
+        self.assert_raw_candidate_only()
+        return BaseModel.model_dump(self, **kwargs)
+
+    def model_dump_json(self, **kwargs: Any) -> str:
+        """Serialize JSON only after validating the complete raw gold tree."""
+
+        self.assert_raw_candidate_only()
+        return BaseModel.model_dump_json(self, **kwargs)
+
+    @model_serializer(mode="wrap")
+    def _serialize_after_raw_validation(
+        self,
+        handler: SerializerFunctionWrapHandler,
+    ) -> Any:
+        """Apply the raw gate when Pydantic serializes this gold as a child."""
+
+        self.assert_raw_candidate_only()
+        return handler(self)
+
+    def __getstate__(self) -> dict[str, Any]:
+        """Reject hidden gold state before entering a pickle envelope."""
+
+        checked = self.assert_raw_candidate_only()
+        return BaseModel.__getstate__(checked)
 
     @model_validator(mode="after")
     def _adjudicated(self) -> GoldParserTarget:
@@ -1081,6 +1284,19 @@ class GoldParserTarget(FrozenModel):
         return self
 
 
+def canonicalize_gold_parser_target(value: Any) -> GoldParserTarget:
+    """Return a fresh exact gold tree without trusting a prevalidated instance."""
+
+    return cast(
+        GoldParserTarget,
+        canonicalize_candidate_boundary_model(
+            value,
+            model_type=GoldParserTarget,
+            boundary_name="gold target",
+        ),
+    )
+
+
 class ParserV3MigrationReviewRequired(ValueError):
     """Legacy direct-verdict targets require explicit human re-adjudication."""
 
@@ -1105,7 +1321,7 @@ def validate_candidate_contract_pair(
 ) -> ParserCandidateOutput:
     """Validate v8 candidate evidence coordinates against immutable source input."""
 
-    assert_no_final_scientific_fields(response.model_dump(mode="json"))
+    response = canonicalize_parser_candidate_output(response)
     return cast(ParserCandidateOutput, _validate_contract_coordinates(request, response))
 
 
