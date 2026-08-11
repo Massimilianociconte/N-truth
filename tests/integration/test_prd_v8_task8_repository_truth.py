@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -260,6 +262,75 @@ def test_final_requirement_matrix_reconciles_every_phase_one_requirement() -> No
     assert set(final_ids) == baseline_ids
     assert set(final_statuses) <= {"IMPLEMENTED", "PARTIAL", "MISSING"}
     assert "IMPLEMENTED_WITH_EXPLICIT_BLOCKERS" in final
+
+
+def test_every_partial_or_missing_requirement_names_a_registered_blocker() -> None:
+    audit_root = ROOT / "docs" / "audits" / "prd-v8-full-migration"
+    final = (audit_root / "FINAL_IMPLEMENTATION_MATRIX.md").read_text(encoding="utf-8")
+    register = (audit_root / "SCIENTIFIC_REVIEW_REGISTER.md").read_text(encoding="utf-8")
+    registered = set(re.findall(r"^\| (SRR-V8-[0-9]{3}) \|", register, re.MULTILINE))
+
+    failures: list[str] = []
+    for line in final.splitlines():
+        if not line.startswith("| V8-"):
+            continue
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if len(cells) != 8 or cells[3] not in {"PARTIAL", "MISSING"}:
+            continue
+        blockers = set(re.findall(r"SRR-V8-[0-9]{3}", cells[6]))
+        if not blockers:
+            failures.append(f"{cells[0]}: missing blocker ID")
+            continue
+        unknown = sorted(blockers - registered)
+        if unknown:
+            failures.append(f"{cells[0]}: unregistered blockers {unknown}")
+
+    assert failures == []
+
+
+@pytest.mark.parametrize(
+    ("replacement", "expected"),
+    (
+        ("Human review remains required", "lacks a blocker ID"),
+        ("Human review remains required (`SRR-V8-999`)", "unregistered blocker IDs"),
+    ),
+)
+def test_contract_gate_rejects_missing_or_unregistered_matrix_blockers(
+    tmp_path: Path,
+    replacement: str,
+    expected: str,
+) -> None:
+    script = ROOT / "scripts" / "check_prd_v8_contracts.py"
+    spec = importlib.util.spec_from_file_location("ntruth_prd_v8_contract_gate", script)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    source = ROOT / "docs" / "audits" / "prd-v8-full-migration"
+    target = tmp_path / "docs" / "audits" / "prd-v8-full-migration"
+    target.mkdir(parents=True)
+    for name in (
+        "FINAL_IMPLEMENTATION_MATRIX.md",
+        "REQUIREMENT_TRACEABILITY_MATRIX.md",
+        "SCIENTIFIC_REVIEW_REGISTER.md",
+    ):
+        (target / name).write_text((source / name).read_text(encoding="utf-8"), encoding="utf-8")
+
+    final_path = target / "FINAL_IMPLEMENTATION_MATRIX.md"
+    lines = final_path.read_text(encoding="utf-8").splitlines()
+    for index, line in enumerate(lines):
+        if not line.startswith("| V8-AES |"):
+            continue
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        cells[6] = replacement
+        lines[index] = "| " + " | ".join(cells) + " |"
+        break
+    else:  # pragma: no cover - the canonical matrix gate catches this first
+        raise AssertionError("V8-AES row missing")
+    final_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    diagnostics = module._requirements_matrix_diagnostics(tmp_path)
+    assert any(expected in diagnostic for diagnostic in diagnostics), diagnostics
 
 
 def test_current_public_docs_name_v8_as_current_and_v7_only_as_deprecated() -> None:

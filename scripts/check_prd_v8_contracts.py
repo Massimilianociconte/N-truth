@@ -50,6 +50,8 @@ CURRENT_DOCUMENTS = (
 LINK_RE = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")
 BASELINE_REQUIREMENT_RE = re.compile(r"^\| (V8-[^:|]+):", re.MULTILINE)
 FINAL_REQUIREMENT_RE = re.compile(r"^\| (V8-[^| ]+) \|", re.MULTILINE)
+REGISTER_ROW_RE = re.compile(r"^\| (SRR-V8-[0-9]{3}) \|", re.MULTILINE)
+BLOCKER_ID_RE = re.compile(r"SRR-V8-[0-9]{3}")
 FINAL_STATUS_VALUES = frozenset({"IMPLEMENTED", "PARTIAL", "MISSING"})
 HISTORICAL_NON_NORMATIVE_DOCUMENTS = (
     "docs/parser-ai-contract.md",
@@ -130,11 +132,15 @@ def _requirements_matrix_diagnostics(root: Path) -> tuple[str, ...]:
     audit_root = root / "docs/audits/prd-v8-full-migration"
     baseline_path = audit_root / "REQUIREMENT_TRACEABILITY_MATRIX.md"
     final_path = audit_root / "FINAL_IMPLEMENTATION_MATRIX.md"
+    register_path = audit_root / "SCIENTIFIC_REVIEW_REGISTER.md"
     try:
         baseline = baseline_path.read_text(encoding="utf-8")
         final = final_path.read_text(encoding="utf-8")
+        register = register_path.read_text(encoding="utf-8")
     except OSError as exc:
         return (f"requirements matrix: {exc}",)
+
+    registered_blockers = set(REGISTER_ROW_RE.findall(register))
 
     baseline_ids = BASELINE_REQUIREMENT_RE.findall(baseline)
     final_ids = FINAL_REQUIREMENT_RE.findall(final)
@@ -157,7 +163,17 @@ def _requirements_matrix_diagnostics(root: Path) -> tuple[str, ...]:
         if len(cells) != 8:
             diagnostics.append(f"malformed final matrix row: {line[:80]}")
             continue
-        statuses.append(cells[3])
+        requirement_id = cells[0]
+        status = cells[3]
+        statuses.append(status)
+        blockers = set(BLOCKER_ID_RE.findall(cells[6]))
+        if status in {"PARTIAL", "MISSING"} and not blockers:
+            diagnostics.append(f"{requirement_id}: partial/missing row lacks a blocker ID")
+        unknown_blockers = sorted(blockers - registered_blockers)
+        if unknown_blockers:
+            diagnostics.append(
+                f"{requirement_id}: unregistered blocker IDs: {', '.join(unknown_blockers)}"
+            )
     invalid_statuses = sorted(set(statuses) - FINAL_STATUS_VALUES)
     if invalid_statuses:
         diagnostics.append(
