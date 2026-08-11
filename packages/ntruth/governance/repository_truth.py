@@ -60,7 +60,7 @@ CANONICAL_COMPONENT_DESCRIPTOR_SHA256: Final[Mapping[str, str]] = MappingProxyTy
             "0baf3bbcc78ec50b8839ba87e024afe461c41ff053ae1406f063522c8ccecb39"
         ),
         "core-semantic-kernel": (
-            "0896a3664ac8372d2b7d72b20de5150c2df43a5e4d1813aec3ba0d1664c0ff5f"
+            "41494d17c09cd8302a70c25a57dac3d4ea429aefbee1ed5f03167abbae04d778"
         ),
         "corrections-rederivation": (
             "f25b0e4ad2c6d3b64543ad3e052a55305c3a4197602544a20c1c18ce19f4e4f2"
@@ -69,10 +69,10 @@ CANONICAL_COMPONENT_DESCRIPTOR_SHA256: Final[Mapping[str, str]] = MappingProxyTy
         "derivation-theory": ("13d79bc1a79bb34c8e4118f95e564c6c36d04fef0fddd1b960c31dcad529ab00"),
         "desktop-v8": "8867f0d41d52c84e31d3c8ba36a3345baf61e0ca9142b18da6f199a8692397c3",
         "evaluation-residual-cluster": (
-            "c53e785c06501585a4c3c09a26c0a1dd6c0436eb9cb24cbafa4bc9efed8ca523"
+            "e5351f65ba891afc06a9840aa9f6c26a983fea37fdd94b796fb17d9d174fee4f"
         ),
         "event-causal-context": (
-            "d21bfa3eb681e94e0184f504a695c4aafcd18856b7af7426347e3d1d2f6fb822"
+            "9993f46f3a45a695a30f06dde869e02e7e0c0f6595f9f199e697cfb8e1ec1708"
         ),
         "experiment-block-boundary": (
             "ae4369f5ae26629c2f77a8b11279e38228bd3f95cfd010aae7c509eab634d1db"
@@ -80,7 +80,7 @@ CANONICAL_COMPONENT_DESCRIPTOR_SHA256: Final[Mapping[str, str]] = MappingProxyTy
         "external-challenge-custody": (
             "eada5789b47cf853f5bb5822843a58b3568889edce994014211253d520401607"
         ),
-        "graph-equality": ("ccb265c8998bcc06682a765e34403beb186f408c009233549413a541d7f2d30b"),
+        "graph-equality": ("e3d2b3ed8d132a638958d161b51e44d0ee0740d1c90b96580da392535951305b"),
         "guided-quick-design-v8": (
             "ff8e92ba6741890afee60f38f3da939dc65ebe2c8b56525d7b3436ef6af058be"
         ),
@@ -98,15 +98,15 @@ CANONICAL_COMPONENT_DESCRIPTOR_SHA256: Final[Mapping[str, str]] = MappingProxyTy
             "da9baa6009596ef26fa779100d6661600e208c8e2df1efc57f5e42ee52470c98"
         ),
         "protected-training-boundary": (
-            "467790162bb91e2fc392c8cb9042769c21df896f8b78cf40a9b0b8589a33f73e"
+            "0ba78b9f8e2f76c797525f55b57162b13ee81c3e8c3c21cc977811a765b15b8e"
         ),
-        "query-scoped-claims": ("0486af202b9185fdc829017f1e9518f2a1350857902694a3a254310d0dfbf493"),
+        "query-scoped-claims": ("4eefaa665f75d01c87b343d5c3021886d019d687a8efecaeec68ba855fe2c2ef"),
         "reality-gate-v8": ("926c091b52f3372baa05f7107ea4031ea7c9b7d15ab1f046d7a7c53cc9433553"),
         "repository-contract-truth": (
-            "5e74f727d7f870f936dd6e92948cd422e87bb9bb7d869b038b546d62744d6d20"
+            "e51279ea806af239d70d8d883b1d6ee479e5f660fda9363a4558d0f54fc5db14"
         ),
         "rulebook-conformance": (
-            "a3bce8cbb8f80eed63b1ad154ac25610f38474081fb1902fc84d75d4a8dcac53"
+            "0e3b9390eff43926dea22ee852dc36a15a4947d195164a3fe6c5f76e86deec7c"
         ),
         "statistical-handoff": ("cd05e8bbf4642a587971caa6838067c0b6de523a7b4ead4de59f1d8c24edea3e"),
         "v7-compatibility": ("069bf653a8b5e9267b59a58ffc5d78e429deb0a2a5cf812e77f8c87e162e7d64"),

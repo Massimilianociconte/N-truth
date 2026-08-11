@@ -13,7 +13,7 @@
       "public_api": ["python:ntruth.schemas.kernel:KernelModel", "python:ntruth.schemas.knowledge:KnowledgeValue"],
       "owner": "semantic-kernel",
       "adr_paths": ["docs/adr/0013-prd-v8-scientific-contract-migration.md"],
-      "test_paths": ["tests/unit/test_prd_v8_kernel_contracts.py", "tests/unit/test_prd_v8_kernel_fix_round1.py", "tests/integration/test_prd_v8_task8_fix1_repository_truth.py"],
+      "test_paths": ["tests/unit/test_prd_v8_kernel_contracts.py", "tests/unit/test_prd_v8_kernel_fix_round1.py", "tests/unit/test_prd_v8_task9_knowledge_provenance_uniqueness.py", "tests/unit/test_prd_v8_task9_knowledge_provenance_uniqueness_fix1.py", "tests/unit/test_prd_v8_task9_knowledge_provenance_uniqueness_fix2.py", "tests/unit/test_prd_v8_task9_knowledge_provenance_uniqueness_fix3.py", "tests/unit/test_prd_v8_task9_knowledge_provenance_uniqueness_fix4.py", "tests/unit/test_prd_v8_task9_knowledge_provenance_uniqueness_fix5.py", "tests/integration/test_prd_v8_task8_fix1_repository_truth.py"],
       "evidence_paths": ["docs/audits/prd-v8-full-migration/FINAL_IMPLEMENTATION_MATRIX.md"],
       "blocker_ids": []
     },
@@ -43,25 +43,25 @@
     },
     {
       "component_id": "rulebook-conformance",
-      "current_paths": ["packages/ntruth/conformance/harness.py", "rulesets/ntruth-v8-core-0.1.0.json"],
+      "current_paths": ["packages/ntruth/conformance/harness.py", "packages/ntruth/derivation_theory/runtime.py", "rulesets/ntruth-v8-core-0.1.0.json", "theories/reviewed-evaluator-registry-0.1.0.json"],
       "target": "Theory-clause-pinned Rulebook with positive, negative and counterfactual closure",
       "status": "IMPLEMENTED",
       "public_api": ["python:ntruth.conformance.harness:evaluate_conformance", "python:ntruth.derivation_theory.runtime:verify_runtime_bundle"],
       "owner": "rulebook-maintainers",
       "adr_paths": ["docs/adr/0013-prd-v8-scientific-contract-migration.md"],
-      "test_paths": ["tests/unit/test_prd_v8_derivation_theory_conformance.py", "tests/integration/test_prd_v8_packaged_conformance.py"],
+      "test_paths": ["tests/unit/test_prd_v8_derivation_theory_conformance.py", "tests/unit/test_prd_v8_task9_evaluator_transitive_digest.py", "tests/unit/test_prd_v8_task9_evaluator_transitive_digest_fix1.py", "tests/unit/test_prd_v8_task9_evaluator_transitive_digest_fix2.py", "tests/unit/test_prd_v8_task9_evaluator_transitive_digest_fix3.py", "tests/integration/test_prd_v8_packaged_conformance.py"],
       "evidence_paths": ["packages/ntruth/conformance/assets/implementation-conformance-fixtures-simple-cell-culture-0.1.0.json"],
       "blocker_ids": []
     },
     {
       "component_id": "query-scoped-claims",
-      "current_paths": ["packages/ntruth/schemas/query.py", "packages/ntruth/schemas/claims.py", "packages/ntruth/pipeline_v8.py"],
+      "current_paths": ["packages/ntruth/schemas/query.py", "packages/ntruth/schemas/claims.py", "packages/ntruth/runtime_tree.py", "packages/ntruth/pipeline_v8.py", "packages/ntruth/verifier/v8.py"],
       "target": "InferentialQuery-scoped DerivedClaimSet with proof, determinability and support",
       "status": "PARTIAL",
       "public_api": ["python:ntruth.schemas.query:InferentialQuery", "python:ntruth.schemas.claims:DerivedClaim", "python:ntruth.schemas.claims:DerivedClaimSet", "python:ntruth.pipeline_v8:run_v8_pipeline"],
       "owner": "semantic-kernel",
       "adr_paths": ["docs/adr/0013-prd-v8-scientific-contract-migration.md"],
-      "test_paths": ["tests/unit/test_prd_v8_derivation_runtime.py", "tests/unit/test_prd_v8_derivation_runtime_fix_round2.py", "tests/integration/test_prd_v8_task8_fix1_repository_truth.py"],
+      "test_paths": ["tests/unit/test_prd_v8_derivation_runtime.py", "tests/unit/test_prd_v8_derivation_runtime_fix_round2.py", "tests/unit/test_prd_v8_task9_scientific_runtime_fix1.py", "tests/unit/test_prd_v8_task9_scientific_runtime_fix2.py", "tests/unit/test_prd_v8_task9_scientific_runtime_fix3.py", "tests/unit/test_prd_v8_task9_scientific_runtime_fix4.py", "tests/integration/test_prd_v8_task8_fix1_repository_truth.py"],
       "evidence_paths": ["docs/audits/prd-v8-full-migration/SCIENTIFIC_REVIEW_REGISTER.md"],
       "blocker_ids": ["SRR-V8-014", "SRR-V8-023", "SRR-V8-024"]
     },
@@ -109,7 +109,7 @@
       "public_api": ["python:ntruth.schemas.events:EventRegistry", "python:ntruth.schemas.events:AssignmentEvent", "python:ntruth.schemas.events:ApplicationEvent", "python:ntruth.schemas.events:ExposureEvent", "python:ntruth.schemas.causal_context:QueryCausalContext"],
       "owner": "semantic-kernel",
       "adr_paths": ["docs/adr/0013-prd-v8-scientific-contract-migration.md"],
-      "test_paths": ["tests/unit/test_prd_v8_events_and_graph.py", "tests/unit/test_prd_v8_count_event_migrations.py", "tests/integration/test_prd_v8_task8_fix1_repository_truth.py"],
+      "test_paths": ["tests/unit/test_prd_v8_events_and_graph.py", "tests/unit/test_prd_v8_count_event_migrations.py", "tests/unit/test_prd_v8_task9_scientific_runtime_fix1.py", "tests/integration/test_prd_v8_task8_fix1_repository_truth.py"],
       "evidence_paths": ["docs/audits/prd-v8-full-migration/SCIENTIFIC_REVIEW_REGISTER.md"],
       "blocker_ids": ["SRR-V8-017"]
     },
@@ -181,7 +181,7 @@
       "public_api": ["python:ntruth.graph.equality_v8:exact_graph_equal"],
       "owner": "evaluation-methods",
       "adr_paths": ["docs/adr/0013-prd-v8-scientific-contract-migration.md"],
-      "test_paths": ["tests/unit/test_prd_v8_graph_contract.py"],
+      "test_paths": ["tests/unit/test_prd_v8_graph_contract.py", "tests/unit/test_prd_v8_task9_scientific_runtime_fix1.py", "tests/unit/test_prd_v8_task9_scientific_runtime_fix2.py", "tests/unit/test_prd_v8_task9_scientific_runtime_fix3.py", "tests/unit/test_prd_v8_task9_scientific_runtime_fix4.py", "tests/unit/test_prd_v8_task9_scientific_runtime_fix5.py"],
       "evidence_paths": ["docs/audits/prd-v8-full-migration/SCIENTIFIC_REVIEW_REGISTER.md"],
       "blocker_ids": ["SRR-V8-012"]
     },
@@ -199,13 +199,13 @@
     },
     {
       "component_id": "protected-training-boundary",
-      "current_paths": ["packages/ntruth/training/records.py", "packages/ntruth/training/mlx_runtime.py"],
+      "current_paths": ["packages/ntruth/training/records.py", "packages/ntruth/training/preparation.py", "packages/ntruth/training/mlx_dataset.py", "packages/ntruth/training/mlx_runtime.py", "packages/ntruth/training/mlx_fd_entrypoint.py"],
       "target": "TEST/EXTERNAL never train/model-selection eligible; canonical Gate pins before payload access",
       "status": "IMPLEMENTED",
       "public_api": ["python:ntruth.training.records:SupervisedRecord", "python:ntruth.training.mlx_runtime:run_training", "python:ntruth.training.mlx_runtime:CanonicalRealityGateV8Protocol.resolve_training_authorization"],
       "owner": "data-governance",
       "adr_paths": ["docs/adr/0013-prd-v8-scientific-contract-migration.md"],
-      "test_paths": ["tests/unit/test_prd_v8_task5_protected_runtime.py", "tests/unit/test_prd_v8_training_records_splits.py"],
+      "test_paths": ["tests/unit/test_prd_v8_task5_protected_runtime.py", "tests/unit/test_prd_v8_training_records_splits.py", "tests/unit/test_prd_v8_task9_jsonl_physical_lines.py", "tests/unit/test_prd_v8_task9_jsonl_physical_lines_fix2.py", "tests/unit/test_prd_v8_task9_jsonl_physical_lines_fix3.py", "tests/unit/test_prd_v8_task9_jsonl_physical_lines_fix4.py", "tests/unit/test_prd_v8_task9_validation_eligibility.py", "tests/unit/test_prd_v8_task9_validation_eligibility_fix2.py", "tests/unit/test_prd_v8_task9_validation_eligibility_fix3.py", "tests/unit/test_prd_v8_task9_validation_eligibility_fix4.py"],
       "evidence_paths": ["docs/training/DECISION-hold-pending-real-anchor.md"],
       "blocker_ids": ["SRR-V8-021", "SRR-V8-022"]
     },
@@ -217,7 +217,7 @@
       "public_api": ["python:ntruth.evaluation_v8.scoring:snapshot_report_bundle", "python:ntruth.evaluation_v8.scoring:evaluate_end_to_end", "python:ntruth.evaluation_v8.scoring:summarize_blind_residual_audit", "python:ntruth.evaluation_v8.cluster:cluster_bootstrap_precision", "python:ntruth.evaluation_v8.cluster:build_cluster_precision_conformance_artifact"],
       "owner": "independent-evaluation",
       "adr_paths": ["docs/adr/0013-prd-v8-scientific-contract-migration.md"],
-      "test_paths": ["tests/unit/test_prd_v8_task7_evaluation.py", "tests/unit/test_prd_v8_task7_evaluation_fix5.py", "tests/unit/test_prd_v8_task7_evaluation_fix6.py", "tests/unit/test_prd_v8_task7_evaluation_fix7.py"],
+      "test_paths": ["tests/unit/test_prd_v8_task7_evaluation.py", "tests/unit/test_prd_v8_task7_evaluation_fix5.py", "tests/unit/test_prd_v8_task7_evaluation_fix6.py", "tests/unit/test_prd_v8_task7_evaluation_fix7.py", "tests/unit/test_prd_v8_task9_evaluation_copy_boundaries.py", "tests/unit/test_prd_v8_task9_evaluation_serialization_boundaries.py"],
       "evidence_paths": ["docs/audits/prd-v8-full-migration/SCIENTIFIC_REVIEW_REGISTER.md"],
       "blocker_ids": ["SRR-V8-021", "SRR-V8-022"]
     },
@@ -289,7 +289,7 @@
       "public_api": ["python:ntruth.governance.repository_truth:CANONICAL_COMPONENT_DESCRIPTOR_SHA256", "python:ntruth.governance.repository_truth:CANONICAL_COMPONENT_IDS", "python:ntruth.governance.repository_truth:validate_current_target_map", "python:ntruth.conformance.examples:evaluate_prd_v8_examples", "python:ntruth.schemas.schema_snapshot:load_installed_kernel_schema_snapshot"],
       "owner": "contract-governance",
       "adr_paths": ["docs/adr/0013-prd-v8-scientific-contract-migration.md"],
-      "test_paths": ["tests/integration/test_prd_v8_task8_repository_truth.py", "tests/integration/test_prd_v8_task8_fix1_repository_truth.py", "tests/integration/test_prd_v8_task8_fix2_repository_truth.py", "tests/integration/test_prd_v8_packaged_conformance.py"],
+      "test_paths": ["tests/integration/test_prd_v8_task8_repository_truth.py", "tests/integration/test_prd_v8_task8_fix1_repository_truth.py", "tests/integration/test_prd_v8_task8_fix2_repository_truth.py", "tests/integration/test_prd_v8_task8_final_refresh.py", "tests/integration/test_prd_v8_packaged_conformance.py"],
       "evidence_paths": ["docs/audits/prd-v8-full-migration/FINAL_IMPLEMENTATION_MATRIX.md", "docs/audits/prd-v8-full-migration/SCIENTIFIC_REVIEW_REGISTER.md"],
       "blocker_ids": []
     },

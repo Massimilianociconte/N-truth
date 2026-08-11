@@ -1,5 +1,5 @@
 {
-  "declared_checksum": "f790b9a6c08d9695db3cc19f3766172f53e0aef77a9bf8000d367b9c78362f55",
+  "declared_checksum": "c59b1bc4bac1ed2ba949975c5407eb7cb3a6c2c22768789dab736f8227360ada",
   "generated_from": "ntruth.schemas.kernel.kernel_json_schemas",
   "schema_version": "8.0.0",
   "schemas": {
@@ -21521,6 +21521,114 @@
           "title": "KnowledgeValue[Union[Annotated[int, FieldInfo(annotation=NoneType, required=True, metadata=[Strict(strict=True), Ge(ge=0)])], CountInterval]]",
           "type": "object"
         },
+        "KnowledgeValue_dict_Annotated_str__StringConstraints___JsonValue__": {
+          "additionalProperties": false,
+          "properties": {
+            "claim_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Claim Scope Id"
+            },
+            "conflicting_values": {
+              "default": [],
+              "items": {
+                "additionalProperties": {
+                  "$ref": "#/$defs/JsonValue"
+                },
+                "propertyNames": {
+                  "minLength": 1
+                },
+                "type": "object"
+              },
+              "title": "Conflicting Values",
+              "type": "array"
+            },
+            "evidence_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Evidence Ids",
+              "type": "array"
+            },
+            "knowledge_state": {
+              "$ref": "#/$defs/KnowledgeState"
+            },
+            "query_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Query Scope Id"
+            },
+            "rationale": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Rationale"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "source_scope_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Source Scope Ids",
+              "type": "array"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "additionalProperties": {
+                    "$ref": "#/$defs/JsonValue"
+                  },
+                  "propertyNames": {
+                    "minLength": 1
+                  },
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Value"
+            }
+          },
+          "required": [
+            "knowledge_state"
+          ],
+          "title": "KnowledgeValue[dict[Annotated[str, StringConstraints], JsonValue]]",
+          "type": "object"
+        },
         "KnowledgeValue_tuple_Annotated_str__StringConstraints___________": {
           "additionalProperties": false,
           "properties": {
@@ -24458,6 +24566,15 @@
         "V8GraphRelation": {
           "additionalProperties": false,
           "properties": {
+            "decisive_attributes": {
+              "$ref": "#/$defs/KnowledgeValue_dict_Annotated_str__StringConstraints___JsonValue__"
+            },
+            "factor_scope": {
+              "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+            },
+            "query_scope": {
+              "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+            },
             "relation_id": {
               "minLength": 1,
               "title": "Relation Id",
@@ -24487,7 +24604,10 @@
             "relation_id",
             "relation_type",
             "source_node_id",
-            "target_node_id"
+            "target_node_id",
+            "query_scope",
+            "factor_scope",
+            "decisive_attributes"
           ],
           "title": "V8GraphRelation",
           "type": "object"
@@ -26310,6 +26430,225 @@
     },
     "v8_experiment_graph": {
       "$defs": {
+        "JsonValue": {},
+        "KnowledgeState": {
+          "enum": [
+            "PRESENT",
+            "ABSENT_EXPLICIT",
+            "NOT_REPORTED",
+            "UNKNOWN",
+            "NOT_APPLICABLE",
+            "CONFLICTING"
+          ],
+          "title": "KnowledgeState",
+          "type": "string"
+        },
+        "KnowledgeValue_Annotated_str__StringConstraints__": {
+          "additionalProperties": false,
+          "properties": {
+            "claim_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Claim Scope Id"
+            },
+            "conflicting_values": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Conflicting Values",
+              "type": "array"
+            },
+            "evidence_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Evidence Ids",
+              "type": "array"
+            },
+            "knowledge_state": {
+              "$ref": "#/$defs/KnowledgeState"
+            },
+            "query_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Query Scope Id"
+            },
+            "rationale": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Rationale"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "source_scope_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Source Scope Ids",
+              "type": "array"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Value"
+            }
+          },
+          "required": [
+            "knowledge_state"
+          ],
+          "title": "KnowledgeValue[Annotated[str, StringConstraints]]",
+          "type": "object"
+        },
+        "KnowledgeValue_dict_Annotated_str__StringConstraints___JsonValue__": {
+          "additionalProperties": false,
+          "properties": {
+            "claim_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Claim Scope Id"
+            },
+            "conflicting_values": {
+              "default": [],
+              "items": {
+                "additionalProperties": {
+                  "$ref": "#/$defs/JsonValue"
+                },
+                "propertyNames": {
+                  "minLength": 1
+                },
+                "type": "object"
+              },
+              "title": "Conflicting Values",
+              "type": "array"
+            },
+            "evidence_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Evidence Ids",
+              "type": "array"
+            },
+            "knowledge_state": {
+              "$ref": "#/$defs/KnowledgeState"
+            },
+            "query_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Query Scope Id"
+            },
+            "rationale": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Rationale"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "source_scope_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Source Scope Ids",
+              "type": "array"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "additionalProperties": {
+                    "$ref": "#/$defs/JsonValue"
+                  },
+                  "propertyNames": {
+                    "minLength": 1
+                  },
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Value"
+            }
+          },
+          "required": [
+            "knowledge_state"
+          ],
+          "title": "KnowledgeValue[dict[Annotated[str, StringConstraints], JsonValue]]",
+          "type": "object"
+        },
         "V8GraphNode": {
           "additionalProperties": false,
           "properties": {
@@ -26373,6 +26712,15 @@
         "V8GraphRelation": {
           "additionalProperties": false,
           "properties": {
+            "decisive_attributes": {
+              "$ref": "#/$defs/KnowledgeValue_dict_Annotated_str__StringConstraints___JsonValue__"
+            },
+            "factor_scope": {
+              "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+            },
+            "query_scope": {
+              "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+            },
             "relation_id": {
               "minLength": 1,
               "title": "Relation Id",
@@ -26402,7 +26750,10 @@
             "relation_id",
             "relation_type",
             "source_node_id",
-            "target_node_id"
+            "target_node_id",
+            "query_scope",
+            "factor_scope",
+            "decisive_attributes"
           ],
           "title": "V8GraphRelation",
           "type": "object"
@@ -26536,6 +26887,225 @@
     },
     "v8_graph_relation": {
       "$defs": {
+        "JsonValue": {},
+        "KnowledgeState": {
+          "enum": [
+            "PRESENT",
+            "ABSENT_EXPLICIT",
+            "NOT_REPORTED",
+            "UNKNOWN",
+            "NOT_APPLICABLE",
+            "CONFLICTING"
+          ],
+          "title": "KnowledgeState",
+          "type": "string"
+        },
+        "KnowledgeValue_Annotated_str__StringConstraints__": {
+          "additionalProperties": false,
+          "properties": {
+            "claim_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Claim Scope Id"
+            },
+            "conflicting_values": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Conflicting Values",
+              "type": "array"
+            },
+            "evidence_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Evidence Ids",
+              "type": "array"
+            },
+            "knowledge_state": {
+              "$ref": "#/$defs/KnowledgeState"
+            },
+            "query_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Query Scope Id"
+            },
+            "rationale": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Rationale"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "source_scope_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Source Scope Ids",
+              "type": "array"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Value"
+            }
+          },
+          "required": [
+            "knowledge_state"
+          ],
+          "title": "KnowledgeValue[Annotated[str, StringConstraints]]",
+          "type": "object"
+        },
+        "KnowledgeValue_dict_Annotated_str__StringConstraints___JsonValue__": {
+          "additionalProperties": false,
+          "properties": {
+            "claim_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Claim Scope Id"
+            },
+            "conflicting_values": {
+              "default": [],
+              "items": {
+                "additionalProperties": {
+                  "$ref": "#/$defs/JsonValue"
+                },
+                "propertyNames": {
+                  "minLength": 1
+                },
+                "type": "object"
+              },
+              "title": "Conflicting Values",
+              "type": "array"
+            },
+            "evidence_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Evidence Ids",
+              "type": "array"
+            },
+            "knowledge_state": {
+              "$ref": "#/$defs/KnowledgeState"
+            },
+            "query_scope_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Query Scope Id"
+            },
+            "rationale": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Rationale"
+            },
+            "schema_version": {
+              "const": "8.0.0",
+              "default": "8.0.0",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "source_scope_ids": {
+              "default": [],
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Source Scope Ids",
+              "type": "array"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "additionalProperties": {
+                    "$ref": "#/$defs/JsonValue"
+                  },
+                  "propertyNames": {
+                    "minLength": 1
+                  },
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Value"
+            }
+          },
+          "required": [
+            "knowledge_state"
+          ],
+          "title": "KnowledgeValue[dict[Annotated[str, StringConstraints], JsonValue]]",
+          "type": "object"
+        },
         "V8GraphRelationType": {
           "enum": [
             "derived_from",
@@ -26572,6 +27142,15 @@
       },
       "additionalProperties": false,
       "properties": {
+        "decisive_attributes": {
+          "$ref": "#/$defs/KnowledgeValue_dict_Annotated_str__StringConstraints___JsonValue__"
+        },
+        "factor_scope": {
+          "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+        },
+        "query_scope": {
+          "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+        },
         "relation_id": {
           "minLength": 1,
           "title": "Relation Id",
@@ -26601,7 +27180,10 @@
         "relation_id",
         "relation_type",
         "source_node_id",
-        "target_node_id"
+        "target_node_id",
+        "query_scope",
+        "factor_scope",
+        "decisive_attributes"
       ],
       "title": "V8GraphRelation",
       "type": "object"
@@ -26677,5 +27259,5 @@
       "type": "object"
     }
   },
-  "snapshot_id": "KERNEL-SCHEMAS-f790b9a6c08d9695db3c"
+  "snapshot_id": "KERNEL-SCHEMAS-c59b1bc4bac1ed2ba949"
 }
