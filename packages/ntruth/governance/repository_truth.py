@@ -60,7 +60,7 @@ CANONICAL_COMPONENT_DESCRIPTOR_SHA256: Final[Mapping[str, str]] = MappingProxyTy
             "0baf3bbcc78ec50b8839ba87e024afe461c41ff053ae1406f063522c8ccecb39"
         ),
         "core-semantic-kernel": (
-            "41494d17c09cd8302a70c25a57dac3d4ea429aefbee1ed5f03167abbae04d778"
+            "080f8a2ff5b341e1cf62a25d78b6884e7f14a6ec5659675f5fbd93cb9359cf0b"
         ),
         "corrections-rederivation": (
             "f25b0e4ad2c6d3b64543ad3e052a55305c3a4197602544a20c1c18ce19f4e4f2"

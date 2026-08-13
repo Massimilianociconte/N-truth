@@ -13,7 +13,7 @@
       "public_api": ["python:ntruth.schemas.kernel:KernelModel", "python:ntruth.schemas.knowledge:KnowledgeValue"],
       "owner": "semantic-kernel",
       "adr_paths": ["docs/adr/0013-prd-v8-scientific-contract-migration.md"],
-      "test_paths": ["tests/unit/test_prd_v8_kernel_contracts.py", "tests/unit/test_prd_v8_kernel_fix_round1.py", "tests/unit/test_prd_v8_task9_knowledge_provenance_uniqueness.py", "tests/unit/test_prd_v8_task9_knowledge_provenance_uniqueness_fix1.py", "tests/unit/test_prd_v8_task9_knowledge_provenance_uniqueness_fix2.py", "tests/unit/test_prd_v8_task9_knowledge_provenance_uniqueness_fix3.py", "tests/unit/test_prd_v8_task9_knowledge_provenance_uniqueness_fix4.py", "tests/unit/test_prd_v8_task9_knowledge_provenance_uniqueness_fix5.py", "tests/integration/test_prd_v8_task8_fix1_repository_truth.py"],
+      "test_paths": ["tests/unit/test_prd_v8_kernel_contracts.py", "tests/unit/test_prd_v8_kernel_fix_round1.py", "tests/unit/test_prd_v8_task9_knowledge_provenance_uniqueness.py", "tests/unit/test_prd_v8_task9_knowledge_provenance_uniqueness_fix1.py", "tests/unit/test_prd_v8_task9_knowledge_provenance_uniqueness_fix2.py", "tests/unit/test_prd_v8_task9_knowledge_provenance_uniqueness_fix3.py", "tests/unit/test_prd_v8_task9_knowledge_provenance_uniqueness_fix4.py", "tests/unit/test_prd_v8_task9_knowledge_provenance_uniqueness_fix5.py", "tests/unit/test_prd_v8_task9_knowledge_nested_boundary_fix6.py", "tests/integration/test_prd_v8_task8_fix1_repository_truth.py"],
       "evidence_paths": ["docs/audits/prd-v8-full-migration/FINAL_IMPLEMENTATION_MATRIX.md"],
       "blocker_ids": []
     },

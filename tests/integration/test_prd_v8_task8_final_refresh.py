@@ -22,6 +22,7 @@ REQUIRED_TASK9_PATHS = {
             "tests/unit/test_prd_v8_task9_knowledge_provenance_uniqueness_fix3.py",
             "tests/unit/test_prd_v8_task9_knowledge_provenance_uniqueness_fix4.py",
             "tests/unit/test_prd_v8_task9_knowledge_provenance_uniqueness_fix5.py",
+            "tests/unit/test_prd_v8_task9_knowledge_nested_boundary_fix6.py",
         },
     },
     "rulebook-conformance": {
