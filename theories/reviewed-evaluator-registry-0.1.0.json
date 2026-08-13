@@ -16,7 +16,7 @@
       "rule_id": "V8-A-ASSIGNMENT-UNIT",
       "rule_version": "0.1.0",
       "rule_checksum": "552c9dc9b05dd3a31cbf2d747c45dbe3ef7ce15a14b18df072b4a6bfd2629908",
-      "implementation_source_digest": "67f83dc23472302ce8df149266b7c168fd1d0367eb9080cfa00bfadd3387852e"
+      "implementation_source_digest": "82c514b5d34ee644765ea48f435469585f199898eeecc0df34ad888e0e26bc3a"
     },
     {
       "schema_version": "8.0.0",
@@ -31,7 +31,7 @@
       "rule_id": "V8-B-EXPERIMENTAL-UNIT",
       "rule_version": "0.1.0",
       "rule_checksum": "4530ea94565420a6c3cf6d648487de3ea2ea028cc3c55008374536970c854e58",
-      "implementation_source_digest": "ef98c913dd90d9c0e7ae0ec2f926ead8f454839929f4cf2edcc6f85caea73e1b"
+      "implementation_source_digest": "af3688efa9fa58b61ccb0afc4760bfc86b9f0501aeb0fc145416a21d92715b7e"
     },
     {
       "schema_version": "8.0.0",
@@ -46,7 +46,7 @@
       "rule_id": "V8-C-EXPERIMENTAL-UNIT-COUNT",
       "rule_version": "0.1.0",
       "rule_checksum": "9adbeda8903c6cc01fab79aca8894392adec19d2c6ee6f326631b4467004bb2f",
-      "implementation_source_digest": "e8276b8c51eb0209a0dd83bcb11426427bddf083f62e018564afc95a0366d247"
+      "implementation_source_digest": "3ca605cfc1b0f60298ce9d5d1aa0fe23ee243b9267966f76065b88cab8ed7c3f"
     },
     {
       "schema_version": "8.0.0",
@@ -61,7 +61,7 @@
       "rule_id": "V8-D-BIOLOGICAL-SOURCE-COUNT",
       "rule_version": "0.1.0",
       "rule_checksum": "afa97c4c6a971e871a0dcabd3c44cacecee18ae63a2874d1a6093a3369c6170f",
-      "implementation_source_digest": "f053d3c60eff58ca5cec40119867a362bf09ea50abea423c8e08e6cb53a9c433"
+      "implementation_source_digest": "ce94687a71f3ed34f13b17a60ecbf19abd3e5f3a4be01f7b917756d5626edb80"
     },
     {
       "schema_version": "8.0.0",
@@ -76,7 +76,7 @@
       "rule_id": "V8-E-INTERFERENCE",
       "rule_version": "0.1.0",
       "rule_checksum": "3494b23193de54df74e4fb990e804727d0f89d4f25feeea34537e84b5638bb93",
-      "implementation_source_digest": "34d1f1f2f90d5371da4d0105895da261579a9d742d8ac83b910dffcf6b3c38dc"
+      "implementation_source_digest": "b3b2c2083de33704399bc982e1838c7fdede7f757c5e16b8aaa3aa4075f43527"
     },
     {
       "schema_version": "8.0.0",
@@ -91,7 +91,7 @@
       "rule_id": "V8-F-ANALYTICAL-DEPENDENCE",
       "rule_version": "0.1.0",
       "rule_checksum": "8b27aca224fe346a44da0f6ce348c651712e1ceb6afd7952feb721b3eef4f7c1",
-      "implementation_source_digest": "7dd4f8e1cd6489da34a02d769b9cf26d252f0b1f14d3f82016d083b3536ebfe2"
+      "implementation_source_digest": "384205c5f61e2244fda83106c80cdbb4760577ed9c9b0eef0db0bcf722e51073"
     },
     {
       "schema_version": "8.0.0",
@@ -106,7 +106,7 @@
       "rule_id": "V8-G-INFERENCE-SCOPE",
       "rule_version": "0.1.0",
       "rule_checksum": "a5d89e9a8a950eb1b1adff970805a656e2e4e722b86ae132e2d80c01cd0d36b8",
-      "implementation_source_digest": "acbe0d65cef232e729eff7ec549f3aa53a995e19658b6ff4cfc56c7ed39aae3a"
+      "implementation_source_digest": "029be2e2e9b9a080dd5fb06214300ecf453bd67eba5ea4807f6eb93728365263"
     },
     {
       "schema_version": "8.0.0",
@@ -124,5 +124,5 @@
       "implementation_source_digest": "287691ed17a5af98c20a49684952e337374d750e801d27dc4a81edeb75fb898d"
     }
   ],
-  "declared_checksum": "2dc48a2dc8dd733d5e867cf90d0ec8502f5e9351897ef514087962eb5ac4f6da"
+  "declared_checksum": "a7b249bd32e508a3d97287c14b0a40e9973f1163b03b473805dcce02f5326b98"
 }

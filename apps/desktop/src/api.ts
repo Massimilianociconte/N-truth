@@ -282,15 +282,15 @@ function hasExactKeys(
 
 const REVIEWED_CONFORMANCE_ASSET_PINS = {
   theory: "aa37639893e2ba7732496f2eb6a121291e0aad2d3bae51501c8f1ea9e9b6464f",
-  rulebook: "f4a8e5dbb7177ae23b79987658f0712b7ba3dee5a2ea60e2fadc140aaa1b0303",
+  rulebook: "a82a49f841f3c996497a9ea610fd13ee7926cec3f428c5cda9d3f627c0f5f19b",
   profile_closure: "1080f48e37b719351554c406d85e8cce7c2106f9f01ee5b8168413f57a747698",
   reference_registry: "7e573af256a1365ca0e3892786f80a6a8f62710ce0e4dc39d1dfef24d2089db3",
   fixture_set: "f7a9b4c0a009fcbf1ae4c7a2bb3b15d8392225cb6e040ec17e2187cb396918e6",
-  evaluator_registry: "2dc48a2dc8dd733d5e867cf90d0ec8502f5e9351897ef514087962eb5ac4f6da",
+  evaluator_registry: "a7b249bd32e508a3d97287c14b0a40e9973f1163b03b473805dcce02f5326b98",
 } as const;
 
 const REVIEWED_CONFORMANCE_BUNDLE_CHECKSUM =
-  "34aea42c1fcd9b0e5e6ec31fb0757bae5bfc393d1eb568db5aafae2afa6ce814";
+  "439ef54a000c78b290eea0e8e390108de3e853b1a84bb4ee9d8529f80168a7bb";
 
 function isConformanceBundle(value: unknown): value is JsonRecord {
   if (
