@@ -1,0 +1,28 @@
+{
+  "schema_version": "1.0.0",
+  "source": "PreClinIE",
+  "asset_id": "Ineichen-Group/Preclinical_IE_Dataset@f38df55",
+  "license_spdx": "MIT",
+  "license_status": "LICENSE_REVIEW_REQUIRED",
+  "license_note": "MIT LICENSE verified for the repository snapshot. File does not split annotation vs included publication text. Training on included abstracts/methods is PENDING_LICENSE_SCOPE_CONFIRMATION.",
+  "dua": {
+    "training": "unknown",
+    "evaluation": "unknown",
+    "development": false,
+    "redistribution": "unknown",
+    "dua_required": true,
+    "dua_on_file": false
+  },
+  "identity": {
+    "paper_id": null,
+    "experiment_id": null,
+    "family_id": null,
+    "source_asset_id": "preclinie-f38df55",
+    "source_ref": "f38df55a28505a77d30eefb5b867bbfdcc9baf25"
+  },
+  "review_status": "LICENSE_REVIEW_REQUIRED",
+  "steward_authorization": null,
+  "training_eligible": false,
+  "evaluation_eligible": false,
+  "blockers": []
+}

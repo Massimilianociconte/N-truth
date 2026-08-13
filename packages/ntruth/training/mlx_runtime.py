@@ -31,7 +31,12 @@ from ntruth.reality_gate import (
     machine_readable_result,
 )
 from ntruth.schemas.core import content_checksum
-from ntruth.training.blockers import FD_ISOLATION_BLOCKER_DETAIL
+from ntruth.training.blockers import (
+    FD_ISOLATION_BLOCKER_CODE,
+    FD_ISOLATION_BLOCKER_DETAIL,
+    SCIENTIFIC_EXECUTION_CLOSED_CODE,
+    SCIENTIFIC_EXECUTION_CLOSED_DETAIL,
+)
 from ntruth.training.records import (
     DatasetManifest,
     PreparationReport,
@@ -538,7 +543,19 @@ def doctor(profile_path: Path, repo_root: Path) -> dict[str, Any]:
     result["operational_prerequisites_passed"] = (
         result["ready_to_download"] and runtime_version == expected_runtime and model_exists
     )
-    result["execution_blockers"] = [FD_ISOLATION_BLOCKER]
+    from ntruth.training.fd_isolation import fd_isolation_contract_holds
+
+    execution_blockers: list[str] = []
+    if not fd_isolation_contract_holds():
+        execution_blockers.extend((FD_ISOLATION_BLOCKER_CODE, FD_ISOLATION_BLOCKER))
+    execution_blockers.extend(
+        (
+            "MODEL_SELECTION_BENCHMARK_PENDING",
+            SCIENTIFIC_EXECUTION_CLOSED_CODE,
+            SCIENTIFIC_EXECUTION_CLOSED_DETAIL,
+        )
+    )
+    result["execution_blockers"] = execution_blockers
     result["ready_to_train"] = False
     return result
 
@@ -1200,6 +1217,98 @@ def validate_mlx_dataset(data_dir: Path, *, smoke_test: bool = False) -> dict[st
     }
 
 
+def _consume_isolated_training_payloads(
+    data_root: Path,
+    dataset: Mapping[str, Any],
+    *,
+    profile: Mapping[str, Any],
+    authorization: Mapping[str, Any] | None,
+    smoke_test: bool,
+) -> dict[str, Any]:
+    """Validate bytes, materialize unlinked FDs, consume only those FDs."""
+
+    from ntruth.training.fd_isolation import (
+        FdIsolationError,
+        bind_run_state,
+        close_isolated,
+        consume_isolated_bytes,
+        fd_isolation_contract_holds,
+        isolate_verified_file,
+    )
+
+    if not fd_isolation_contract_holds():
+        raise MLXPipelineError(FD_ISOLATION_BLOCKER)
+
+    hashes = dataset.get("file_hashes")
+    if not isinstance(hashes, dict) or not hashes:
+        if smoke_test:
+            return {
+                "consumed": {},
+                "run_state": bind_run_state(
+                    dataset_sha256=hashlib.sha256(b"smoke-dataset-absent").hexdigest(),
+                    authorization_sha256=hashlib.sha256(
+                        b"runtime-smoke-no-authorization"
+                    ).hexdigest(),
+                    model_sha256=hashlib.sha256(b"model-absent").hexdigest(),
+                    tokenizer_sha256=hashlib.sha256(b"tokenizer-absent").hexdigest(),
+                    checkpoint_sha256=hashlib.sha256(b"checkpoint-absent").hexdigest(),
+                    consumed_labels=(),
+                ),
+            }
+        raise MLXPipelineError("dataset validato privo di checksum per l'isolamento FD")
+    isolated = []
+    consumed_hashes: dict[str, str] = {}
+    try:
+        for filename, expected in hashes.items():
+            if not isinstance(filename, str) or not isinstance(expected, str):
+                raise MLXPipelineError(f"checksum dataset non valido: {filename}")
+            handle = isolate_verified_file(
+                data_root / filename,
+                label=filename,
+                expected_sha256=expected,
+            )
+            isolated.append(handle)
+            payload = consume_isolated_bytes(handle)
+            consumed_hashes[filename] = hashlib.sha256(payload).hexdigest()
+            if consumed_hashes[filename] != expected:
+                raise MLXPipelineError(f"consume FD non coincide con la validazione: {filename}")
+    except FdIsolationError as exc:
+        raise MLXPipelineError(str(exc)) from exc
+    finally:
+        for handle in isolated:
+            close_isolated(handle)
+
+    dataset_hash = dataset.get("snapshot_sha256") or dataset.get("training_view_sha256")
+    if not isinstance(dataset_hash, str):
+        raise MLXPipelineError("identita dataset assente dal consume FD")
+    authorization_hash = (
+        authorization.get("artifact_sha256")
+        if isinstance(authorization, Mapping)
+        else None
+    )
+    if not isinstance(authorization_hash, str):
+        authorization_hash = hashlib.sha256(
+            b"runtime-smoke-no-authorization" if smoke_test else b"authorization-absent"
+        ).hexdigest()
+    model = profile.get("model") if isinstance(profile.get("model"), dict) else {}
+    model_hash = model.get("expected_weight_sha256")
+    if not isinstance(model_hash, str) or len(model_hash) != 64:
+        model_hash = hashlib.sha256(b"model-absent").hexdigest()
+    tokenizer_hash = hashlib.sha256(
+        f"{model.get('repository', '')}@{model.get('revision', '')}".encode()
+    ).hexdigest()
+    checkpoint_hash = hashlib.sha256(b"checkpoint-absent").hexdigest()
+    state = bind_run_state(
+        dataset_sha256=dataset_hash,
+        authorization_sha256=authorization_hash,
+        model_sha256=model_hash,
+        tokenizer_sha256=tokenizer_hash,
+        checkpoint_sha256=checkpoint_hash,
+        consumed_labels=tuple(sorted(consumed_hashes)),
+    )
+    return {"consumed": consumed_hashes, "run_state": state}
+
+
 def run_training(
     profile_path: Path,
     repo_root: Path,
@@ -1239,7 +1348,11 @@ def run_training(
             authorization,
             smoke_test=smoke_test,
         )
-        raise MLXPipelineError(f"{FD_ISOLATION_BLOCKER}; resume non supportato")
+        from ntruth.training.fd_isolation import fd_isolation_contract_holds
+
+        if not fd_isolation_contract_holds():
+            raise MLXPipelineError(f"{FD_ISOLATION_BLOCKER}; resume non supportato")
+        raise MLXPipelineError(f"{SCIENTIFIC_EXECUTION_CLOSED_DETAIL}; resume non supportato")
 
     dataset = validate_mlx_dataset(data_root, smoke_test=smoke_test)
     profile, profile_sha256 = load_profile_artifact(profile_path)
@@ -1257,7 +1370,14 @@ def run_training(
             source_snapshot_sha256=str(_source_snapshot(repo_root)["sha256"]),
             seed=seed,
         )
-    raise MLXPipelineError(FD_ISOLATION_BLOCKER)
+    _consume_isolated_training_payloads(
+        data_root,
+        dataset,
+        profile=profile,
+        authorization=authorization,
+        smoke_test=smoke_test,
+    )
+    raise MLXPipelineError(SCIENTIFIC_EXECUTION_CLOSED_DETAIL)
 
 
 def iter_jsonl(path: Path) -> Iterator[dict[str, Any]]:

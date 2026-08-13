@@ -20,7 +20,10 @@ from ntruth.reality_gate import (
     machine_readable_result,
 )
 from ntruth.schemas.core import FrozenModel, content_checksum
-from ntruth.training.blockers import FD_ISOLATION_BLOCKER_CODE, FD_ISOLATION_BLOCKER_DETAIL
+from ntruth.training.blockers import (
+    FD_ISOLATION_BLOCKER_CODE,
+    FD_ISOLATION_BLOCKER_DETAIL,
+)
 
 
 class ReadinessStatus(StrEnum):
@@ -282,6 +285,26 @@ def _evaluation_category(root_gate: RealityGateResult) -> ReadinessCategory:
 
 
 def _infrastructure_category() -> ReadinessCategory:
+    from ntruth.training.fd_isolation import fd_isolation_contract_holds
+
+    blockers = []
+    if not fd_isolation_contract_holds():
+        blockers.append(
+            _blocker(
+                FD_ISOLATION_BLOCKER_CODE,
+                FD_ISOLATION_BLOCKER_DETAIL,
+                "ntruth.training.blockers.FD_ISOLATION_BLOCKER_CODE",
+                "ENGINEERING",
+            )
+        )
+    blockers.append(
+        _blocker(
+            "MODEL_SELECTION_BENCHMARK_PENDING",
+            "The provisional primary has not defeated both challengers on frozen N-Truth evaluation",
+            "models/configs/small-model-readiness-v1",
+            "ENGINEERING",
+        )
+    )
     return ReadinessCategory(
         status=ReadinessStatus.PARTIAL,
         evidence=(
@@ -291,20 +314,7 @@ def _infrastructure_category() -> ReadinessCategory:
                 "models/configs",
             ),
         ),
-        blockers=(
-            _blocker(
-                FD_ISOLATION_BLOCKER_CODE,
-                FD_ISOLATION_BLOCKER_DETAIL,
-                "ntruth.training.blockers.FD_ISOLATION_BLOCKER_CODE",
-                "ENGINEERING",
-            ),
-            _blocker(
-                "MODEL_SELECTION_BENCHMARK_PENDING",
-                "The provisional primary has not defeated both challengers on frozen N-Truth evaluation",
-                "models/configs/small-model-readiness-v1",
-                "ENGINEERING",
-            ),
-        ),
+        blockers=tuple(blockers),
     )
 
 

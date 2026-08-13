@@ -203,7 +203,10 @@ def test_tokenization_reads_only_train_and_validation(
         lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("model must not open")),
     )
 
-    with pytest.raises(MLXPipelineError, match=r"isolamento post-validazione non FD-safe"):
+    with pytest.raises(
+        MLXPipelineError,
+        match=r"isolamento post-validazione non FD-safe|esecuzione scientifica chiusa",
+    ):
         tokenize_report(
             tmp_path / "profile.json",
             Path("."),
@@ -360,7 +363,10 @@ def test_training_fails_closed_before_mlx_receives_any_dataset_path(
 
     monkeypatch.setattr("ntruth.training.mlx_runtime._stream_command", fake_stream)
 
-    with pytest.raises(MLXPipelineError, match=r"isolamento post-validazione non FD-safe"):
+    with pytest.raises(
+        MLXPipelineError,
+        match=r"isolamento post-validazione non FD-safe|esecuzione scientifica chiusa",
+    ):
         run_training(
             profile_path,
             Path(".").resolve(),
@@ -463,7 +469,10 @@ def test_validation_mutation_after_snapshot_validation_fails_before_model_access
         ),
     )
 
-    with pytest.raises(MLXPipelineError, match=r"isolamento post-validazione non FD-safe"):
+    with pytest.raises(
+        MLXPipelineError,
+        match=r"isolamento post-validazione non FD-safe|esecuzione scientifica chiusa|bytes cambiati dopo la validazione",
+    ):
         predict_and_score(
             Path("profile.json"),
             Path("."),

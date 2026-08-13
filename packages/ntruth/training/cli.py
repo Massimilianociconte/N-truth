@@ -249,13 +249,51 @@ def train(
     _emit(result)
 
 
+def _observe_dataset_root(dataset_root: Path) -> dict[str, object]:
+    """Record FLASH128 (or other) facts without promoting readiness."""
+
+    root = dataset_root.resolve()
+    merkle_path = root / "manifests" / "checksums" / "merkle_manifest.json"
+    training_ready = root / "training_ready"
+    merkle_root = None
+    file_count = None
+    if merkle_path.is_file() and not merkle_path.is_symlink():
+        try:
+            manifest = json.loads(merkle_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            manifest = {}
+        if isinstance(manifest, dict):
+            merkle_root = manifest.get("merkle_root")
+            file_count = manifest.get("file_count")
+    ready_files = 0
+    if training_ready.is_dir() and not training_ready.is_symlink():
+        ready_files = sum(1 for path in training_ready.rglob("*") if path.is_file())
+    return {
+        "path": str(root),
+        "mounted": root.is_dir(),
+        "merkle_root": merkle_root,
+        "merkle_file_count": file_count,
+        "training_ready_files": ready_files,
+        "promotes_readiness": False,
+    }
+
+
 @app.command()
-def readiness() -> None:
+def readiness(
+    dataset_root: Path | None = typer.Option(
+        None,
+        "--dataset-root",
+        help="Root dataset osservata (es. /Volumes/FLASH128/N-Truth-Datasets); non promuove READY.",
+    ),
+) -> None:
     """Proietta lo stato corrente fail-closed senza creare autorizzazioni."""
 
     root_gate = evaluate_reality_gate((), purpose=GatePurpose.SUBSTANTIVE_TRAINING)
     projection = project_small_model_training_readiness(root_gate)
-    _emit(projection.as_machine_readable())
+    payload = projection.as_machine_readable()
+    if dataset_root is not None:
+        payload["dataset_root_observation"] = _observe_dataset_root(dataset_root)
+    _emit(payload)
     if projection.overall is OverallReadiness.NOT_READY:
         raise typer.Exit(code=2)
 

@@ -303,7 +303,7 @@ def test_metrics_top_level_cannot_detach_from_hashed_lineage(
         lambda *_args, **_kwargs: expected_lineage,
     )
 
-    with pytest.raises(MLXPipelineError, match=r"isolamento post-validazione non FD-safe"):
+    with pytest.raises(MLXPipelineError, match=r"isolamento post-validazione non FD-safe|esecuzione scientifica chiusa"):
         _verify_metrics_artifacts(metrics_path)
 
 
@@ -312,7 +312,7 @@ def test_metrics_are_reconstructed_from_predictions_and_snapshot(
 ) -> None:
     metrics_path, _predictions, _observations = _evaluation_artifacts(tmp_path, monkeypatch)
 
-    with pytest.raises(MLXPipelineError, match=r"isolamento post-validazione non FD-safe"):
+    with pytest.raises(MLXPipelineError, match=r"isolamento post-validazione non FD-safe|esecuzione scientifica chiusa"):
         _verify_metrics_artifacts(metrics_path)
 
 
@@ -324,7 +324,7 @@ def test_tampered_micro_f1_is_rejected_even_without_an_external_metrics_hash(
     metrics["micro"]["f1"] = 0.0
     metrics_path.write_text(json.dumps(metrics), encoding="utf-8")
 
-    with pytest.raises(MLXPipelineError, match=r"isolamento post-validazione non FD-safe"):
+    with pytest.raises(MLXPipelineError, match=r"isolamento post-validazione non FD-safe|esecuzione scientifica chiusa"):
         _verify_metrics_artifacts(metrics_path)
 
 
@@ -339,7 +339,7 @@ def test_tampered_prediction_is_rejected_after_predictions_hash_is_updated(
     metrics["predictions_sha256"] = sha256_file(predictions_path)
     metrics_path.write_text(json.dumps(metrics), encoding="utf-8")
 
-    with pytest.raises(MLXPipelineError, match=r"isolamento post-validazione non FD-safe"):
+    with pytest.raises(MLXPipelineError, match=r"isolamento post-validazione non FD-safe|esecuzione scientifica chiusa"):
         _verify_metrics_artifacts(metrics_path)
 
 
@@ -354,7 +354,7 @@ def test_tampered_prediction_gold_is_rejected_against_snapshot(
     metrics["predictions_sha256"] = sha256_file(predictions_path)
     metrics_path.write_text(json.dumps(metrics), encoding="utf-8")
 
-    with pytest.raises(MLXPipelineError, match=r"isolamento post-validazione non FD-safe"):
+    with pytest.raises(MLXPipelineError, match=r"isolamento post-validazione non FD-safe|esecuzione scientifica chiusa"):
         _verify_metrics_artifacts(metrics_path)
 
 
@@ -370,7 +370,7 @@ def test_tampered_observation_is_rejected_after_hash_and_count_are_updated(
     metrics["confidence_observations"] = 1
     metrics_path.write_text(json.dumps(metrics), encoding="utf-8")
 
-    with pytest.raises(MLXPipelineError, match=r"isolamento post-validazione non FD-safe"):
+    with pytest.raises(MLXPipelineError, match=r"isolamento post-validazione non FD-safe|esecuzione scientifica chiusa"):
         _verify_metrics_artifacts(metrics_path)
 
 
@@ -403,7 +403,7 @@ def test_calibration_is_recomputed_before_export(
         lambda *_args, **_kwargs: context,
     )
     calibration_path = tmp_path / "calibration.json"
-    with pytest.raises(MLXPipelineError, match=r"isolamento post-validazione non FD-safe"):
+    with pytest.raises(MLXPipelineError, match=r"isolamento post-validazione non FD-safe|esecuzione scientifica chiusa"):
         calibrate_predictions(
             observations_path,
             calibration_path,

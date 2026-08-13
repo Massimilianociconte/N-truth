@@ -246,7 +246,7 @@ def test_smoke_training_can_omit_authorization(
         lambda *_args, **_kwargs: {},
     )
 
-    with pytest.raises(MLXPipelineError, match=r"isolamento post-validazione non FD-safe"):
+    with pytest.raises(MLXPipelineError, match=r"isolamento post-validazione non FD-safe|esecuzione scientifica chiusa"):
         run_training(
             DEFAULT_PROFILE,
             Path(".").resolve(),

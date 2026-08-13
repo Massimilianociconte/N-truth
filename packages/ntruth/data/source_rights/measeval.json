@@ -1,0 +1,28 @@
+{
+  "schema_version": "1.0.0",
+  "source": "MeasEval",
+  "asset_id": "harperco/MeasEval@1fa738b",
+  "license_spdx": null,
+  "license_status": "LICENSE_REVIEW_REQUIRED",
+  "license_note": "No LICENSE file. README notes CC-BY ScienceDirect / Elsevier Labs OA-STM-Corpus for underlying paragraphs. Training blocked by policy and license.",
+  "dua": {
+    "training": false,
+    "evaluation": false,
+    "development": false,
+    "redistribution": false,
+    "dua_required": true,
+    "dua_on_file": false
+  },
+  "identity": {
+    "paper_id": null,
+    "experiment_id": null,
+    "family_id": null,
+    "source_asset_id": "measeval-1fa738b",
+    "source_ref": "1fa738b6bc9b72c84c88a80344ca3ab39a310a44"
+  },
+  "review_status": "LICENSE_REVIEW_REQUIRED",
+  "steward_authorization": null,
+  "training_eligible": false,
+  "evaluation_eligible": false,
+  "blockers": []
+}

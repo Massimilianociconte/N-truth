@@ -100,12 +100,20 @@ def test_machine_output_keeps_structured_evidence_blockers_and_model_roles() -> 
     assert "schema_readiness" not in payload
     assert payload["scientific"]["evidence"][0]["code"] == "ROOT_SCIENTIFIC_VALIDATION"
     assert payload["dataset"]["blockers"]
+    from ntruth.training.fd_isolation import fd_isolation_contract_holds
+
     infrastructure_blocker_codes = {
         blocker["code"] for blocker in payload["infrastructure"]["blockers"]
     }
     overall_blocker_codes = {blocker["code"] for blocker in payload["overall_blockers"]}
-    assert "anonymous_unlinked_inherited_fd_runner" in infrastructure_blocker_codes
-    assert "anonymous_unlinked_inherited_fd_runner" in overall_blocker_codes
+    if fd_isolation_contract_holds():
+        assert "anonymous_unlinked_inherited_fd_runner" not in infrastructure_blocker_codes
+        assert "anonymous_unlinked_inherited_fd_runner" not in overall_blocker_codes
+    else:
+        assert "anonymous_unlinked_inherited_fd_runner" in infrastructure_blocker_codes
+        assert "anonymous_unlinked_inherited_fd_runner" in overall_blocker_codes
+    assert "MODEL_SELECTION_BENCHMARK_PENDING" in infrastructure_blocker_codes
+    assert "ROOT_SUBSTANTIVE_TRAINING_BLOCKED" in overall_blocker_codes
     roles = {candidate["model_id"]: candidate["role"] for candidate in payload["models"]}
     assert roles == {
         "ibm-granite/granite-4.1-3b": "PROVISIONAL_PRIMARY",

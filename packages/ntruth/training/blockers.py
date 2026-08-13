@@ -6,3 +6,8 @@ FD_ISOLATION_BLOCKER_DETAIL = (
     "serve un runner privato che consumi esclusivamente file descriptor read-only "
     "anonimi/unlinked ereditati"
 )
+SCIENTIFIC_EXECUTION_CLOSED_CODE = "scientific_download_baseline_execution_closed"
+SCIENTIFIC_EXECUTION_CLOSED_DETAIL = (
+    "esecuzione scientifica chiusa: download candidati, baseline e fine-tuning "
+    "restano fail-closed anche dopo l'isolamento FD"
+)

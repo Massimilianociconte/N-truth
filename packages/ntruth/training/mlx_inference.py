@@ -8,10 +8,12 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from ntruth.training.blockers import SCIENTIFIC_EXECUTION_CLOSED_DETAIL
 from ntruth.training.mlx_runtime import (
-    FD_ISOLATION_BLOCKER,
     RUN_SCHEMA_VERSION,
     MLXPipelineError,
+    _consume_isolated_training_payloads,
+    load_profile_artifact,
     sha256_file,
     validate_mlx_dataset,
     verify_model,
@@ -252,9 +254,19 @@ def tokenize_report(
     data_root = data_dir.resolve()
     if output_path.resolve().is_relative_to(data_root):
         raise MLXPipelineError("report token non puo essere scritto nella training view")
-    validate_mlx_dataset(data_root, smoke_test=smoke_test)
-    del profile_path, repo_root
-    raise MLXPipelineError(FD_ISOLATION_BLOCKER)
+    dataset = validate_mlx_dataset(data_root, smoke_test=smoke_test)
+    profile: dict[str, Any] = {}
+    if profile_path.is_file() and not profile_path.is_symlink():
+        profile, _checksum = load_profile_artifact(profile_path)
+    _consume_isolated_training_payloads(
+        data_root,
+        dataset,
+        profile=profile,
+        authorization=None,
+        smoke_test=smoke_test,
+    )
+    del repo_root
+    raise MLXPipelineError(SCIENTIFIC_EXECUTION_CLOSED_DETAIL)
 
 
 def predict_and_score(
@@ -283,9 +295,19 @@ def predict_and_score(
     if smoke_manifest.is_file() and not smoke_manifest.is_symlink():
         raw_manifest = _read_json_object(smoke_manifest, label="manifest snapshot smoke")
         smoke_test = raw_manifest.get("runtime_smoke_only") is True
-    validate_mlx_dataset(data_root, smoke_test=smoke_test)
-    del profile_path, repo_root, adapter_path, retry_invalid_once
-    raise MLXPipelineError(FD_ISOLATION_BLOCKER)
+    dataset = validate_mlx_dataset(data_root, smoke_test=smoke_test)
+    profile: dict[str, Any] = {}
+    if profile_path.is_file() and not profile_path.is_symlink():
+        profile, _checksum = load_profile_artifact(profile_path)
+    _consume_isolated_training_payloads(
+        data_root,
+        dataset,
+        profile=profile,
+        authorization=None,
+        smoke_test=smoke_test,
+    )
+    del repo_root, adapter_path, retry_invalid_once
+    raise MLXPipelineError(SCIENTIFIC_EXECUTION_CLOSED_DETAIL)
 
 
 def _verify_metrics_artifacts(
@@ -295,7 +317,7 @@ def _verify_metrics_artifacts(
     require_real: bool = False,
 ) -> dict[str, Any]:
     del metrics_path, expected_split, require_real
-    raise MLXPipelineError(FD_ISOLATION_BLOCKER)
+    raise MLXPipelineError(SCIENTIFIC_EXECUTION_CLOSED_DETAIL)
 
 
 def calibrate_predictions(
@@ -307,12 +329,12 @@ def calibrate_predictions(
     minimum_coverage_count: int = 10,
 ) -> dict[str, Any]:
     del observations_jsonl, output_path, fit_split, maximum_risk, minimum_coverage_count
-    raise MLXPipelineError(FD_ISOLATION_BLOCKER)
+    raise MLXPipelineError(SCIENTIFIC_EXECUTION_CLOSED_DETAIL)
 
 
 def _verify_calibration_artifact(calibration_path: Path) -> dict[str, Any]:
     del calibration_path
-    raise MLXPipelineError(FD_ISOLATION_BLOCKER)
+    raise MLXPipelineError(SCIENTIFIC_EXECUTION_CLOSED_DETAIL)
 
 
 def export_adapter_bundle(

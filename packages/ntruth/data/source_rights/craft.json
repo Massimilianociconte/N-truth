@@ -1,0 +1,28 @@
+{
+  "schema_version": "1.0.0",
+  "source": "CRAFT",
+  "asset_id": "lhunter-lab/CRAFT@v5.0.2",
+  "license_spdx": "CC-BY-3.0",
+  "license_status": "LICENSE_SCOPE_VERIFIED",
+  "license_note": "CRAFT annotations CC-BY-3.0 verified on stick. Article texts are PMC OA subset; SILVER auxiliary possible with attribution. Not a DUA-closed GOLD grant. Redistribution of articles follows package terms; training-as-GOLD remains closed.",
+  "dua": {
+    "training": "unknown",
+    "evaluation": "unknown",
+    "development": false,
+    "redistribution": "unknown",
+    "dua_required": true,
+    "dua_on_file": false
+  },
+  "identity": {
+    "paper_id": null,
+    "experiment_id": null,
+    "family_id": null,
+    "source_asset_id": "craft-v5.0.2",
+    "source_ref": "v5.0.2"
+  },
+  "review_status": "LICENSE_SCOPE_VERIFIED",
+  "steward_authorization": null,
+  "training_eligible": false,
+  "evaluation_eligible": false,
+  "blockers": []
+}

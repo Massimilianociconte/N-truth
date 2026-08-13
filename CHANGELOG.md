@@ -6,6 +6,18 @@ ontologia; queste versioni possono avanzare indipendentemente.
 
 ## [Unreleased]
 
+### Added
+
+- PRD v9 registry decision pack (`docs/training/prd-v9-registry-decision-pack-v1.md`)
+  and machine-readable draft (`packages/ntruth/schemas/registry_v9_draft.json`). The
+  draft does not freeze the registry or GOLD.
+- Per-source rights records for SourceData, PreClinIE, MeasEval, CRAFT and GOLD-pilot
+  contracts (dual annotation, pre-adjudication agreement, tracked adjudication).
+- Anonymous/unlinked inherited read-only FD runner (`ntruth.training.fd_isolation`)
+  bound to dataset/authorization/model/tokenizer/checkpoint hashes.
+- Protected evaluation permit (scope/nonce/expiry), append-only ledger, and
+  verifiable attestation; versioned snapshot and baseline-protocol freeze contracts.
+
 ### Documentation
 
 - Readiness authority reconciled on 2026-08-13: **PRD v9** is the current normative

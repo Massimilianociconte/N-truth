@@ -6,6 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from ntruth.schemas.registry_v9 import reject_public_adapter_v9_labels
 from ntruth.task_corpora.authority import (
     AuthorityLevel,
     LicenseStatus,
@@ -133,6 +134,13 @@ class TaskRecord(BaseModel):
                 "training_eligible requires licence.development_allowed=true "
                 "(unknown/false fail closed)"
             )
+        reject_public_adapter_v9_labels(
+            {
+                "entity_labels": self.payload.entity_labels,
+                "role_labels": self.payload.role_labels,
+            },
+            adapter="public_task_record",
+        )
         if self.authority_level == AuthorityLevel.AUXILIARY:
             for ban in (
                 "experimental_unit_gold",

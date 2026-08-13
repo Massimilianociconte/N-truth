@@ -123,7 +123,9 @@ def test_default_profile_is_provisional_granite_with_consistent_storage_budget()
         == "cff9d052cc3c68ea66b3d364788eb96fca2be82868d9ad92bd968e73b125194d"
     )
     assert budget["total_gib"] <= budget["workspace_cap_gib"]
-    assert "anonymous_unlinked_inherited_fd_runner" in profile["training_blocked_until"]
+    assert "anonymous_unlinked_inherited_fd_runner" not in profile["training_blocked_until"]
+    assert "prd_v9_canonical_registry" in profile["training_blocked_until"]
+    assert "baseline_tournament_complete" in profile["training_blocked_until"]
     assert DEFAULT_PROFILE.is_file()
 
 
@@ -189,12 +191,12 @@ def test_calibration_requires_hashed_validation_provenance(tmp_path: Path) -> No
     }
     (tmp_path / "metrics.json").write_text(json.dumps(metrics), encoding="utf-8")
 
-    with pytest.raises(MLXPipelineError, match=r"isolamento post-validazione non FD-safe"):
+    with pytest.raises(MLXPipelineError, match=r"isolamento post-validazione non FD-safe|esecuzione scientifica chiusa"):
         calibrate_predictions(observations, tmp_path / "calibration.json")
 
     metrics["declared_split"] = "validation"
     (tmp_path / "metrics.json").write_text(json.dumps(metrics), encoding="utf-8")
-    with pytest.raises(MLXPipelineError, match=r"isolamento post-validazione non FD-safe"):
+    with pytest.raises(MLXPipelineError, match=r"isolamento post-validazione non FD-safe|esecuzione scientifica chiusa"):
         calibrate_predictions(observations, tmp_path / "calibration.json")
 
 
