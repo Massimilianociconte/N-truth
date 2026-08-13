@@ -84,7 +84,7 @@ CANONICAL_COMPONENT_DESCRIPTOR_SHA256: Final[Mapping[str, str]] = MappingProxyTy
         "guided-quick-design-v8": (
             "ff8e92ba6741890afee60f38f3da939dc65ebe2c8b56525d7b3436ef6af058be"
         ),
-        "ingest-safety": ("175de797d40dc207c5722148fddbfefefb4080095405cc0c6f5848e95983fd6b"),
+        "ingest-safety": ("e97a10d009b5aa798f663d210d6d2df0ba90870dbd214c5f1e1d3f731252eea9"),
         "orthogonal-evidence-support": (
             "2520862ae50d8e15b77db9385693c8294bcfc50f14eae1770a9ab38bb357d0cf"
         ),
@@ -324,7 +324,8 @@ def validate_current_target_map(path: Path, *, repository_root: Path) -> Current
             diagnostics.append(
                 f"{component_id} descriptor does not match its reviewed content anchor"
             )
-        if component.get("status") not in MAP_STATUSES:
+        status = component.get("status")
+        if status not in MAP_STATUSES:
             diagnostics.append(f"{component_id}.status is not a PRD migration status")
         for scalar in ("target", "owner"):
             if not isinstance(component.get(scalar), str) or not component[scalar].strip():
@@ -344,6 +345,10 @@ def validate_current_target_map(path: Path, *, repository_root: Path) -> Current
                 not isinstance(item, str) or BLOCKER_RE.fullmatch(item) is None for item in blockers
             ):
                 diagnostics.append(f"{component_id}.blocker_ids contains a non-canonical ID")
+            elif status in {"PARTIAL", "MISSING"} and not blockers:
+                diagnostics.append(
+                    f"{component_id}.blocker_ids must be non-empty for {status} status"
+                )
             elif unknown_blockers := sorted(set(blockers) - registered_blockers):
                 diagnostics.append(
                     f"{component_id}.blocker_ids contains unregistered IDs: "

@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from ntruth.schemas.schema_snapshot import (
     build_kernel_schema_snapshot,
     load_installed_kernel_schema_snapshot,
@@ -118,3 +120,37 @@ def test_architecture_map_names_every_task9_boundary_and_regression() -> None:
                 field_name,
                 sorted(required_paths - set(component[field_name])),
             )
+
+
+def test_partial_and_missing_components_have_explicit_registered_blockers() -> None:
+    components = _component_map()
+
+    for component_id, component in components.items():
+        if component["status"] in {"PARTIAL", "MISSING"}:
+            assert component["blocker_ids"], component_id
+
+    assert components["ingest-safety"]["blocker_ids"] == ["SRR-V8-029"]
+
+
+@pytest.mark.parametrize("status", ("PARTIAL", "MISSING"))
+def test_architecture_map_validator_rejects_an_unblocked_incomplete_component(
+    tmp_path: Path,
+    status: str,
+) -> None:
+    from ntruth.governance.repository_truth import validate_current_target_map
+
+    source = REPOSITORY_ROOT / "docs/architecture/prd-v8-current-to-target.yaml"
+    payload = json.loads(source.read_text(encoding="utf-8"))
+    component = next(
+        item for item in payload["components"] if item["component_id"] == "coverage-contracts"
+    )
+    component["status"] = status
+    component["blocker_ids"] = []
+    forged = tmp_path / "map.yaml"
+    forged.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = validate_current_target_map(forged, repository_root=REPOSITORY_ROOT)
+
+    assert f"coverage-contracts.blocker_ids must be non-empty for {status} status" in (
+        result.diagnostics
+    )

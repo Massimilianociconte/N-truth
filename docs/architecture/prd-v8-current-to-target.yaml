@@ -135,7 +135,7 @@
       "adr_paths": ["docs/adr/0013-prd-v8-scientific-contract-migration.md"],
       "test_paths": ["tests/integration/test_ingest_blocks_formats.py", "tests/security/test_hostile_input.py"],
       "evidence_paths": ["docs/audits/prd-v8-full-migration/FINAL_IMPLEMENTATION_MATRIX.md"],
-      "blocker_ids": []
+      "blocker_ids": ["SRR-V8-029"]
     },
     {
       "component_id": "corrections-rederivation",
