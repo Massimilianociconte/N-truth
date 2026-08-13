@@ -16,7 +16,8 @@ from ntruth.data.schemas import CommonEnvelope
 
 _PMC = re.compile(r"^PMC\d+$")
 _DOI = re.compile(r"^10\.\d{4,9}/\S+$", re.IGNORECASE)
-_PII = re.compile(r"^S\d{16,17}$")
+# Elsevier PII: S + 16-17 chars; the check character may be a digit or X.
+_PII = re.compile(r"^S[0-9Xx]{16,17}$")
 _PMID_PREFIX = re.compile(r"^PMID:\s*\d{5,9}$", re.IGNORECASE)
 _UNKNOWN_FAMILY = "unknown_document_scope:"
 

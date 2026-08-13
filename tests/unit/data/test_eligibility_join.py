@@ -30,6 +30,13 @@ def test_scholarly_paper_id_rejects_internal_names() -> None:
     assert scholarly_paper_id("unknown_document_scope:abc") is None
     assert scholarly_paper_id("PMC1064854") == "PMC1064854"
     assert scholarly_paper_id("S0019103512001388") == "S0019103512001388"
+    for pii in (
+        "S027737911400050X",
+        "S0167577X14001256",
+        "S030881461301604X",
+        "S0012821X12004384",
+    ):
+        assert scholarly_paper_id(pii) == pii
 
 
 def test_join_four_real_fixtures_never_eligible_or_gold() -> None:
@@ -88,6 +95,18 @@ def test_join_does_not_invent_experiment_or_gold_from_source_tier() -> None:
     assert result.experiment_id is None
 
 
+def test_measeval_elsevier_pii_with_check_x_is_recovered() -> None:
+    envelope = _load("measeval_pii_x.json")
+    parsed = CommonEnvelope.model_validate(envelope)
+    result = join_envelope_eligibility(parsed)
+    assert_join_not_gold(result)
+    assert result.paper_id == envelope["source"]["document_id"] == "S027737911400050X"
+    assert result.family_id == envelope["split"]["group_id"] == "S027737911400050X"
+    assert result.experiment_id is None
+    assert result.identity_complete is False
+    assert result.training_eligible is False
+
+
 def test_missing_license_or_identity_keeps_record_non_eligible() -> None:
     envelope = _load("craft.json")
     result = join_envelope_eligibility(envelope)
@@ -114,3 +133,26 @@ def test_live_flash128_join_matches_fixtures_and_writes_no_gold() -> None:
             assert row["recovered"]["paper"] == 0
         if source in {"MeasEval", "CRAFT"} and row["path_present"]:
             assert row["recovered"]["paper"] == row["recovered"]["scanned"]
+
+
+@pytest.mark.skipif(not FLASH.is_dir(), reason="FLASH128 not mounted")
+def test_live_measeval_pii_with_x_joins_as_paper_id() -> None:
+    from ntruth.data.eligibility_join import SOURCE_PROCESSED_PATHS, iter_jsonl_envelopes
+
+    root = FLASH.joinpath(*SOURCE_PROCESSED_PATHS["MeasEval"]).parent.parent
+    seen: set[str] = set()
+    for split in ("train", "validation", "test"):
+        path = root / split / "records.jsonl"
+        if not path.is_file():
+            continue
+        for envelope in iter_jsonl_envelopes(path):
+            document_id = str(envelope["source"]["document_id"])
+            if "X" not in document_id.upper() or document_id in seen:
+                continue
+            seen.add(document_id)
+            result = join_envelope_eligibility(envelope)
+            assert_join_not_gold(result)
+            assert result.paper_id == document_id
+            assert result.family_id == envelope["split"]["group_id"]
+            assert result.training_eligible is False
+    assert seen, "expected live MeasEval PIIs that contain check-digit X"
