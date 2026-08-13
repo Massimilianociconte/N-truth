@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -13,6 +14,19 @@ from ntruth.schemas.schema_snapshot import (
 )
 
 REPOSITORY_ROOT = Path(__file__).parents[2]
+
+
+def _final_matrix_row(requirement_id: str) -> list[str]:
+    matrix = (
+        REPOSITORY_ROOT
+        / "docs"
+        / "audits"
+        / "prd-v8-full-migration"
+        / "FINAL_IMPLEMENTATION_MATRIX.md"
+    ).read_text(encoding="utf-8")
+    prefix = f"| {requirement_id} |"
+    row = next(line for line in matrix.splitlines() if line.startswith(prefix))
+    return [cell.strip() for cell in row.strip().strip("|").split("|")]
 
 
 REQUIRED_TASK9_PATHS = {
@@ -117,11 +131,25 @@ def test_architecture_map_names_every_task9_boundary_and_regression() -> None:
     for component_id, fields in REQUIRED_TASK9_PATHS.items():
         component = components[component_id]
         for field_name, required_paths in fields.items():
-            assert required_paths.issubset(set(component[field_name])), (
+            actual_paths = set(cast(list[str], component[field_name]))
+            assert required_paths.issubset(actual_paths), (
                 component_id,
                 field_name,
-                sorted(required_paths - set(component[field_name])),
+                sorted(required_paths - actual_paths),
             )
+
+
+def test_clean_checkout_closure_does_not_promote_platform_qualification() -> None:
+    clean = _final_matrix_row("V8-CLEAN")
+    runtime = _final_matrix_row("V8-RUNTIME")
+    performance = _final_matrix_row("V8-NFR-PERF")
+
+    assert clean[3] == "IMPLEMENTED"
+    assert "detached" in clean[2].casefold()
+    assert "None for repository-scope clean-checkout truth" in clean[6]
+    for partial in (runtime, performance):
+        assert partial[3] == "PARTIAL"
+        assert "SRR-V8-028" in partial[6]
 
 
 def test_partial_and_missing_components_have_explicit_registered_blockers() -> None:
