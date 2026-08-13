@@ -385,6 +385,46 @@ def test_nested_pure_path_transport_preserves_value_filters_and_field_set(
 
 
 @pytest.mark.parametrize("json_text", (False, True), ids=("tree", "text"))
+@pytest.mark.parametrize("filter_kind", ("include", "exclude"))
+@pytest.mark.parametrize("shape", ("list", "tuple", "mapping"))
+def test_nested_pure_path_transport_serializes_when_filter_removes_every_path(
+    json_text: bool,
+    filter_kind: str,
+    shape: str,
+) -> None:
+    path = PurePosixPath("/evidence/removed.json")
+    payloads: dict[str, object] = {
+        "list": [path, "retained"],
+        "tuple": (path, "retained"),
+        "mapping": {"path": path, "retained": "retained"},
+    }
+    expected_values: dict[str, object] = {
+        "list": ["retained"],
+        "tuple": ["retained"],
+        "mapping": {"retained": "retained"},
+    }
+    retained = 1 if shape != "mapping" else "retained"
+    omitted = 0 if shape != "mapping" else "path"
+    kwargs: dict[str, object]
+    if filter_kind == "include":
+        kwargs = {"include": {"value": {retained}}}
+    else:
+        kwargs = {"exclude": {"value": {omitted}}}
+    original = _present(payloads[shape])
+
+    if json_text:
+        serialized = json.loads(cast(Any, original).model_dump_json(round_trip=True, **kwargs))
+    else:
+        serialized = cast(Any, original).model_dump(
+            mode="json",
+            round_trip=True,
+            **kwargs,
+        )
+
+    assert serialized["value"] == expected_values[shape]
+
+
+@pytest.mark.parametrize("json_text", (False, True), ids=("tree", "text"))
 def test_pure_path_mapping_key_uses_reversible_pair_envelope_before_json_key_encoding(
     json_text: bool,
 ) -> None:

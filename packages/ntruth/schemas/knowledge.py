@@ -157,6 +157,23 @@ def _encode_opaque_pure_paths_for_json(value: object) -> tuple[object, bool]:
     return value, False
 
 
+def _contains_opaque_pure_path(value: object) -> bool:
+    """Return whether an exact portable PurePath escaped JSON encoding."""
+
+    if type(value) in _CANONICAL_PATH_TYPES_BY_NAME.values():
+        return True
+    if type(value) is list:
+        return any(_contains_opaque_pure_path(item) for item in cast(list[object], value))
+    if type(value) is tuple:
+        return any(_contains_opaque_pure_path(item) for item in cast(tuple[object, ...], value))
+    if type(value) is dict:
+        return any(
+            _contains_opaque_pure_path(key) or _contains_opaque_pure_path(item)
+            for key, item in dict.items(cast(dict[object, object], value))
+        )
+    return False
+
+
 def _decode_opaque_pure_paths_from_json(value: object, *, path: str) -> object:
     """Decode the exact class-owned envelope emitted for opaque PurePath leaves."""
 
@@ -1207,11 +1224,16 @@ class KnowledgeValue[T](KernelModel):
                                 path="$.knowledge_value",
                                 reason="serialized model payload mismatch",
                             )
-                        encoded_transport, changed = _encode_opaque_pure_paths_for_json(transport)
-                        if not changed or type(encoded_transport) is not dict:
+                        encoded_transport, _ = _encode_opaque_pure_paths_for_json(transport)
+                        if type(encoded_transport) is not dict:
                             raise ExactRuntimeTreeError(
                                 path="$.knowledge_value",
                                 reason="invalid opaque path transport",
+                            )
+                        if _contains_opaque_pure_path(encoded_transport):
+                            raise ExactRuntimeTreeError(
+                                path="$.knowledge_value",
+                                reason="unencoded opaque path transport",
                             )
                         return TypeAdapter(object).dump_python(
                             encoded_transport,
