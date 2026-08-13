@@ -1,5 +1,12 @@
 # N-Truth — verified project status snapshot (clean checkout)
 
+> **SUPERSEDED (2026-08-13).** Questo snapshot del 3 agosto documenta una revisione
+> precedente. Per dataset/training usare
+> [TRAINING-READINESS-small-model-20260813.md](training/TRAINING-READINESS-small-model-20260813.md):
+> target PRD v9, root PRD v7, `overall=NOT_READY`, profilo Granite
+> `configuration_defined_execution_blocked` / `NOT_RUN_CURRENT_PROFILE`, doctor sempre
+> `ready_to_train=false` e blocker `anonymous_unlinked_inherited_fd_runner`.
+
 **Document role:** human-readable status of the **clean checkout** (`origin/main` lineage
 and approved integration branches).
 **Does not claim** scientific validation, gold corpora, NC3Rs/DRIVER endorsement, or

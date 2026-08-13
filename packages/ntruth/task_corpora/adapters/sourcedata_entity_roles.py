@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections import Counter
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -29,6 +30,7 @@ from ntruth.task_corpora.config import (
 from ntruth.task_corpora.io_util import (
     record_checksum,
     records_content_sha256,
+    relative_path_reference,
     write_json,
     write_jsonl_records,
 )
@@ -38,7 +40,7 @@ from ntruth.task_corpora.license_loader import (
     load_license_decision,
     training_permitted,
 )
-from ntruth.task_corpora.readiness import project_sourcedata_c0_c1
+from ntruth.task_corpora.readiness import DatasetReadinessProjection, project_sourcedata_c0_c1
 from ntruth.task_corpora.schemas import (
     BuildManifest,
     EntityRolesPayload,
@@ -65,7 +67,7 @@ def load_label_map() -> dict[str, Any]:
 
 
 def _source_multitask_dir(root: Path) -> Path:
-    return root / "training_ready" / "sourcedata_multitask"
+    return root / "processed" / "sourcedata" / "v2.0.3" / "multitask"
 
 
 def _map_tag(tag: str, allowed_types: set[str], mapping: dict[str, str]) -> str | None:
@@ -80,6 +82,105 @@ def _map_tag(tag: str, allowed_types: set[str], mapping: dict[str, str]) -> str 
     return mapping[tag]
 
 
+def _enum_value(value: object) -> object:
+    return getattr(value, "value", value)
+
+
+@dataclass(frozen=True)
+class SourceDataModelUseGate:
+    """Explicit conjunction required before the adapter may retain eligibility."""
+
+    ntruth_partition_approved: bool = False
+    approved_partition_authority: str | None = None
+    engineering_component_status: str = "NOT_STARTED"
+    split_protection_status: str = "FALSE"
+    licence_scope_status: str = "UNKNOWN"
+    provenance_status: str = "UNKNOWN"
+    real_anchor_available: str = "FALSE"
+    paper_level_leakage_claim_allowed: bool = False
+    model_use_status: str = "BLOCKED"
+    data_readiness: str = "BLOCKED"
+    scientific_validation: str = "NOT_STARTED"
+    reality_gate_status: str = "BLOCKED"
+    substantive_training_allowed: bool = False
+    blockers: tuple[str, ...] = ("model-use gate not supplied",)
+
+    @classmethod
+    def from_projection(
+        cls,
+        readiness: DatasetReadinessProjection,
+        *,
+        ntruth_partition_approved: bool,
+    ) -> SourceDataModelUseGate:
+        readiness.as_manifest_fields()
+        return cls(
+            ntruth_partition_approved=ntruth_partition_approved,
+            engineering_component_status=readiness.engineering_component_status,
+            split_protection_status=str(_enum_value(readiness.split_protection_status)),
+            licence_scope_status=str(_enum_value(readiness.licence_scope_status)),
+            provenance_status=str(_enum_value(readiness.provenance_status)),
+            real_anchor_available=str(_enum_value(readiness.real_anchor_available)),
+            paper_level_leakage_claim_allowed=readiness.paper_level_leakage_claim_allowed,
+            model_use_status=readiness.model_use_status,
+            data_readiness=str(_enum_value(readiness.data_readiness)),
+            scientific_validation=str(_enum_value(readiness.scientific_validation)),
+            reality_gate_status=readiness.reality_gate_status,
+            substantive_training_allowed=readiness.substantive_training_allowed,
+            blockers=readiness.blockers,
+        )
+
+    def allows_model_use(self, *, partition_authority: object) -> bool:
+        return bool(
+            self.ntruth_partition_approved
+            and self.approved_partition_authority
+            and partition_authority == self.approved_partition_authority
+            and self.engineering_component_status == "VERIFIED_FOR_C0_C1"
+            and self.split_protection_status == "TRUE"
+            and self.licence_scope_status == "TRUE"
+            and self.provenance_status == "TRUE"
+            and self.real_anchor_available == "TRUE"
+            and self.paper_level_leakage_claim_allowed
+            and self.model_use_status == "READY"
+            and self.data_readiness == "READY"
+            and self.scientific_validation == "VALIDATED"
+            and self.reality_gate_status == "READY"
+            and self.substantive_training_allowed
+            and not self.blockers
+        )
+
+
+def _source_leakage_group(rec: dict[str, Any], *, line_no: int) -> str:
+    src = rec.get("source") or {}
+    spl = rec.get("split") or {}
+    return str(
+        src.get("document_id")
+        or spl.get("group_id")
+        or src.get("segment_id")
+        or rec.get("record_id")
+        or f"line-{line_no}"
+    )
+
+
+def _preflight_group_splits(src_root: Path) -> dict[str, set[str]]:
+    """Collect group membership before converting any split-specific record."""
+    groups: dict[str, set[str]] = {}
+    for split in ("train", "validation", "test"):
+        src_path = src_root / split / "records.jsonl"
+        if not src_path.exists() or is_ignorable_metadata(src_path):
+            raise FileNotFoundError(f"missing {src_path}")
+        with src_path.open(encoding="utf-8") as handle:
+            for line_no, line in enumerate(handle, start=1):
+                if not line.strip():
+                    continue
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                group = _source_leakage_group(rec, line_no=line_no)
+                groups.setdefault(group, set()).add(split)
+    return groups
+
+
 def convert_source_record(
     rec: dict[str, Any],
     *,
@@ -89,6 +190,8 @@ def convert_source_record(
     license_decision: LicenseUseDecision,
     label_map: dict[str, Any],
     line_no: int,
+    model_use_gate: SourceDataModelUseGate | None = None,
+    leakage_group_crosses_splits: bool = True,
 ) -> tuple[TaskRecord | None, ExclusionRecord | None]:
     payload = rec.get("payload") or {}
     tokens = list(payload.get("tokens") or [])
@@ -151,7 +254,7 @@ def convert_source_record(
     spl = rec.get("split") or {}
     document_id = str(src.get("document_id") or "")
     segment_id = str(src.get("segment_id") or rec.get("record_id") or f"line-{line_no}")
-    leakage = document_id or segment_id or str(rec.get("record_id") or f"line-{line_no}")
+    leakage = _source_leakage_group(rec, line_no=line_no)
     if not str(leakage).strip():
         return None, ExclusionRecord(
             source_path=source_path,
@@ -161,9 +264,40 @@ def convert_source_record(
             split=split,
         )
 
-    train_ok = training_permitted(license_decision) and split == "train"
+    raw_upstream_eligibility = rec.get("eligibility")
+    eligibility_is_complete = isinstance(raw_upstream_eligibility, dict)
+    upstream_eligibility: dict[str, Any] = (
+        cast(dict[str, Any], raw_upstream_eligibility) if eligibility_is_complete else {}
+    )
+    upstream_train_ok = upstream_eligibility.get("training_eligible") is True
+    upstream_eval_ok = upstream_eligibility.get("evaluation_eligible") is True
+    upstream_requires_review = upstream_eligibility.get("requires_review") is not False
+    declared_split_matches = spl.get("name") == split
+    requires_review = upstream_requires_review or not declared_split_matches
+
+    readiness_ok = model_use_gate is not None and model_use_gate.allows_model_use(
+        partition_authority=spl.get("authority")
+    )
+    common_model_use_ok = bool(
+        eligibility_is_complete
+        and not requires_review
+        and declared_split_matches
+        and not leakage_group_crosses_splits
+        and readiness_ok
+    )
+    train_ok = bool(
+        common_model_use_ok
+        and upstream_train_ok
+        and split == "train"
+        and training_permitted(license_decision)
+    )
     # evaluation_allowed=unknown fails closed — no evaluation_eligible until explicit grant.
-    eval_ok = split in {"validation", "test"} and evaluation_permitted(license_decision)
+    eval_ok = bool(
+        common_model_use_ok
+        and upstream_eval_ok
+        and split in {"validation", "test"}
+        and evaluation_permitted(license_decision)
+    )
 
     offsets_raw = payload.get("token_offsets")
     offsets: list[tuple[int, int]] | None = (
@@ -190,7 +324,7 @@ def convert_source_record(
             source_record_id=rec.get("record_id"),
         ),
         split=split,
-        split_authority=str(spl.get("authority") or "upstream_official"),
+        split_authority=str(spl.get("authority") or "unknown"),
         leakage_group=str(leakage),
         supervision_source=SupervisionSource.HUMAN_PUBLIC,
         authority_level=AuthorityLevel.AUXILIARY,
@@ -199,7 +333,7 @@ def convert_source_record(
         licence=license_decision,
         training_eligible=train_ok,
         evaluation_eligible=eval_ok,
-        requires_review=False,
+        requires_review=requires_review,
         transform_lineage=TransformLineage(
             adapter=ADAPTER_NAME,
             transform_version=TRANSFORM_VERSION,
@@ -230,6 +364,18 @@ def build_sourcedata_entity_roles(root: Path, *, resume: bool = True) -> BuildMa
     if not src_root.is_dir():
         raise FileNotFoundError(f"missing SourceData multitask processed path: {src_root}")
 
+    preflight_group_to_splits = _preflight_group_splits(src_root)
+    eligibility_readiness = project_sourcedata_c0_c1(
+        licence_verified=False,
+        paper_level_provenance=False,
+        ntruth_partition_approved=False,
+        leakage_group_granularity="RECORD_LEVEL_FALLBACK",
+    )
+    model_use_gate = SourceDataModelUseGate.from_projection(
+        eligibility_readiness,
+        ntruth_partition_approved=False,
+    )
+
     out_dir = task_output_dir(root, TASK_ENTITY_ROLES) / "sourcedata" / "v2.0.3"
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -249,10 +395,7 @@ def build_sourcedata_entity_roles(root: Path, *, resume: bool = True) -> BuildMa
         if not src_path.exists() or is_ignorable_metadata(src_path):
             raise FileNotFoundError(f"missing {src_path}")
         parent_sha = sha256_file(src_path)
-        try:
-            rel_source = str(src_path.relative_to(root))
-        except ValueError:
-            rel_source = str(src_path)
+        rel_source = relative_path_reference(src_path, root=root)
 
         split_records: list[str] = []
         with src_path.open(encoding="utf-8") as handle:
@@ -281,6 +424,15 @@ def build_sourcedata_entity_roles(root: Path, *, resume: bool = True) -> BuildMa
                     license_decision=license_decision,
                     label_map=label_map,
                     line_no=line_no,
+                    model_use_gate=model_use_gate,
+                    leakage_group_crosses_splits=(
+                        len(
+                            preflight_group_to_splits.get(
+                                _source_leakage_group(rec, line_no=line_no), set()
+                            )
+                        )
+                        > 1
+                    ),
                 )
                 if excl is not None:
                     exclusion_counter[excl.reason] += 1
@@ -330,10 +482,7 @@ def build_sourcedata_entity_roles(root: Path, *, resume: bool = True) -> BuildMa
         },
     )
 
-    try:
-        out_rel = str(out_dir.relative_to(root))
-    except ValueError:
-        out_rel = str(out_dir)
+    out_rel = relative_path_reference(out_dir, root=root)
 
     # Preserve prior content hashes in lineage (do not rewrite historical evidence).
     previous_sha = RECORDS_SHA256_C1_USE_DECISION
@@ -402,7 +551,7 @@ def build_sourcedata_entity_roles(root: Path, *, resume: bool = True) -> BuildMa
         transform_version=TRANSFORM_VERSION,
         mapping_version=MAPPING_VERSION,
         seed=DEFAULT_SEED,
-        root=str(root),
+        root=".",
         output_dir=out_rel,
         record_counts=record_counts,
         exclusion_counts=dict(exclusion_counter),
@@ -427,7 +576,22 @@ def build_sourcedata_entity_roles(root: Path, *, resume: bool = True) -> BuildMa
         paper_level_leakage_claim_allowed=False,
         synthetic_fraction=0.0,
     )
-    write_json(out_dir / "manifest.json", manifest.model_dump(mode="json"))
+    manifest_path = out_dir / "manifest.json"
+    manifest_sha256 = write_json(manifest_path, manifest.model_dump(mode="json"))
+    write_json(
+        out_dir / "clean_run_log.txt",
+        {
+            "artifact_type": "task_corpus_clean_run",
+            "generator": ADAPTER_NAME,
+            "groups_crossing_splits": groups_crossing,
+            "manifest": relative_path_reference(manifest_path, root=root),
+            "manifest_sha256": manifest_sha256,
+            "records_sha256": records_sha,
+            "schema_version": SCHEMA_VERSION,
+            "status": "OK",
+            "transform_version": TRANSFORM_VERSION,
+        },
+    )
     write_json(
         out_dir / "label_map_used.json",
         {

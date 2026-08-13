@@ -8,11 +8,16 @@ ontologia; queste versioni possono avanzare indipendentemente.
 
 ### Documentation
 
+- Readiness authority reconciled on 2026-08-13: **PRD v9** is the current normative
+  target, **PRD v7** is the implemented root contract, and v9 conformance remains
+  blocked pending the canonical registry. Current ML authority is the fail-closed
+  `ntruth-ml readiness` projection; old model-registry/ledger claims are not treated
+  as checkout capabilities.
 - Full documentation refresh (2026-08-02): verified status snapshot
   (`docs/status-snapshot.md`), documentation map (`docs/README.md`), README/system
-  card/model card/migration report/ADR-0010 aligned to registry
-  (`PARTIALLY_VERIFIED` artifact-bound; science `NOT_STARTED`; training HOLD;
-  annotation protocol draft; human second packet ready, not complete).
+  card/model card/migration report/ADR-0010. Its former `PARTIALLY_VERIFIED`
+  registry language is superseded by the 2026-08-13 readiness decision
+  (`NOT_RUN_CURRENT_PROFILE`; science `NOT_STARTED`; all ML execution unavailable).
 - ADR index lists 0011 (Outlines) and 0012 (P0 LoRA protocol + HOLD).
 - Public specification FR-018: determinability derived via rules/output policy, not
   free-form model classification.
@@ -33,9 +38,9 @@ ontologia; queste versioni possono avanzare indipendentemente.
 - Training program **P0_LORA_APPROVED** (sperimentale): TDS P0-alpha, factory
   sintetica graph-first, snapshot `data/training/p0-alpha/`, config LoRA
   `granite-4.1-3b-p0-lora.json`, ADR-0012. Non modifica scientific validation.
-- **HOLD_PENDING_REAL_ANCHOR**: snapshot P0-alpha congelato `SYN_G1_UNANCHORED`;
-  substantive LoRA bloccato; smoke ingegneristico autorizzato; piano calibration
-  umano in `docs/training/human-anchored-calibration-plan.md`.
+- **Historical P0 decision:** snapshot P0-alpha congelato `SYN_G1_UNANCHORED` e
+  substantive LoRA bloccato. La precedente autorizzazione allo smoke è superseded:
+  nello stato corrente ogni operazione ML è unavailable fino al runner FD e ai gate.
 - Reality-check P0: guideline `annotation-reality-check-p0-v0.1`, schema/template
   Real Experiment Bundle, pilot-internal 3–5, validator; formal 10–20 ancora vuoto.
 - Pilot constraints: sources immutabili+hash, second review cieca, triade
@@ -51,18 +56,17 @@ ontologia; queste versioni possono avanzare indipendentemente.
   multipiattaforma, benchmark scientifici e fine-tuning restano aperti** (vedi
   `docs/granite-migration-report.md`).
 - Qwen profile moved to `models/configs/legacy/`; caricamento solo con opt-in
-  esplicito (`allow_legacy=True` o `NTRUTH_ALLOW_LEGACY_QWEN=1`).
-- Provider-agnostic `ModelBackend` / `GraniteBackend`; registry e `NTRUTH_MODEL_*`.
+  reale tramite `--profile models/configs/legacy/qwen3-4b-instruct-2507-mlx-qlora.json`;
+  si applicano gli stessi gate fail-closed del profilo Granite.
+- `ModelBackend` / `GraniteBackend`, `models/registry/`, il ledger SQLite e gli
+  opt-in tramite `NTRUTH_MODEL_*` / `NTRUTH_ALLOW_LEGACY_QWEN` restano elementi di
+  design storico non implementati nel checkout corrente.
 - MLX bootstrap descritto come **conversione community** (`mlx-community/...`);
-  **configured maximum context 131072** (non host-validato); LoRA targets verificati
-  su state dict Granite.
+  **configured maximum context 131072** (non host-validato); target LoRA configurati
+  per Granite e ancora da verificare sul checkpoint esatto.
 - ADR-0010 e report di migrazione allineati al verdetto di stato.
-- Registry `qualification` (schema **1.3.0**): fingerprint canonico SHA-256,
-  gate con reason code, coerenza schema, prerequisiti `PARTIALLY_VERIFIED`.
-- Ledger SQLite append-only e **tamper-evident** delle transizioni
-  (`qualification_ledger.sqlite3`): trigger anti UPDATE/DELETE, monotonia
-  `sequence=max+1` in `BEGIN IMMEDIATE`, GENESIS + anti-reseed, hash chaining,
-  evidence content-addressed; policy ledger-first (JSON mirror rigenerabile).
+- La precedente proposta di registry `qualification` 1.3.0 e ledger SQLite
+  append-only non costituisce un deliverable presente o un'autorità corrente.
 
 ### Added
 

@@ -1,19 +1,19 @@
 # ADR-0010 — Migrazione a IBM Granite 4.1 3B Instruct come modello Train A primario
 
 **Stato:** accepted for development  
-**Machine-readable (registry `qualification`, schema 1.3.0) — verify in `models/registry/default.json`:**  
-`migration_status=ARCHITECTURE_MIGRATED` ·  
-`runtime_qualification_status=PARTIALLY_VERIFIED` (artefatto MLX community 4-bit registrato; non multipiattaforma) ·  
-`scientific_validation_status=NOT_STARTED` ·  
-`qualified_artifact` popolato per fingerprint MLX 4-bit (`weights_sha256=cff9d052…`, revision `b1b476b5…`) ·  
-`transition_log` mirror JSON + **ledger SQLite append-only e tamper-evident**
-(`qualification_ledger.sqlite3`: no UPDATE/DELETE, `sequence=max+1`, GENESIS
-anti-reseed, hash chain, evidence CA; JSON rigenerabile, ledger autorevole).  
-Artifact-bound + fingerprint canonico SHA-256; gate con reason code;
-transizioni impossibili bloccate (es. `EXTERNAL_VALIDATED` senza runtime
-`VERIFIED`; `VERIFIED` senza `qualified_artifact`).  
+**Stato esecutivo corrente (supersede i claim runtime del 2026-08-02):**
+`status=configuration_defined_execution_blocked` ·
+`runtime_qualification_status=NOT_RUN_CURRENT_PROFILE` ·
+`synthetic_train_only=true` ·
+`scientifically_selected=false` ·
+blocker `anonymous_unlinked_inherited_fd_runner`.
+L'accettazione architetturale non autorizza tokenizzazione, training/smoke,
+prediction, metriche/calibrazione, resume/checkpoint o export. Vedere
+[TRAINING-READINESS](../training/TRAINING-READINESS-small-model-20260813.md) e la
+[specifica MLX fail-closed](../mlx-training-pipeline.md).
 **Data decisione architetturale:** 2026-08-02  
-**Nota doc refresh:** header allineato al registry (era `UNVERIFIED` / `qualified_artifact=null`).  
+**Autorità normativa corrente:** PRD v9 target; root contract PRD v7 implementato;
+conformità v9 bloccata in attesa del registry canonico v9.
 **Revisione scientifica:** dopo Parser Gold, benchmark decisivi N-Truth, e confronto B5/cascata
 
 ## Contesto
@@ -40,17 +40,19 @@ di un checkpoint default deve restare:
    `docs/granite-migration-report.md`.
 3. **GGUF ufficiale:** `ibm-granite/granite-4.1-3b-GGUF` (Q4_K_M / Q5_K_M consigliati).
 4. **Base** `ibm-granite/granite-4.1-3b-base` solo come **ablation**, non default.
-5. **Interfaccia:** `ModelBackend` + `GraniteBackend`; parser/verifier/UI non
-   importano librerie vendor.
+5. **Interfaccia proposta:** `ModelBackend` + `GraniteBackend`, con
+   parser/verifier/UI disaccoppiati dalle librerie vendor. Questa astrazione non è
+   implementata nel checkout corrente; la corsia disponibile è
+   `packages/ntruth/training/`.
 6. **Qwen:** profilo in `models/configs/legacy/`; **mai** selezionato
-   implicitamente. Opt-in solo con `allow_legacy=True` **o**
-   `NTRUTH_ALLOW_LEGACY_QWEN=1`.
-7. **LoRA target modules:** verificati sull’architettura / state dictionary di
-   Granite (non ereditati implicitamente dalla configurazione Qwen precedente):
+   implicitamente. L'opt-in implementato consiste nel passare esplicitamente
+   `--profile models/configs/legacy/qwen3-4b-instruct-2507-mlx-qlora.json`.
+7. **LoRA target modules:** configurati per Granite e da verificare sul checkpoint
+   esatto prima del training (non ereditati implicitamente dalla configurazione Qwen precedente):
 
    `self_attn.{q,k,v,o}_proj`, `mlp.{gate,up,down}_proj`
 
-## Runtime multipiattaforma (decisione)
+## Runtime multipiattaforma (direzione architetturale, non qualifica corrente)
 
 | OS | Runtime core | Non core |
 |---|---|---|
@@ -76,7 +78,10 @@ di un checkpoint default deve restare:
 
 ## Conseguenze
 
-- Default: `NTRUTH_MODEL_PROVIDER=granite`, `NTRUTH_MODEL_ID=ibm-granite/granite-4.1-3b`.
+- Default della CLI MLX: profilo
+  `models/configs/granite-4.1-3b-mlx-qlora.json`.
+- `ModelBackend` / `GraniteBackend`, `models/registry/` e variabili
+  `NTRUTH_MODEL_*` non sono implementati nel checkout corrente.
 - Training effettivo **bloccato** finché non esistono gold, split, budget
   **misurato su Granite** e protocollo di valutazione.
 - Il modello **non** emette n finale, verdetti di pseudoreplicazione, test
@@ -96,8 +101,7 @@ di un checkpoint default deve restare:
 
 1. Checkout pre-migrazione, oppure  
 2. Opt-in legacy esplicito (non default CLI):  
-   profilo `models/configs/legacy/qwen3-4b-instruct-2507-mlx-qlora.json`  
-   + `NTRUTH_ALLOW_LEGACY_QWEN=1` e/o `allow_legacy=True`.  
+   `--profile models/configs/legacy/qwen3-4b-instruct-2507-mlx-qlora.json`.
 3. Non riabilitare Qwen come default senza nuovo ADR.
 
 ## Riferimenti

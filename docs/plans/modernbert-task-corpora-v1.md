@@ -1,10 +1,18 @@
 # Workstream C — ModernBERT task corpora v1
 
-**Status:** C0–C1 IMPLEMENTED AND LOCALLY VERIFIED — no training authorized
-**Workstream C:** `IN_PROGRESS`
-**READY_FOR_B0:** `CANDIDATE` (licence evaluation/development still unknown/false)
-**Branch:** `feat/modernbert-task-corpora-v1` (PR #3)
-**Prerequisite:** Workstream B merged to `main` (PR #2, merge `ff8cd89`)
+> **DOCUMENTO STORICO / SUPERSEDED (2026-08-13).** Branch, commit, stage, Merkle,
+> `training_ready` e blocker MeasEval riportati nel piano originale non descrivono lo
+> stato corrente e non sono evidenza di readiness. Questo piano non autorizza baseline
+> o smoke. Tokenizzazione, training, prediction, metriche/calibrazione,
+> resume/checkpoint ed export restano bloccati dal requisito
+> `anonymous_unlinked_inherited_fd_runner`; il doctor resta `ready_to_train=false`.
+> L'unica decisione operativa corrente è
+> [TRAINING-READINESS-small-model-20260813.md](../training/TRAINING-READINESS-small-model-20260813.md).
+
+**Original status (historical):** C0–C1 IMPLEMENTED AND LOCALLY VERIFIED
+**Current training decision:** `NOT_READY`
+**Original branch:** `feat/modernbert-task-corpora-v1` (PR #3)
+**Original prerequisite:** Workstream B merged to `main` (PR #2, merge `ff8cd89`)
 **Data root:** `/Volumes/FLASH128/N-Truth-Datasets` (NO_CORPUS in git)
 
 ## Goal
@@ -18,7 +26,7 @@ This is **not**:
 - Granite graph training;
 - promotion of public annotations to N-Truth gold.
 
-## Holds (unchanged)
+## Historical holds from the original plan
 
 ```
 MODERNBERT_AUXILIARY_BASELINES: HOLD_PENDING_CORPORA
@@ -32,8 +40,10 @@ SOURCE_DATA_EVALUATION_USE: PENDING_LICENCE_DECISION
 SYNTHETIC_AUGMENTATION: HOLD
 ```
 
-After corpora + licence use-policy closure + B0 non-neural baselines + smoke tests pass,
-a separate approval may set:
+Only after corpus/licence closure, the anonymous/unlinked inherited read-only FD runner,
+an applicable canonical authorization envelope v1, current readiness gates and the
+future non-executable baseline protocol have all been satisfied may a new decision
+consider setting:
 
 ```
 MODERNBERT_AUXILIARY_BASELINES: GO
@@ -41,23 +51,26 @@ MODERNBERT_AUXILIARY_BASELINES: GO
 
 ---
 
-## 1. Repository findings (post–Workstream B)
+## 1. Historical repository snapshot (superseded)
+
+The table below records the original Workstream B snapshot only. None of its values
+may be used to verify the current external data root.
 
 | Item | Value |
 |------|--------|
 | main tip | `ff8cd89` Merge PR #2 |
 | pipeline package | `packages/ntruth/data/**` |
 | external root | `NTRUTH_DATA_ROOT=/Volumes/FLASH128/N-Truth-Datasets` |
-| Merkle (post sign-off) | `5aec5f862168a0f38b29fcd71f29eb4d6d9dd072dda1a3c4c3786f4e7d8c7e40` |
+| Merkle (historical, retired) | Superseded; use the newly generated canonical manifest referenced by current readiness evidence |
 | Sources on stick | SourceData, PreClinIE, MeasEval, CRAFT (SILVER_AUXILIARY) |
-| MeasEval training_ready | BLOCKED_BY_UPSTREAM_GROUP_OVERLAP |
-| SourceData multitask | present under `training_ready/sourcedata_multitask/` (auxiliary) |
+| MeasEval (historical state) | Old `BLOCKED_BY_UPSTREAM_GROUP_OVERLAP` label; not the current split/readiness result |
+| SourceData multitask (historical location) | Old `training_ready/sourcedata_multitask/` path retired; it conveyed no training authorization |
 
 **Do not** concatenate the four datasets into one generic corpus.
 
 ---
 
-## 2. Proposed architecture
+## 2. Proposed architecture (historical)
 
 ```
 NTRUTH_DATA_ROOT/
@@ -236,10 +249,12 @@ Acceptance for a clean upstream-split corpus requires `groups_crossing_splits = 
 
 - Linguistic mechanism only
 
-### Stage C4 — MeasEval quantities (after overlap policy freeze)
+### Stage C4 — MeasEval quantities (historical plan; superseded)
 
 - Span/relation payload → quantity task records
-- **Enforce** BLOCKED_BY_UPSTREAM_GROUP_OVERLAP: training_eligible=false for any group in train∩test overlap unless human policy later
+- The original plan required `BLOCKED_BY_UPSTREAM_GROUP_OVERLAP` and
+  `training_eligible=false` for overlapping groups. That exact blocker is historical;
+  consult current manifests/readiness for the family-safe split and model-use status.
 - Preserve trial isolation
 - Five missing-TSV stems remain non-eligible / requires_review
 
@@ -285,7 +300,8 @@ C2 PreClinIE → C3 CRAFT → C4 MeasEval → licence closure → B0 → ModernB
 
 1. All six task families have at least one adapter producing non-empty train (where licensed/allowed) or explicit empty-with-reason.
 2. Data-use matrix committed as JSON.
-3. Leakage audit per task: zero group multi-split (except documented MeasEval upstream overlap which is excluded from training_ready).
+3. Leakage audit per task: zero group multi-split; the historical MeasEval exception
+   and `training_ready` wording are superseded and cannot authorize model use.
 4. Storage estimate < free space − 8 GB reserve.
 5. Report `WORKSTREAM_C_CORPORA: READY_FOR_B0` or `BLOCKED` with reason.
 
@@ -313,8 +329,10 @@ C2 PreClinIE → C3 CRAFT → C4 MeasEval → licence closure → B0 → ModernB
 
 ### Still requiring user / legal approval
 
-1. **MeasEval overlap policy** (still PENDING_HUMAN_DECISION):
-   REMOVE_OVERLAPPING_GROUPS_FROM_TRAIN | CREATE_NTRUTH_GROUP_SAFE_SPLIT | FORMAT_SMOKE_ONLY | EXCLUDE_FROM_MODEL_TRAINING
+1. **Historical MeasEval overlap options (superseded):**
+   `REMOVE_OVERLAPPING_GROUPS_FROM_TRAIN` | `CREATE_NTRUTH_GROUP_SAFE_SPLIT` |
+   `FORMAT_SMOKE_ONLY` | `EXCLUDE_FROM_MODEL_TRAINING`. These are not a current
+   pending-decision register.
 2. **License scope closure** for SourceData / PreClinIE: at least
    `development_allowed`, `evaluation_allowed`, `benchmark_metrics_publication_allowed`,
    and redistribution flags — currently SourceData evaluation is `unknown` (fail closed).

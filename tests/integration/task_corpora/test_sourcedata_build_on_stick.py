@@ -12,7 +12,7 @@ from ntruth.task_corpora.adapters.sourcedata_entity_roles import build_sourcedat
 from ntruth.task_corpora.cli import main
 
 STICK = Path(os.environ.get("NTRUTH_DATA_ROOT", "/Volumes/FLASH128/N-Truth-Datasets"))
-SRC = STICK / "training_ready" / "sourcedata_multitask" / "train" / "records.jsonl"
+SRC = STICK / "processed" / "sourcedata" / "v2.0.3" / "multitask" / "train" / "records.jsonl"
 
 
 @pytest.mark.skipif(not SRC.exists(), reason="SourceData multitask snapshot not mounted")
@@ -22,9 +22,12 @@ def test_stick_build_and_second_run_idempotent():
     assert m1.records_sha256 == m2.records_sha256
     assert m1.record_counts["train"] > 0
     assert sum(m1.record_counts.values()) > 0
-    # licence blocks training_eligible even on train split
-    out = STICK / "task_corpora" / "entity_roles" / "sourcedata" / "v2.0.3" / "train.jsonl"
-    first = json.loads(out.open().readline())
-    assert first["authority_level"] == "AUXILIARY"
-    assert first["training_eligible"] is False
+    out = STICK / "task_corpora" / "entity_roles" / "sourcedata" / "v2.0.3"
+    for split in ("train", "validation", "test"):
+        with (out / f"{split}.jsonl").open() as handle:
+            for line in handle:
+                record = json.loads(line)
+                assert record["authority_level"] == "AUXILIARY"
+                assert record["training_eligible"] is False
+                assert record["evaluation_eligible"] is False
     assert main(["validate", "--root", str(STICK), "--task", "entity_roles"]) == 0

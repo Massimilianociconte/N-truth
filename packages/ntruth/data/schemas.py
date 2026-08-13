@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -58,9 +58,11 @@ class TokenClassificationPayload(BaseModel):
     token_offsets: list[tuple[int, int]] | None = None
     offset_authority: OffsetAuthority = OffsetAuthority.UNAVAILABLE
     normalized_text: str | None = None
+    original_text: str | None = None
     entity_tags: list[str] | None = None
     role_tags: list[str] | None = None
     tag_mask: list[int] | None = None
+    source_metadata: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def check_token_lengths(self) -> TokenClassificationPayload:
@@ -99,6 +101,7 @@ class SpanRecord(BaseModel):
     start: int
     end: int
     text: str
+    source_metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class RelationRecord(BaseModel):

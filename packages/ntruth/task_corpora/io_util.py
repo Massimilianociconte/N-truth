@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from ntruth.data.fs import atomic_write_json, atomic_write_text, sha256_file
+from ntruth.data.jsonl import iter_jsonl_physical_records
 
 # JSONL records are delimited only by ASCII LF (0x0A). Scientific text may
 # contain U+2028 LINE SEPARATOR / U+2029 PARAGRAPH SEPARATOR; str.splitlines()
@@ -17,14 +18,23 @@ from ntruth.data.fs import atomic_write_json, atomic_write_text, sha256_file
 
 def iter_jsonl_physical_lines(path: Path) -> Iterator[str]:
     """Yield non-empty physical lines from a JSONL file (LF-delimited only)."""
-    text = path.read_text(encoding="utf-8")
-    for line in text.split("\n"):
-        if line.strip():
-            yield line
+    for _, record_body, _ in iter_jsonl_physical_records(path):
+        yield record_body
 
 
 def read_jsonl_physical_lines(path: Path) -> list[str]:
     return list(iter_jsonl_physical_lines(path))
+
+
+def relative_path_reference(path: Path, *, root: Path) -> str:
+    """Return a portable dataset-root-relative reference, rejecting escapes."""
+    resolved_root = root.resolve()
+    resolved_path = path.resolve()
+    try:
+        relative = resolved_path.relative_to(resolved_root)
+    except ValueError:
+        raise ValueError(f"artifact path escapes dataset root: {path}") from None
+    return relative.as_posix()
 
 
 def records_content_sha256(lines: Iterable[str]) -> str:

@@ -19,6 +19,7 @@ FORBIDDEN_DIRECTORIES = {
     "node_modules",
     "workspace",
 }
+FORBIDDEN_DIRECTORY_PREFIXES = ("dist.bak.",)
 FORBIDDEN_PREFIXES = (
     "data/external/",
     "data/processed/",
@@ -72,6 +73,9 @@ def _reject_private_or_local(names: set[str], *, root: str | None = None) -> Non
         basename = parts[-1]
         if (
             any(part in FORBIDDEN_DIRECTORIES for part in parts)
+            or any(
+                part.startswith(prefix) for part in parts for prefix in FORBIDDEN_DIRECTORY_PREFIXES
+            )
             or any(normalized.startswith(prefix) for prefix in FORBIDDEN_PREFIXES)
             or ((basename == ".env" or basename.startswith(".env.")) and basename != ".env.example")
             or basename.lower().endswith(PRIVATE_KEY_SUFFIXES)
@@ -92,7 +96,8 @@ def check_wheel(path: Path) -> None:
         names,
         exact=(
             "ntruth/_ui/index.html",
-            "ntruth/_bundled/models/qwen3-4b-instruct-2507-mlx-qlora.json",
+            "ntruth/_bundled/models/granite-4.1-3b-mlx-qlora.json",
+            "ntruth/_bundled/models/legacy/qwen3-4b-instruct-2507-mlx-qlora.json",
         ),
         prefixes=(
             "ntruth/_ui/assets/",

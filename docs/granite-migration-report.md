@@ -1,31 +1,45 @@
-# Migrazione architetturale a IBM Granite 4.1 3B completata — validazione runtime e scientifica in corso
+# Migrazione architetturale Granite — configurazione corrente con esecuzione bloccata
 
 **Data:** 2026-08-02  
 **ADR:** [0010](adr/0010-granite-4.1-3b-migration.md)
 
+> **Nota di stato (2026-08-13).** Questo report conserva la decisione architetturale
+> del 2 agosto, ma i precedenti claim di qualifica runtime sono superseded. La fonte
+> corrente è [TRAINING-READINESS-small-model-20260813.md](training/TRAINING-READINESS-small-model-20260813.md)
+> insieme alla [specifica MLX fail-closed](mlx-training-pipeline.md). Il target
+> normativo corrente è PRD v9; il contratto root implementato resta PRD v7 e la
+> conformità v9 è bloccata in attesa del registry canonico v9.
+
 ## Verdetto di stato
 
-> **Migrazione architetturale e configurativa a IBM Granite 4.1 3B completata; validazione runtime multipiattaforma, benchmark scientifici e fine-tuning ancora aperti.**
+> **Granite resta un profilo tecnico provvisorio, non scientificamente selezionato; il
+> profilo corrente non è stato qualificato ed ogni operazione ML è bloccata.**
 
-### Stati machine-readable (`models/registry/default.json` → `qualification`)
+### Stato machine-readable corrente
 
-**Fonte di verità:** il registry (e il ledger SQLite delle transizioni), non questo report.  
-Aggiornato in documentazione al 2026-08-02 per allineamento al registry.
-
-| Campo | Valore attuale (verificato) | Significato |
+| Campo | Valore corrente | Significato |
 |---|---|---|
-| `migration_status` | **`ARCHITECTURE_MIGRATED`** | Codice/config/default backend migrati |
-| `runtime_qualification_status` | **`PARTIALLY_VERIFIED`** | Solo per l’artefatto MLX community 4-bit con fingerprint registrato (non multipiattaforma, non `VERIFIED`) |
+| `status` | **`configuration_defined_execution_blocked`** | Configurazione definita, non capability operativa |
+| `selection_role` | **`provisional_primary_train_a`** | Primary tecnico provvisorio |
+| `scientifically_selected` | **`false`** | Nessun confronto baseline decisivo eseguito |
+| `runtime_qualification_status` | **`NOT_RUN_CURRENT_PROFILE`** | Nessuno smoke Granite corrente |
 | `scientific_validation_status` | **`NOT_STARTED`** | Nessun gold/external challenge |
-| `qualified_artifact` | **popolato** (fingerprint bound) | Pesi `mlx-community/granite-4.1-3b-4bit`, revision `b1b476b5…`, weights SHA-256 `cff9d052…` |
+| `synthetic_train_only` | **`true`** | Non abilita training sintetico nello stato corrente |
+| `execution_blocker` | **`anonymous_unlinked_inherited_fd_runner`** | Runner FD non implementato |
 
-`PARTIALLY_VERIFIED` ≠ scientificamente validato. La qualifica **non** si trasferisce ad adapter, GGUF, BF16, altre revisioni o template.
+`ntruth-ml check` deve restituire sempre `ready_to_train=false`. Nessuna qualifica di
+artefatti o profili storici si trasferisce al profilo corrente, ad adapter, GGUF,
+BF16, revisioni o template differenti.
 
-**Binding obbligatorio:** ogni stato positivo è legato a un fingerprint esatto
+**Requisito per una futura qualifica positiva:** ogni stato positivo dovrà essere
+legato a un fingerprint esatto
 (`model_id`, `model_revision`, `weights_sha256`, `adapter_sha256`,
 `tokenizer_revision`, `chat_template_hash`, `quantization`, `backend`,
 `backend_version`, `schema_version`, `task_profile`, `domain_profile`).
 BF16/Transformers ≠ GGUF Q4 ≠ adapter successivo ≠ altro chat template.
+
+Il vocabolario seguente documenta la proposta storica di qualification registry;
+non descrive un registry implementato nel checkout corrente:
 
 | Campo | Valori |
 |---|---|
@@ -36,85 +50,57 @@ BF16/Transformers ≠ GGUF Q4 ≠ adapter successivo ≠ altro chat template.
 (pesi, adapter, quantizzazione, tokenizer/template, schema, task, protocollo, ruleset
 rilevante, runtime materialmente diverso).
 
-**Gate (blocca i claim, non la ricerca):**
+**Gate corrente:** tokenizzazione, training/smoke, prediction, metriche/calibrazione,
+resume/checkpoint ed export falliscono chiusi. Prima di qualunque qualifica runtime
+serve un runner privato che consumi esclusivamente file descriptor read-only
+anonimi/unlinked ereditati. Per il training sostanziale servirà inoltre un canonical
+authorization envelope v1 legato esattamente a view, seal, profilo, modello/revisione,
+source snapshot e seed; un bare Reality Gate non è sufficiente.
 
-| Stato runtime | Consentito |
-|---|---|
-| `UNVERIFIED` | sviluppo, smoke, benchmark esplorativi |
-| `PARTIALLY_VERIFIED` | pilot interni, calibration study |
-| `VERIFIED` | external validation |
-| `VERIFIED` + `EXTERNAL_VALIDATED` | release scientificamente supportata nel dominio dichiarato |
-
-```python
-evaluate_claim_gate("internal_pilot")
-# {"allowed": False, "reason": "RUNTIME_UNVERIFIED",
-#  "required_next_state": "PARTIALLY_VERIFIED", ...}
-
-can_run_exploratory_benchmarks()  # True se non FAILED
-can_run_internal_pilot()  # da PARTIALLY_VERIFIED
-can_run_external_validation()  # solo VERIFIED
-is_scientifically_releasable()  # VERIFIED + EXTERNAL_VALIDATED
-evaluate_qualification_against_artifact(current_artifact={...})
-canonical_fingerprint_hash(artifact)  # SHA-256 payload canonico
-append_qualification_transition(...)  # log append-only auditabile
-```
-
-**Prossimo stato runtime:** `PARTIALLY_VERIFIED` richiede (senza real gold/FT):
-pesi verificati, E2E inference, chat/stop, structured output, smoke candidate-only,
-benchmark M5 24 GB iniziale, load/unload/resource manager senza errori critici,
-fingerprint registrato.
-
-**Persistenza append-only (ledger SQLite, tamper-evident locale):**
-`models/registry/qualification_ledger.sqlite3` — trigger vietano `UPDATE`/`DELETE`;
-`new_sequence == max+1` in `BEGIN IMMEDIATE`; hash chaining; evidence CA sotto
-`qualification_evidence/`. Bootstrap con riga **GENESIS**, hash del JSON sorgente,
-schema version; **no reseed** se `initialized=1` e catena vuota.
-
-**Policy ledger-first:** SQLite e l’unica fonte autorevole; il mirror JSON e
-sempre rigenerabile; un crash dopo COMMIT SQLite non annulla la transizione;
-al load un mirror incoerente viene ricostruito. Non e tamper-proof (filesystem
-completo): per release esterne ancorare l’ultimo `transition_hash` (tag firmato /
-checksum / Ed25519).
-
-**Locking:** il lock di processo protegge solo i writer che usano questa
-implementazione; la protezione tra processi deriva da `BEGIN IMMEDIATE` e dai
-vincoli SQLite. Usare il ledger su **filesystem locale affidabile** — evitare
-DB SQLite su NFS, cartelle cloud-sync o storage con locking incerto.
+**Proposta storica non implementata:** il report del 2 agosto descriveva un
+`models/registry/` con ledger SQLite append-only, mirror JSON ed evidence
+content-addressed. Questi percorsi e meccanismi non esistono nel checkout corrente e
+non sono una fonte di autorità. Prima di riproporli serve una nuova decisione coerente
+con il registry canonico PRD v9 e con l'attuale authorization envelope v1.
 
 **Stato ufficiale:**
 
-> **Il codice è migrato a Granite. Il runtime Granite non è ancora qualificato e il modello non è ancora scientificamente validato come modello definitivo di N-Truth.**
+> **La configurazione Granite esiste, ma l'esecuzione è bloccata; il profilo corrente
+> non è qualificato e il modello non è scientificamente selezionato.**
 
 | Ambito | Stato |
 |---|---|
-| Codice, interfacce, registry, default, docs, ADR, test strutturali | **Completato** (`ARCHITECTURE_MIGRATED`) |
-| Qualificazione operativa (pesi locali, E2E, budget M5 su Granite, CI OS) | **`UNVERIFIED`** |
+| Profilo Granite, default esplicito della CLI MLX, documentazione e test fail-closed | **Presenti nel checkout** |
+| Backend provider-agnostic, model registry/ledger e script dedicati `scripts/models/` | **Non implementati** |
+| Qualificazione operativa del profilo corrente | **`NOT_RUN_CURRENT_PROFILE`** |
 | Qualificazione scientifica (gold, B5 vs B6, external challenge) | **`NOT_STARTED`** |
 
 Non confondere “migrazione del codice” con “modello scientificamente qualificabile”.
 
-### Ordine corretto delle attività successive
+### Ordine futuro dopo la rimozione verificata del blocker FD
 
-1. Scaricare e verificare i pesi canonici.  
-2. Eseguire un’inferenza reale con il backend Transformers.  
-3. Verificare chat template, stop token e structured output.  
-4. Eseguire il benchmark sul Mac M5 con 24 GB.  
-5. Confrontare MLX e GGUF sullo stesso piccolo set.  
-6. Attivare CI Windows e Linux.  
-7. Eseguire la baseline few-shot su casi N-Truth.  
-8. Solo dopo preparare LoRA/QLoRA e confronto B5/B6.  
-9. Validare sul real gold.  
-10. Eseguire l’External Challenge prima di qualunque claim scientifico.
+1. Implementare e verificare il runner FD anonimo/unlinked inherited read-only.
+2. Chiudere gate scientifici, dati, schema, evaluation e riproducibilità.
+3. Fissare modello/revisione e authorization envelope v1 canonico.
+4. Solo allora eseguire le baseline no-adapter secondo protocollo.
+5. Se giustificato dalle baseline, qualificare il runtime Granite sul Mac target.
+6. Solo dopo valutare un minimal training run e il confronto B5/B6.
+7. Validare sul real gold ed eseguire l'External Challenge prima di claim scientifici.
 
-## COMPLETATO
+## PRESENTE NEL CHECKOUT CORRENTE
 
-- backend provider-agnostic (`ModelBackend`);
-- Granite come default (`ibm-granite/granite-4.1-3b`);
-- Qwen rimosso dal percorso implicito (`models/configs/legacy/`);
-- registry e configurazioni (`models/registry/default.json`, `.env.example`);
-- profilo LoRA/QLoRA iniziale verificato su moduli Granite;
-- script di acquisizione e verifica checksum MLX community;
+- profilo Granite come default esplicito della CLI `ntruth-ml`;
+- profilo Qwen sotto `models/configs/legacy/`, selezionabile solo passando
+  esplicitamente `--profile`;
+- configurazione LoRA/QLoRA provvisoria con target modules dichiarati nel profilo;
+- comandi `ntruth-ml download-model` e `ntruth-ml verify-model` integrati nel runtime;
+- readiness PRD v9-target, authorization envelope v1 e blocco fail-closed delle
+  operazioni ML-consuming;
 - documentazione, ADR-0010 e test strutturali.
+
+Non sono presenti `ModelBackend` / `GraniteBackend`, `models/registry/`, il ledger
+SQLite, `scripts/models/acquire_granite.py` o un meccanismo `allow_legacy` via API o
+variabile d'ambiente.
 
 ## DA VALIDARE
 
@@ -133,11 +119,11 @@ Non confondere “migrazione del codice” con “modello scientificamente quali
 | Area | Path / nota |
 |---|---|
 | Config default | era `models/configs/qwen3-4b-instruct-2507-mlx-qlora.json` → **legacy/** |
-| CLI default | `packages/ntruth/training/cli.py` DEFAULT_PROFILE → Granite |
+| CLI default | `packages/ntruth/training/cli.py` `DEFAULT_PROFILE` → Granite |
 | Packaging | `pyproject.toml` hatch force-include → profilo Granite |
 | Chat thinking | flag `enable_thinking` Qwen-specifici **rimossi** |
-| LoRA keys | moduli verificati su architettura Granite (non ereditati implicitamente da Qwen) |
-| Docs / tests / scripts | aggiornati ai default Granite |
+| LoRA keys | target configurati per Granite; verifica sul checkpoint esatto ancora richiesta |
+| Docs / test | profilo Granite documentato e coperto dai gate fail-closed |
 | Artifacts locali Qwen | storici (`models/local/Qwen…`, smoke, budget protocol) |
 
 ## 2. Dati del modello (accuratezza)
@@ -152,7 +138,11 @@ Non confondere “migrazione del codice” con “modello scientificamente quali
 | GGUF ufficiale | `ibm-granite/granite-4.1-3b-GGUF` | es. Q4_K_M ~2.1 GB |
 | MLX 4-bit | `mlx-community/granite-4.1-3b-4bit` | **conversione community MLX-LM, non artefatto ufficiale IBM** |
 
-### Manifest MLX community (checksum verificato in streaming)
+### Metadati attesi fissati nel profilo
+
+I valori seguenti sono pin configurativi. Non attestano che i pesi siano presenti o
+che il checksum sia stato verificato nel checkout corrente; tale evidenza può essere
+prodotta solo da una verifica corrente del modello locale.
 
 | Campo | Valore |
 |---|---|
@@ -181,29 +171,31 @@ self_attn.q_proj, self_attn.k_proj, self_attn.v_proj, self_attn.o_proj
 mlp.gate_proj, mlp.up_proj, mlp.down_proj
 ```
 
-Formulazione corretta:
+Formulazione corretta allo stato corrente:
 
-> I target LoRA sono stati verificati direttamente sull’architettura e sullo state dictionary di Granite, anziché ereditati implicitamente dalla precedente configurazione Qwen.
+> I target LoRA sono configurati per le proiezioni dichiarate da Granite e dovranno
+> essere verificati sul checkpoint esatto prima di qualunque training autorizzato;
+> non sono ereditati implicitamente dalla precedente configurazione Qwen.
 
 (Nomi di proiezione simili a Qwen non equivalgono a “copiati da Qwen”.)
 
 Prima del training lo script deve stampare moduli selezionati, parametri addestrabili, % trainabili e moduli mancanti (vedi profilo + future training hooks).
 
-## 5. Runtime multipiattaforma (separazione Windows / Linux)
+## 5. Alternative runtime multipiattaforma (non implementate o qualificate qui)
 
-| OS | Percorsi supportati |
+| OS | Percorsi architetturali da validare |
 |---|---|
 | **Windows** | llama.cpp + GGUF; CPU; CUDA se disponibile; Vulkan opzionale. **Non** vLLM nativo come runtime core. |
 | **Linux** | llama.cpp; Transformers; vLLM (server); CUDA/ROCm/CPU. |
-| **macOS** | MLX-LM (community quant) o llama.cpp Metal + GGUF. |
+| **macOS** | MLX-LM (community quant) come profilo corrente; llama.cpp Metal + GGUF resta alternativa da qualificare. |
 
 ## 6. Legacy Qwen (opt-in esplicito)
 
 | Scenario | Comportamento |
 |---|---|
 | Default / senza opt-in | Granite; Qwen **mai** selezionato implicitamente |
-| `NTRUTH_MODEL_PROVIDER=legacy_qwen` senza opt-in | **errore** |
-| `allow_legacy=True` **o** `NTRUTH_ALLOW_LEGACY_QWEN=1` | opt-in esplicito; caricamento legacy ammesso |
+| `--profile models/configs/legacy/qwen3-4b-instruct-2507-mlx-qlora.json` | unico opt-in reale; si applicano gli stessi gate fail-closed |
+| `allow_legacy=True` o `NTRUTH_ALLOW_LEGACY_QWEN=1` | non implementati; non costituiscono opt-in |
 | Fallback silenzioso da config generica a Qwen | **vietato** |
 
 ## 7. Candidate-only (allineamento PRD)
@@ -220,22 +212,23 @@ Rinforzi:
 - confini di import (parser_ai ↛ rules; rules/graph ↛ parser_ai);
 - CI / test strutturali.
 
-## 8. Deliverable codice
+## 8. Deliverable del checkout corrente
 
 | # | Deliverable | Dove |
 |---|---|---|
-| Backend | `packages/ntruth/model_backends/` | |
 | Profilo | `models/configs/granite-4.1-3b-mlx-qlora.json` | |
-| Registry | `models/registry/default.json` | |
-| Acquisizione | `scripts/models/acquire_granite.py` | |
+| Runtime/CLI fail-closed | `packages/ntruth/training/mlx_runtime.py`, `packages/ntruth/training/cli.py` | |
+| Readiness | `packages/ntruth/training/readiness.py` | |
 | ADR | `docs/adr/0010-granite-4.1-3b-migration.md` | |
-| Conversione | `docs/model-granite-conversion.md` | |
-| Multipiattaforma | `docs/model-multiplatform-runtime.md` | |
+
+Backend provider-agnostic, registry/ledger e script dedicati di acquisizione restano
+proposte storiche, non deliverable implementati.
 
 ## 9. Rollback
 
 1. Checkout pre-migrazione, oppure  
-2. Opt-in esplicito legacy (non default CLI): profilo in `models/configs/legacy/` + `NTRUTH_ALLOW_LEGACY_QWEN=1` / `allow_legacy=True`.  
+2. Opt-in esplicito legacy (non default CLI): passare
+   `--profile models/configs/legacy/qwen3-4b-instruct-2507-mlx-qlora.json`.
 3. Nuovo ADR se Qwen tornasse default.
 
 ## Formulazione normativa

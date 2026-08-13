@@ -29,6 +29,21 @@ def test_token_classification_payload_valid():
     assert payload.kind == "token_classification"
 
 
+def test_optional_source_semantics_are_backward_compatible():
+    legacy_payload = TokenClassificationPayload(tokens=["Cells"], entity_tags=["O"])
+    preserved_payload = TokenClassificationPayload(
+        tokens=["Cells"],
+        original_text="Cells.",
+        source_metadata={"configurations": {"ner": {"is_category": [1]}}},
+    )
+
+    assert legacy_payload.original_text is None
+    assert legacy_payload.source_metadata == {}
+    assert preserved_payload.model_dump()["source_metadata"] == {
+        "configurations": {"ner": {"is_category": [1]}}
+    }
+
+
 def test_token_classification_mismatched_lengths():
     with pytest.raises(ValidationError, match="entity_tags length"):
         TokenClassificationPayload(

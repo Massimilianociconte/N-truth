@@ -1,5 +1,12 @@
 # Clean-checkout documentation verification
 
+> **SUPERSEDED (2026-08-13).** Questa verifica riguarda esclusivamente il checkout
+> storico indicato sotto. I claim Granite/smoke elencati sono oggetto dell'audit, non
+> evidenza corrente. Per lo stato attuale usare
+> [TRAINING-READINESS-small-model-20260813.md](training/TRAINING-READINESS-small-model-20260813.md)
+> e [mlx-training-pipeline.md](mlx-training-pipeline.md): nessuna operazione ML è
+> eseguibile e il doctor resta `ready_to_train=false` finché manca il runner FD.
+
 **Verdict date:** 2026-08-02  
 **Method:** detached git worktree at `ef39fb4` (parent `4cfee299`), zero local dirty files.  
 **Worktree path (ephemeral):** `/tmp/ntruth-clean-docs-verify-ef39fb4`  
@@ -49,7 +56,7 @@ At `ef39fb4` / `4cfee299`:
 
 These statements appear in committed docs (`ef39fb4`) but **cannot** be verified from a clean checkout of that commit:
 
-1. `runtime_qualification_status=PARTIALLY_VERIFIED` with registered MLX community fingerprint  
+1. A historical positive runtime-qualification claim with registered MLX community fingerprint
 2. Source of truth `models/registry/default.json` / `training_program.json`  
 3. Granite as provisional primary Train A **in code/config defaults**  
 4. Outlines constrained decoding package path  

@@ -1,5 +1,14 @@
 # Decisione: HOLD training P0 sostanziale
 
+> **SUPERSEDED — documento storico.** Dal 13 agosto 2026 la decisione corrente è
+> [TRAINING-READINESS-small-model-20260813.md](TRAINING-READINESS-small-model-20260813.md):
+> target normativo PRD v9, root implementato PRD v7, schema v9 bloccato e stato
+> complessivo `NOT_READY`. Le etichette storiche `P0_LORA_APPROVED` e
+> `ARCHITECTURE_MIGRATED` non costituiscono autorizzazione. Anche
+> il precedente flag permissivo per l'engineering smoke e il claim di smoke completato
+> qui sotto sono superseded: il runtime corrente blocca ogni operazione ML finché manca
+> il runner anonymous/unlinked inherited read-only FD.
+
 **Data:** 2026-08-02  
 **Aggiornamento strategico:** 2026-08-02 (post first real-source trial + AI diagnostic comparison)
 
@@ -12,19 +21,17 @@ GO  su protocollo, dati reali, track deterministico, runtime, partnership, audit
 
 Non si ferma l’intero progetto: si sospende solo **insegnare al modello** finché non è chiaro e affidabile **che cosa** vogliamo insegnargli.
 
-## Stati machine-readable
+## Stato machine-readable corrente del documento storico
 
 ```yaml
-migration_status: ARCHITECTURE_MIGRATED
-runtime_qualification_status: PARTIALLY_VERIFIED
-scientific_validation_status: NOT_STARTED
-training_program_status: P0_LORA_APPROVED
-training_execution_gate: HOLD_PENDING_REAL_ANCHOR
-engineering_smoke_training_allowed: true
-substantive_p0_training_allowed: false
-current_synthetic_snapshot_status: SYN_G1_UNANCHORED
-annotation_protocol_status: REALITY_CHECK_PROTOCOL_DRAFT
-real_anchor_status: NOT_STARTED
+document_status: SUPERSEDED
+superseded_on: 2026-08-13
+current_decision_document: TRAINING-READINESS-small-model-20260813.md
+current_overall: NOT_READY
+current_runtime_qualification_status: NOT_RUN_CURRENT_PROFILE
+current_engineering_smoke_training_allowed: false
+current_substantive_training_allowed: false
+current_execution_blocker: anonymous_unlinked_inherited_fd_runner
 ```
 
 ## Colli di bottiglia e sequenza corretta
@@ -151,7 +158,8 @@ scientific_validation_status: NOT_STARTED
 | **Collaborazioni** | wet-lab second annotator, biostat, lab partner, licenze | no |
 | **LoRA sostanziale** | **HOLD** | sì — gated |
 
-Engineering smoke già completato resta sacrificabile; non è qualità scientifica.
+Il precedente claim di engineering smoke completato è superseded e non costituisce
+evidenza tecnica o scientifica corrente.
 
 ## Formulazione ufficiale
 

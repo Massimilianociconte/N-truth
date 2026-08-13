@@ -1,92 +1,124 @@
 # N-Truth Data Card v0.1
 
-**Stato:** nessun corpus N-Truth approvato, congelato o rilasciato.
+**Stato:** nessun corpus N-Truth approvato, congelato o training-ready
 
-## Contenuto corrente del repository
+**Target normativo:** PRD v9
 
-Il repository contiene soltanto materiale sintetico per test software:
+**Contratto root implementato:** PRD v7
 
-- 12 fixture scientifiche storiche usate come regressioni;
-- 128 scenari generati dal contratto delle 32 regole (positivo, negativo,
-  ambiguo ed eccezione);
-- test mirati di schema, parser, formati, sicurezza, governance e PRD v3.
+## Contenuto versionato
 
-Questi asset non sono Experiment Bundle reali, non sono stati doppiamente annotati e
-non devono essere chiamati gold, pilot, external set o prova di accuratezza. La matrice
-del test harness non soddisfa da sola il requisito delle 30–60 fixture canoniche
-complete e revisionate del PRD v3 §14.2.
+Il repository contiene fixture e contratti per test software, non un corpus
+scientifico N-Truth. Gli asset di regressione e gli scenari sintetici non sono
+Experiment Bundle reali, non costituiscono human gold e non misurano accuratezza.
 
-L'inventario machine-readable è in
-`data/manifests/fixture-catalog-v3.json`.
+L'inventario delle fixture storiche è in
+`data/manifests/fixture-catalog-v3.json`. Il numero di fixture o il pass dei test non
+soddisfa il Reality Gate.
 
-La preparazione supervisionata è implementata ma non include dati: richiede ID di
-governance/licenza e stato annotativo adeguato, normalizza, rileva duplicati/conflitti,
-costruisce leakage group transitivi, assegna split deterministici e produce manifest
-content-addressed. Lo snapshot schema v2 conserva i record preparati e ricostruisce gli
-split chat durante la verifica; booleani di approvazione, checksum o conteggi alterati
-non bastano a superare il gate. L'autenticità e la sufficienza legale/scientifica delle
-approvazioni restano responsabilità umane. Gli otto
-piccoli asset esplorativi presenti soltanto nel workspace locale restano
-`training_eligible=false`, non fanno parte del repository e non modificano lo stato di
-questa card.
+## Dati esterni osservati
 
-## Architettura dati pianificata
+La root locale `/Volumes/FLASH128/N-Truth-Datasets/` contiene snapshot raw e derivati
+di SourceData, PreClinIE, MeasEval e CRAFT. Questi dati non sono distribuiti dal
+repository.
 
-Il PRD v3 distingue cinque dataset complementari:
+| Corpus | Record processati | Autorità N-Truth | Training | Evaluation |
+|---|---:|---|---|---|
+| SourceData | 75.163 multitask | `SILVER_AUXILIARY` | 0 eleggibili | 0 eleggibili |
+| PreClinIE | 1.450 sezioni | `SILVER_AUXILIARY` | 0 eleggibili | 0 eleggibili |
+| MeasEval | 448 paragrafi | `SILVER_AUXILIARY` | 0 eleggibili | 0 eleggibili |
+| CRAFT | 97 articoli | `SILVER_AUXILIARY` | 0 eleggibili | 0 eleggibili |
 
-1. **Rule Fixtures:** 30–60 casi canonici, completi di grafo, regola, output,
-   eccezione, controesempio e riferimento scientifico; servono al motore, non al
-   parser.
-2. **Parser Gold Corpus:** Experiment Bundle con sorgenti, evidence span, entità,
-   conteggi, grafo, fattori, allocazioni, endpoint, contrasti, target inferenziale,
-   determinabilità, alternative, domanda minima, rationale, licenza e provenance.
-3. **Silver / Weak Supervision:** sample sheet, metadata e codice statistico; non
-   entra nel test gold senza revisione.
-4. **Synthetic Graph-to-Text:** solo train e stress test; mai stima principale delle
-   prestazioni.
-5. **External Challenge Set:** laboratori, tecniche e stili non visti; chiuso fino
-   alla valutazione finale.
+I conteggi derivano dai report in
+`/Volumes/FLASH128/N-Truth-Datasets/manifests/reports/quality/`. Descrivono la
+materializzazione osservata, non sufficienza, rappresentatività o qualità scientifica.
+`NativeAnnotationTier.HUMAN_CURATED_GOLD` indica soltanto annotazione gold nel task
+upstream; non equivale a `AuthorityLevel.NTRUTH_GOLD`.
 
-## Obiettivi progressivi, non risultati
+Sotto `/Volumes/FLASH128/N-Truth-Datasets/training_ready/` non esistono file o record
+training-ready; possono restare directory strutturali senza contenuto eleggibile. I
+derivati legacy SourceData sono conservati sotto
+`/Volumes/FLASH128/N-Truth-Datasets/quarantine/training_ready/` e non possono essere
+usati come input.
 
-| Fase | Target indicativo PRD v3 | Stato |
-|---|---:|---|
-| Calibration set | 30 casi, fuori dal test | non acquisito |
-| Feasibility pilot | 150–250 bundle | non acquisito |
-| Research corpus | 1.200–2.000 bundle | non iniziato |
-| Restricted-domain v1 | 3.000–6.000 bundle gold/verified | non iniziato |
-| Scale layer | 10.000+ silver/synthetic | non iniziato |
+## Architettura canonica
 
-I numeri sono obiettivi di programma da rivedere dopo aver misurato tempo di
-annotazione, ridondanza, determinability rate e curve di apprendimento.
+```text
+source asset + immutable hash
+→ raw snapshot
+→ processed acquisition envelope
+→ validated canonical/task snapshot
+→ authorized train/validation view
+```
 
-## Provenance, autorizzazioni e licenze
+Un futuro training export dovrà essere derivato e riproducibile; non sarà la fonte
+primaria. Il custody snapshot completo conserva test/external e una training view
+fisicamente separata espone soltanto train/validation. Nessuna view è oggi leggibile
+da MLX: manca il runner anonymous/unlinked inherited read-only FD. Il protected vault
+resta sotto custodia indipendente.
 
-Ogni asset futuro richiede checksum e manifest per singolo file. La presenza in un
-repository pubblico non equivale a permesso di training o redistribuzione. Gli usi
-`analyze`, `annotate`, `train`, `share` e `redistribute` devono essere autorizzati
-separatamente; revoca, scadenza e restrizioni fanno parte della lineage.
+## Tier e usi
 
-Materiale PMC o di altre fonti entra soltanto dopo verifica della licenza sul singolo
-asset. Non è attribuita una licenza globale al futuro corpus. Annotazioni e riferimenti
-possono essere distribuiti separatamente dal testo sorgente soltanto se i rispettivi
-manifest lo consentono.
+| Tier | Uso consentito | Vincolo |
+|---|---|---|
+| N-Truth GOLD | futuro training/evaluation secondo split | review indipendente, adjudication, provenance, rights e registry v9 |
+| SILVER | task ausiliari autorizzati | nessun target epistemico o scientific verdict automatico |
+| WEAK | sviluppo controllato | regola, versione, confidence e audit separati |
+| SYNTHETIC | futuro train/stress soltanto | generator lineage, deduplica e human calibration; il profilo corrente impone `synthetic_train_only=true` |
+| CANDIDATE | quarantena/review | mai promozione tramite solo flag |
 
-## Split e leakage
+Ogni capability è autorizzata separatamente: analisi locale non implica training,
+evaluation, pubblicazione di metriche o redistribuzione.
 
-Train, validation, test ed external devono essere separati per articolo,
-preprint/versione pubblicata, laboratorio/corresponding author quando possibile,
-dataset e supplementi collegati e template sintetico. Gli asset synthetic sono ammessi
-soltanto nel train. Test ed external restano congelati e non vengono usati per iterare.
+## Gold futuro
 
-Il codice rifiuta conflitti di label, vieta synthetic fuori dal train e impedisce che
-pubblicazione, progetto, bundle, source o asset collegati attraversino split. DOI,
-preprint/versioni, laboratorio e mirror richiedono comunque metadati curatoriali
-corretti: un algoritmo non può ricostruire relazioni che il manifest omette.
+Il futuro corpus N-Truth deve includere Experiment Bundle reali, evidence span,
+Experiment Graph, fattori, contrasti, endpoint, gerarchie, allocation/application,
+determinability, alternative e clarification question secondo il registry canonico.
 
-## Limitazioni
+Prima della raccolta sostanziale servono schema e guideline PRD v9 congelati. I casi
+decisivi devono essere doppiamente annotati, l'agreement misurato prima
+dell'adjudication e il test custodito fuori dal workflow di sviluppo.
 
-Non sono disponibili statistiche di copertura, lingue, laboratori, bilanciamento,
-agreement, human ceiling, determinabilità o errori perché nessun corpus reale è stato
-approvato. Gli esiti del dataset smoke non sono statistiche di corpus. Questi campi
-saranno compilati da misure effettive, non stimati.
+## Split e contamination
+
+Train, validation, test ed external vengono separati per famiglia di articolo,
+versioni, supplementi, dataset, laboratorio e transformation family. La deduplica
+esatta, near e semantic-family precede lo split. Synthetic e tutte le sue parafrasi
+restano train-only.
+
+Benchmark pubblici plausibilmente presenti nel pretraining non sono test primari di
+generalizzazione scientifica. Un test aperto per debugging diventa development data.
+
+## Provenance e licenze
+
+Ogni asset richiede source URL/ID, revisione, SHA-256, document/section identity,
+original text o riferimento risolvibile, trasformazione, annotation method,
+confidence, tier, licenza, timestamp e schema version. Annotazioni, testo e
+supplementi possono avere termini diversi.
+
+Licenza assente, scope ambiguo, revoca, privacy non risolta o identity incompleta
+falliscono chiuso. Non è attribuita una licenza globale ai corpus futuri.
+
+## Stato di readiness
+
+La destinazione canonica della proiezione machine-readable finale è
+`/Volumes/FLASH128/N-Truth-Datasets/manifests/reports/readiness-20260813/training-readiness.final.json`.
+Il file deve essere rigenerato dopo l'hardening; la decisione da preservare finché i
+blocker non cambiano è:
+
+```text
+scientific FAIL
+dataset FAIL
+schema FAIL
+evaluation FAIL
+infrastructure PARTIAL
+apple_silicon_feasibility PASS
+reproducibility FAIL
+overall NOT_READY
+```
+
+Non sono disponibili baseline reali, human ceiling, H/A/H+A, performance per classe o
+OOD. Tokenizzazione, training/smoke, prediction, metriche, calibrazione, resume,
+checkpoint ed export sono bloccati dal confine FD; nessuno di questi risultati viene
+stimato o sostituito con conteggi dei corpus pubblici.

@@ -76,7 +76,7 @@ def _write_jsonl(path: Path, values: list[dict[str, Any]]) -> None:
 
 
 def export_mlx_dataset(dataset: PreparedDataset, output_dir: Path) -> dict[str, Any]:
-    """Scrive split MLX e manifest, senza duplicare le sorgenti raw."""
+    """Scrive la custody snapshot completa, non utilizzabile direttamente dal trainer."""
 
     if output_dir.exists() and any(output_dir.iterdir()):
         raise MLXPipelineError(f"directory output non vuota: {output_dir}")
@@ -153,12 +153,17 @@ def export_mlx_dataset(dataset: PreparedDataset, output_dir: Path) -> dict[str, 
     return snapshot
 
 
-def create_runtime_smoke_dataset(output_dir: Path) -> dict[str, Any]:
-    """Crea fixture tecniche isolate; non e un corpus e non produce metriche."""
+def freeze_mlx_training_view(custody_snapshot: Path, output_dir: Path) -> dict[str, Any]:
+    """Materializza la vista fisicamente isolata usata da training e model selection."""
 
-    if output_dir.exists() and any(output_dir.iterdir()):
-        raise MLXPipelineError(f"directory smoke non vuota: {output_dir}")
-    output_dir.mkdir(parents=True, exist_ok=True)
+    from ntruth.training.blind_evaluation import freeze_training_view
+
+    return freeze_training_view(custody_snapshot, output_dir)
+
+
+def runtime_smoke_split_rows() -> dict[str, list[dict[str, Any]]]:
+    """Return the sole code-owned fixture allowed on the authorization-free lane."""
+
     target = {
         "contract_version": "2.0.0",
         "experiment_blocks": [],
@@ -215,7 +220,27 @@ def create_runtime_smoke_dataset(output_dir: Path) -> dict[str, Any]:
                 ],
             }
         )
-    split_rows = {"train": rows[:4], "valid": rows[4:6], "test": rows[6:]}
+    return {"train": rows[:4], "valid": rows[4:6], "test": rows[6:]}
+
+
+def runtime_smoke_jsonl_bytes(split: str) -> bytes:
+    """Serialize one canonical smoke split exactly as the fixture writer does."""
+
+    rows = runtime_smoke_split_rows()
+    if split not in rows:
+        raise MLXPipelineError(f"split smoke non canonico: {split}")
+    return "".join(
+        json.dumps(value, ensure_ascii=False, sort_keys=True) + "\n" for value in rows[split]
+    ).encode("utf-8")
+
+
+def create_runtime_smoke_dataset(output_dir: Path) -> dict[str, Any]:
+    """Crea fixture tecniche isolate; non e un corpus e non produce metriche."""
+
+    if output_dir.exists() and any(output_dir.iterdir()):
+        raise MLXPipelineError(f"directory smoke non vuota: {output_dir}")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    split_rows = runtime_smoke_split_rows()
     files = {}
     for split, values in split_rows.items():
         path = output_dir / f"{split}.jsonl"

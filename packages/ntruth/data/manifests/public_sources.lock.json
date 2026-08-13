@@ -1,8 +1,31 @@
 {
+  "schema_version": "ntruth.public-sources-lock.v2",
+  "archives": {
+    "craft": {
+      "marker_dataset": "craft",
+      "sha256": "56677e5110f81303642f49ec21dce9d55e38c95cef1162212514d8b2c73077f2",
+      "source_ref": "v5.0.2",
+      "url": "https://codeload.github.com/lhunter-lab/CRAFT/zip/refs/tags/v5.0.2"
+    },
+    "measeval": {
+      "marker_dataset": "measeval",
+      "sha256": "c53b28506befad2edf6da7f9782c7711c6f955d34322425a60d3743f05d8fd57",
+      "source_ref": "1fa738b6bc9b72c84c88a80344ca3ab39a310a44",
+      "url": "https://codeload.github.com/harperco/MeasEval/zip/1fa738b6bc9b72c84c88a80344ca3ab39a310a44"
+    },
+    "preclinie": {
+      "marker_dataset": "preclinie",
+      "sha256": "3aa37a6d801d8475093c94b3d44c709d08ed0c1a60a920e230f60208f2b4d5e7",
+      "source_ref": "f38df55a28505a77d30eefb5b867bbfdcc9baf25",
+      "url": "https://codeload.github.com/Ineichen-Group/Preclinical_IE_Dataset/zip/f38df55a28505a77d30eefb5b867bbfdcc9baf25"
+    }
+  },
   "sourcedata": {
     "repository": "EMBO/SourceData",
     "semantic_version": "2.0.3",
-    "revision": "b457c14041b61c56f671c6f966b4324f682855b7",
+    "revision": "04333ae21badc91671a537e875bbca61b62f87e3",
+    "historical_unresolvable_revision": "b457c14041b61c56f671c6f966b4324f682855b7",
+    "relock_evidence": "all_six_locked_sha256_and_sizes_match_current_official_revision",
     "files": [
       {
         "path": "token_classification/v_2.0.3/ner/train.jsonl",

@@ -8,12 +8,18 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from ntruth.data.fs import atomic_write_json, atomic_write_text, calculate_merkle_root
+from ntruth.data.fs import (
+    atomic_write_json,
+    atomic_write_text,
+    calculate_manifest_merkle_root,
+    canonical_file_manifest,
+)
 
 
 def generate_datasets_manifest(reports: Sequence[Mapping[str, Any]], destination: Path) -> None:
     data = {
-        "generated_at_utc": "2026-08-03T00:00:00Z",
+        "generated_at_utc": None,
+        "generated_at_policy": "omitted_from_canonical_manifest_for_reproducibility",
         "datasets": {rep["dataset"]: rep for rep in reports},
     }
     atomic_write_json(destination / "datasets.json", data)
@@ -80,12 +86,21 @@ def generate_split_prevalence_report(
     atomic_write_json(destination, {"labels": report_entries})
 
 
-def generate_merkle_manifest(canonical_dirs: list[Path], destination: Path) -> str:
-    merkle_root = calculate_merkle_root(canonical_dirs)
-    manifest_data = {
+def build_merkle_manifest(canonical_dirs: list[Path]) -> dict[str, Any]:
+    """Build a deterministic canonical-files manifest without writing it."""
+    files = canonical_file_manifest(canonical_dirs)
+    merkle_root = calculate_manifest_merkle_root(files)
+    return {
+        "schema_version": "ntruth.canonical-files.v1",
         "merkle_root": merkle_root,
-        "canonical_directories": [str(d) for d in canonical_dirs],
+        "file_count": len(files),
+        "files": files,
+        "canonical_directories": sorted(path.name for path in canonical_dirs),
     }
+
+
+def generate_merkle_manifest(canonical_dirs: list[Path], destination: Path) -> str:
+    manifest_data = build_merkle_manifest(canonical_dirs)
     destination.parent.mkdir(parents=True, exist_ok=True)
     atomic_write_json(destination, manifest_data)
-    return merkle_root
+    return str(manifest_data["merkle_root"])
