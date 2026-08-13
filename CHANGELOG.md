@@ -14,7 +14,9 @@ ontologia; queste versioni possono avanzare indipendentemente.
 - Per-source rights records for SourceData, PreClinIE, MeasEval, CRAFT and GOLD-pilot
   contracts (dual annotation, pre-adjudication agreement, tracked adjudication).
 - Anonymous/unlinked inherited read-only FD runner (`ntruth.training.fd_isolation`)
-  bound to dataset/authorization/model/tokenizer/checkpoint hashes.
+  bound to dataset/authorization/model/tokenizer/checkpoint hashes. Isolated FDs
+  are `O_RDONLY` after inode-checked reopen; `fchmod` alone is not treated as
+  read-only.
 - Protected evaluation permit (scope/nonce/expiry), append-only ledger, and
   verifiable attestation; versioned snapshot and baseline-protocol freeze contracts.
 

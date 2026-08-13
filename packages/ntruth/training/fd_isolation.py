@@ -34,6 +34,18 @@ class FdIsolationError(RuntimeError):
     """Isolation contract violation."""
 
 
+def fd_access_mode(fd: int) -> int:
+    if fcntl is None:
+        raise FdIsolationError("fcntl unavailable: cannot verify O_RDONLY")
+    return int(fcntl.fcntl(fd, fcntl.F_GETFL) & os.O_ACCMODE)
+
+
+def require_readonly_fd(fd: int, *, label: str) -> None:
+    mode = fd_access_mode(fd)
+    if mode != os.O_RDONLY:
+        raise FdIsolationError(f"{label}: FD must be O_RDONLY, got access mode {mode}")
+
+
 @dataclass
 class IsolatedFd:
     fd: int
@@ -43,10 +55,13 @@ class IsolatedFd:
     nlink: int
 
     def __post_init__(self) -> None:
-        if self.nlink != 0:
-            raise FdIsolationError(f"{self.label}: named file is not an anonymous/unlinked FD")
         if self.fd < 0:
             raise FdIsolationError(f"{self.label}: invalid file descriptor")
+        if self.nlink != 0:
+            raise FdIsolationError(f"{self.label}: named file is not an anonymous/unlinked FD")
+        require_readonly_fd(self.fd, label=self.label)
+        if os.fstat(self.fd).st_nlink != 0:
+            raise FdIsolationError(f"{self.label}: FD regained a pathname")
 
 
 @dataclass(frozen=True)
@@ -98,51 +113,114 @@ def read_regular_file_bytes(path: Path, *, label: str) -> bytes:
             os.close(descriptor)
 
 
+def _same_inode(left: os.stat_result, right: os.stat_result) -> bool:
+    return (left.st_dev, left.st_ino) == (right.st_dev, right.st_ino)
+
+
+def _reopen_anonymous_readonly(write_fd: int, *, label: str) -> int:
+    """Downgrade an anonymous inode to a new O_RDONLY description.
+
+    Linux ``/proc/self/fd/N`` honors O_RDONLY. macOS ``/dev/fd/N`` is a dup
+    and keeps O_RDWR, so it is rejected here.
+    """
+
+    last_error: Exception | None = None
+    for candidate in (f"/proc/self/fd/{write_fd}", f"/dev/fd/{write_fd}"):
+        if not os.path.exists(candidate):
+            continue
+        try:
+            readonly = os.open(candidate, os.O_RDONLY | O_CLOEXEC)
+        except OSError as exc:
+            last_error = exc
+            continue
+        try:
+            require_readonly_fd(readonly, label=label)
+            write_meta = os.fstat(write_fd)
+            read_meta = os.fstat(readonly)
+            if not _same_inode(write_meta, read_meta):
+                raise FdIsolationError(f"{label}: O_RDONLY reopen is not the verified inode")
+            if read_meta.st_nlink != 0:
+                raise FdIsolationError(f"{label}: anonymous reopen still has a directory link")
+        except (FdIsolationError, OSError) as exc:
+            with contextlib.suppress(OSError):
+                os.close(readonly)
+            last_error = exc
+            continue
+        os.close(write_fd)
+        return readonly
+    detail = f": {last_error}" if last_error is not None else ""
+    raise FdIsolationError(f"{label}: cannot obtain O_RDONLY descriptor for anonymous inode{detail}")
+
+
 def _materialize_memfd(payload: bytes, *, label: str) -> IsolatedFd:
     flags = getattr(os, "MFD_CLOEXEC", 0)
-    fd = os.memfd_create(f"ntruth-{label}", flags)  # type: ignore[attr-defined]
+    write_fd = os.memfd_create(f"ntruth-{label}", flags)  # type: ignore[attr-defined]
+    readonly: int | None = None
     try:
-        os.write(fd, payload)
-        os.fsync(fd)
-        os.fchmod(fd, 0o400)
-        os.lseek(fd, 0, os.SEEK_SET)
-        metadata = os.fstat(fd)
+        os.write(write_fd, payload)
+        os.fsync(write_fd)
+        os.fchmod(write_fd, 0o400)
+        readonly = _reopen_anonymous_readonly(write_fd, label=label)
+        write_fd = -1
         isolated = IsolatedFd(
-            fd=fd,
+            fd=readonly,
             sha256=_sha256_bytes(payload),
             size_bytes=len(payload),
             label=label,
-            nlink=int(metadata.st_nlink),
+            nlink=int(os.fstat(readonly).st_nlink),
         )
+        readonly = None
+        return isolated
     except Exception:
-        os.close(fd)
+        if readonly is not None:
+            with contextlib.suppress(OSError):
+                os.close(readonly)
+        if write_fd >= 0:
+            with contextlib.suppress(OSError):
+                os.close(write_fd)
         raise
-    return isolated
 
 
 def _materialize_unlinked_tmp(payload: bytes, *, label: str) -> IsolatedFd:
-    fd, path = tempfile.mkstemp(prefix="ntruth-fd-", suffix=".bin")
+    write_fd, path = tempfile.mkstemp(prefix="ntruth-fd-", suffix=".bin")
+    readonly: int | None = None
     try:
-        os.write(fd, payload)
-        os.fsync(fd)
+        os.write(write_fd, payload)
+        os.fsync(write_fd)
+        os.fchmod(write_fd, 0o400)
+        write_meta = os.fstat(write_fd)
+        if not stat.S_ISREG(write_meta.st_mode):
+            raise FdIsolationError(f"{label} non e un file regolare dopo la scrittura")
+        readonly = os.open(path, os.O_RDONLY | O_CLOEXEC | O_NOFOLLOW)
+        read_meta = os.fstat(readonly)
+        if not _same_inode(write_meta, read_meta):
+            raise FdIsolationError(
+                f"{label}: O_RDONLY reopen is not the verified inode"
+            )
+        require_readonly_fd(readonly, label=label)
         os.unlink(path)
         if os.path.exists(path):
             raise FdIsolationError(f"{label}: unlinked path still exists")
-        metadata = os.fstat(fd)
-        if metadata.st_nlink != 0:
+        if os.fstat(readonly).st_nlink != 0:
             raise FdIsolationError(f"{label}: file still has a directory link")
-        os.fchmod(fd, 0o400)
-        os.lseek(fd, 0, os.SEEK_SET)
-        return IsolatedFd(
-            fd=fd,
+        os.close(write_fd)
+        write_fd = -1
+        isolated = IsolatedFd(
+            fd=readonly,
             sha256=_sha256_bytes(payload),
             size_bytes=len(payload),
             label=label,
-            nlink=int(os.fstat(fd).st_nlink),
+            nlink=int(os.fstat(readonly).st_nlink),
         )
+        readonly = None
+        return isolated
     except Exception:
-        with contextlib.suppress(OSError):
-            os.close(fd)
+        if readonly is not None:
+            with contextlib.suppress(OSError):
+                os.close(readonly)
+        if write_fd >= 0:
+            with contextlib.suppress(OSError):
+                os.close(write_fd)
         if os.path.exists(path):
             with contextlib.suppress(OSError):
                 os.unlink(path)
@@ -155,7 +233,7 @@ def materialize_unlinked_readonly_fd(payload: bytes, *, label: str) -> IsolatedF
     if hasattr(os, "memfd_create"):
         try:
             return _materialize_memfd(payload, label=label)
-        except OSError:
+        except (OSError, FdIsolationError):
             pass
     return _materialize_unlinked_tmp(payload, label=label)
 
@@ -180,6 +258,7 @@ def consume_isolated_bytes(isolated: IsolatedFd) -> bytes:
 
     if isolated.nlink != 0:
         raise FdIsolationError(f"{isolated.label}: consume rejected for named FD")
+    require_readonly_fd(isolated.fd, label=isolated.label)
     metadata = os.fstat(isolated.fd)
     if stat.S_ISDIR(metadata.st_mode):
         raise FdIsolationError(f"{isolated.label}: directory FD rejected")
@@ -203,6 +282,7 @@ def consume_isolated_bytes(isolated: IsolatedFd) -> bytes:
 def inherit_fd(isolated: IsolatedFd) -> IsolatedFd:
     if fcntl is None:
         raise FdIsolationError("fcntl unavailable: cannot clear FD_CLOEXEC")
+    require_readonly_fd(isolated.fd, label=isolated.label)
     flags = fcntl.fcntl(isolated.fd, fcntl.F_GETFD)
     fcntl.fcntl(isolated.fd, fcntl.F_SETFD, flags & ~fcntl.FD_CLOEXEC)
     return isolated
@@ -316,6 +396,16 @@ def fd_isolation_contract_holds() -> bool:
         if reopened == consumed:
             return False
         if isolated.nlink != 0:
+            return False
+        if fd_access_mode(isolated.fd) != os.O_RDONLY:
+            return False
+        try:
+            os.write(isolated.fd, b"MUTATED!")
+        except OSError:
+            pass
+        else:
+            return False
+        if consume_isolated_bytes(isolated) != payload:
             return False
         child = consume_via_inherited_child(isolated)
         holds = child == payload
