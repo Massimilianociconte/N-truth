@@ -1,191 +1,219 @@
 # Dati, annotazione e sviluppo del modello
 
-## Stato verificabile
+## Stato verificabile al 13 agosto 2026
 
-Il repository contiene una pipeline riproducibile per preparare annotazioni autorizzate,
-eseguire QLoRA locale con MLX, valutare output strutturati, calibrare le confidence ed
-esportare un adapter. Non esistono ancora un corpus gold N-Truth, un modello N-Truth
-scientificamente addestrato o metriche su dati reali. Il runtime smoke sintetico verifica
-soltanto che il percorso tecnico funzioni.
+Il target normativo corrente è **PRD v9**. Il contratto implementato nel root è
+**PRD v7**; la conformance v9 resta
+`BLOCKED_PENDING_CANONICAL_REGISTRY`. Questa differenza è un gate, non una
+formalità documentale: adapter e trainer non devono inventare classi v9 mancanti.
 
-La configurazione iniziale è
-`models/configs/qwen3-4b-instruct-2507-mlx-qlora.json`; la guida operativa completa è
-[mlx-training-pipeline.md](mlx-training-pipeline.md). Le fonti pubbliche e le decisioni
-di acquisizione sono riepilogate in [dataset-assessment.md](dataset-assessment.md).
+La pipeline pubblica di acquisizione, normalizzazione, audit e manifest è operativa,
+ma non esiste ancora uno snapshot N-Truth autorizzato al training. Tutti i record dei
+quattro corpus pubblici sono `training_eligible=false` ed
+`evaluation_eligible=false`. Sotto
+`/Volumes/FLASH128/N-Truth-Datasets/training_ready/` non esistono file o record
+training-ready; possono restare directory strutturali senza contenuto eleggibile. Gli
+artefatti legacy sono stati messi in quarantena.
 
-## Layout locale
+I tree raw da archivi pubblici usano marker
+`ntruth.authenticated-raw-marker.v1`, legati al source lock e a un commitment
+`ntruth.raw-tree-commitment.v1`. Marker legacy o tree modificati non autorizzano il
+resume: la pipeline re-estrae dall'archivio pinned e riscrive il marker autenticato.
 
-I dati reali o scaricati devono restare in `local-data/`, ignorata integralmente da Git:
+La decisione corrente, materializzata nell'artefatto machine-readable finale, è:
+
+- destinazione canonica
+  `/Volumes/FLASH128/N-Truth-Datasets/manifests/reports/readiness-20260813/training-readiness.final.json`;
+- `overall=NOT_READY`;
+- `substantive_training_allowed=false`;
+- `scientific_validation=NOT_STARTED`;
+- `data_readiness=BLOCKED`.
+
+Il profilo Granite ha stato `configuration_defined_execution_blocked`, ruolo
+`provisional_primary_train_a`, `runtime_qualification_status=NOT_RUN_CURRENT_PROFILE`
+e `scientifically_selected=false`. Il modello locale non è presente e nessuna
+baseline reale è stata eseguita. La decisione completa è in
+[TRAINING-READINESS-small-model-20260813.md](training/TRAINING-READINESS-small-model-20260813.md).
+
+## Architettura degli artefatti
+
+La pipeline conserva quattro livelli distinti:
 
 ```text
-local-data/
-├── raw/incoming/          # byte originali, immutabili
-├── metadata/assets/       # URL, licenza, checksum, retrieval e review
-├── metadata/sources/      # due diligence delle fonti
-├── annotations/
-│   ├── pending/
-│   ├── double-reviewed/
-│   └── adjudicated/
-├── prepared/<snapshot>/   # manifest e chat JSONL content-addressed
-├── evaluation/<run>/      # prediction, metriche e calibrazione
-├── cache/                 # cache di download locale
-├── train/                 # layout legacy; preferire manifest sotto prepared
-├── validation/
-├── test/
-├── external/
-└── quarantine/            # licenza, privacy o integrità non risolte
+raw immutabile
+→ processed canonical acquisition envelope
+→ validated task-specific snapshot
+→ training view autorizzata e priva di split protetti
 ```
 
-Modelli, adapter e run restano rispettivamente in `models/local/`, `models/runs/` e
-`models/exports/`, anch'esse ignorate. Gli split contengono riferimenti e manifest; le
-sorgenti raw non vanno duplicate fisicamente.
+La root esterna corrente è `/Volumes/FLASH128/N-Truth-Datasets/`:
 
-## Gate di acquisizione
-
-Per ogni asset registrare almeno:
-
-- URL primario e responsabile;
-- versione/data di recupero e checksum SHA-256;
-- licenza per singolo asset e URL della prova;
-- attribuzione e usi separati (`analyze`, `annotate`, `train`, `share`, `redistribute`);
-- eventuali restrizioni commerciali, privacy, embargo o revoca;
-- famiglia articolo/preprint, laboratorio, dataset e supplementi collegati;
-- stato `pending`, `approved_tier_a` o `rejected`.
-
-L'acquisizione automatizzata iniziale deve limitarsi a `CC0-1.0` e `CC-BY-4.0` con
-prova per singolo asset. “Open access”, accesso gratuito o presenza in un repository
-pubblico non bastano. CC BY-NC, CC BY-ND, licenze custom e licenza assente richiedono
-review scritta e non entrano automaticamente nel corpus.
-
-## Contratto supervisionato e preparazione
-
-`ntruth.training.SupervisedRecord` è il confine prima della preparazione. Ogni record
-contiene:
-
-- `record_id`, task, lingua, dominio, `ParserAIInput` e target `ParserAIOutput`;
-- source/asset ID e SHA-256;
-- governance hash e prova di licenza o autorizzazione;
-- versione della guideline, numero/ruolo dei reviewer e adjudication ID;
-- stato annotativo, consenso esplicito al training e split eventualmente fissato;
-- publication/project/bundle, laboratorio e corresponding-author ID per costruire i
-  leakage group.
-
-Un record `candidate` o `single_reviewed` non può essere `training_eligible`. Lo stato
-`double_reviewed` richiede almeno due reviewer; `adjudicated` richiede anche un ID di
-adjudication. Il comando `prepare` applica in ordine:
-
-1. validazione Pydantic e dei gate di eleggibilità;
-2. normalizzazione Unicode/whitespace e serializzazione canonica del target;
-3. fingerprint SHA-256 e deduplica esatta;
-4. deduplica near conservativa tramite shingle: rimozione soltanto con target
-   compatibile e match diretto, ma grouping anti-leakage indipendente dal target e
-   transitivo sull'intera componente;
-5. errore fatale se input equivalenti hanno label incompatibili;
-6. unione transitiva dei gruppi per pubblicazione, progetto, bundle, sorgente e asset;
-7. split deterministico group-aware con seed registrato;
-8. vincolo synthetic-only-train e rispetto degli split `external` fissati;
-9. manifest, report decisionale e snapshot content-addressed.
-
-Esempio:
-
-```bash
-uv run ntruth-ml prepare /absolute/private/approved-records.jsonl \
-  --out local-data/prepared/corpus-v1 \
-  --seed ntruth-dataset-v1 \
-  --train-ratio 0.8 \
-  --validation-ratio 0.1 \
-  --test-ratio 0.1 \
-  --near-duplicate-threshold 0.92
+```text
+raw/                 # snapshot upstream immutabili
+downloads/           # archivi pinned
+processed/           # envelope normalizzati, non training-ready
+task_corpora/         # adapter ausiliari con manifest e lineage
+training_ready/       # nessun file/record eleggibile finché il gate non apre
+quarantine/           # artefatti legacy o non conformi
+manifests/            # lock, Merkle, licenze e report
 ```
 
-La directory di output deve essere nuova. `train.jsonl`, `valid.jsonl`, `test.jsonl` ed
-`external.jsonl` sono in formato chat MLX. Lo snapshot schema v2 conserva anche
-`prepared-records.jsonl`, il manifest sorgente e il report decisionale; il validatore
-ricostruisce ogni riga chat dai record preparati e verifica byte, checksum, conteggi,
-ID univoci, split, approvazioni e identità content-addressed prima del training.
+Modelli, adapter e run restano sotto `models/local/`, `models/runs/` e
+`models/exports/`, ignorati da Git. Il modello non va collocato sul volume dei dati se
+ciò spezza i path e i checksum fissati dal profilo.
 
-## Separazione degli split e leakage
+## Corpus pubblici
 
-La separazione avviene per Experiment Bundle, mai per frase o riga. Lo stesso leakage
-group non può attraversare split:
+I corpus pubblici sono **SILVER_AUXILIARY**, anche quando l'annotazione upstream è
+descritta come human-curated gold. Tale attributo non li promuove a N-Truth GOLD.
 
-- DOI/PMCID e tutte le revisioni;
-- preprint e versione pubblicata;
-- supplementi, sample sheet, codice e dataset collegati;
-- laboratorio/corresponding author quando disponibile;
-- template synthetic o trasformazioni dello stesso grafo.
+| Corpus | Artefatto di audit | Stato model use |
+|---|---|---|
+| SourceData | `/Volumes/FLASH128/N-Truth-Datasets/manifests/reports/quality/sourcedata.json` | bloccato: identità documentale incompleta, group leakage conservativo e license scope non chiuso |
+| PreClinIE | `/Volumes/FLASH128/N-Truth-Datasets/manifests/reports/quality/preclinie.json` | bloccato: diritti del testo e adapter canonico non approvati; indicatori di rigore non sono verdict N-Truth |
+| MeasEval | `/Volumes/FLASH128/N-Truth-Datasets/manifests/reports/quality/measeval.json` | bloccato: license scope e annotazioni mancanti; gli split vengono derivati solo per isolamento ingegneristico |
+| CRAFT | `/Volumes/FLASH128/N-Truth-Datasets/manifests/reports/quality/craft.json` | bloccato: tutti i 97 record richiedono review e il testo segue licenza PMC per articolo |
 
-Nel corpus scientifico gli asset synthetic sono ammessi soltanto nel train. La
-validation viene congelata prima dell'ottimizzazione ed è usata per early stopping,
-model selection e calibrazione; test ed external non vengono usati per questi scopi e
-si aprono soltanto dopo il freeze. La fixture tecnica `runtime_smoke_only` è una
-eccezione isolata 4/2/2 che non appartiene al corpus e vieta metriche scientifiche.
+Le decisioni fonte-per-fonte sono in
+[source-portfolio-small-model-v1.md](training/source-portfolio-small-model-v1.md).
 
-## Annotazione manuale e condizioni di training
+Il corpus ausiliario SourceData già adattato è materializzato in
+`/Volumes/FLASH128/N-Truth-Datasets/task_corpora/entity_roles/sourcedata/v2.0.3/`.
+Il relativo `manifest.json` dichiara esplicitamente
+`model_use_status=BLOCKED`, `data_readiness=BLOCKED`,
+`ntruth_partition_approved=false` e
+`reality_gate_satisfied_by_public_corpora=false`.
 
-Il percorso umano previsto dal PRD v3 è:
+## Provenance e tier
 
-1. almeno 20 disegni reali rappresentabili senza modifiche sostanziali allo schema;
-2. 30 calibration cases fuori dal test;
-3. doppia annotazione indipendente wet-lab/biostatistica;
-4. agreement misurato prima dell'adjudication;
-5. protocollo del pilot e split congelati;
-6. feasibility pilot di 150-250 bundle con disagreement log;
-7. stima di human ceiling e determinability rate per dominio.
+Per ogni asset sono obbligatori source/revision, SHA-256, retrieval, documento e
+sezione, parent checksum, trasformazione, schema, tier, decisione di licenza e
+leakage group. Le autorizzazioni restano granulari:
 
-Il fine-tuning scientifico resta bloccato finché regole principali, guideline, licenze,
-privacy, autorizzazioni e separazione anti-leakage non sono approvate. Le correzioni UI
-restano `candidate_annotations` con `training_eligible=false` finché il processo umano
-non le promuove.
+```text
+inspect != annotate != develop != train != evaluate != publish != redistribute
+```
 
-## Training, valutazione e calibrazione
+Un campo mancante o `unknown` fallisce chiuso. `NativeAnnotationTier` descrive
+l'annotazione upstream; l'autorità N-Truth è espressa separatamente da
+`AuthorityLevel` e `SupervisionSource`.
 
-Sul Mac supportato:
+- GOLD: soltanto `NTRUTH_GOLD` con review indipendente, adjudication, provenance e
+  rights completi;
+- SILVER: `AUXILIARY`, con target scientifici vietati;
+- WEAK: `WEAK_RULE`, regola e confidence versionate;
+- SYNTHETIC: lineage del generatore e uso train/stress soltanto;
+- CANDIDATE: quarantena o review-required, mai promozione implicita.
+
+## Contratto supervisionato
+
+`ntruth.training.SupervisedRecord` resta il confine del futuro corpus supervisionato
+PRD v7. Un record candidate o single-reviewed non può essere training eligible;
+double-reviewed richiede due reviewer e adjudicated richiede un adjudication ID.
+
+Questo contratto non dimostra conformance PRD v9. Prima di materializzare nuovo GOLD
+occorre congelare il registry v9 e definire una migrazione esplicita. Parser e LLM
+producono candidate structure; non trasformano output modello in Derivation Gold.
+
+## Deduplica e split
+
+La separazione futura avviene per famiglia indivisibile, mai per riga:
+
+- DOI, PMCID, PMID e tutte le versioni/correzioni;
+- abstract, Methods, caption, tabelle e supplementi;
+- dataset, sample sheet, codice e accessioni collegati;
+- laboratorio/corresponding author quando identificabile;
+- tutte le trasformazioni e parafrasi della stessa famiglia.
+
+La deduplica esatta, near e semantic-family precede lo split. Un'identità ignota non
+viene sostituita con un ID di riga per simulare indipendenza. Test ed external devono
+essere custoditi separatamente e non leggibili da training, tokenizzazione,
+retrieval, calibration o model selection.
+
+Lo snapshot preparato completo è un **custody snapshot**, non l'input del trainer.
+Una training view fisicamente separata può contenere soltanto train e validation,
+mentre test/external restano nel protected vault. Anche questa view non è oggi un
+input ML eseguibile: manca un runner che consegni a MLX soltanto file descriptor
+read-only anonimi/unlinked ereditati, eliminando il path reopen dopo la validazione. I
+dettagli sono in
+[mlx-training-pipeline.md](mlx-training-pipeline.md).
+
+## Annotazione e gold futuro
+
+Il gate richiede dati reali N-Truth e non può essere soddisfatto dai corpus pubblici.
+Servono almeno:
+
+1. registry/schema/Rulebook PRD v9 congelati;
+2. real anchor con campi decisivi doppiamente annotati;
+3. agreement misurato prima dell'adjudication;
+4. adjudication e lineage per ogni caso;
+5. licence/privacy scope verificato;
+6. split bundle/lab-aware congelati;
+7. test ed external affidati a un custode indipendente;
+8. protocollo baseline ed H/A/H+A preregistrato.
+
+I casi ambigui restano indeterminati. Menzioni di randomizzazione, numerosità,
+repliche o unità non vengono convertite automaticamente in allocation level,
+experimental unit o independent n.
+
+## Readiness, runtime e autorizzazione
+
+I soli comandi sicuri nello stato corrente sono diagnostici:
 
 ```bash
 uv sync --extra dev --extra api --extra ml --locked
-uv run ntruth-ml check
-uv run ntruth-ml download-model --confirm-license-and-download
-uv run ntruth-ml verify-model
-uv run ntruth-ml tokenize local-data/prepared/corpus-v1 \
-  --out local-data/prepared/corpus-v1/token-report.json
-uv run ntruth-ml train local-data/prepared/corpus-v1 \
-  --out models/runs/corpus-v1-seed13 --seed 13
+uv run ntruth-ml readiness
+uv run ntruth-ml check \
+  --profile models/configs/granite-4.1-3b-mlx-qlora.json \
+  --repo "$(pwd)"
 ```
 
-Il trainer opera offline dopo il download, usa un modello base quantizzato a 4 bit,
-LoRA sui proiettori Q/V, batch 1, gradient accumulation e checkpointing. Un controller
-esterno esegue fasi da 100 iterazioni, valuta la validation, conserva il best adapter e
-interrompe dopo la patience configurata. `--resume` richiede gli stessi checksum di
-profilo, snapshot, lockfile e sorgenti della corsia ML.
+`readiness` termina con codice `2` finché lo stato è `NOT_READY`. Il doctor finale ha
+destinazione canonica
+`/Volumes/FLASH128/N-Truth-Datasets/manifests/reports/readiness-20260813/granite-doctor.final.json`:
+la verifica finale indica MLX-LM `0.31.3`, Apple Silicon e budget disco/memoria
+passanti, ma
+`model_present=false` e `ready_to_train=false`. Il doctor deve restare
+`ready_to_train=false` anche dopo un eventuale download finché manca il runner FD.
 
-La generazione richiede JSON puro, applica limite di token, parsing e validazione
-`ParserAIOutput`; dopo un solo retry controllato, un output ancora invalido viene
-rifiutato e conteggiato come tale. Le metriche includono schema-valid rate, exact
-contract match, determinability accuracy/macro F1, precision/recall/F1 per categoria e
-micro/macro per candidate facts. Temperature scaling, NLL, Brier, ECE e risk-coverage
-usano esclusivamente la validation. Prima di calibrazione o export, il verificatore
-ricostruisce gold e prediction dallo snapshot, ricalcola score, aggregati e confidence
-observations e rifiuta anche artefatti alterati con checksum aggiornati.
+Tokenizzazione, training, smoke, prediction, metriche, calibrazione, resume,
+checkpoint ed export sono tutti fail-closed. L'autorizzazione futura non è un bare
+`RealityGateResult`: è un envelope canonico v1 legato esattamente a training view,
+seal, profilo, repository/revisione modello, source snapshot e seed. Anche un envelope
+valido non supera il blocker FD.
 
-I comandi completi di predict, calibrate, test ed export, insieme ai limiti del phased
-training e al budget di memoria/disco, sono in
-[mlx-training-pipeline.md](mlx-training-pipeline.md).
+## Evaluation prima del training
+
+Non sono state eseguite baseline reali. Il protocollo congelabile è in
+[baseline-evaluation-protocol-v1.md](training/baseline-evaluation-protocol-v1.md) e
+richiede:
+
+- rules-only;
+- base zero-shot e few-shot;
+- retrieval/context enrichment;
+- ModernBERT specialist;
+- confronto no-adapter tra Granite, Qwen e Phi;
+- condizioni H, A e H+A;
+- schema-validity, exact match, precision/recall/F1, macro-F1 per classe,
+  calibration, risk-coverage, OOD, failure taxonomy e correction burden.
+
+Il fine-tuning ha senso soltanto se supera la migliore baseline preregistrata senza
+peggiorare false certainty, calibrazione, OOD o burden umano. La training loss non è
+un endpoint decisionale.
 
 ## Riproducibilità e pubblicazione
 
-Ogni run registra automaticamente snapshot, seed, profilo, modello, runtime, lockfile,
-fingerprint del codice e stato Git. Le versioni di schema/parser/guideline/ontologia e
-gli split appartengono al dataset manifest e devono essere conservati insieme al run.
-Lo schema v2 del run lega inoltre il checkpoint `best` ai checksum di adapter,
-configurazione, snapshot e manifest. `export-adapter` richiede obbligatoriamente
-metriche finali da `test` o `external` e una calibrazione ottenuta dalla validation del
-medesimo run; ricalcola la calibrazione e verifica tutta la lineage prima di copiare
-pesi LoRA, profilo, run state, manifest e report. Non copia pesi base o record di
-training.
+Ogni futuro run dovrà legare commit, dirty state, dataset/view/seal hash,
+registry/schema, model/tokenizer revision, profilo, seed, ambiente, hardware,
+authorization envelope, descriptor commitments, checkpoint e metriche. Oggi nessun
+run-state o checkpoint corrente viene prodotto. L'hardening dei quality report e del
+task corpus SourceData ha invalidato il precedente fingerprint: refresh e resume
+finali devono essere rigenerati. Il solo fingerprint da citare sarà quello scritto nel
+nuovo `/Volumes/FLASH128/N-Truth-Datasets/manifests/checksums/merkle_manifest.json` e
+confermato dai nuovi `final-refresh.log` / `final-resume.log` nella directory
+readiness; questo documento non ne anticipa il valore.
 
-Non pubblicare dataset, sorgenti, annotazioni reali, modello base, adapter, cache o log
-senza autorizzazione esplicita e una nuova verifica dei manifest. Il software corrente
-non richiede token per analisi o training. Eventuali credenziali di repository o storage
-appartengono a un keychain/secret manager, mai a `.env.example`, manifest, issue, log o
-commit.
+Un Merkle valido prova integrità degli artefatti inclusi, non licenza, qualità
+scientifica, assenza di contamination o training readiness. Non pubblicare dati,
+annotazioni, pesi, adapter, prediction o log senza una distinta review di
+distribuzione.

@@ -113,3 +113,21 @@ def test_align_sourcedata_configs_excludes_roles_label_length_mismatch():
     assert report["matched_count"] == 0
     assert report["label_length_mismatches"] == 1
     assert report["label_length_checked"] is True
+
+
+def test_align_sourcedata_configs_detects_reordered_records_fail_closed():
+    ner = [
+        {"words": ["first"], "labels": ["B-X"], "split": "train"},
+        {"words": ["second"], "labels": ["B-Y"], "split": "train"},
+    ]
+    roles = [
+        {"words": ["second"], "labels": ["B-R"], "split": "train"},
+        {"words": ["first"], "labels": ["B-R"], "split": "train"},
+    ]
+
+    aligned, report = align_sourcedata_configs(ner, roles)
+
+    assert aligned == []
+    assert report["order_mismatch_count"] == 2
+    assert report["token_mismatches"] == 0
+    assert report["excluded_count_by_reason"]["order_mismatches"] == 2

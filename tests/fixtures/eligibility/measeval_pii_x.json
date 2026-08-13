@@ -1,0 +1,49 @@
+{
+  "allowed_tasks": [
+    "quantity_extraction",
+    "unit_extraction",
+    "measurement_context_extraction",
+    "measurement_relation_extraction"
+  ],
+  "annotation_status": "annotated",
+  "eligibility": {
+    "evaluation_eligible": false,
+    "requires_review": false,
+    "training_eligible": false
+  },
+  "forbidden_targets": [
+    "independent_n",
+    "experimental_unit",
+    "independently_assigned",
+    "allocation_level",
+    "application_level",
+    "determinability_state"
+  ],
+  "native_annotation_tier": "HUMAN_CURATED_GOLD",
+  "ntruth_usage_tier": "SILVER_AUXILIARY",
+  "payload": {
+    "kind": "span_relation",
+    "relations": [],
+    "spans": [],
+    "text": "x"
+  },
+  "provenance": {
+    "sha256": "c53b28506befad2edf6da7f9782c7711c6f955d34322425a60d3743f05d8fd57",
+    "source_url": "https://github.com/harperco/MeasEval",
+    "transform_version": "2.1.0"
+  },
+  "record_id": "measeval:S027737911400050X-2401",
+  "source": {
+    "commit": "1fa738b6bc9b72c84c88a80344ca3ab39a310a44",
+    "dataset": "MeasEval",
+    "document_id": "S027737911400050X",
+    "segment_id": "S027737911400050X-2401",
+    "version": "1fa738b6bc9b"
+  },
+  "split": {
+    "authority": "ntruth_measeval_article_family_v1",
+    "group_id": "S027737911400050X",
+    "name": "train"
+  },
+  "task_type": "span_relation"
+}

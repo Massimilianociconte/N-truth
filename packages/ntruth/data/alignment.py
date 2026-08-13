@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import hashlib
+import json
+from collections import Counter
 from typing import Any
 
 
@@ -11,8 +13,8 @@ class AlignmentError(RuntimeError):
 
 
 def _words_hash(words: list[str]) -> str:
-    joint = "\0".join(words).encode("utf-8")
-    return hashlib.sha256(joint).hexdigest()
+    canonical = json.dumps(words, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
 
 
 def align_sourcedata_configs(
@@ -28,10 +30,18 @@ def align_sourcedata_configs(
 
     aligned_multitask_records: list[dict[str, Any]] = []
     token_mismatches = 0
+    order_mismatches = 0
     split_mismatches = 0
     label_length_mismatches = 0
 
     min_len = min(total_ner, total_roles)
+    ner_hashes = [
+        _words_hash(record.get("words", record.get("tokens", []))) for record in ner_records
+    ]
+    roles_hashes = [
+        _words_hash(record.get("words", record.get("tokens", []))) for record in roles_records
+    ]
+    same_hash_multiset = Counter(ner_hashes) == Counter(roles_hashes)
     for idx in range(min_len):
         ner_rec = ner_records[idx]
         roles_rec = roles_records[idx]
@@ -42,7 +52,10 @@ def align_sourcedata_configs(
         roles_labels = roles_rec.get("labels", roles_rec.get("role_tags", []))
 
         if ner_words != roles_words:
-            token_mismatches += 1
+            if same_hash_multiset:
+                order_mismatches += 1
+            else:
+                token_mismatches += 1
             continue
 
         # Fail-closed: every side must have label length == token length.
@@ -62,11 +75,16 @@ def align_sourcedata_configs(
         aligned_multitask_records.append(merged_record)
 
     unmatched_ner = (
-        max(0, total_ner - min_len) + token_mismatches + split_mismatches + label_length_mismatches
+        max(0, total_ner - min_len)
+        + token_mismatches
+        + order_mismatches
+        + split_mismatches
+        + label_length_mismatches
     )
     unmatched_roles = (
         max(0, total_roles - min_len)
         + token_mismatches
+        + order_mismatches
         + split_mismatches
         + label_length_mismatches
     )
@@ -82,10 +100,12 @@ def align_sourcedata_configs(
         "roles_only_count": unmatched_roles,
         "duplicate_count": 0,
         "token_mismatches": token_mismatches,
+        "order_mismatch_count": order_mismatches,
         "split_mismatches": split_mismatches,
         "label_length_mismatches": label_length_mismatches,
         "excluded_count_by_reason": {
             "token_mismatches": token_mismatches,
+            "order_mismatches": order_mismatches,
             "split_mismatches": split_mismatches,
             "label_length_mismatches": label_length_mismatches,
             "length_mismatch": abs(total_ner - total_roles),
@@ -95,7 +115,10 @@ def align_sourcedata_configs(
             "upstream_split": "inherited_from_paired_file_path",
             "source_file_or_config": "ner/{split}.jsonl paired with roles_multi/{split}.jsonl",
             "source_record_index": "0-based_physical_line_index_within_split_file",
-            "words_sha256": "sha256(NUL-joined words); required equal at matching indices",
+            "words_sha256": (
+                "sha256(canonical compact UTF-8 JSON array of words); required equal at matching "
+                "indices"
+            ),
             "revision_bound": True,
             "stable_across_revisions": False,
             "panel_id_field_present": False,

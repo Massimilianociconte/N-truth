@@ -514,9 +514,16 @@ class DatasetFormatError(ValueError):
 def loads_supervised_jsonl(payload: str | bytes) -> tuple[SupervisedRecord, ...]:
     """Carica JSONL locale; le righe vuote sono ignorate ma mai emesse in output."""
 
-    text = payload.decode("utf-8") if isinstance(payload, bytes) else payload
+    if isinstance(payload, bytes):
+        try:
+            text = payload.decode("utf-8")
+        except UnicodeDecodeError as error:
+            line_number = payload[: error.start].count(b"\n") + 1
+            raise DatasetFormatError(line_number, "contenuto non UTF-8") from error
+    else:
+        text = payload
     records: list[SupervisedRecord] = []
-    for line_number, line in enumerate(text.splitlines(), start=1):
+    for line_number, line in enumerate(text.split("\n"), start=1):
         if not line.strip():
             continue
         try:

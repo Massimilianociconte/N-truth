@@ -1,0 +1,31 @@
+{
+  "schema_version": "1.0.0",
+  "artifact_type": "ntruth-baseline-protocol-freeze-contract",
+  "status": "PROTOCOL_FROZEN_NOT_EXECUTED",
+  "protocol_ref": "docs/training/baseline-evaluation-protocol-v1.md",
+  "normative_target": "PRD_V9",
+  "implemented_root_contract": "PRD_V7",
+  "executed": false,
+  "fine_tuning_justification_requires": {
+    "normative_registry_v9_frozen": true,
+    "root_reality_gate_allows_substantive_training": true,
+    "gold_reference_and_human_agreement_available": true,
+    "licence_and_privacy_scope_verified": true,
+    "group_splits_frozen_and_audited": true,
+    "test_and_external_sealed": true,
+    "baseline_ladder_completed_on_validation": true,
+    "primary_metric_and_non_inferiority_margins_preregistered": true,
+    "local_runtime_reproducible": true
+  },
+  "ladder_not_run": [
+    "rules",
+    "zero-shot",
+    "few-shot",
+    "structured_prompting",
+    "retrieval_rag",
+    "modernbert_specialist",
+    "granite_qwen_phi_no_adapter",
+    "human_ai_human_plus_ai"
+  ],
+  "notes": "Freezes the protocol text as the versioned contract. Does not execute baselines or download models."
+}

@@ -1,10 +1,18 @@
 # N-Truth System Card v0.1
 
-**Stato:** alpha in sviluppo; **non** è una release scientificamente validata  
-(`scientific_validation_status=NOT_STARTED`).  
-Gate runtime (artefatto MLX community 4-bit registrato): `PARTIALLY_VERIFIED`.  
-Training sostanziale: `HOLD_PENDING_REAL_ANCHOR`.  
-Dettaglio verificato: [status-snapshot.md](status-snapshot.md).
+**Stato:** alpha in sviluppo; **non** è una release scientificamente validata
+(`scientific_validation_status=NOT_STARTED`). Il target normativo è PRD v9, mentre il
+root implementa PRD v7. La decisione corrente è
+[NOT READY](training/TRAINING-READINESS-small-model-20260813.md).
+
+Il profilo Granite corrente è soltanto configurato:
+`status=configuration_defined_execution_blocked`,
+`runtime_qualification_status=NOT_RUN_CURRENT_PROFILE`,
+`synthetic_train_only=true`. `ntruth-ml check` deve restituire sempre
+`ready_to_train=false`; il blocker operativo è
+`anonymous_unlinked_inherited_fd_runner`. Nessuna operazione ML — incluso smoke,
+tokenizzazione, prediction, metriche, calibrazione, resume/checkpoint o export — è
+eseguibile finché il runner FD non esiste e i gate ulteriori non sono chiusi.
 
 ## Sistema
 
@@ -46,17 +54,18 @@ per fixture canoniche complete, revisione esterna, Experiment Bundle reali/pubbl
 prova CI cross-platform su una revisione candidata.
 
 Per il Train A esistono dieci stage contract, la separazione Parser/Derivation Gold e
-una corsia MLX locale opzionale (IBM Granite 4.1 3B Instruct **provvisorio**; bootstrap
-MLX community 4-bit). Tooling: preparazione governata, snapshot anti-leakage, QLoRA,
-constrained decoding (forma, non verità scientifica), scoring su development, export
-adapter. Il modello non è scientificamente selezionato. Questa corsia non è collegata
-automaticamente al prodotto deterministico.
+una specifica futura per una corsia MLX locale (IBM Granite 4.1 3B Instruct
+**provvisorio**; conversione MLX community 4-bit). Preparazione governata e freeze
+anti-leakage non autorizzano il loader ML. QLoRA, constrained decoding, scoring ed
+export adapter descrivono un percorso futuro non eseguibile. Il modello non è
+scientificamente selezionato e la corsia non è collegata automaticamente al prodotto
+deterministico.
 
-Non sono disponibili gold reali, metriche ML su dati reali indipendenti, o external
-challenge. B4 (39 casi DEVELOPMENT) ha mostrato semantica ancora insufficiente
-(F1 medio ~0.17 su condition C). P0-alpha è sintetico `SYN_G1_UNANCHORED`. Un eventuale
-smoke LoRA è solo `ENGINEERING_SMOKE_ONLY`. Le correzioni restano candidate annotations
-finché un processo umano non le promuove.
+Non sono disponibili gold reali, baseline correnti eseguite, metriche ML su dati reali
+indipendenti o external challenge. Le precedenti evidenze B4/P0-alpha e i claim di
+engineering smoke appartengono a profili o snapshot storici e non qualificano il
+profilo corrente. Le correzioni restano candidate annotations finché un processo
+umano non le promuove.
 
 ## Uso previsto iniziale
 
@@ -86,11 +95,9 @@ Le fixture sintetiche e i test verificano contratti software, invarianti, regres
 sicurezza e comportamento offline. Non costituiscono un gold corpus, agreement umano,
 validazione esterna, prova di accuratezza o verifica delle regole da parte di esperti.
 
-Su un Mac Apple Silicon con 24 GiB è stato inoltre eseguito uno smoke QLoRA di due
-iterazioni sul modello base 4-bit fissato: il runtime ha prodotto checkpoint e best
-adapter con picco MLX di 3,174 GB. L'inferenza successiva ha correttamente rifiutato due
-output non conformi dopo il retry. Questi valori verificano il percorso tecnico, non la
-qualità del modello.
+Non esiste uno smoke Granite corrente. Risultati di smoke, checkpoint, adapter,
+inferenza o memoria provenienti da profili storici non sono evidenza trasferibile al
+profilo corrente e non devono essere usati per aprire il gate.
 
 ## Failure mode noti
 
@@ -110,10 +117,10 @@ qualità del modello.
   fonti e non dimostra readiness di distribuzione.
 - Domini, specie, tecniche e lingue non valutati devono essere mostrati come fuori dal
   perimetro validato.
-- MLX-LM non applica grammar-constrained JSON in questa corsia; output non validi sono
-  rifiutati dopo un solo retry e riducono esplicitamente lo schema-valid rate.
-- L'early stopping è implementato mediante fasi MLX separate che riprendono i pesi
-  adapter ma ricreano l'optimizer. Non è bit-equivalente a un unico run monolitico.
+- La strategia futura di structured output deve essere rivalidata nel runner FD; non
+  esistono prediction o schema-valid rate correnti.
+- Resume, checkpoint ed early stopping sono bloccati e devono essere riprogettati e
+  testati sul futuro runner FD prima di produrre run-state.
 - Il profilo 4-bit può perdere qualità rispetto al modello non quantizzato; il trade-off
   deve essere misurato sul futuro validation set.
 

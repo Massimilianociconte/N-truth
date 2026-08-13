@@ -1,0 +1,131 @@
+{
+  "schema_version": "1.0.0",
+  "status": "configuration_defined_execution_blocked",
+  "runtime": {
+    "name": "mlx-lm",
+    "version": "0.31.3",
+    "platform": "macOS Apple Silicon",
+    "network_during_training": false
+  },
+  "model": {
+    "provider": "granite",
+    "selection_role": "provisional_primary_train_a",
+    "scientifically_selected": false,
+    "runtime_qualification_status": "NOT_RUN_CURRENT_PROFILE",
+    "scientific_validation_status": "NOT_STARTED",
+    "canonical_repository": "ibm-granite/granite-4.1-3b",
+    "canonical_revision": "c0650403e44e78ec0262dab1c90914c65b196c4e",
+    "repository": "mlx-community/granite-4.1-3b-4bit",
+    "revision": "b1b476b5a17c46b7d6cd663b4a8ed44b66720aef",
+    "local_path": "models/local/granite-4.1-3b-4bit",
+    "expected_download_bytes": 2130000000,
+    "expected_weight_file": "model.safetensors",
+    "expected_weight_bytes": 2127162429,
+    "expected_weight_sha256": "cff9d052cc3c68ea66b3d364788eb96fca2be82868d9ad92bd968e73b125194d",
+    "quantization_bits": 4,
+    "quantization_group_size": null,
+    "base_repository": "ibm-granite/granite-4.1-3b",
+    "base_revision_observed": "c0650403e44e78ec0262dab1c90914c65b196c4e",
+    "base_parameter_count": 3402836480,
+    "configured_maximum_context_tokens": 131072,
+    "license": "Apache-2.0",
+    "license_url": "https://huggingface.co/ibm-granite/granite-4.1-3b/blob/c0650403e44e78ec0262dab1c90914c65b196c4e/LICENSE",
+    "model_card_url": "https://huggingface.co/ibm-granite/granite-4.1-3b",
+    "mlx_distribution": "community_conversion_not_official_ibm",
+    "output_policy": {
+      "candidate_facts_only": true,
+      "forbidden_direct_outputs": [
+        "final_independent_n",
+        "definitive_pseudoreplication_verdict",
+        "experiment_validity_judgement",
+        "statistical_test_choice",
+        "paper_quality_score",
+        "determinability_verdict"
+      ]
+    }
+  },
+  "hardware": {
+    "minimum_unified_memory_gib": 24,
+    "required_free_disk_gib": 40,
+    "maximum_ntruth_workspace_gib": 40,
+    "device": "metal"
+  },
+  "data": {
+    "format": "chat_jsonl",
+    "contract_version": "2.0.0",
+    "max_sequence_length": 1024,
+    "generation_max_tokens": 1024,
+    "split_group_fields": [
+      "publication_family",
+      "leakage_group",
+      "laboratory_group",
+      "source_bundle"
+    ],
+    "synthetic_train_only": true
+  },
+  "training": {
+    "fine_tune_type": "lora",
+    "quantized_base_means_qlora": true,
+    "num_layers": 8,
+    "batch_size": 1,
+    "gradient_accumulation_steps": 8,
+    "effective_batch_size": 8,
+    "learning_rate": 0.00001,
+    "optimizer": "adamw",
+    "mask_prompt": true,
+    "gradient_checkpointing": true,
+    "iterations_per_phase": 100,
+    "maximum_phases": 20,
+    "validation_batches": -1,
+    "test_batches": -1,
+    "early_stopping_patience": 3,
+    "early_stopping_min_delta": 0.001,
+    "maximum_observed_peak_memory_gib": 18,
+    "keep_checkpoints": 3,
+    "seeds": [13, 37, 101],
+    "lora_parameters": {
+      "keys": [
+        "self_attn.q_proj",
+        "self_attn.k_proj",
+        "self_attn.v_proj",
+        "self_attn.o_proj",
+        "mlp.gate_proj",
+        "mlp.up_proj",
+        "mlp.down_proj"
+      ],
+      "rank": 16,
+      "scale": 32.0,
+      "dropout": 0.05
+    }
+  },
+  "calibration": {
+    "method": "temperature_scaling",
+    "fit_split": "validation",
+    "report": ["brier", "ece", "risk_coverage"],
+    "never_fit_on": ["test", "external_challenge"]
+  },
+  "storage_budget": {
+    "basis": "Conservative simultaneous planning budget only; no current-profile training or runtime smoke has executed.",
+    "items_gib": {
+      "selected_raw_downloads": 2.0,
+      "extracted_normalized_documents": 3.0,
+      "prepared_jsonl_and_token_reports": 4.0,
+      "quantized_base_model": 2.1,
+      "model_download_cache": 2.1,
+      "python_ml_environment_and_cache": 3.0,
+      "adapters_and_retained_checkpoints": 4.0,
+      "optional_local_export_or_fused_copy": 8.1,
+      "metrics_logs_and_experiment_outputs": 2.0,
+      "temporary_headroom": 5.0
+    },
+    "planned_total_gib": 35.3
+  },
+  "training_blocked_until": [
+    "reality_gate_substantive_training_authorization",
+    "prd_v9_canonical_registry",
+    "gold_pilot_approved",
+    "license_manifests_complete",
+    "protected_splits_frozen",
+    "baseline_tournament_complete"
+  ]
+}

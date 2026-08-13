@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 
 import pytest
 from pydantic import ValidationError
@@ -155,6 +156,16 @@ def test_jsonl_round_trip_is_canonical_and_reports_physical_line() -> None:
     with pytest.raises(DatasetFormatError) as captured:
         loads_supervised_jsonl(payload.splitlines()[0] + "\n\n{}\n")
     assert captured.value.line_number == 3
+
+
+def test_supervised_jsonl_preserves_unicode_line_separator_inside_one_physical_record() -> None:
+    record = _record("unicode-separator", input_text="before\u2028after")
+    payload = json.dumps(record.model_dump(mode="json"), ensure_ascii=False) + "\n"
+
+    loaded = loads_supervised_jsonl(payload)
+
+    assert len(loaded) == 1
+    assert loaded[0].input_text == "before\u2028after"
 
 
 def test_normalization_and_fingerprints_are_unicode_and_key_order_stable() -> None:

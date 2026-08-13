@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import os
 import re
 import shutil
-import urllib.request
+import xml.etree.ElementTree as ET
+from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
@@ -19,17 +19,25 @@ from ntruth.data.fs import (
     atomic_extract_archive,
     atomic_write_text,
     is_ignorable_metadata,
-    sha256_file,
 )
 from ntruth.data.schemas import (
     CommonEnvelope,
+    CoreferenceChain,
     CoreferencePayload,
     Eligibility,
+    MentionRecord,
     NativeAnnotationTier,
     NTruthUsageTier,
     Provenance,
     SourceReference,
     SplitAssignment,
+)
+from ntruth.data.source_locks import (
+    ensure_pinned_archive,
+    ensure_pinned_archive_verified_copy,
+    load_archive_lock,
+    resume_marker_matches,
+    write_authenticated_resume_marker,
 )
 from ntruth.data.splits import (
     load_craft_2019_shared_task_split,
@@ -40,6 +48,164 @@ from ntruth.data.splits import (
 
 class CRAFTError(RuntimeError):
     """CRAFT dataset processing error."""
+
+
+def parse_craft_coreference(
+    annotation_path: Path, text: str
+) -> tuple[CoreferencePayload, dict[str, Any]]:
+    """Parse losslessly representable CRAFT Knowtator-2 identity chains.
+
+    The canonical payload cannot represent discontinuous mentions or APPOS
+    relations. Any chain containing one of those constructs is excluded in
+    full and reported, rather than silently flattening or inventing spans.
+    """
+    try:
+        root = ET.parse(annotation_path).getroot()
+    except (ET.ParseError, OSError) as exc:
+        raise CRAFTError(f"Invalid CRAFT coreference XML {annotation_path}: {exc}") from exc
+
+    annotations: dict[str, ET.Element] = {}
+    for annotation in root.findall(".//annotation"):
+        annotation_id = annotation.get("id")
+        if not annotation_id or annotation_id in annotations:
+            raise CRAFTError(f"Missing or duplicate annotation id in {annotation_path}")
+        annotations[annotation_id] = annotation
+
+    vertices: dict[str, str] = {}
+    for vertex in root.findall(".//vertex"):
+        vertex_id = vertex.get("id")
+        annotation_id = vertex.get("annotation")
+        if not vertex_id or not annotation_id or vertex_id in vertices:
+            raise CRAFTError(f"Invalid or duplicate vertex in {annotation_path}")
+        if annotation_id not in annotations:
+            raise CRAFTError(f"Vertex {vertex_id} references missing annotation {annotation_id}")
+        vertices[vertex_id] = annotation_id
+
+    chain_members: dict[str, list[str]] = defaultdict(list)
+    upstream_members = 0
+    for triple in root.findall(".//triple"):
+        if triple.get("property") != "Coreferring strings":
+            continue
+        subject = triple.get("subject")
+        object_ = triple.get("object")
+        if subject not in vertices or object_ not in vertices:
+            raise CRAFTError(f"Coreference triple references missing vertex in {annotation_path}")
+        chain_id = vertices[subject]
+        mention_id = vertices[object_]
+        chain_class = annotations[chain_id].find("class")
+        if chain_class is None or chain_class.get("label") != "IDENTITY chain":
+            raise CRAFTError(f"Coreference subject {chain_id} is not an IDENTITY chain")
+        if mention_id in chain_members[chain_id]:
+            raise CRAFTError(f"Duplicate member {mention_id} in chain {chain_id}")
+        chain_members[chain_id].append(mention_id)
+        upstream_members += 1
+
+    mentions: list[MentionRecord] = []
+    chains: list[CoreferenceChain] = []
+    emitted_mention_ids: set[str] = set()
+    exclusion_reasons: Counter[str] = Counter()
+
+    for chain_id, member_ids in chain_members.items():
+        parsed_mentions: list[MentionRecord] = []
+        exclusion_reason: str | None = None
+        for mention_id in member_ids:
+            annotation = annotations[mention_id]
+            mention_class = annotation.find("class")
+            if mention_class is None or mention_class.get("label") != "Noun Phrase":
+                exclusion_reason = "unsupported_member_class"
+                break
+
+            spans = annotation.findall("span")
+            if len(spans) != 1:
+                exclusion_reason = "discontinuous_mention"
+                break
+
+            span = spans[0]
+            try:
+                start = int(span.get("start", ""))
+                end = int(span.get("end", ""))
+            except ValueError as exc:
+                raise CRAFTError(f"Invalid offsets for mention {mention_id}") from exc
+            if start < 0 or end <= start or end > len(text):
+                raise CRAFTError(f"Out-of-bounds offsets for mention {mention_id}")
+
+            annotated_text = span.text or ""
+            source_text = text[start:end]
+            if source_text != annotated_text:
+                raise CRAFTError(f"Mention {mention_id} span text does not match source text")
+            parsed_mentions.append(
+                MentionRecord(
+                    mention_id=mention_id,
+                    start=start,
+                    end=end,
+                    text=source_text,
+                )
+            )
+
+        if exclusion_reason is not None:
+            exclusion_reasons[exclusion_reason] += 1
+            continue
+        if len(parsed_mentions) < 2:
+            exclusion_reasons["singleton_chain"] += 1
+            continue
+        duplicate_ids = emitted_mention_ids.intersection(member_ids)
+        if duplicate_ids:
+            duplicates = ", ".join(sorted(duplicate_ids))
+            raise CRAFTError(f"Mentions belong to multiple identity chains: {duplicates}")
+        emitted_mention_ids.update(member_ids)
+        mentions.extend(parsed_mentions)
+        chains.append(CoreferenceChain(chain_id=chain_id, mention_ids=member_ids))
+
+    payload = CoreferencePayload(text=text, mentions=mentions, chains=chains)
+    report = {
+        "upstream_chains": len(chain_members),
+        "upstream_members": upstream_members,
+        "emitted_chains": len(chains),
+        "emitted_mentions": len(mentions),
+        "excluded_chains": sum(exclusion_reasons.values()),
+        "exclusion_reasons": dict(sorted(exclusion_reasons.items())),
+    }
+    return payload, report
+
+
+def craft_annotation_policy(
+    split: str, parse_report: dict[str, Any]
+) -> tuple[Eligibility, NativeAnnotationTier, str]:
+    """Derive record eligibility without overstating a lossy conversion."""
+    if split not in {"train", "validation", "test"}:
+        raise CRAFTError(f"Unsupported CRAFT split: {split}")
+
+    if not parse_report.get("upstream_chains") or not parse_report.get("emitted_chains"):
+        return (
+            Eligibility(
+                training_eligible=False,
+                evaluation_eligible=False,
+                requires_review=True,
+            ),
+            NativeAnnotationTier.MISSING_ANNOTATION,
+            "empty_annotation",
+        )
+
+    if parse_report.get("excluded_chains", 0):
+        return (
+            Eligibility(
+                training_eligible=False,
+                evaluation_eligible=False,
+                requires_review=True,
+            ),
+            NativeAnnotationTier.HUMAN_CURATED_PARTIAL,
+            "partial_annotation_conversion",
+        )
+
+    return (
+        Eligibility(
+            training_eligible=False,
+            evaluation_eligible=False,
+            requires_review=False,
+        ),
+        NativeAnnotationTier.HUMAN_CURATED_GOLD,
+        "annotated",
+    )
 
 
 def extract_craft_article_id(path: Path) -> str | None:
@@ -207,46 +373,35 @@ def _discover_files_by_pmcid(raw_root: Path, mappings: dict[str, Any]) -> dict[s
 
 def install_craft(root: Path, refresh: bool = False) -> dict[str, Any]:
     source_ref = CRAFT_VERSION
-    archive_url = f"https://codeload.github.com/lhunter-lab/CRAFT/zip/refs/tags/{source_ref}"
+    archive_lock = load_archive_lock("craft", source_ref=source_ref)
+    archive_sha = archive_lock.sha256
     archive = root / "downloads" / f"craft-{source_ref}.zip"
     raw_root = root / "raw" / "craft" / source_ref
     processed_root = root / "processed" / "craft" / source_ref
 
-    archive.parent.mkdir(parents=True, exist_ok=True)
-    if not archive.exists() or refresh:
-        try:
-            req = urllib.request.Request(
-                archive_url, headers={"User-Agent": "NTruthDataInstaller/1.0"}
-            )
-            partial = archive.with_name(archive.name + ".part")
-            with urllib.request.urlopen(req, timeout=120) as resp:
-                partial.write_bytes(resp.read())
-            os.replace(partial, archive)
-        except Exception as exc:
-            if not archive.exists():
-                return {
-                    "dataset": "CRAFT",
-                    "version": source_ref,
-                    "source_ref": source_ref,
-                    "source_status": "UNVERIFIED",
-                    "warnings": [f"CRAFT archive missing locally and network fetch failed: {exc}"],
-                    "split_counts": {},
-                    "files": [],
-                }
-
-    archive_sha = sha256_file(archive)
     marker = raw_root / ".ntruth_complete.json"
-    if not marker.exists() or refresh:
-        atomic_extract_archive(
-            archive,
+    if refresh or not resume_marker_matches(marker, archive_lock):
+        with ensure_pinned_archive_verified_copy(
+            archive, archive_lock, refresh=refresh, timeout=120, root=root
+        ) as verified_archive:
+            atomic_extract_archive(
+                verified_archive,
+                raw_root,
+                {
+                    "dataset": archive_lock.marker_dataset,
+                    "source_ref": archive_lock.source_ref,
+                    "source_url": "https://github.com/lhunter-lab/CRAFT",
+                    "archive_sha256": archive_sha,
+                },
+                trusted_root=root,
+            )
+        write_authenticated_resume_marker(
             raw_root,
-            {
-                "dataset": "craft",
-                "source_ref": source_ref,
-                "source_url": "https://github.com/lhunter-lab/CRAFT",
-                "archive_sha256": archive_sha,
-            },
+            archive_lock,
+            metadata={"source_url": "https://github.com/lhunter-lab/CRAFT"},
         )
+    else:
+        ensure_pinned_archive(archive, archive_lock, refresh=False, timeout=120, root=root)
 
     # License capture
     license_src = raw_root / "LICENSE.txt"
@@ -306,7 +461,11 @@ def install_craft(root: Path, refresh: bool = False) -> dict[str, Any]:
     validate_anti_leakage(split_map)
 
     split_counts: dict[str, int] = {"train": 0, "validation": 0, "test": 0}
-
+    parse_totals: Counter[str] = Counter()
+    exclusion_reasons: Counter[str] = Counter()
+    review_required_records = 0
+    training_eligible_records = 0
+    evaluation_eligible_records = 0
     for split in ("train", "validation", "test"):
         out_dir = processed_root / split
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -328,11 +487,31 @@ def install_craft(root: Path, refresh: bool = False) -> dict[str, Any]:
                 if candidate.exists():
                     preferred = candidate
             text_path = preferred or (text_files[0] if text_files else None)
-            text_content = (
-                text_path.read_text(encoding="utf-8", errors="replace")
-                if text_path is not None
-                else f"Article {pmcid}"
+            if text_path is None:
+                raise CRAFTError(f"Source article text missing for {pmcid}")
+            text_content = text_path.read_text(encoding="utf-8")
+
+            if pmid is None:
+                raise CRAFTError(f"PMID mapping missing for {pmcid}")
+            coreference_path = raw_root / "coreference-annotation" / "knowtator-2" / f"{pmid}.xml"
+            if not coreference_path.exists():
+                raise CRAFTError(f"Coreference annotation missing for {pmcid}: {coreference_path}")
+            payload, parse_report = parse_craft_coreference(coreference_path, text_content)
+            eligibility, native_tier, annotation_status = craft_annotation_policy(
+                split, parse_report
             )
+            for key in (
+                "upstream_chains",
+                "upstream_members",
+                "emitted_chains",
+                "emitted_mentions",
+                "excluded_chains",
+            ):
+                parse_totals[key] += parse_report[key]
+            exclusion_reasons.update(parse_report["exclusion_reasons"])
+            review_required_records += int(eligibility.requires_review)
+            training_eligible_records += int(eligibility.training_eligible)
+            evaluation_eligible_records += int(eligibility.evaluation_eligible)
 
             envelope = CommonEnvelope(
                 record_id=f"craft:{pmcid}",
@@ -344,22 +523,19 @@ def install_craft(root: Path, refresh: bool = False) -> dict[str, Any]:
                     segment_id=pmcid,
                 ),
                 split=SplitAssignment(name=split, authority=split_authority, group_id=pmcid),
-                eligibility=Eligibility(
-                    training_eligible=(split == "train"),
-                    evaluation_eligible=(split in {"validation", "test"}),
-                    requires_review=False,
-                ),
+                eligibility=eligibility,
                 provenance=Provenance(
                     source_url="https://github.com/lhunter-lab/CRAFT",
                     sha256=archive_sha,
-                    transform_version="1.0.0",
+                    transform_version="1.1.0",
                 ),
-                native_annotation_tier=NativeAnnotationTier.HUMAN_CURATED_GOLD,
+                native_annotation_tier=native_tier,
                 ntruth_usage_tier=NTruthUsageTier.SILVER_AUXILIARY,
                 allowed_tasks=DATASET_TASK_POLICIES["CRAFT"],
                 forbidden_targets=FORBIDDEN_NTRUTH_TARGETS,
+                annotation_status=annotation_status,
                 task_type="coreference",
-                payload=CoreferencePayload(text=text_content, mentions=[], chains=[]),
+                payload=payload,
             )
             lines.append(envelope.model_dump_json() + "\n")
 
@@ -399,7 +575,32 @@ def install_craft(root: Path, refresh: bool = False) -> dict[str, Any]:
             ),
         },
         "license": "CC-BY-3.0",
-        "native_annotation_tier": NativeAnnotationTier.HUMAN_CURATED_GOLD,
+        "status": "ACQUIRED_AND_PROCESSED_NOT_TRAINING_READY",
+        "model_use_status": "BLOCKED",
+        "training_ready_status": "NOT_MATERIALIZED",
+        "model_use_blockers": [
+            "canonical_task_corpus_adapter_not_validated",
+            "license_use_decision_not_bound_to_records",
+            "lossless_coreference_conversion_not_complete",
+        ],
+        "annotation_conversion": {
+            **dict(parse_totals),
+            "exclusion_reasons": dict(sorted(exclusion_reasons.items())),
+            "review_required_records": review_required_records,
+            "training_eligible_records": training_eligible_records,
+            "evaluation_eligible_records": evaluation_eligible_records,
+            "status": "PARTIAL_FAIL_CLOSED" if review_required_records else "LOSSLESS",
+            "note": (
+                "The canonical CoreferencePayload cannot represent discontinuous mentions or "
+                "APPOS relation members. Affected chains are excluded in full; affected records "
+                "require review and are ineligible for training or evaluation."
+            ),
+        },
+        "native_annotation_tier": (
+            NativeAnnotationTier.HUMAN_CURATED_PARTIAL
+            if review_required_records
+            else NativeAnnotationTier.HUMAN_CURATED_GOLD
+        ),
         "ntruth_usage_tier": NTruthUsageTier.SILVER_AUXILIARY,
         "files": [{"path": str(archive.relative_to(root)), "sha256": archive_sha}],
     }

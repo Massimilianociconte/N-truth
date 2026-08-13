@@ -13,6 +13,7 @@ import os
 import platform
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import time
@@ -23,7 +24,19 @@ from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from ntruth.reality_gate import (
+    DataReadiness,
+    GatePurpose,
+    RealityGateResult,
+    machine_readable_result,
+)
 from ntruth.schemas.core import content_checksum
+from ntruth.training.blockers import (
+    FD_ISOLATION_BLOCKER_CODE,
+    FD_ISOLATION_BLOCKER_DETAIL,
+    SCIENTIFIC_EXECUTION_CLOSED_CODE,
+    SCIENTIFIC_EXECUTION_CLOSED_DETAIL,
+)
 from ntruth.training.records import (
     DatasetManifest,
     PreparationReport,
@@ -33,9 +46,10 @@ from ntruth.training.records import (
 
 PROFILE_SCHEMA_VERSION = "1.0.0"
 PROVENANCE_SCHEMA_VERSION = "1.0.0"
-RUN_SCHEMA_VERSION = "2.0.0"
+RUN_SCHEMA_VERSION = "5.0.0"
 SNAPSHOT_SCHEMA_VERSION = "2.0.0"
-_TEST_LOSS = re.compile(r"Test loss\s+([0-9]+(?:\.[0-9]+)?)")
+TRAINING_AUTHORIZATION_SCHEMA_VERSION = "1.0.0"
+FD_ISOLATION_BLOCKER = FD_ISOLATION_BLOCKER_DETAIL
 _PEAK_MEMORY = re.compile(r"Peak mem(?:ory)?\s+([0-9]+(?:\.[0-9]+)?)\s*GB", re.I)
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 _REAL_SNAPSHOT_FILES = frozenset(
@@ -62,6 +76,18 @@ _SOURCE_SPLIT_NAMES = {
     "test": "test",
     "external": "external",
 }
+_TRAINING_AUTHORIZATION_BINDING_KEYS = frozenset(
+    {
+        "training_view_id",
+        "training_view_sha256",
+        "protected_split_seal_sha256",
+        "profile_sha256",
+        "model_repository",
+        "model_revision",
+        "source_snapshot_sha256",
+        "seed",
+    }
+)
 
 
 class MLXPipelineError(RuntimeError):
@@ -92,6 +118,224 @@ def sha256_file(path: Path, *, chunk_size: int = 1024 * 1024) -> str:
 def sha256_json(value: Any) -> str:
     payload = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _read_regular_file_bytes(path: Path, *, label: str) -> bytes:
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(path, flags)
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise MLXPipelineError(f"{label} non e un file regolare: {path}")
+        chunks: list[bytes] = []
+        while chunk := os.read(descriptor, 1024 * 1024):
+            chunks.append(chunk)
+        return b"".join(chunks)
+    except OSError as exc:
+        raise MLXPipelineError(
+            f"{label} non leggibile o symlink non ammesso: {path}: {exc}"
+        ) from exc
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+
+
+def _assert_current_training_readiness(result: RealityGateResult) -> None:
+    """Prevent an open legacy gate from bypassing the normative PRD v9 projection."""
+
+    from ntruth.training.readiness import (
+        OverallReadiness,
+        project_small_model_training_readiness,
+    )
+
+    projection = project_small_model_training_readiness(result)
+    if projection.overall is not OverallReadiness.READY:
+        raise MLXPipelineError(
+            "training readiness normativa PRD_V9 non READY: "
+            f"overall={projection.overall.value}, "
+            f"v9_schema_conformance={projection.v9_schema_conformance}, "
+            f"model_selection_status={projection.model_selection_status.value}"
+        )
+
+
+def build_training_authorization_envelope(
+    result: RealityGateResult,
+    *,
+    binding: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Bind a canonical Reality Gate result to exactly one preregistered run."""
+
+    normalized_binding = _validate_training_authorization_binding_payload(dict(binding))
+    envelope: dict[str, Any] = {
+        "schema_version": TRAINING_AUTHORIZATION_SCHEMA_VERSION,
+        "artifact_type": "ntruth-training-authorization-envelope",
+        "gate": machine_readable_result(result),
+        "binding": normalized_binding,
+    }
+    envelope["checksum"] = content_checksum(envelope)
+    return envelope
+
+
+def _validate_training_authorization_binding_payload(value: object) -> dict[str, Any]:
+    if not isinstance(value, dict) or set(value) != _TRAINING_AUTHORIZATION_BINDING_KEYS:
+        raise MLXPipelineError("binding autorizzazione training incompleto o inatteso")
+    normalized = dict(value)
+    for key in (
+        "training_view_sha256",
+        "protected_split_seal_sha256",
+        "profile_sha256",
+        "source_snapshot_sha256",
+    ):
+        item = normalized.get(key)
+        if not isinstance(item, str) or _SHA256.fullmatch(item) is None:
+            raise MLXPipelineError(f"binding autorizzazione training non valido: {key}")
+    for key in ("training_view_id", "model_repository", "model_revision"):
+        item = normalized.get(key)
+        if not isinstance(item, str) or not item.strip():
+            raise MLXPipelineError(f"binding autorizzazione training non valido: {key}")
+    seed = normalized.get("seed")
+    if isinstance(seed, bool) or not isinstance(seed, int):
+        raise MLXPipelineError("binding autorizzazione training non valido: seed")
+    return normalized
+
+
+def _load_training_authorization(path: Path) -> dict[str, Any]:
+    artifact_bytes = _read_regular_file_bytes(path, label="autorizzazione training")
+    try:
+        raw = json.loads(artifact_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise MLXPipelineError(f"autorizzazione training non leggibile: {path}: {exc}") from exc
+    if not isinstance(raw, dict):
+        raise MLXPipelineError("autorizzazione training deve essere un oggetto JSON")
+    if set(raw) != {"schema_version", "artifact_type", "gate", "binding", "checksum"}:
+        raise MLXPipelineError(
+            "autorizzazione training deve essere un envelope canonico v1; bare gate rifiutato"
+        )
+    if raw.get("schema_version") != TRAINING_AUTHORIZATION_SCHEMA_VERSION:
+        raise MLXPipelineError("schema autorizzazione training non supportato")
+    if raw.get("artifact_type") != "ntruth-training-authorization-envelope":
+        raise MLXPipelineError("artifact_type autorizzazione training non valido")
+    checksum = raw.get("checksum")
+    envelope_payload = {key: value for key, value in raw.items() if key != "checksum"}
+    if not isinstance(checksum, str) or checksum != content_checksum(envelope_payload):
+        raise MLXPipelineError("checksum contenuto autorizzazione training non valido")
+    gate_payload = raw.get("gate")
+    if not isinstance(gate_payload, dict):
+        raise MLXPipelineError("gate assente dall'envelope autorizzazione training")
+    gate_checksum = gate_payload.get("checksum")
+    canonical_gate_payload = {
+        key: value for key, value in gate_payload.items() if key != "checksum"
+    }
+    if not isinstance(gate_checksum, str) or gate_checksum != content_checksum(
+        canonical_gate_payload
+    ):
+        raise MLXPipelineError("checksum RealityGate nell'autorizzazione non valido")
+    try:
+        result = RealityGateResult.model_validate(canonical_gate_payload)
+    except ValueError as exc:
+        raise MLXPipelineError(f"autorizzazione training non valida: {exc}") from exc
+    if gate_payload != machine_readable_result(result):
+        raise MLXPipelineError(
+            "contenuto autorizzazione training non canonico per RealityGateResult"
+        )
+    if result.purpose is not GatePurpose.SUBSTANTIVE_TRAINING:
+        raise MLXPipelineError("autorizzazione training richiede purpose=SUBSTANTIVE_TRAINING")
+    if result.substantive_training_allowed is not True:
+        raise MLXPipelineError("autorizzazione training blocca il training sostanziale")
+    if result.data_readiness.status != DataReadiness.READY.value:
+        raise MLXPipelineError("autorizzazione training priva di data_readiness=READY")
+    blockers = (
+        *result.engineering_readiness.blockers,
+        *result.data_readiness.blockers,
+        *result.scientific_validation.blockers,
+        *result.overall_blockers,
+    )
+    if blockers:
+        raise MLXPipelineError("autorizzazione training contiene blocker")
+    _assert_current_training_readiness(result)
+    binding = _validate_training_authorization_binding_payload(raw.get("binding"))
+    return {
+        "artifact_path": str(path.resolve()),
+        "artifact_sha256": hashlib.sha256(artifact_bytes).hexdigest(),
+        "envelope_checksum": checksum,
+        "gate_checksum": gate_checksum,
+        "gate_version": result.gate_version,
+        "purpose": result.purpose.value,
+        "binding": binding,
+    }
+
+
+def _assert_training_authorization_binding(
+    authorization: Mapping[str, Any],
+    *,
+    dataset: Mapping[str, Any],
+    profile: Mapping[str, Any],
+    profile_sha256: str,
+    source_snapshot_sha256: str,
+    seed: int,
+) -> None:
+    binding = authorization.get("binding")
+    if not isinstance(binding, dict):
+        raise MLXPipelineError("binding autorizzazione training assente")
+    model = profile.get("model")
+    if not isinstance(model, dict):
+        raise MLXPipelineError("profilo privo di binding modello")
+    expected = {
+        "training_view_id": dataset.get("training_view_id"),
+        "training_view_sha256": dataset.get("training_view_sha256"),
+        "protected_split_seal_sha256": dataset.get("protected_split_seal_sha256"),
+        "profile_sha256": profile_sha256,
+        "model_repository": model.get("repository"),
+        "model_revision": model.get("revision"),
+        "source_snapshot_sha256": source_snapshot_sha256,
+        "seed": seed,
+    }
+    mismatches = sorted(key for key, value in expected.items() if binding.get(key) != value)
+    if mismatches:
+        raise MLXPipelineError(
+            "binding autorizzazione training non coincide col run: " + ", ".join(mismatches)
+        )
+
+
+def _load_resume_state(state_path: Path) -> dict[str, Any]:
+    state_bytes = _read_regular_file_bytes(state_path, label="stato run")
+    try:
+        state = json.loads(state_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise MLXPipelineError(f"stato run non riprendibile: {exc}") from exc
+    if not isinstance(state, dict):
+        raise MLXPipelineError("stato run non riprendibile: atteso oggetto JSON")
+    if state.get("schema_version") != RUN_SCHEMA_VERSION:
+        raise MLXPipelineError("schema run cambiato: impossibile riprendere il run")
+    return state
+
+
+def _assert_resume_authorization(
+    state: Mapping[str, Any],
+    authorization: Mapping[str, str] | None,
+    *,
+    smoke_test: bool,
+) -> None:
+    previous = state.get("training_authorization")
+    if smoke_test:
+        if previous is not None:
+            raise MLXPipelineError(
+                "lineage autorizzazione inattesa nel run smoke: impossibile riprendere il run"
+            )
+        return
+    if not isinstance(previous, dict) or authorization is None:
+        raise MLXPipelineError("lineage autorizzazione assente: impossibile riprendere il run")
+    compared_fields = (
+        "artifact_sha256",
+        "envelope_checksum",
+        "gate_checksum",
+        "gate_version",
+        "purpose",
+        "binding",
+    )
+    if any(previous.get(key) != authorization.get(key) for key in compared_fields):
+        raise MLXPipelineError("autorizzazione training cambiata: impossibile riprendere il run")
 
 
 def directory_size(path: Path) -> int:
@@ -176,9 +420,15 @@ def _write_json(path: Path, value: Any) -> None:
 
 
 def load_profile(path: Path) -> dict[str, Any]:
+    profile, _checksum = load_profile_artifact(path)
+    return profile
+
+
+def load_profile_artifact(path: Path) -> tuple[dict[str, Any], str]:
+    profile_bytes = _read_regular_file_bytes(path, label="profilo MLX")
     try:
-        profile = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        profile = json.loads(profile_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise MLXPipelineError(f"profilo MLX non leggibile: {path}: {exc}") from exc
     if not isinstance(profile, dict) or profile.get("schema_version") != PROFILE_SCHEMA_VERSION:
         raise MLXPipelineError(
@@ -197,7 +447,7 @@ def load_profile(path: Path) -> dict[str, Any]:
         raise MLXPipelineError("expected_weight_sha256 mancante o non valido")
     if int(profile["model"].get("expected_weight_bytes", 0)) <= 0:
         raise MLXPipelineError("expected_weight_bytes deve essere positivo")
-    return profile
+    return profile, hashlib.sha256(profile_bytes).hexdigest()
 
 
 def _memory_bytes() -> int | None:
@@ -290,9 +540,23 @@ def doctor(profile_path: Path, repo_root: Path) -> dict[str, Any]:
         },
     }
     result["ready_to_download"] = system_ok and memory_ok and disk_ok
-    result["ready_to_train"] = (
+    result["operational_prerequisites_passed"] = (
         result["ready_to_download"] and runtime_version == expected_runtime and model_exists
     )
+    from ntruth.training.fd_isolation import fd_isolation_contract_holds
+
+    execution_blockers: list[str] = []
+    if not fd_isolation_contract_holds():
+        execution_blockers.extend((FD_ISOLATION_BLOCKER_CODE, FD_ISOLATION_BLOCKER))
+    execution_blockers.extend(
+        (
+            "MODEL_SELECTION_BENCHMARK_PENDING",
+            SCIENTIFIC_EXECUTION_CLOSED_CODE,
+            SCIENTIFIC_EXECUTION_CLOSED_DETAIL,
+        )
+    )
+    result["execution_blockers"] = execution_blockers
+    result["ready_to_train"] = False
     return result
 
 
@@ -628,7 +892,7 @@ def _verify_snapshot_counts(
 def _load_prepared_records(path: Path) -> tuple[PreparedRecord, ...]:
     records: list[PreparedRecord] = []
     try:
-        lines = path.read_text(encoding="utf-8").splitlines()
+        lines = path.read_text(encoding="utf-8").split("\n")
     except OSError as exc:
         raise MLXPipelineError(f"prepared records non leggibili: {path}: {exc}") from exc
     for line_number, line in enumerate(lines, start=1):
@@ -792,7 +1056,11 @@ def _validate_real_snapshot_source(
 def _validate_runtime_smoke_manifest(
     manifest: Mapping[str, Any],
     split_record_ids: Mapping[str, tuple[str, ...]],
+    split_records: Mapping[str, tuple[dict[str, Any], ...]],
+    data_dir: Path,
 ) -> None:
+    from ntruth.training.mlx_dataset import runtime_smoke_jsonl_bytes, runtime_smoke_split_rows
+
     exact_flags = {
         "dataset_id": "runtime-smoke-only",
         "training_approved": False,
@@ -814,6 +1082,18 @@ def _validate_runtime_smoke_manifest(
     }
     if dict(split_record_ids) != expected_ids:
         raise MLXPipelineError("record_id smoke non coincidono con la fixture runtime isolata")
+    expected_rows = runtime_smoke_split_rows()
+    for split in ("train", "valid", "test"):
+        if list(split_records[split]) != expected_rows[split]:
+            raise MLXPipelineError(
+                f"contenuto {split} non coincide con la fixture runtime canonica"
+            )
+        actual_bytes = _read_regular_file_bytes(
+            data_dir / f"{split}.jsonl",
+            label=f"fixture runtime {split}",
+        )
+        if actual_bytes != runtime_smoke_jsonl_bytes(split):
+            raise MLXPipelineError(f"byte {split} non coincidono con la fixture runtime canonica")
 
 
 def validate_snapshot_integrity(
@@ -871,7 +1151,12 @@ def validate_snapshot_integrity(
     source_path: Path | None = None
     source_hash: str | None = None
     if smoke_test:
-        _validate_runtime_smoke_manifest(manifest, split_record_ids)
+        _validate_runtime_smoke_manifest(
+            manifest,
+            split_record_ids,
+            split_records,
+            root,
+        )
     else:
         source, source_path, source_hash = _validate_real_snapshot_source(
             root,
@@ -903,14 +1188,18 @@ def validate_snapshot_integrity(
 def validate_mlx_dataset(data_dir: Path, *, smoke_test: bool = False) -> dict[str, Any]:
     """Valida file MLX e gate di governance prima di qualsiasi training."""
 
-    integrity = validate_snapshot_integrity(data_dir, smoke_test=smoke_test)
+    if not smoke_test:
+        from ntruth.training.blind_evaluation import validate_training_view
+
+        if (data_dir / "snapshot-manifest.json").exists():
+            raise MLXPipelineError(
+                "training bloccato: snapshot misto di custody; creare e usare una training view"
+            )
+        return validate_training_view(data_dir)
+    integrity = validate_snapshot_integrity(data_dir, smoke_test=True)
     manifest = integrity["manifest"]
     approved = manifest["training_approved"] is True
     leakage_free = manifest["leakage_check_passed"] is True
-    if not smoke_test and (not approved or not leakage_free):
-        raise MLXPipelineError(
-            "training bloccato: servono training_approved=true e leakage_check_passed=true"
-        )
     return {
         "path": integrity["path"],
         "counts": {split: integrity["counts"][split] for split in ("train", "valid", "test")},
@@ -920,6 +1209,7 @@ def validate_mlx_dataset(data_dir: Path, *, smoke_test: bool = False) -> dict[st
         "snapshot_id": integrity["snapshot_id"],
         "snapshot_sha256": integrity["snapshot_sha256"],
         "file_hashes": integrity["file_hashes"],
+        "file_sizes": integrity["file_sizes"],
         "source_manifest_sha256": integrity["source_manifest_sha256"],
         "training_approved": approved,
         "leakage_check_passed": leakage_free,
@@ -927,13 +1217,96 @@ def validate_mlx_dataset(data_dir: Path, *, smoke_test: bool = False) -> dict[st
     }
 
 
-def _copy_validation_as_test(data_dir: Path, target: Path) -> None:
-    target.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(data_dir / "valid.jsonl", target / "test.jsonl")
+def _consume_isolated_training_payloads(
+    data_root: Path,
+    dataset: Mapping[str, Any],
+    *,
+    profile: Mapping[str, Any],
+    authorization: Mapping[str, Any] | None,
+    smoke_test: bool,
+) -> dict[str, Any]:
+    """Validate bytes, materialize unlinked FDs, consume only those FDs."""
 
+    from ntruth.training.fd_isolation import (
+        FdIsolationError,
+        bind_run_state,
+        close_isolated,
+        consume_isolated_bytes,
+        fd_isolation_contract_holds,
+        isolate_verified_file,
+    )
 
-def _mlx_command(config_path: Path) -> list[str]:
-    return [sys.executable, "-m", "mlx_lm", "lora", "--config", str(config_path)]
+    if not fd_isolation_contract_holds():
+        raise MLXPipelineError(FD_ISOLATION_BLOCKER)
+
+    hashes = dataset.get("file_hashes")
+    if not isinstance(hashes, dict) or not hashes:
+        if smoke_test:
+            return {
+                "consumed": {},
+                "run_state": bind_run_state(
+                    dataset_sha256=hashlib.sha256(b"smoke-dataset-absent").hexdigest(),
+                    authorization_sha256=hashlib.sha256(
+                        b"runtime-smoke-no-authorization"
+                    ).hexdigest(),
+                    model_sha256=hashlib.sha256(b"model-absent").hexdigest(),
+                    tokenizer_sha256=hashlib.sha256(b"tokenizer-absent").hexdigest(),
+                    checkpoint_sha256=hashlib.sha256(b"checkpoint-absent").hexdigest(),
+                    consumed_labels=(),
+                ),
+            }
+        raise MLXPipelineError("dataset validato privo di checksum per l'isolamento FD")
+    isolated = []
+    consumed_hashes: dict[str, str] = {}
+    try:
+        for filename, expected in hashes.items():
+            if not isinstance(filename, str) or not isinstance(expected, str):
+                raise MLXPipelineError(f"checksum dataset non valido: {filename}")
+            handle = isolate_verified_file(
+                data_root / filename,
+                label=filename,
+                expected_sha256=expected,
+            )
+            isolated.append(handle)
+            payload = consume_isolated_bytes(handle)
+            consumed_hashes[filename] = hashlib.sha256(payload).hexdigest()
+            if consumed_hashes[filename] != expected:
+                raise MLXPipelineError(f"consume FD non coincide con la validazione: {filename}")
+    except FdIsolationError as exc:
+        raise MLXPipelineError(str(exc)) from exc
+    finally:
+        for handle in isolated:
+            close_isolated(handle)
+
+    dataset_hash = dataset.get("snapshot_sha256") or dataset.get("training_view_sha256")
+    if not isinstance(dataset_hash, str):
+        raise MLXPipelineError("identita dataset assente dal consume FD")
+    authorization_hash = (
+        authorization.get("artifact_sha256")
+        if isinstance(authorization, Mapping)
+        else None
+    )
+    if not isinstance(authorization_hash, str):
+        authorization_hash = hashlib.sha256(
+            b"runtime-smoke-no-authorization" if smoke_test else b"authorization-absent"
+        ).hexdigest()
+    model = profile.get("model") if isinstance(profile.get("model"), dict) else {}
+    model_hash = model.get("expected_weight_sha256")
+    if not isinstance(model_hash, str) or len(model_hash) != 64:
+        model_hash = hashlib.sha256(b"model-absent").hexdigest()
+    tokenizer_hash = hashlib.sha256(
+        f"{model.get('repository', '')}@{model.get('revision', '')}".encode()
+    ).hexdigest()
+    checkpoint_hash = hashlib.sha256(b"checkpoint-absent").hexdigest()
+    state = bind_run_state(
+        dataset_sha256=dataset_hash,
+        authorization_sha256=authorization_hash,
+        model_sha256=model_hash,
+        tokenizer_sha256=tokenizer_hash,
+        checkpoint_sha256=checkpoint_hash,
+        consumed_labels=tuple(sorted(consumed_hashes)),
+    )
+    return {"consumed": consumed_hashes, "run_state": state}
 
 
 def run_training(
@@ -945,225 +1318,66 @@ def run_training(
     seed: int,
     smoke_test: bool = False,
     resume: bool = False,
+    training_authorization: Path | None = None,
 ) -> dict[str, Any]:
-    """Esegue QLoRA a fasi con validation, checkpoint e early stopping reale.
+    """Validate the intended run, then fail closed until MLX has an FD-only runner."""
 
-    MLX-LM 0.31.3 non espone early stopping nativo. Ogni fase riprende
-    deterministicamente l'adapter precedente, viene valutata sul validation set e
-    il controller interrompe dopo ``patience`` fasi senza miglioramento.
-    """
+    authorization: dict[str, Any] | None = None
+    if not smoke_test:
+        if training_authorization is None:
+            raise MLXPipelineError(
+                "autorizzazione training obbligatoria per il training sostanziale"
+            )
+        authorization = _load_training_authorization(training_authorization)
 
-    profile = load_profile(profile_path)
-    machine = doctor(profile_path, repo_root)
-    if not machine["ready_to_train"]:
-        raise MLXPipelineError(f"training bloccato dal doctor: {machine['checks']}")
-    model_check = verify_model(profile_path, repo_root)
-    dataset = validate_mlx_dataset(data_dir, smoke_test=smoke_test)
-    environment_record = runtime_environment(repo_root)
-    model_path = _model_path(repo_root, profile)
+    data_root = data_dir.resolve()
+    run_root = run_dir.resolve()
+    if not smoke_test and (
+        run_root.is_relative_to(data_root) or data_root.is_relative_to(run_root)
+    ):
+        raise MLXPipelineError(
+            "directory run e training view devono essere root fisicamente separate"
+        )
+
+    state_path = run_dir / "run-state.json"
+    resumed_state: dict[str, Any] | None = None
+    if resume:
+        resumed_state = _load_resume_state(state_path)
+        _assert_resume_authorization(
+            resumed_state,
+            authorization,
+            smoke_test=smoke_test,
+        )
+        from ntruth.training.fd_isolation import fd_isolation_contract_holds
+
+        if not fd_isolation_contract_holds():
+            raise MLXPipelineError(f"{FD_ISOLATION_BLOCKER}; resume non supportato")
+        raise MLXPipelineError(f"{SCIENTIFIC_EXECUTION_CLOSED_DETAIL}; resume non supportato")
+
+    dataset = validate_mlx_dataset(data_root, smoke_test=smoke_test)
+    profile, profile_sha256 = load_profile_artifact(profile_path)
     training = profile["training"]
     allowed_seeds = tuple(int(item) for item in training["seeds"])
     if seed not in allowed_seeds and not smoke_test:
         raise MLXPipelineError(f"seed non preregistrato: {seed}; ammessi {allowed_seeds}")
-
-    state_path = run_dir / "run-state.json"
-    if run_dir.exists() and any(run_dir.iterdir()) and not resume:
-        raise MLXPipelineError("run directory non vuota; usare --resume o una nuova directory")
-    run_dir.mkdir(parents=True, exist_ok=True)
-    validation_dir = run_dir / "_validation-as-test"
-    _copy_validation_as_test(data_dir, validation_dir)
-
-    maximum_phases = 1 if smoke_test else int(training["maximum_phases"])
-    iterations_per_phase = (
-        min(2, int(training["iterations_per_phase"]))
-        if smoke_test
-        else int(training["iterations_per_phase"])
+    if not smoke_test:
+        assert authorization is not None
+        _assert_training_authorization_binding(
+            authorization,
+            dataset=dataset,
+            profile=profile,
+            profile_sha256=profile_sha256,
+            source_snapshot_sha256=str(_source_snapshot(repo_root)["sha256"]),
+            seed=seed,
+        )
+    _consume_isolated_training_payloads(
+        data_root,
+        dataset,
+        profile=profile,
+        authorization=authorization,
+        smoke_test=smoke_test,
     )
-    patience = int(training["early_stopping_patience"])
-    min_delta = float(training["early_stopping_min_delta"])
-    state: dict[str, Any]
-    if resume:
-        try:
-            state = json.loads(state_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            raise MLXPipelineError(f"stato run non riprendibile: {exc}") from exc
-        if state.get("schema_version") != RUN_SCHEMA_VERSION:
-            raise MLXPipelineError("schema run cambiato: impossibile riprendere il run")
-        if state.get("profile_sha256") != sha256_file(profile_path):
-            raise MLXPipelineError("profilo cambiato: impossibile riprendere il run")
-        if state.get("dataset_snapshot_sha256") != dataset["snapshot_sha256"]:
-            raise MLXPipelineError("snapshot dati cambiato: impossibile riprendere il run")
-        if state.get("dataset_snapshot_id") != dataset["snapshot_id"]:
-            raise MLXPipelineError("identita snapshot cambiata: impossibile riprendere il run")
-        if state.get("dataset_manifest_sha256") != dataset["manifest_sha256"]:
-            raise MLXPipelineError("manifest snapshot cambiato: impossibile riprendere il run")
-        previous_environment = state.get("environment")
-        if not isinstance(previous_environment, dict):
-            raise MLXPipelineError("record ambiente assente: impossibile riprendere il run")
-        for key in ("uv_lock_sha256", "source_snapshot_sha256"):
-            if previous_environment.get(key) != environment_record.get(key):
-                raise MLXPipelineError(
-                    f"ambiente di esecuzione cambiato ({key}): impossibile riprendere il run"
-                )
-    else:
-        state = {
-            "schema_version": RUN_SCHEMA_VERSION,
-            "status": "running",
-            "started_at": utc_now(),
-            "profile_sha256": sha256_file(profile_path),
-            "dataset_snapshot_sha256": dataset["snapshot_sha256"],
-            "dataset_snapshot_id": dataset["snapshot_id"],
-            "dataset_manifest_sha256": dataset["manifest_sha256"],
-            "model_provenance_sha256": model_check["provenance_sha256"],
-            "environment": environment_record,
-            "seed": seed,
-            "smoke_test": smoke_test,
-            "last_completed_phase": 0,
-            "best_phase": None,
-            "best_validation_loss": None,
-            "phases_without_improvement": 0,
-            "phases": [],
-        }
-        _write_json(state_path, state)
-
-    offline_environment = {
-        "HF_HUB_OFFLINE": "1",
-        "TRANSFORMERS_OFFLINE": "1",
-        "HF_HUB_DISABLE_TELEMETRY": "1",
-        "TOKENIZERS_PARALLELISM": "true",
-    }
-    start_phase = int(state["last_completed_phase"]) + 1
-    best_loss = state.get("best_validation_loss")
-    stale = int(state.get("phases_without_improvement", 0))
-    latest_adapter: Path | None = None
-    if state["last_completed_phase"]:
-        latest_adapter = (
-            run_dir
-            / "checkpoints"
-            / f"phase-{int(state['last_completed_phase']):04d}"
-            / "adapters.safetensors"
-        )
-        if not latest_adapter.is_file():
-            raise MLXPipelineError("checkpoint di ripresa mancante")
-
-    for phase in range(start_phase, maximum_phases + 1):
-        checkpoint_dir = run_dir / "checkpoints" / f"phase-{phase:04d}"
-        phase_config = {
-            "model": str(model_path),
-            "train": True,
-            "test": False,
-            "fine_tune_type": training["fine_tune_type"],
-            "optimizer": training["optimizer"],
-            "data": str(data_dir.resolve()),
-            "seed": seed + phase - 1,
-            "num_layers": int(training["num_layers"]),
-            "batch_size": int(training["batch_size"]),
-            "iters": iterations_per_phase,
-            "val_batches": int(training["validation_batches"]),
-            "learning_rate": float(training["learning_rate"]),
-            "steps_per_report": 1 if smoke_test else min(10, iterations_per_phase),
-            "steps_per_eval": iterations_per_phase,
-            "grad_accumulation_steps": (
-                1 if smoke_test else int(training["gradient_accumulation_steps"])
-            ),
-            "resume_adapter_file": str(latest_adapter) if latest_adapter else None,
-            "adapter_path": str(checkpoint_dir),
-            "save_every": iterations_per_phase,
-            "max_seq_length": int(profile["data"]["max_sequence_length"]),
-            "grad_checkpoint": bool(training["gradient_checkpointing"]),
-            "mask_prompt": bool(training["mask_prompt"]),
-            "report_to": None,
-            "lora_parameters": training["lora_parameters"],
-        }
-        config_path = run_dir / "configs" / f"phase-{phase:04d}.json"
-        _write_json(config_path, phase_config)
-        train_result = _stream_command(
-            _mlx_command(config_path),
-            cwd=repo_root,
-            log_path=run_dir / "train.log",
-            environment=offline_environment,
-        )
-        latest_adapter = checkpoint_dir / "adapters.safetensors"
-        if not latest_adapter.is_file():
-            raise MLXPipelineError("MLX-LM non ha prodotto adapters.safetensors")
-
-        eval_config = {
-            "model": str(model_path),
-            "train": False,
-            "test": True,
-            "data": str(validation_dir),
-            "adapter_path": str(checkpoint_dir),
-            "batch_size": 1,
-            "test_batches": -1,
-            "max_seq_length": int(profile["data"]["max_sequence_length"]),
-        }
-        eval_path = run_dir / "configs" / f"phase-{phase:04d}-eval.json"
-        _write_json(eval_path, eval_config)
-        eval_result = _stream_command(
-            _mlx_command(eval_path),
-            cwd=repo_root,
-            log_path=run_dir / "validation.log",
-            environment=offline_environment,
-        )
-        loss_match = _TEST_LOSS.search(eval_result.output)
-        if not loss_match:
-            raise MLXPipelineError("loss di validazione non trovata nell'output MLX-LM")
-        validation_loss = float(loss_match.group(1))
-        improved = best_loss is None or validation_loss < float(best_loss) - min_delta
-        if improved:
-            best_loss = validation_loss
-            stale = 0
-            best_dir = run_dir / "best"
-            best_dir.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(latest_adapter, best_dir / "adapters.safetensors")
-            adapter_config = checkpoint_dir / "adapter_config.json"
-            if adapter_config.is_file():
-                shutil.copyfile(adapter_config, best_dir / "adapter_config.json")
-            state["best_phase"] = phase
-            state["best_validation_loss"] = validation_loss
-        else:
-            stale += 1
-
-        phase_record = {
-            "phase": phase,
-            "iterations": iterations_per_phase,
-            "validation_loss": validation_loss,
-            "improved": improved,
-            "train_elapsed_seconds": train_result.elapsed_seconds,
-            "validation_elapsed_seconds": eval_result.elapsed_seconds,
-            "peak_memory_gb": train_result.peak_memory_gb,
-            "checkpoint": str(checkpoint_dir.relative_to(run_dir)),
-        }
-        state["phases"].append(phase_record)
-        state["last_completed_phase"] = phase
-        state["phases_without_improvement"] = stale
-        _write_json(state_path, state)
-
-        memory_ceiling = float(training.get("maximum_observed_peak_memory_gib", 18.0))
-        if train_result.peak_memory_gb is not None and train_result.peak_memory_gb > memory_ceiling:
-            state["status"] = "stopped_memory_ceiling"
-            break
-        if stale >= patience:
-            state["status"] = "early_stopped"
-            break
-    else:
-        state["status"] = "completed_maximum_phases"
-
-    state["completed_at"] = utc_now()
-    state["best_validation_loss"] = best_loss
-    best_adapter_path = run_dir / "best" / "adapters.safetensors"
-    if best_adapter_path.is_file():
-        state["best_adapter_sha256"] = sha256_file(best_adapter_path)
-    best_adapter_config = run_dir / "best" / "adapter_config.json"
-    if best_adapter_config.is_file():
-        state["best_adapter_config_sha256"] = sha256_file(best_adapter_config)
-    _write_json(state_path, state)
-
-    keep = max(1, int(training["keep_checkpoints"]))
-    checkpoint_dirs = sorted((run_dir / "checkpoints").glob("phase-*"))
-    for obsolete in checkpoint_dirs[:-keep]:
-        shutil.rmtree(obsolete)
-    return state
+    raise MLXPipelineError(SCIENTIFIC_EXECUTION_CLOSED_DETAIL)
 
 
 def iter_jsonl(path: Path) -> Iterator[dict[str, Any]]:

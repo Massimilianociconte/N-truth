@@ -26,7 +26,11 @@ from ntruth.training.metrics import (
     score_invalid_output,
     score_output,
 )
-from ntruth.training.mlx_dataset import create_runtime_smoke_dataset, export_mlx_dataset
+from ntruth.training.mlx_dataset import (
+    create_runtime_smoke_dataset,
+    export_mlx_dataset,
+    freeze_mlx_training_view,
+)
 from ntruth.training.mlx_inference import calibrate_predictions
 from ntruth.training.mlx_runtime import (
     MLXPipelineError,
@@ -103,20 +107,35 @@ def _record(record_id: str, split: CorpusSplit) -> SupervisedRecord:
     )
 
 
-def test_profile_has_consistent_storage_budget() -> None:
-    path = Path("models/configs/qwen3-4b-instruct-2507-mlx-qlora.json")
+def test_default_profile_is_provisional_granite_with_consistent_storage_budget() -> None:
+    path = Path("models/configs/granite-4.1-3b-mlx-qlora.json")
     profile = load_profile(path)
     budget = storage_budget(profile)
 
-    assert profile["model"]["revision"] == "50d427756c6b1b2fe0c0a10f67fbda1fc8e82c1b"
-    assert profile["model"]["expected_weight_bytes"] == 2_263_022_417
+    assert DEFAULT_PROFILE.resolve() == path.resolve()
+    assert profile["status"] == "configuration_defined_execution_blocked"
+    assert profile["model"]["scientifically_selected"] is False
+    assert profile["model"]["runtime_qualification_status"] == "NOT_RUN_CURRENT_PROFILE"
+    assert profile["model"]["revision"] == "b1b476b5a17c46b7d6cd663b4a8ed44b66720aef"
+    assert profile["model"]["expected_weight_bytes"] == 2_127_162_429
     assert (
         profile["model"]["expected_weight_sha256"]
-        == "2a73c6c248601ab904e035548abd8e6abb65ea27dcb5f342fb0a8910eb44173f"
+        == "cff9d052cc3c68ea66b3d364788eb96fca2be82868d9ad92bd968e73b125194d"
     )
-    assert budget["total_gib"] == pytest.approx(35.5)
     assert budget["total_gib"] <= budget["workspace_cap_gib"]
+    assert "anonymous_unlinked_inherited_fd_runner" not in profile["training_blocked_until"]
+    assert "prd_v9_canonical_registry" in profile["training_blocked_until"]
+    assert "baseline_tournament_complete" in profile["training_blocked_until"]
     assert DEFAULT_PROFILE.is_file()
+
+
+def test_qwen_challenger_requires_an_explicit_profile() -> None:
+    challenger = Path("models/configs/legacy/qwen3-4b-instruct-2507-mlx-qlora.json")
+
+    profile = load_profile(challenger)
+
+    assert challenger.resolve() != DEFAULT_PROFILE.resolve()
+    assert profile["model"]["repository"] == "mlx-community/Qwen3-4B-Instruct-2507-4bit"
 
 
 def test_runtime_environment_records_lock_and_source_without_secrets() -> None:
@@ -172,12 +191,12 @@ def test_calibration_requires_hashed_validation_provenance(tmp_path: Path) -> No
     }
     (tmp_path / "metrics.json").write_text(json.dumps(metrics), encoding="utf-8")
 
-    with pytest.raises(MLXPipelineError, match="schema metrics evaluation"):
+    with pytest.raises(MLXPipelineError, match=r"isolamento post-validazione non FD-safe|esecuzione scientifica chiusa"):
         calibrate_predictions(observations, tmp_path / "calibration.json")
 
     metrics["declared_split"] = "validation"
     (tmp_path / "metrics.json").write_text(json.dumps(metrics), encoding="utf-8")
-    with pytest.raises(MLXPipelineError, match="schema metrics evaluation"):
+    with pytest.raises(MLXPipelineError, match=r"isolamento post-validazione non FD-safe|esecuzione scientifica chiusa"):
         calibrate_predictions(observations, tmp_path / "calibration.json")
 
 
@@ -226,13 +245,14 @@ def test_governed_dataset_exports_mlx_chat_and_snapshot(tmp_path: Path) -> None:
         )
     )
     output = tmp_path / "mlx"
+    view = tmp_path / "training-view"
 
     snapshot = export_mlx_dataset(dataset, output)
-    validated = validate_mlx_dataset(output)
+    validated = validate_mlx_dataset(Path(freeze_mlx_training_view(output, view)["path"]))
 
     assert snapshot["training_approved"] is True
     assert snapshot["leakage_check_passed"] is True
-    assert validated["counts"] == {"train": 1, "valid": 1, "test": 1}
+    assert validated["counts"] == {"train": 1, "valid": 1}
     train = json.loads((output / "train.jsonl").read_text().splitlines()[0])
     assert train["messages"][-1]["role"] == "assistant"
     ParserAIOutput.model_validate_json(train["messages"][-1]["content"])

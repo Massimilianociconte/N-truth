@@ -19,11 +19,13 @@ Given a supported input and a validated or human-confirmed graph, the software
 structure, conditional `n` branches, missing-information signals and decisive
 questions **for human review**. Scientific correctness is **not** validated.
 
-The current specification is **PRD v7.0** (v6.1 is historical). Release work is
-organised as **Workstream A** (scientific foundation), **Workstream B** (Minimum
-Viable Train A contracts), **Workstream C** (real-anchor / silver / synthetic under
-gate), and **Workstream D** (governance/adoption). Historical reports may still use
-pre-v7 workstream labels. The AI model is **not** authorized to emit final
+The current normative target is **PRD v9**. The root software currently implements
+the **PRD v7** contract; v9 schema conformance remains blocked pending the canonical
+v9 registry and must not be inferred from v7 evidence. PRD v6.1 is historical.
+Release work is organised as **Workstream A** (scientific foundation), **Workstream
+B** (Minimum Viable Train A contracts), **Workstream C** (real-anchor / silver /
+synthetic under gate), and **Workstream D** (governance/adoption). Historical reports
+may still use pre-v7 workstream labels. The AI model is **not** authorized to emit final
 independent `n`, scientific verdicts, pseudoreplication product verdicts, definitive
 statistical tests, free-form `RuleResult`s, or final `DeterminabilityState`.
 
@@ -36,8 +38,9 @@ statistical tests, free-form `RuleResult`s, or final `DeterminabilityState`.
 > **`NOT_STARTED`**. Substantive training is **`HOLD_PENDING_REAL_ANCHOR`**.
 > ModernBERT training and Granite promotion remain **HOLD**. No gold corpus, no
 > scientifically trained N-Truth model, and no externally validated performance claim
-> exist. Claims about local Granite fingerprints or `models/registry/*` apply only when
-> those artefacts are present; they are **not** part of a bare clean checkout.
+> exist. The current machine-readable training decision comes from `ntruth-ml
+> readiness`; model profiles are configuration, not authorization. No canonical v9
+> registry or model qualification registry is present in this checkout.
 
 Repository: [github.com/Massimilianociconte/N-truth](https://github.com/Massimilianociconte/N-truth)<br>
 Issues: [bug reports and feature requests](https://github.com/Massimilianociconte/N-truth/issues)<br>
@@ -108,13 +111,17 @@ review.
 ## Current status
 
 Human summary for the **clean checkout**: [`docs/status-snapshot.md`](docs/status-snapshot.md).
-PRD v7 alignment audits: [`docs/audits/prd-v7-root-alignment/`](docs/audits/prd-v7-root-alignment/).
+Current v9-target training decision:
+[`docs/training/TRAINING-READINESS-small-model-20260813.md`](docs/training/TRAINING-READINESS-small-model-20260813.md).
+PRD v7 implementation audits:
+[`docs/audits/prd-v7-root-alignment/`](docs/audits/prd-v7-root-alignment/).
 Machine-readable Reality Gate: `ntruth quick-design reality-gate` (fail-closed; not a
 scientific claim).
 
 | Gate | Clean-checkout value |
 |---|---|
-| PRD specification | **v7.0 current** (v6.1 historical) |
+| Normative target | **PRD v9** |
+| Implemented root contract | **PRD v7**; v9 conformance blocked pending canonical registry |
 | `engineering_readiness` | `PARTIAL_OR_VERIFIED_BY_COMPONENT` |
 | `data_readiness` | **`BLOCKED`** |
 | `scientific_validation_status` | **`NOT_STARTED`** |
@@ -123,8 +130,8 @@ scientific claim).
 | Real-data anchor | **not present in clean checkout** |
 | Gold N-Truth corpus | **none** |
 
-> Paths such as `models/registry/*` are **not** guaranteed in a clean checkout. Do not
-> treat Appendix AA, dirty worktrees, or FLASH128-only trees as repository contents.
+> Do not treat Appendix AA, historical reports, dirty worktrees, or FLASH128-only
+> trees as repository contents or as evidence of v9 conformance.
 
 | Area | Implemented / engineering-tested | Still required for science |
 |---|---|---|
@@ -189,9 +196,10 @@ application services. See
 - [`mlx-lm`](https://github.com/ml-explore/mlx-lm) 0.31.3, installed by the locked
   `ml` extra.
 
-Model, backend, quantization, context and memory limits remain open ADR decisions.
-Training or release claims require a measured `LOW_MEMORY`, `BALANCED` or `QUALITY`
-profile from the [Runtime Resource Budget](docs/runtime-resource-budget-v6.1.md).
+Model, backend, quantization, context and memory limits remain open decisions.
+Training or release claims require current host measurements and the fail-closed
+[training-readiness decision](docs/training/TRAINING-READINESS-small-model-20260813.md);
+no historical resource-budget label substitutes for observed evidence.
 
 No database, cloud account, API key or GPU is required for the deterministic baseline.
 The ML extra is intentionally unavailable on non-Apple platforms; the deterministic
@@ -233,23 +241,29 @@ uv sync --extra dev --extra api --extra ml --locked
 uv run ntruth-ml check
 ```
 
-`check` exits with code 2 until the pinned base snapshot is present. Downloading is a
-separate, explicit and license-acknowledged operation:
+`check` currently exits with code 2 even if ordinary model prerequisites are present:
+all ML-consuming operations remain unavailable until the anonymous/unlinked inherited
+read-only FD runner and the applicable readiness/authorization gates exist. Downloading
+is a separate, explicit and license-acknowledged operation; it does not authorize
+tokenization, smoke, training, prediction, metrics, calibration or export:
 
 ```bash
 uv run ntruth-ml download-model --confirm-license-and-download
 uv run ntruth-ml verify-model
 ```
 
-The provisional primary Train A model is **IBM Granite 4.1 3B Instruct**
+The provisional primary Train A profile is **IBM Granite 4.1 3B Instruct**
 ([`ibm-granite/granite-4.1-3b`](https://huggingface.co/ibm-granite/granite-4.1-3b),
-Apache-2.0). Registry status (machine-readable, **artifact-bound**; verify in
-`models/registry/default.json`):
+Apache-2.0). The current machine-readable profile is
+`models/configs/granite-4.1-3b-mlx-qlora.json`:
 
-- `migration_status=ARCHITECTURE_MIGRATED`
-- `runtime_qualification_status=PARTIALLY_VERIFIED` for the registered MLX community
-  4-bit fingerprint only (not multipiattaforma `VERIFIED`)
+- `status=configuration_defined_execution_blocked`
+- `runtime_qualification_status=NOT_RUN_CURRENT_PROFILE`
 - `scientific_validation_status=NOT_STARTED`
+- `scientifically_selected=false`
+
+The profile is configuration, not a qualification ledger or execution grant. This
+checkout has no `models/registry/` authority.
 
 On Apple Silicon the MLX bootstrap uses a **community conversion** (not an
 official IBM artifact):
@@ -640,14 +654,15 @@ Release-blocking scientific work still requires people and data:
 Engineering roadmap items include integration of the optional ML parser in the review
 UI, active learning after evaluation-set freeze, optional OCR adapters with provenance,
 persistent/multi-user deployment with authentication, and a scientifically trained
-parser only after the published gates. Under PRD v7, feasibility-volume and
-threshold figures that disagree inside the PRD remain open scientific-review items
+parser only after the published gates. The v9 normative target does not promote the
+implemented v7 contract. In the v7 implementation baseline, feasibility-volume and
+threshold figures that disagree inside that PRD remain open scientific-review items
 (see errata BLK-SCIENTIFIC-001…003); they are not silently resolved in code.
 Historical note: PRD v6.1 discussed Appendix-D volume ranges and provisional
-thresholds. See [PRD v7 root alignment audits](docs/audits/prd-v7-root-alignment/),
-[PRD v6 reconciliation](docs/prd-v6-reconciliation.md) (historical), the
-[v6.1 audit response matrix](docs/prd-v6.1-gemini-response-matrix.md) and the
-[first human steps checklist](docs/first-human-steps-checklist.md).
+thresholds. See the
+[PRD v7 root alignment audits](docs/audits/prd-v7-root-alignment/) and the
+[first human steps checklist](docs/first-human-steps-checklist.md). Historical
+documents absent from this checkout are not current authority.
 
 ## Documentation index
 
@@ -655,27 +670,14 @@ Start with the **[documentation map](docs/README.md)** and
 **[verified status snapshot](docs/status-snapshot.md)**.
 
 - [Public Specification v0.1](docs/public-specification-v0.1.md)
-- [Annotation reality-check P0 (draft)](docs/annotation-reality-check-p0-v0.1.md)
 - [HOLD: substantive LoRA pending real anchor](docs/training/DECISION-hold-pending-real-anchor.md)
 - [Granite migration report](docs/granite-migration-report.md)
-- [PRD v7 root alignment audits](docs/audits/prd-v7-root-alignment/)
-- [PRD v7 migration map](docs/architecture/prd-v7-migration-map.md)
-- [PRD v6 reconciliation](docs/prd-v6-reconciliation.md) (historical)
-- [PRD v6.1 changelog](docs/prd-v6.1-changelog.md) and
-  [audit response matrix](docs/prd-v6.1-gemini-response-matrix.md)
-- [Core Profile D0](docs/core-profile-d0.md) and [SampleSheetSpec v6](docs/sample-sheet-v6.md)
-- [Operational Independence Policy](docs/operational-independence-policy.md)
-- [Derivation Gold Protocol](docs/derivation-gold-protocol.md)
-- [Synthetic Data Generation Specification](docs/synthetic-data-generation-specification.md)
-- [Synthetic Task Use Matrix v6.1](docs/synthetic-task-use-matrix-v6.1.md)
-- [Runtime Resource Budget v6.1](docs/runtime-resource-budget-v6.1.md)
-- [Lean Governance Matrix v6.1](docs/lean-governance-matrix-v6.1.md)
-- [Absolute Claims Register v6.1](docs/absolute-claims-register-v6.1.md)
+- [PRD v9-target training readiness](docs/training/TRAINING-READINESS-small-model-20260813.md)
+- [Baseline evaluation protocol](docs/training/baseline-evaluation-protocol-v1.md)
+- [Small-model source portfolio](docs/training/source-portfolio-small-model-v1.md)
+- [PRD v7 implementation alignment audits](docs/audits/prd-v7-root-alignment/)
+- [PRD v7 implementation migration map](docs/architecture/prd-v7-migration-map.md)
 - [Architecture Decision Records](docs/adr/README.md)
-- [Facsimile Review Specification](docs/facsimile-review-specification.md)
-- [DRIVER / ARRIVE / EDA crosswalk](docs/driver-arrive-crosswalk.md)
-- [External Challenge Protocol draft](docs/external-challenge-protocol-draft.md)
-- [Resource & Funding Gate](docs/resource-funding-gate.md)
 - [Architecture and invariants](docs/architettura.md)
 - [Repository structure](docs/repository-structure.md)
 - [Scientific references](docs/scientific-references.md)

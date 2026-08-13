@@ -1,0 +1,56 @@
+{
+  "allowed_tasks": [
+    "rigor_indicator_extraction",
+    "study_characteristic_extraction",
+    "methods_information_extraction"
+  ],
+  "annotation_status": "annotated",
+  "eligibility": {
+    "evaluation_eligible": false,
+    "requires_review": false,
+    "training_eligible": false
+  },
+  "forbidden_targets": [
+    "independent_n",
+    "experimental_unit",
+    "independently_assigned",
+    "allocation_level",
+    "application_level",
+    "determinability_state"
+  ],
+  "native_annotation_tier": "HUMAN_CURATED_GOLD",
+  "ntruth_usage_tier": "SILVER_AUXILIARY",
+  "payload": {
+    "entity_tags": [
+      "O"
+    ],
+    "kind": "token_classification",
+    "offset_authority": "unavailable",
+    "role_tags": [
+      "O"
+    ],
+    "source_metadata": {},
+    "tokens": [
+      "x"
+    ]
+  },
+  "provenance": {
+    "sha256": "3aa37a6d801d8475093c94b3d44c709d08ed0c1a60a920e230f60208f2b4d5e7",
+    "source_url": "https://github.com/Ineichen-Group/Preclinical_IE_Dataset",
+    "transform_version": "1.0.0"
+  },
+  "record_id": "preclinie:My_pdf325new_method",
+  "source": {
+    "commit": "f38df55a28505a77d30eefb5b867bbfdcc9baf25",
+    "dataset": "PreClinIE",
+    "document_id": "My_pdf325new_method",
+    "segment_id": "My_pdf325new_method",
+    "version": "f38df55a2850"
+  },
+  "split": {
+    "authority": "custom_group_stratified",
+    "group_id": "my_pdf325",
+    "name": "train"
+  },
+  "task_type": "token_classification"
+}

@@ -23,7 +23,7 @@ def test_cli_status_empty(tmp_path: Path, capsys):
 def test_cli_build_validate_stats(tmp_path: Path):
     root = tmp_path / "data"
     for split in ("train", "validation", "test"):
-        d = root / "training_ready" / "sourcedata_multitask" / split
+        d = root / "processed" / "sourcedata" / "v2.0.3" / "multitask" / split
         d.mkdir(parents=True)
         rec = {
             "record_id": f"r-{split}",
@@ -75,7 +75,7 @@ def test_cli_validate_with_unicode_line_separator_in_tokens(tmp_path: Path):
     root = tmp_path / "data"
     ls = "\u2028"
     for split in ("train", "validation", "test"):
-        d = root / "training_ready" / "sourcedata_multitask" / split
+        d = root / "processed" / "sourcedata" / "v2.0.3" / "multitask" / split
         d.mkdir(parents=True)
         rec = {
             "record_id": f"r-{split}",

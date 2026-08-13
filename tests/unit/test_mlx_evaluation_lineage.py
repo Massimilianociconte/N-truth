@@ -10,7 +10,6 @@ from ntruth.training.calibration import ConfidenceObservation
 from ntruth.training.cli import DEFAULT_PROFILE
 from ntruth.training.metrics import aggregate_scores, confidence_observations, score_output
 from ntruth.training.mlx_inference import (
-    _verify_calibration_artifact,
     _verify_metrics_artifacts,
     calibrate_predictions,
     export_adapter_bundle,
@@ -237,10 +236,6 @@ def test_export_rejects_test_metrics_from_another_snapshot(
         "ntruth.training.mlx_inference._verify_best_run", lambda *_args, **_kwargs: run_lineage
     )
     monkeypatch.setattr(
-        "ntruth.training.mlx_inference.validate_snapshot_integrity",
-        lambda *_args, **_kwargs: training_snapshot,
-    )
-    monkeypatch.setattr(
         "ntruth.training.mlx_inference._verify_metrics_artifacts",
         lambda *_args, **_kwargs: metrics_context,
     )
@@ -249,7 +244,7 @@ def test_export_rejects_test_metrics_from_another_snapshot(
         lambda *_args, **_kwargs: {"source_metrics": calibration_source},
     )
 
-    with pytest.raises(MLXPipelineError, match="snapshot test"):
+    with pytest.raises(MLXPipelineError, match="export finale bloccato"):
         export_adapter_bundle(
             DEFAULT_PROFILE,
             Path(".").resolve(),
@@ -308,7 +303,7 @@ def test_metrics_top_level_cannot_detach_from_hashed_lineage(
         lambda *_args, **_kwargs: expected_lineage,
     )
 
-    with pytest.raises(MLXPipelineError, match="adapter_path top-level"):
+    with pytest.raises(MLXPipelineError, match=r"isolamento post-validazione non FD-safe|esecuzione scientifica chiusa"):
         _verify_metrics_artifacts(metrics_path)
 
 
@@ -317,10 +312,8 @@ def test_metrics_are_reconstructed_from_predictions_and_snapshot(
 ) -> None:
     metrics_path, _predictions, _observations = _evaluation_artifacts(tmp_path, monkeypatch)
 
-    context = _verify_metrics_artifacts(metrics_path)
-
-    assert context["metrics"]["micro"]["f1"] == 1.0
-    assert context["metrics"]["confidence_observations"] == 1
+    with pytest.raises(MLXPipelineError, match=r"isolamento post-validazione non FD-safe|esecuzione scientifica chiusa"):
+        _verify_metrics_artifacts(metrics_path)
 
 
 def test_tampered_micro_f1_is_rejected_even_without_an_external_metrics_hash(
@@ -331,7 +324,7 @@ def test_tampered_micro_f1_is_rejected_even_without_an_external_metrics_hash(
     metrics["micro"]["f1"] = 0.0
     metrics_path.write_text(json.dumps(metrics), encoding="utf-8")
 
-    with pytest.raises(MLXPipelineError, match="metrica ricalcolata micro"):
+    with pytest.raises(MLXPipelineError, match=r"isolamento post-validazione non FD-safe|esecuzione scientifica chiusa"):
         _verify_metrics_artifacts(metrics_path)
 
 
@@ -346,7 +339,7 @@ def test_tampered_prediction_is_rejected_after_predictions_hash_is_updated(
     metrics["predictions_sha256"] = sha256_file(predictions_path)
     metrics_path.write_text(json.dumps(metrics), encoding="utf-8")
 
-    with pytest.raises(MLXPipelineError, match="output grezzo"):
+    with pytest.raises(MLXPipelineError, match=r"isolamento post-validazione non FD-safe|esecuzione scientifica chiusa"):
         _verify_metrics_artifacts(metrics_path)
 
 
@@ -361,7 +354,7 @@ def test_tampered_prediction_gold_is_rejected_against_snapshot(
     metrics["predictions_sha256"] = sha256_file(predictions_path)
     metrics_path.write_text(json.dumps(metrics), encoding="utf-8")
 
-    with pytest.raises(MLXPipelineError, match="gold prediction"):
+    with pytest.raises(MLXPipelineError, match=r"isolamento post-validazione non FD-safe|esecuzione scientifica chiusa"):
         _verify_metrics_artifacts(metrics_path)
 
 
@@ -377,7 +370,7 @@ def test_tampered_observation_is_rejected_after_hash_and_count_are_updated(
     metrics["confidence_observations"] = 1
     metrics_path.write_text(json.dumps(metrics), encoding="utf-8")
 
-    with pytest.raises(MLXPipelineError, match="confidence-observations ricalcolate"):
+    with pytest.raises(MLXPipelineError, match=r"isolamento post-validazione non FD-safe|esecuzione scientifica chiusa"):
         _verify_metrics_artifacts(metrics_path)
 
 
@@ -410,22 +403,16 @@ def test_calibration_is_recomputed_before_export(
         lambda *_args, **_kwargs: context,
     )
     calibration_path = tmp_path / "calibration.json"
-    valid_report = calibrate_predictions(
-        observations_path,
-        calibration_path,
-        minimum_coverage_count=1,
-    )
-    assert valid_report["fit_split"] == "validation"
-    assert valid_report["test_used_for_fit"] is False
-    report = json.loads(calibration_path.read_text(encoding="utf-8"))
-    report["temperature"] = float(report["temperature"]) + 1.0
-    calibration_path.write_text(json.dumps(report), encoding="utf-8")
-
-    with pytest.raises(MLXPipelineError, match="ricalcolo temperature"):
-        _verify_calibration_artifact(calibration_path)
+    with pytest.raises(MLXPipelineError, match=r"isolamento post-validazione non FD-safe|esecuzione scientifica chiusa"):
+        calibrate_predictions(
+            observations_path,
+            calibration_path,
+            minimum_coverage_count=1,
+        )
+    assert not calibration_path.exists()
 
 
-def test_export_happy_path_copies_verified_bundle(
+def test_export_fails_closed_without_one_shot_protected_attestation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     run = tmp_path / "run"
@@ -480,10 +467,6 @@ def test_export_happy_path_copies_verified_bundle(
         "ntruth.training.mlx_inference._verify_best_run", lambda *_args, **_kwargs: run_lineage
     )
     monkeypatch.setattr(
-        "ntruth.training.mlx_inference.validate_snapshot_integrity",
-        lambda *_args, **_kwargs: training_snapshot,
-    )
-    monkeypatch.setattr(
         "ntruth.training.mlx_inference._verify_metrics_artifacts",
         lambda *_args, **_kwargs: metrics_context,
     )
@@ -493,19 +476,15 @@ def test_export_happy_path_copies_verified_bundle(
     )
 
     output = tmp_path / "export"
-    manifest = export_adapter_bundle(
-        DEFAULT_PROFILE,
-        Path(".").resolve(),
-        run,
-        output,
-        dataset_manifest=dataset_manifest,
-        metrics_path=metrics_path,
-        calibration_path=calibration_path,
-    )
+    with pytest.raises(MLXPipelineError, match="permit monouso"):
+        export_adapter_bundle(
+            DEFAULT_PROFILE,
+            Path(".").resolve(),
+            run,
+            output,
+            dataset_manifest=dataset_manifest,
+            metrics_path=metrics_path,
+            calibration_path=calibration_path,
+        )
 
-    assert (output / "adapters.safetensors").read_bytes() == b"verified-adapter"
-    assert (output / "metrics.json").is_file()
-    assert (output / "calibration.json").is_file()
-    assert manifest["lineage"]["metrics_split"] == "test"
-    assert manifest["lineage"]["dataset_snapshot_sha256"] == "a" * 64
-    assert manifest["contains_base_weights"] is False
+    assert not output.exists()

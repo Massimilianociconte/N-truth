@@ -1,152 +1,146 @@
 # Dataset assessment and acquisition policy
 
-This document summarizes the public, repository-safe dataset decisions for N-Truth.
-It intentionally excludes local paths, checksums, unpublished review notes, personal
-data and the contents of non-versioned datasets.
+## Current decision
 
-The detailed per-asset registry remains local and is not part of the open-source
-repository. No dataset, annotation corpus, model weight, cache or checkpoint is
-distributed with N-Truth.
+The normative target is **PRD v9**; the implemented root contract is **PRD v7**.
+Public corpora are auxiliary evidence only and cannot close the Reality Gate.
 
-## Current readiness
+The current local corpus root is `/Volumes/FLASH128/N-Truth-Datasets/`. Acquisition
+and normalization have produced integrity-audited artifacts, but there are no
+training-ready files or records under
+`/Volumes/FLASH128/N-Truth-Datasets/training_ready/`; structural directories may
+remain. Every processed public record is model-ineligible.
 
-The local bootstrap contains eight small source files occupying less than 1 MiB in
-total. They cover structured biomedical articles, one article supplement and three
-small metadata/sample-sheet files. They are useful for parser fixtures and manual
-calibration, but none is currently approved for model training.
+The authoritative sources and canonical final destinations are:
 
-Every local asset remains:
+- `/Volumes/FLASH128/N-Truth-Datasets/manifests/reports/readiness-20260813/training-readiness.final.json`;
+- `/Volumes/FLASH128/N-Truth-Datasets/manifests/reports/quality/`;
+- `/Volumes/FLASH128/N-Truth-Datasets/manifests/datasets.json`;
+- `packages/ntruth/data/manifests/public_sources.lock.json`;
+- `/Volumes/FLASH128/N-Truth-Datasets/manifests/checksums/merkle_manifest.json`;
+- [source-portfolio-small-model-v1.md](training/source-portfolio-small-model-v1.md).
 
-- immutable in raw storage;
-- unassigned to train, validation or test;
-- ineligible for training until license, privacy and annotation gates pass;
-- grouped with every article version, supplement and linked repository record.
+The final readiness, doctor, refresh/resume and Merkle artifacts must be regenerated
+after the latest quality-report and SourceData task-corpus hardening. Their paths are
+stable, but this document does not treat the pre-hardening bytes or checksums at those
+paths as final evidence.
 
-Public availability and free access do not establish a right to train, redistribute
-or publish a derived corpus.
+Pre-final readiness, doctor, licence-summary, Merkle and report snapshots are
+historical and superseded. Statements like `AUXILIARY_READY` in them do not override
+the canonical dataset manifest, bundled public lock, per-record eligibility, source
+portfolio or root Reality Gate.
+
+## Acquired source decisions
+
+| Source | Observed corpus | Current decision | Blocking boundary |
+|---|---:|---|---|
+| [SourceData](https://huggingface.co/datasets/EMBO/SourceData) | 75,163 aligned NER/roles records | **Keep processed; model use blocked** | no reliable paper identity in the pinned export, conservative cross-split grouping, asset-level licence scope pending |
+| [PreClinIE](https://github.com/Ineichen-Group/Preclinical_IE_Dataset) | 725 papers / 1,450 sections | **Priority auxiliary candidate; model use blocked** | publication-text rights and canonical mapping pending; rigor mentions do not establish allocation, unit or independent n |
+| [MeasEval](https://github.com/harperco/MeasEval) | 448 paragraphs | **Keep processed; model use blocked** | licence scope and missing annotations; any derived independent split remains engineering-only until approved |
+| [CRAFT](https://github.com/lhunter-lab/CRAFT) | 97 PMC OA articles | **Keep processed; model use blocked** | all records require review; annotation licence does not replace per-article text terms; coreference is not experimental hierarchy |
+
+All four are `SILVER_AUXILIARY`, even where the native upstream tier is human-curated
+gold. None may label `experimental_unit`, `independent_n`, `independently_assigned`,
+`allocation_level`, `application_level` or `determinability_state`.
+
+The detailed source portfolio, including TAC 2018 SRIE, ARRIVE, OBI, BioCause,
+BioRED, SciREX, EBM-NLP, SciFact and risk-of-bias resources, is versioned in
+[source-portfolio-small-model-v1.md](training/source-portfolio-small-model-v1.md).
 
 ## Admission criteria
 
-Automatic acquisition is limited to a single, versioned asset with machine-readable
-evidence of CC0 1.0 or CC BY 4.0. Even then, admission is only a pre-screen. Before an
-asset can enter a corpus snapshot, its manifest must record:
+Before an asset enters a validated snapshot, its manifest must contain:
 
-- canonical source, responsible organization and immutable identifier;
-- exact version, retrieval time and SHA-256;
-- asset-level license evidence and required attribution;
-- separate permissions for analysis, annotation, training, sharing and redistribution;
-- privacy status, restrictions and revocation information;
-- work family, laboratory, article, supplement and repository leakage groups;
-- preprocessing lineage and raw-to-normalized coordinate mapping;
-- annotation, adjudication and split status.
+- canonical source and immutable revision;
+- retrieval timestamp, byte size and SHA-256;
+- document, publication family and section identity;
+- asset-level licence evidence and granular permitted uses;
+- privacy, embargo, revocation and attribution status;
+- raw-to-derived transform and parent checksum;
+- native annotation tier and N-Truth authority tier;
+- annotation method, confidence, review and adjudication state;
+- leakage groups spanning versions, supplements, datasets and transformations;
+- schema/registry version and adapter version.
 
-The admission workflow must fail closed when any required fact is missing. The code
-enforces the presence and format of governance/license identifiers, reviewer maturity,
-training eligibility and split groups; it cannot authenticate the legal or scientific
-substance of those records. Human/data-steward approval remains mandatory.
+Missing or `unknown` values fail closed. A public URL, “open access” label or
+repository licence does not establish permission to train on embedded publication
+text.
 
-## Official source decisions
+## Acquisition and normalization
 
-| Source | Intended use | Decision | Reason and restrictions |
-|---|---|---|---|
-| [PMC Open Access Subset](https://pmc.ncbi.nlm.nih.gov/tools/openftlist/) and [PMC OA AWS service](https://pmc.ncbi.nlm.nih.gov/tools/pmcaws/) | Targeted JATS articles, captions, tables and small supplements | **Include selectively** | License is checked per article and version. Presence in PMC is not enough; see [PMC copyright guidance](https://pmc.ncbi.nlm.nih.gov/about/copyright/). |
-| [Europe PMC APIs](https://europepmc.org/developers) | Discovery, DOI/PMCID reconciliation and selected OA full text | **Include selectively** | `FREE_FULL_TEXT` is not license evidence. Preserve the license embedded in each article. |
-| [PLOS text and data mining](https://plos.org/text-and-data-mining/) | Homogeneous JATS and article-supplement bundles | **Include selectively** | Use DOI-level retrieval, not the full bulk. Verify each component against the [PLOS license policy](https://journals.plos.org/plosone/s/licenses-and-copyright). |
-| [eLife article XML](https://github.com/elifesciences/elife-article-xml) | Cell-culture, imaging and version-aware JATS cases | **Include selectively** | Pin the version. Exclude peer-review `sub-article` content from model input and check third-party components. |
-| [BioStudies](https://www.ebi.ac.uk/biostudies/help#API) | PageTab metadata, sample sheets and small linked supplements | **Include selectively** | Verify license per record and file; EMBL-EBI's general terms are documented separately in its [licensing guidance](https://www.ebi.ac.uk/licencing). |
-| [BioImage Archive](https://www.ebi.ac.uk/bioimage-archive/) | REMBI/file-list metadata and small sample maps | **Metadata only** | Raw multidimensional images are outside the bootstrap storage and modeling scope. Imported studies can retain different licenses. |
-| [Image Data Resource](https://idr.openmicroscopy.org/about/download.html) | HCS hierarchy and metadata examples | **Metadata only** | Raw holdings are far beyond local capacity. Check each study's terms using the [IDR FAQ](https://idr.openmicroscopy.org/about/faq/). |
-| [Zenodo](https://help.zenodo.org/docs/deposit/describe-records/licenses/) | Small, versioned sample sheets and codebooks | **Include selectively** | Record metadata is not peer review. Verify file checksum, version, privacy and record-level license. Do not download linked FASTQ solely to parse a sample sheet. |
-| [Figshare API](https://docs.figshare.com/) | Small experimental metadata tables | **Include selectively** | Require canonical item version, license, codebook and publication relationship. An unresolved article link blocks external-gold use. |
-| [Crossref REST API](https://www.crossref.org/documentation/retrieve-metadata/rest-api/) | DOI canonicalization and work-family grouping | **Discovery only** | Metadata does not license publisher abstracts, full text or supplements. |
-| [DataCite public data](https://support.datacite.org/docs/datacite-public-data-file) | Dataset DOI/version relationships | **Discovery only** | Record metadata does not determine the rights of deposited files. |
-| [OpenAlex](https://help.openalex.org/hc/en-us/articles/28926392245399-How-is-OpenAlex-open) | Work/version and author/laboratory matching | **API only** | The full snapshot is larger than the available local storage and does not license linked content. |
-| [PubMed download services](https://pubmed.ncbi.nlm.nih.gov/download/) | PMID/PMCID discovery | **Discovery only** | Many abstracts retain publisher rights and are not accepted automatically as training text. |
-| [PubTables-1M](https://github.com/microsoft/table-transformer) | Possible future table-structure pretraining | **Defer** | It is not N-Truth gold, has substantial storage cost and can overlap the same PMC articles used for evaluation. Exact release license and file manifest must be reviewed first. |
-| [CRAFT](https://pmc.ncbi.nlm.nih.gov/articles/PMC7243923/) | Possible NER/evidence-span benchmark | **Defer** | Annotation license and every underlying article license must be reconciled; task fit is indirect. |
-| [SourceData](https://sourcedata.embo.org/) | Figure/entity relation research | **Defer** | Release, article and linked-file rights require separate review; overlap with target articles must be measured. |
-| [University of Bristol “What exactly is N” dataset](https://data.bris.ac.uk/data/dataset/2uad9gecss2r2ksaujt85gj4a) | Meta-scientific comparison | **Exclude from automatic training** | The recorded non-commercial license is outside the automatic Tier A policy and the dataset may contaminate evaluation against a core scientific reference. |
-| [PubMedQA](https://huggingface.co/datasets/qiaojin/PubMedQA) | General biomedical question answering | **Defer** | The dataset-card license does not by itself establish sublicensing of underlying PubMed text, and the task is not experimental-design reconstruction. |
+Raw bytes are immutable. Downloads use pinned archive hashes, safe extraction and
+transactional swaps. Repair is plan/apply with quarantine rather than destructive
+cleanup. Normalization preserves original text or a resolvable immutable parent and
+records every transformation.
 
-Files with CC BY-NC, CC BY-ND, CC BY-SA, custom terms, no license or only a generic
-“open access” label are not acquired automatically.
+Quality-report and SourceData task-corpus hardening invalidated the earlier Merkle
+fingerprint. A new final refresh/resume must regenerate
+`/Volumes/FLASH128/N-Truth-Datasets/manifests/checksums/merkle_manifest.json` and the
+bounded evidence files `final-refresh.log`, `final-refresh.result.txt`,
+`final-resume.log` and `final-resume.result.txt` under the readiness report directory.
+Only the fingerprint in that regenerated manifest may be cited; this document does
+not predict it. A successful final integrity run would prove integrity of included
+artifacts, not scientific validity, licence closure or training readiness.
 
-## Transformation requirements
+## Quality policy
 
-Original files remain byte-for-byte immutable. Training never reads arbitrary raw
-files directly; it reads a content-addressed corpus snapshot produced by a documented
-pipeline.
+Every processed corpus is audited for:
 
-### Articles
+- schema and required-value violations;
+- invalid UTF-8/JSON, empty content and offset mismatches;
+- duplicate IDs, payloads and normalized content;
+- group/content leakage across splits;
+- token/label and task/payload alignment;
+- missing annotations and review-required records;
+- HTML, citation, OCR, encoding and language candidates;
+- label and length distributions;
+- training/evaluation eligibility counts.
 
-1. parse JATS/XML with DTD, entity expansion and network access disabled;
-2. retain the main article's Methods, captions and tables;
-3. exclude references, funding, peer-review sub-articles and author responses unless a
-   separately governed task requires them;
-4. normalize Unicode and whitespace while retaining a bidirectional offset map;
-5. preserve section, table, cell and cross-reference provenance;
-6. segment whole experimental blocks rather than independent sentences;
-7. produce double annotation and adjudication before supervised training.
-
-### Tables and sample sheets
-
-1. detect the real delimiter and encoding rather than trusting the extension;
-2. preserve workbook sheet names, cell coordinates, formulas and cached values;
-3. distinguish observation, identifier, declared count, mean, SD, SEM, percentage and
-   missing value;
-4. normalize into long-form records without overwriting the raw source;
-5. do not invent experimental-unit identifiers absent from the file;
-6. reconcile group, factor, endpoint and hierarchy with the corresponding article or
-   codebook.
-
-### Model examples
-
-The learned target is the candidate parser contract: evidence spans, experiment
-blocks, entities, relations, allocation/application levels, alternatives,
-determinability and decisive questions. Deterministic alerts and rule consequences
-remain outside the model target.
-
-See [Data and model development](./data-and-model-development.md) for the repository's
-training gates and local storage layout.
+Heuristic artifact and near-duplicate detections are candidates for review, not
+semantic truth. A quality report can pass integrity while model use remains blocked.
 
 ## Split and leakage policy
 
-Splits use content-addressed manifests; source files are not copied into separate
-directories.
+Split assignment follows the strongest available family identity:
 
-The indivisible split unit includes:
+```text
+DOI → PMCID → PMID → upstream source identity
+```
 
-- DOI/PMCID, preprint, publication, corrections and revisions;
-- supplement, sample sheet, code and repository accession;
-- mirrors from PMC, Europe PMC, PLOS or a publisher;
-- synthetic template and every paraphrase or transformation derived from it.
+Article versions, abstracts, Methods, captions, supplements, linked datasets,
+laboratory series, mirrors and transformations stay together. If identity is missing,
+the record remains ineligible; a row index cannot establish independence.
 
-The implemented preparation uses exact SHA-256/content matching, conservative
-near-duplicate fingerprints over the canonical input, and transitive identifiers for
-publication/work family, bundle, project, laboratory and corresponding author. A
-normalized table fingerprint and DOI/mirror reconciliation remain upstream curation
-requirements; omitted identifiers cannot be recovered safely by the split algorithm.
+Upstream splits are provenance. They are not automatically N-Truth splits. Derived
+group-safe splits can demonstrate engineering isolation but require explicit schema,
+licence and governance approval before model use.
 
-Synthetic examples are train-only. Validation, test and external sets are frozen
-before prompt engineering, model selection and calibration. Public articles already
-used to design the system are not described as blind external validation.
+Test and external challenge content must be physically separated from the trainer.
+The training view contains only train and validation, but it is not an executable ML
+input until a private runner consumes only verified anonymous/unlinked inherited
+read-only file descriptors. Protected evaluation additionally requires a separate
+custodian-controlled one-time protocol.
 
-## Storage policy
+## Storage and publication policy
 
-The local machine has less than 100 GiB available. Therefore:
+Raw corpora, processed data, training views, vault content, models, adapters,
+checkpoints and predictions remain outside Git. Only code, schemas, small fixtures,
+configurations and non-sensitive documentation are versioned.
 
-- the committed MLX profile requires at least 50 GiB still free after the base-model
-  download; 25-30 GiB is only the absolute floor that no archival decision may cross;
-- cap raw plus processed data at 15-20 GiB;
-- acquire 50-100 targeted JATS articles before considering any bulk source;
-- cap each supplement bundle and inspect its manifest before download;
-- use APIs for bibliographic metadata rather than full snapshots;
-- use BioImage Archive and IDR metadata, not raw images;
-- never acquire linked FASTQ when only the sample-sheet structure is needed;
-- stop before download if archive, extraction, preprocessing and temporary space
-  cannot be budgeted together.
+No artifact is published merely because it has a checksum or open-source code around
+it. Distribution requires a separate per-asset review of text, annotations, model
+weights, metrics and privacy.
 
-The current strategy prioritizes a small, diverse and expertly annotated corpus over a
-large weakly governed collection. Dataset, annotation, model and checkpoint files stay
-outside Git unless the project owner later gives explicit authorization for a specific
-redistributable artifact.
+## Readiness effect
+
+Acquisition completeness and local data quality do not justify fine-tuning while:
+
+- the PRD v9 registry is not canonical;
+- no sufficient N-Truth GOLD real anchor exists;
+- licence and protected-split predicates are not canonically true;
+- baselines and H/A/H+A evaluation have not been executed;
+- the selected base model has not won a frozen tournament.
+- the anonymous/unlinked inherited read-only FD runner does not exist, so all ML
+  operations remain fail-closed.
+
+The current decision is therefore **NOT READY**, not “ready with public silver data.”

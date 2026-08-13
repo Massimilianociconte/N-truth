@@ -1,12 +1,17 @@
 # N-Truth documentation map
 
-Start here. Prefer machine-readable gates in `models/registry/` over informal prose when statuses conflict.  
+Start here. The normative target is **PRD v9**; the implemented root contract remains
+**PRD v7**, and v9 conformance is blocked pending the canonical registry. For training
+status, prefer the fail-closed `ntruth-ml readiness` projection and its referenced
+evidence over informal prose. Model profiles are configuration, not authorization;
+this checkout has no authoritative `models/registry/`.
 Public scientific posture: **candidate software**, not a certified biostatistics product.
 
 ## Status first
 
 | Doc | Use |
 |-----|-----|
+| [training/TRAINING-READINESS-small-model-20260813.md](training/TRAINING-READINESS-small-model-20260813.md) | Current PRD v9-target readiness decision (`NOT_READY`) |
 | [status-snapshot.md](status-snapshot.md) | Verified gates (runtime, training HOLD, annotation draft) |
 | [training/DECISION-hold-pending-real-anchor.md](training/DECISION-hold-pending-real-anchor.md) | Why substantive LoRA is HOLD |
 | [system-card-v0.1.md](system-card-v0.1.md) | Intended use, forbidden uses, residual risks |
@@ -20,7 +25,6 @@ Public scientific posture: **candidate software**, not a certified biostatistics
 | [parser-ai-contract.md](parser-ai-contract.md) | Candidate-only AI boundary |
 | [scrivere-regole.md](scrivere-regole.md) | Authoring rules |
 | [scientific-references.md](scientific-references.md) | Versioned sources for the rulebook |
-| [absolute-claims-register-v6.1.md](absolute-claims-register-v6.1.md) | Banned absolute slogans |
 
 ## Models, runtime, decoding
 
@@ -28,23 +32,18 @@ Public scientific posture: **candidate software**, not a certified biostatistics
 |-----|-----|
 | [granite-migration-report.md](granite-migration-report.md) | Granite migration + qualification posture |
 | [adr/0010-granite-4.1-3b-migration.md](adr/0010-granite-4.1-3b-migration.md) | ADR migration |
-| [adr/0011-constrained-decoding-outlines-mlx.md](adr/0011-constrained-decoding-outlines-mlx.md) | Outlines + MLX (form ≠ science) |
-| [adr/0012-p0-lora-approved.md](adr/0012-p0-lora-approved.md) | P0 LoRA **protocol** approval (not science) |
 | [mlx-training-pipeline.md](mlx-training-pipeline.md) | Local MLX tooling commands |
-| [model-multiplatform-runtime.md](model-multiplatform-runtime.md) | Multiplatform plans (**not all shipped**) |
 | [../models/cards/README.md](../models/cards/README.md) | Local model card summary |
 
 ## Data, annotation, training
 
 | Doc | Use |
 |-----|-----|
-| [annotation-reality-check-p0-v0.1.md](annotation-reality-check-p0-v0.1.md) | Reality-check protocol (draft) |
 | [annotation-guideline-v0.1.md](annotation-guideline-v0.1.md) | Broader annotation draft |
-| [training/human-anchored-calibration-plan.md](training/human-anchored-calibration-plan.md) | Path to real anchor |
-| [training/p0-alpha-training-data-specification.md](training/p0-alpha-training-data-specification.md) | Synthetic P0-alpha TDS |
+| [training/baseline-evaluation-protocol-v1.md](training/baseline-evaluation-protocol-v1.md) | Baseline and protected evaluation protocol |
+| [training/source-portfolio-small-model-v1.md](training/source-portfolio-small-model-v1.md) | Source inclusion/exclusion decisions |
 | [data-and-model-development.md](data-and-model-development.md) | Data/model programme |
 | [data-card-v0.1.md](data-card-v0.1.md) | Data card draft |
-| [../data/annotations/reality-check/README.md](../data/annotations/reality-check/README.md) | Reality-check tree |
 
 ## Validation and operations
 

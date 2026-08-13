@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0.0",
-  "status": "implementation_ready_training_blocked_until_gold",
+  "status": "legacy_challenger_explicit_profile_only_training_blocked_until_gate",
   "runtime": {
     "name": "mlx-lm",
     "version": "0.31.3",

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import urllib.request
@@ -16,6 +17,7 @@ from ntruth.data.config import (
     get_manifests_dir,
 )
 from ntruth.data.fs import atomic_write_json, atomic_write_text, sha256_file
+from ntruth.data.jsonl import count_jsonl_records, iter_jsonl
 from ntruth.data.schemas import (
     CommonEnvelope,
     Eligibility,
@@ -29,10 +31,69 @@ from ntruth.data.schemas import (
 )
 
 EMPTY_FILE_SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+SOURCE_DATA_EXPECTED_SPLIT_COUNTS = {
+    "train": 60_266,
+    "validation": 8_201,
+    "test": 6_696,
+}
 
 
 class SourceDataError(RuntimeError):
     """SourceData processing failure."""
+
+
+def validate_sourcedata_split_counts(split_counts: dict[str, int]) -> None:
+    for split, expected in SOURCE_DATA_EXPECTED_SPLIT_COUNTS.items():
+        actual = split_counts.get(split)
+        if actual != expected:
+            raise SourceDataError(f"{split}: expected {expected}, found {actual}")
+
+
+def _words_hash(words: list[str]) -> str:
+    canonical_words = json.dumps(words, ensure_ascii=False, separators=(",", ":")).encode()
+    return hashlib.sha256(canonical_words).hexdigest()
+
+
+def build_sourcedata_record_id(
+    *,
+    revision: str,
+    split: str,
+    physical_line_number: int,
+    words: list[str],
+) -> str:
+    return f"sourcedata:{revision}:{split}:{physical_line_number}:{_words_hash(words)[:16]}"
+
+
+def _preserve_sourcedata_semantics(
+    *,
+    ner_record: dict[str, Any],
+    roles_record: dict[str, Any],
+) -> tuple[str, dict[str, Any]]:
+    ner_text = ner_record.get("text")
+    roles_text = roles_record.get("text")
+    if not isinstance(ner_text, str) or not isinstance(roles_text, str):
+        raise SourceDataError("SourceData record is missing original text")
+    if ner_text != roles_text:
+        raise SourceDataError("SourceData original text mismatch between configurations")
+
+    configuration_metadata: dict[str, dict[str, Any]] = {}
+    for configuration, record in (("ner", ner_record), ("roles_multi", roles_record)):
+        if "is_category" not in record:
+            raise SourceDataError(
+                f"SourceData {configuration} record is missing is_category metadata"
+            )
+        is_category = record["is_category"]
+        if not isinstance(is_category, list):
+            raise SourceDataError(f"SourceData {configuration} is_category metadata must be a list")
+        configuration_metadata[configuration] = {"is_category": is_category}
+
+    return ner_text, {
+        "configurations": configuration_metadata,
+        "transformation": {
+            "is_category": "preserved_opaque_not_mapped_to_tag_mask",
+            "original_text": "shared_exact_upstream_text",
+        },
+    }
 
 
 def load_sourcedata_lockfile() -> dict[str, Any]:
@@ -111,7 +172,7 @@ def install_sourcedata(root: Path, refresh: bool = False) -> dict[str, Any]:
     revision = lock["revision"]
     raw_root = root / "raw" / "sourcedata" / f"v{SOURCE_DATA_VERSION}"
     processed_root = root / "processed" / "sourcedata" / f"v{SOURCE_DATA_VERSION}"
-    training_ready_root = root / "training_ready" / "sourcedata_multitask"
+    multitask_root = processed_root / "multitask"
 
     records_by_task_split: dict[str, dict[str, list[dict[str, Any]]]] = {
         "ner": {"train": [], "validation": [], "test": []},
@@ -119,6 +180,7 @@ def install_sourcedata(root: Path, refresh: bool = False) -> dict[str, Any]:
     }
 
     files_manifest: list[dict[str, Any]] = []
+    parsed_counts_by_task: dict[str, dict[str, int]] = {"ner": {}, "roles_multi": {}}
 
     for file_info in lock["files"]:
         rel_path = file_info["path"]
@@ -140,32 +202,68 @@ def install_sourcedata(root: Path, refresh: bool = False) -> dict[str, Any]:
             }
         )
 
-        # Load raw JSONL records
-        with local_raw.open("r", encoding="utf-8") as handle:
-            for line in handle:
-                if not line.strip():
-                    continue
-                rec = json.loads(line)
-                rec["split"] = split
-                records_by_task_split[task][split].append(rec)
+        framing = count_jsonl_records(local_raw)
+        if framing["blank_line_count"]:
+            raise SourceDataError(f"{local_raw}: blank physical JSONL lines are not allowed")
+        parsed_counts_by_task[task][split] = framing["parsed_record_count"]
+        for physical_line_number, rec in iter_jsonl(local_raw):
+            rec["split"] = split
+            rec["_physical_line_number"] = physical_line_number
+            records_by_task_split[task][split].append(rec)
+
+    for task, counts in parsed_counts_by_task.items():
+        try:
+            validate_sourcedata_split_counts(counts)
+        except SourceDataError as exc:
+            raise SourceDataError(f"{task}: {exc}") from exc
 
     # Process individual tasks & align for multitask
     split_counts: dict[str, int] = {}
     for split in ("train", "validation", "test"):
         ner_recs = records_by_task_split["ner"][split]
         roles_recs = records_by_task_split["roles_multi"][split]
+        roles_by_line_number = {
+            int(record["_physical_line_number"]): record for record in roles_recs
+        }
 
         aligned_recs, report = align_sourcedata_configs(ner_recs, roles_recs)
         split_counts[f"multitask:{split}"] = len(aligned_recs)
 
-        # Write multitask processed output
-        out_dir = training_ready_root / split
+        # This is a validated auxiliary snapshot, not a training export. Paper-level
+        # provenance and explicit development/training rights remain unresolved.
+        out_dir = multitask_root / split
         out_dir.mkdir(parents=True, exist_ok=True)
         jsonl_path = out_dir / "records.jsonl"
+        split_inputs = sorted(
+            (entry for entry in files_manifest if entry["split"] == split),
+            key=lambda entry: entry["task"],
+        )
+        source_inputs_path = out_dir / "source_inputs.json"
+        atomic_write_json(
+            source_inputs_path,
+            {
+                "dataset": "SourceData",
+                "revision": revision,
+                "split": split,
+                "inputs": split_inputs,
+            },
+        )
+        source_inputs_sha = sha256_file(source_inputs_path)
 
         lines = []
-        for idx, rec in enumerate(aligned_recs):
+        for rec in aligned_recs:
             words = rec.get("words", rec.get("tokens", []))
+            physical_line_number = int(rec["_physical_line_number"])
+            roles_record = roles_by_line_number.get(physical_line_number)
+            if roles_record is None:
+                raise SourceDataError(
+                    "SourceData aligned record has no roles_multi source at physical line "
+                    f"{physical_line_number}"
+                )
+            original_text, source_metadata = _preserve_sourcedata_semantics(
+                ner_record=rec,
+                roles_record=roles_record,
+            )
             normalized_text = " ".join(words)
             offsets = []
             curr = 0
@@ -174,28 +272,36 @@ def install_sourcedata(root: Path, refresh: bool = False) -> dict[str, Any]:
                 curr += len(w) + 1
 
             envelope = CommonEnvelope(
-                record_id=f"sourcedata:{rec.get('panel_id', idx)}:{split}:{idx}",
+                record_id=build_sourcedata_record_id(
+                    revision=revision,
+                    split=split,
+                    physical_line_number=physical_line_number,
+                    words=words,
+                ),
                 source=SourceReference(
                     dataset="SourceData",
                     version=SOURCE_DATA_VERSION,
                     commit=revision,
-                    document_id=str(rec.get("document_id", "")),
-                    segment_id=str(rec.get("panel_id", "")),
+                    document_id="",
+                    segment_id=(f"{split}:{physical_line_number}:{_words_hash(words)[:16]}"),
                 ),
                 split=SplitAssignment(
                     name=cast(Literal["train", "validation", "test", "trial"], split),
                     authority="upstream_official",
-                    group_id=str(rec.get("document_id", "")),
+                    # No paper/panel identity exists in the locked JSONL. Grouping the
+                    # whole revision together is conservative and prevents a false
+                    # paper-level anti-leakage claim.
+                    group_id=f"unknown_document_scope:{revision}",
                 ),
                 eligibility=Eligibility(
-                    training_eligible=(split == "train"),
-                    evaluation_eligible=(split in {"validation", "test"}),
+                    training_eligible=False,
+                    evaluation_eligible=False,
                     requires_review=False,
                 ),
                 provenance=Provenance(
                     source_url=f"https://huggingface.co/datasets/{repo_id}",
-                    sha256=files_manifest[0]["sha256"],
-                    transform_version="1.0.0",
+                    sha256=source_inputs_sha,
+                    transform_version="1.2.0",
                 ),
                 native_annotation_tier=NativeAnnotationTier.HUMAN_CURATED_GOLD,
                 ntruth_usage_tier=NTruthUsageTier.SILVER_AUXILIARY,
@@ -207,8 +313,10 @@ def install_sourcedata(root: Path, refresh: bool = False) -> dict[str, Any]:
                     token_offsets=offsets,
                     offset_authority=OffsetAuthority.DERIVED_NORMALIZED_TEXT,
                     normalized_text=normalized_text,
+                    original_text=original_text,
                     entity_tags=rec.get("entity_tags", []),
                     role_tags=rec.get("role_tags", []),
+                    source_metadata=source_metadata,
                 ),
             )
             lines.append(envelope.model_dump_json() + "\n")
@@ -221,9 +329,24 @@ def install_sourcedata(root: Path, refresh: bool = False) -> dict[str, Any]:
         "version": SOURCE_DATA_VERSION,
         "source_ref": revision,
         "raw_path": str(raw_root),
-        "processed_path": str(processed_root),
+        "processed_path": str(multitask_root),
         "split_authority": "upstream_official",
         "split_counts": split_counts,
+        "status": "ACQUIRED_AND_PROCESSED_NOT_TRAINING_READY",
+        "model_use_status": "BLOCKED",
+        "training_ready_status": "NOT_MATERIALIZED",
+        "model_use_blockers": [
+            "paper_level_provenance_unresolved",
+            "ntruth_partition_not_approved",
+            "development_and_training_rights_not_closed",
+        ],
+        "leakage_group_granularity": "REVISION_SCOPE_FAIL_CLOSED",
+        "paper_level_leakage_claim_allowed": False,
+        "semantic_preservation": {
+            "original_text": "payload.original_text",
+            "is_category": "payload.source_metadata.configurations",
+            "is_category_mapped_to_tag_mask": False,
+        },
         "native_annotation_tier": NativeAnnotationTier.HUMAN_CURATED_GOLD,
         "ntruth_usage_tier": NTruthUsageTier.SILVER_AUXILIARY,
         "files": files_manifest,

@@ -62,13 +62,22 @@ DATASET_TASK_POLICIES: dict[str, list[str]] = {
 
 def configure_external_cache_environment(root: Path) -> dict[str, str]:
     """Configures explicit environment variables redirecting all cache to external storage."""
+    root = root.resolve()
     cache_root = root / "cache"
+    huggingface_cache = cache_root / "huggingface"
+    temporary_cache = cache_root / "temporary"
     env_updates = {
-        "HF_HOME": str(cache_root / "huggingface"),
-        "HF_DATASETS_CACHE": str(cache_root / "huggingface" / "datasets"),
-        "HUGGINGFACE_HUB_CACHE": str(cache_root / "huggingface" / "hub"),
+        "HF_HOME": str(huggingface_cache),
+        "HF_DATASETS_CACHE": str(huggingface_cache / "datasets"),
+        "HF_HUB_CACHE": str(huggingface_cache / "hub"),
+        "HUGGINGFACE_HUB_CACHE": str(huggingface_cache / "hub"),
+        "TRANSFORMERS_CACHE": str(huggingface_cache / "transformers"),
         "XDG_CACHE_HOME": str(cache_root / "xdg"),
-        "TMPDIR": str(cache_root / "temporary"),
+        "PIP_CACHE_DIR": str(cache_root / "pip"),
+        "UV_CACHE_DIR": str(cache_root / "uv"),
+        "TMPDIR": str(temporary_cache),
+        "TEMP": str(temporary_cache),
+        "TMP": str(temporary_cache),
     }
     for key, value in env_updates.items():
         os.environ[key] = value

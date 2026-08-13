@@ -8,10 +8,12 @@ from typing import Literal
 
 import typer
 
+from ntruth.reality_gate import GatePurpose, evaluate_reality_gate
 from ntruth.training import PreparationConfig, SplitRatios, load_supervised_jsonl, prepare_dataset
 from ntruth.training.mlx_dataset import (
     create_runtime_smoke_dataset,
     export_mlx_dataset,
+    freeze_mlx_training_view,
 )
 from ntruth.training.mlx_inference import (
     calibrate_predictions,
@@ -26,14 +28,17 @@ from ntruth.training.mlx_runtime import (
     run_training,
     verify_model,
 )
+from ntruth.training.pretraining_hold import (
+    build_pretraining_hold_packet,
+    hold_packet_as_machine_readable,
+    observe_identity_if_root,
+)
+from ntruth.training.readiness import OverallReadiness, project_small_model_training_readiness
 
 
 def _default_profile() -> Path:
     checkout = (
-        Path(__file__).resolve().parents[3]
-        / "models"
-        / "configs"
-        / "qwen3-4b-instruct-2507-mlx-qlora.json"
+        Path(__file__).resolve().parents[3] / "models" / "configs" / "granite-4.1-3b-mlx-qlora.json"
     )
     if checkout.is_file():
         return checkout
@@ -41,7 +46,7 @@ def _default_profile() -> Path:
         Path(__file__).resolve().parents[1]
         / "_bundled"
         / "models"
-        / "qwen3-4b-instruct-2507-mlx-qlora.json"
+        / "granite-4.1-3b-mlx-qlora.json"
     )
 
 
@@ -50,7 +55,10 @@ DEFAULT_PROFILE = _default_profile()
 app = typer.Typer(
     add_completion=False,
     no_args_is_help=True,
-    help="N-Truth ML — preparazione governata e QLoRA locale con MLX/Metal.",
+    help=(
+        "N-Truth ML — preparazione governata; esecuzione MLX UNAVAILABLE finche manca "
+        "il runner isolato su file descriptor anonimi."
+    ),
 )
 
 
@@ -68,7 +76,7 @@ def check(
     profile: Path = typer.Option(DEFAULT_PROFILE, "--profile", help="Profilo MLX fissato."),
     repo: Path = typer.Option(Path("."), "--repo", help="Root del checkout N-Truth."),
 ) -> None:
-    """Verifica piattaforma, RAM, disco, runtime e presenza del modello."""
+    """Verifica prerequisiti; il training resta UNAVAILABLE senza runner FD."""
 
     try:
         status = doctor(profile.resolve(), repo.resolve())
@@ -161,17 +169,42 @@ def make_smoke_data(
     _emit(result)
 
 
+@app.command("freeze-training-view")
+def freeze_training_view_command(
+    custody: Path = typer.Argument(..., help="Custody snapshot completa e validata."),
+    out: Path = typer.Option(..., "--out", help="Nuova directory training view isolata."),
+) -> None:
+    """Separa train/validation dai payload protetti prima di ogni uso ML."""
+
+    try:
+        result = freeze_mlx_training_view(custody.resolve(), out.resolve())
+    except (MLXPipelineError, OSError, ValueError) as exc:
+        _fail(exc)
+    _emit(result)
+
+
 @app.command()
 def tokenize(
-    data: Path = typer.Argument(..., help="Snapshot MLX con train/valid/test.jsonl."),
+    data: Path = typer.Argument(..., help="Training view isolata con train/valid."),
     out: Path = typer.Option(..., "--out", help="Report JSON delle lunghezze."),
+    runtime_smoke_only: bool = typer.Option(
+        False,
+        "--runtime-smoke-only",
+        help="Seleziona la fixture smoke canonica; tokenizzazione ancora UNAVAILABLE.",
+    ),
     profile: Path = typer.Option(DEFAULT_PROFILE, "--profile"),
     repo: Path = typer.Option(Path("."), "--repo"),
 ) -> None:
-    """Misura token e troncamenti usando il tokenizer locale fissato."""
+    """UNAVAILABLE: richiede il runner isolato su FD anonimi/unlinked."""
 
     try:
-        result = tokenize_report(profile.resolve(), repo.resolve(), data.resolve(), out.resolve())
+        result = tokenize_report(
+            profile.resolve(),
+            repo.resolve(),
+            data.resolve(),
+            out.resolve(),
+            smoke_test=runtime_smoke_only,
+        )
     except (MLXPipelineError, OSError, ValueError) as exc:
         _fail(exc)
     _emit(result)
@@ -181,19 +214,27 @@ def tokenize(
 
 @app.command()
 def train(
-    data: Path = typer.Argument(..., help="Snapshot MLX approvato."),
+    data: Path = typer.Argument(..., help="Training view isolata approvata."),
     out: Path = typer.Option(..., "--out", help="Directory locale del run."),
     seed: int = typer.Option(13, "--seed"),
     resume: bool = typer.Option(False, "--resume"),
     runtime_smoke_only: bool = typer.Option(
         False,
         "--runtime-smoke-only",
-        help="Massimo due iterazioni su fixture tecniche, senza valore scientifico.",
+        help="Seleziona la fixture smoke canonica; training ancora UNAVAILABLE.",
+    ),
+    training_authorization: Path | None = typer.Option(
+        None,
+        "--training-authorization",
+        help=(
+            "Envelope canonico v1 con Reality Gate e binding esatto del run; "
+            "non abilita l'esecuzione senza runner FD."
+        ),
     ),
     profile: Path = typer.Option(DEFAULT_PROFILE, "--profile"),
     repo: Path = typer.Option(Path("."), "--repo"),
 ) -> None:
-    """Esegue QLoRA locale con checkpoint, ripresa ed early stopping a fasi."""
+    """UNAVAILABLE: QLoRA e resume attendono il runner isolato su FD anonimi."""
 
     try:
         result = run_training(
@@ -204,10 +245,69 @@ def train(
             seed=seed,
             smoke_test=runtime_smoke_only,
             resume=resume,
+            training_authorization=(
+                training_authorization.resolve() if training_authorization is not None else None
+            ),
         )
     except (MLXPipelineError, OSError, ValueError) as exc:
         _fail(exc)
     _emit(result)
+
+
+def _observe_dataset_root(dataset_root: Path) -> dict[str, object]:
+    """Record FLASH128 (or other) facts without promoting readiness."""
+
+    root = dataset_root.resolve()
+    merkle_path = root / "manifests" / "checksums" / "merkle_manifest.json"
+    training_ready = root / "training_ready"
+    merkle_root = None
+    file_count = None
+    if merkle_path.is_file() and not merkle_path.is_symlink():
+        try:
+            manifest = json.loads(merkle_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            manifest = {}
+        if isinstance(manifest, dict):
+            merkle_root = manifest.get("merkle_root")
+            file_count = manifest.get("file_count")
+    ready_files = 0
+    if training_ready.is_dir() and not training_ready.is_symlink():
+        ready_files = sum(1 for path in training_ready.rglob("*") if path.is_file())
+    return {
+        "path": str(root),
+        "mounted": root.is_dir(),
+        "merkle_root": merkle_root,
+        "merkle_file_count": file_count,
+        "training_ready_files": ready_files,
+        "promotes_readiness": False,
+    }
+
+
+@app.command()
+def readiness(
+    dataset_root: Path | None = typer.Option(
+        None,
+        "--dataset-root",
+        help="Root dataset osservata (es. /Volumes/FLASH128/N-Truth-Datasets); non promuove READY.",
+    ),
+) -> None:
+    """Proietta lo stato corrente fail-closed senza creare autorizzazioni."""
+
+    root_gate = evaluate_reality_gate((), purpose=GatePurpose.SUBSTANTIVE_TRAINING)
+    projection = project_small_model_training_readiness(root_gate)
+    payload = projection.as_machine_readable()
+    identity = observe_identity_if_root(dataset_root) if dataset_root is not None else None
+    if dataset_root is not None:
+        observation = _observe_dataset_root(dataset_root)
+        if identity is not None:
+            observation["identity_join"] = identity
+        payload["dataset_root_observation"] = observation
+    payload["pretraining_hold"] = hold_packet_as_machine_readable(
+        build_pretraining_hold_packet(projection, identity_observation=identity)
+    )
+    _emit(payload)
+    if projection.overall is OverallReadiness.NOT_READY:
+        raise typer.Exit(code=2)
 
 
 @app.command()
@@ -215,12 +315,12 @@ def predict(
     evaluation: Path = typer.Argument(..., help="JSONL locale con messages e gold assistant."),
     adapter: Path = typer.Option(..., "--adapter", help="Directory adapter best."),
     out: Path = typer.Option(..., "--out"),
-    split: Literal["validation", "test", "external"] = typer.Option(..., "--split"),
+    split: Literal["validation"] = typer.Option("validation", "--split"),
     retry_invalid_once: bool = typer.Option(True, "--retry-invalid-once/--no-retry"),
     profile: Path = typer.Option(DEFAULT_PROFILE, "--profile"),
     repo: Path = typer.Option(Path("."), "--repo"),
 ) -> None:
-    """Genera, valida col contratto e calcola metriche strutturate."""
+    """UNAVAILABLE: validation attende il runner FD; test/external un permit one-shot."""
 
     try:
         result = predict_and_score(
@@ -245,7 +345,7 @@ def calibrate(
     maximum_risk: float = typer.Option(0.10, "--maximum-risk"),
     minimum_coverage_count: int = typer.Option(10, "--minimum-coverage-count"),
 ) -> None:
-    """Stima temperatura e soglia di astensione; il test non e accettato."""
+    """UNAVAILABLE: calibrazione bloccata fino al runner isolato su FD."""
 
     try:
         result = calibrate_predictions(
@@ -270,7 +370,7 @@ def export_adapter(
     profile: Path = typer.Option(DEFAULT_PROFILE, "--profile"),
     repo: Path = typer.Option(Path("."), "--repo"),
 ) -> None:
-    """Esporta adapter, provenance e metriche senza dati o pesi base."""
+    """UNAVAILABLE: richiede metriche protette attestate da valutazione one-shot."""
 
     try:
         result = export_adapter_bundle(

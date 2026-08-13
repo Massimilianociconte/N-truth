@@ -16,9 +16,14 @@ from ntruth.training import (
     SupervisionProvenance,
     prepare_dataset,
 )
-from ntruth.training.mlx_dataset import create_runtime_smoke_dataset, export_mlx_dataset
+from ntruth.training.mlx_dataset import (
+    create_runtime_smoke_dataset,
+    export_mlx_dataset,
+    freeze_mlx_training_view,
+)
 from ntruth.training.mlx_runtime import (
     MLXPipelineError,
+    run_training,
     validate_mlx_dataset,
     validate_snapshot_integrity,
 )
@@ -148,14 +153,16 @@ def test_real_snapshot_verifies_files_counts_and_source_identity(tmp_path: Path)
     _export_real_snapshot(output)
 
     result = validate_snapshot_integrity(output)
-    training = validate_mlx_dataset(output)
+    view = tmp_path / "training-view"
+    freeze_mlx_training_view(output, view)
+    training = validate_mlx_dataset(view)
 
     assert result["counts"] == {"train": 1, "valid": 1, "test": 1, "external": 0}
     assert result["snapshot_id"].startswith("mlx-dataset-")
     assert len(result["snapshot_sha256"]) == 64
     assert result["source_manifest"]["dataset_id"] == result["manifest"]["dataset_id"]
     assert result["source_manifest_sha256"] == result["file_hashes"]["dataset-manifest.source.json"]
-    assert training["snapshot_sha256"] == result["snapshot_sha256"]
+    assert training["custody_snapshot_sha256"] == result["snapshot_sha256"]
 
 
 def test_changed_split_bytes_are_rejected_before_training(tmp_path: Path) -> None:
@@ -165,7 +172,7 @@ def test_changed_split_bytes_are_rejected_before_training(tmp_path: Path) -> Non
     train.write_text(train.read_text(encoding="utf-8") + "\n", encoding="utf-8")
 
     with pytest.raises(MLXPipelineError, match=r"(dimensione|checksum).*train.jsonl"):
-        validate_mlx_dataset(output)
+        validate_snapshot_integrity(output)
 
 
 def test_manifest_counts_are_checked_even_if_snapshot_identity_is_recomputed(
@@ -304,7 +311,7 @@ def test_integrity_can_inspect_empty_splits_but_training_remains_fail_closed(
         require_nonempty_training_splits=False,
     )
     assert result["counts"] == {"train": 1, "valid": 0, "test": 0, "external": 0}
-    with pytest.raises(MLXPipelineError, match="split MLX vuoto"):
+    with pytest.raises(MLXPipelineError, match="snapshot misto"):
         validate_mlx_dataset(output)
 
 
@@ -322,3 +329,62 @@ def test_runtime_smoke_has_separate_identity_and_requires_explicit_gate(tmp_path
     assert result["manifest"]["training_approved"] is False
     assert result["manifest"]["scientific_metrics_allowed"] is False
     assert training["smoke_test"] is True
+
+
+def test_runtime_smoke_rejects_self_signed_arbitrary_chat_content(tmp_path: Path) -> None:
+    output = tmp_path / "smoke"
+    create_runtime_smoke_dataset(output)
+    train_path = output / "train.jsonl"
+    rows = [json.loads(line) for line in train_path.read_text(encoding="utf-8").splitlines()]
+    rows[0]["messages"][1]["content"] = '{"arbitrary":"protected-or-user-controlled"}'
+    train_path.write_text(
+        "".join(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n" for row in rows),
+        encoding="utf-8",
+    )
+    manifest_path = output / "snapshot-manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["files"]["train.jsonl"] = {
+        "sha256": hashlib.sha256(train_path.read_bytes()).hexdigest(),
+        "size_bytes": train_path.stat().st_size,
+    }
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    _resign_snapshot(manifest_path)
+
+    with pytest.raises(MLXPipelineError, match=r"fixture runtime canonica"):
+        validate_mlx_dataset(output, smoke_test=True)
+
+
+def test_runtime_smoke_rejects_arbitrary_content_before_doctor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / "smoke"
+    create_runtime_smoke_dataset(output)
+    train_path = output / "train.jsonl"
+    rows = [json.loads(line) for line in train_path.read_text(encoding="utf-8").splitlines()]
+    rows[0]["messages"][-1]["content"] = '{"gold":"caller-controlled"}'
+    train_path.write_text(
+        "".join(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n" for row in rows),
+        encoding="utf-8",
+    )
+    manifest_path = output / "snapshot-manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["files"]["train.jsonl"] = {
+        "sha256": hashlib.sha256(train_path.read_bytes()).hexdigest(),
+        "size_bytes": train_path.stat().st_size,
+    }
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    _resign_snapshot(manifest_path)
+    monkeypatch.setattr(
+        "ntruth.training.mlx_runtime.doctor",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("doctor must not run")),
+    )
+
+    with pytest.raises(MLXPipelineError, match=r"fixture runtime canonica"):
+        run_training(
+            Path("models/configs/granite-4.1-3b-mlx-qlora.json"),
+            Path(".").resolve(),
+            output,
+            tmp_path / "run",
+            seed=13,
+            smoke_test=True,
+        )

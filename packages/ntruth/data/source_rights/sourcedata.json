@@ -1,0 +1,28 @@
+{
+  "schema_version": "1.0.0",
+  "source": "SourceData",
+  "asset_id": "EMBO/SourceData@2.0.3",
+  "license_spdx": "CC-BY-4.0",
+  "license_status": "LICENSE_REVIEW_REQUIRED",
+  "license_note": "HF card claims CC-BY-4.0; no LICENSE file on FLASH128. Adapter build allowed. Training, evaluation, redistribution remain unknown/blocked until LICENSE_SCOPE_CLOSURE.",
+  "dua": {
+    "training": false,
+    "evaluation": "unknown",
+    "development": false,
+    "redistribution": false,
+    "dua_required": true,
+    "dua_on_file": false
+  },
+  "identity": {
+    "paper_id": null,
+    "experiment_id": null,
+    "family_id": null,
+    "source_asset_id": "sourcedata-v2.0.3",
+    "source_ref": "04333ae21badc91671a537e875bbca61b62f87e3"
+  },
+  "review_status": "LICENSE_REVIEW_REQUIRED",
+  "steward_authorization": null,
+  "training_eligible": false,
+  "evaluation_eligible": false,
+  "blockers": []
+}

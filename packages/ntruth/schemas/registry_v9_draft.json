@@ -1,0 +1,254 @@
+{
+  "ambiguous_indeterminate_states": [
+    "INSUFFICIENT_INFORMATION",
+    "INDETERMINATE",
+    "UNKNOWN",
+    "NOT_REPORTED",
+    "NOT_APPLICABLE",
+    "CONFLICTING_INFORMATION",
+    "MULTIPLE_PLAUSIBLE_GRAPHS",
+    "OUT_OF_SCOPE"
+  ],
+  "annotation_guideline_status": "PENDING_HUMAN_SCIENTIFIC_APPROVAL: CP-DATA annotation guideline is required before GOLD; this pack does not approve it",
+  "artifact_type": "ntruth-prd-v9-registry-decision-pack",
+  "entries": [
+    {
+      "authority": "decisive",
+      "kind": "enum",
+      "name": "FactorRole",
+      "notes": "PRD v9 §0.3 / §7.2; not a live v7 field; adapters cannot invent it",
+      "values": [
+        "ASSIGNED_INTERVENTION",
+        "OBSERVATIONAL_EXPOSURE",
+        "INTRINSIC_ATTRIBUTE",
+        "BLOCKING_FACTOR",
+        "BATCH_NUISANCE",
+        "REPEATED_MEASURE_INDEX",
+        "MEASUREMENT_CONDITION",
+        "UNKNOWN"
+      ]
+    },
+    {
+      "authority": "decisive",
+      "kind": "enum",
+      "name": "ContrastType",
+      "notes": "PRD v9 §0.3 / §7.3; not a live v7 field; adapters cannot invent it",
+      "values": [
+        "ASSIGNED_INTERVENTION_EFFECT",
+        "OBSERVATIONAL_ASSOCIATION",
+        "INTRINSIC_ATTRIBUTE_COMPARISON",
+        "WITHIN_UNIT_REPEATED_CONTRAST",
+        "NUISANCE_OR_BATCH_COMPARISON",
+        "DESCRIPTIVE_ONLY",
+        "UNKNOWN"
+      ]
+    },
+    {
+      "authority": "decisive",
+      "kind": "claim_type",
+      "name": "ContrastSupportClaim",
+      "notes": "Assignment-anchored support of a contrast; a mention is not a claim",
+      "values": []
+    },
+    {
+      "authority": "decisive",
+      "kind": "claim_type",
+      "name": "ObservedEvidenceScope",
+      "notes": "Descriptive scope of observed units/sources/protocols",
+      "values": []
+    },
+    {
+      "authority": "candidate_inference",
+      "kind": "claim_type",
+      "name": "TargetPopulationClaim",
+      "notes": "Optional; default NOT_ASSESSED; never inferred from observed scope",
+      "values": []
+    },
+    {
+      "authority": null,
+      "kind": "enum",
+      "name": "KnowledgeState",
+      "notes": "PRD v9 §0.3 / §0.5",
+      "values": [
+        "PRESENT",
+        "ABSENT_EXPLICIT",
+        "NOT_REPORTED",
+        "UNKNOWN",
+        "NOT_APPLICABLE",
+        "CONFLICTING"
+      ]
+    },
+    {
+      "authority": null,
+      "kind": "enum",
+      "name": "DeterminabilityState",
+      "notes": "v7 contract retained; INDETERMINATE remains expressible via alias",
+      "values": [
+        "DETERMINATE",
+        "CONDITIONALLY_DETERMINATE",
+        "MULTIPLE_PLAUSIBLE_GRAPHS",
+        "INSUFFICIENT_INFORMATION",
+        "CONFLICTING_INFORMATION",
+        "INVALID_GRAPH",
+        "OUT_OF_SCOPE"
+      ]
+    },
+    {
+      "authority": null,
+      "kind": "enum",
+      "name": "ScenarioCompleteness",
+      "notes": "",
+      "values": [
+        "COMPLETE_UNDER_DECLARED_ASSUMPTION_SET",
+        "INCOMPLETE_KNOWN",
+        "UNKNOWN_COMPLETENESS"
+      ]
+    },
+    {
+      "authority": null,
+      "kind": "enum",
+      "name": "AmbiguousState",
+      "notes": "Insufficiente/indeterminata/unknown must remain first-class",
+      "values": [
+        "INSUFFICIENT_INFORMATION",
+        "INDETERMINATE",
+        "UNKNOWN",
+        "NOT_REPORTED",
+        "NOT_APPLICABLE",
+        "CONFLICTING_INFORMATION",
+        "MULTIPLE_PLAUSIBLE_GRAPHS",
+        "OUT_OF_SCOPE"
+      ]
+    },
+    {
+      "authority": null,
+      "kind": "count_kind",
+      "name": "CountKind",
+      "notes": "v7 CountKind is the implemented count registry; aliases are read-only",
+      "values": [
+        "planned_n",
+        "allocated_n",
+        "treated_n",
+        "observed_n",
+        "excluded_n",
+        "n_analyzed",
+        "declared_n",
+        "observational_n",
+        "analytical_n",
+        "independent_n",
+        "experimental_unit_count",
+        "experimental_unit_count_candidate",
+        "biological_source_count",
+        "effective_n"
+      ]
+    },
+    {
+      "authority": null,
+      "kind": "error_code",
+      "name": "error_code",
+      "notes": "",
+      "values": [
+        "UNKNOWN_REGISTRY_TOKEN",
+        "LEGACY_ALIAS_EMITTED",
+        "FORBIDDEN_V9_LABEL_FROM_ADAPTER",
+        "SILENT_FACTORROLE_INFERENCE",
+        "REGISTRY_NOT_FROZEN",
+        "INSUFFICIENT_OR_INDETERMINATE_REQUIRED"
+      ]
+    },
+    {
+      "authority": null,
+      "kind": "field_name",
+      "name": "field_name",
+      "notes": "",
+      "values": [
+        "AdequacyAssessment",
+        "AssignmentUnit",
+        "ContrastSupportClaim",
+        "ContrastType",
+        "ExperimentalUnitClaim",
+        "FactorRole",
+        "InferentialQuery",
+        "MaterialLineage",
+        "ObservedEvidenceScope",
+        "SupportProfile",
+        "TargetPopulationClaim",
+        "experimental_unit_count"
+      ]
+    },
+    {
+      "authority": null,
+      "kind": "status",
+      "name": "status",
+      "notes": "",
+      "values": [
+        "PENDING_HUMAN_SCIENTIFIC_APPROVAL",
+        "APPROVED_BY_HUMAN_SCIENTIFIC_OWNER",
+        "HISTORICAL"
+      ]
+    }
+  ],
+  "experiment_graph_field_authority": {
+    "AdequacyAssessment": "candidate_inference",
+    "AssignmentUnit": "decisive",
+    "ContrastSupportClaim": "decisive",
+    "ContrastType": "decisive",
+    "ExperimentalUnitClaim": "decisive",
+    "FactorRole": "decisive",
+    "InferentialQuery": "decisive",
+    "MaterialLineage": "decisive",
+    "ObservedEvidenceScope": "decisive",
+    "SupportProfile": "candidate_inference",
+    "TargetPopulationClaim": "candidate_inference",
+    "experimental_unit_count": "candidate_inference"
+  },
+  "fingerprint": "c74e0bfad381cca42c783575aef097ecf8fb1c7ffec0100c32d7962c1162f946",
+  "gold_frozen": false,
+  "human_approval": null,
+  "implemented_root_contract": "PRD_V7",
+  "normative_registry_v9_frozen": false,
+  "normative_target": "PRD_V9",
+  "rulebook_status": "PENDING_HUMAN_SCIENTIFIC_APPROVAL: Rulebook remains the executable conformance layer under the registry; this pack does not freeze it",
+  "schema_version": "0.1.0-draft",
+  "single_canonical_registry_topics": [
+    "enum",
+    "field name",
+    "claim type",
+    "error code",
+    "count kind",
+    "status"
+  ],
+  "status": "PENDING_HUMAN_SCIENTIFIC_APPROVAL",
+  "v7_to_v9_migration": {
+    "Contrast": {
+      "kind": "enum",
+      "mode": "no_silent_mapping",
+      "v9": "ContrastType"
+    },
+    "Determinability.CONFLICTING_INFORMATION": {
+      "kind": "status",
+      "mode": "identity",
+      "v9": "DeterminabilityStateV7.CONFLICTING_INFORMATION"
+    },
+    "Determinability.DETERMINATE": {
+      "kind": "status",
+      "mode": "identity",
+      "v9": "DeterminabilityStateV7.DETERMINATE"
+    },
+    "Determinability.INDETERMINATE": {
+      "kind": "status",
+      "mode": "explicit_alias",
+      "v9": "DeterminabilityStateV7.INSUFFICIENT_INFORMATION"
+    },
+    "Determinability.MULTIPLE_PLAUSIBLE_GRAPHS": {
+      "kind": "status",
+      "mode": "identity",
+      "v9": "DeterminabilityStateV7.MULTIPLE_PLAUSIBLE_GRAPHS"
+    },
+    "Factor.kind": {
+      "kind": "enum",
+      "mode": "no_silent_mapping",
+      "v9": "FactorRole"
+    }
+  }
+}

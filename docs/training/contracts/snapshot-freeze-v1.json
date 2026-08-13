@@ -1,0 +1,22 @@
+{
+  "schema_version": "1.0.0",
+  "artifact_type": "ntruth-snapshot-freeze-contract",
+  "status": "CONTRACT_FROZEN_SNAPSHOT_NOT_AUTHORIZED",
+  "normative_target": "PRD_V9",
+  "implemented_root_contract": "PRD_V7",
+  "authorized": false,
+  "physical_partitions": ["train", "validation", "test", "external"],
+  "training_view_may_enumerate": ["train", "validation"],
+  "protected_require_one_shot_permit": ["test", "external"],
+  "split_keys": [
+    "experiment_bundle_id",
+    "paper_id",
+    "version",
+    "laboratory",
+    "semantic_family"
+  ],
+  "group_key_order": ["DOI", "PMCID", "PMID", "upstream_source_id"],
+  "open_development_test_is_not_protected_test": true,
+  "human_custodian_appointed": false,
+  "notes": "This freezes the snapshot *contract*, not a scientific snapshot. FLASH128 training_ready remains empty."
+}
