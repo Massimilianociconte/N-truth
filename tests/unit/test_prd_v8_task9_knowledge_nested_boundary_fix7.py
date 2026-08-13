@@ -329,6 +329,122 @@ def test_parent_pure_path_transport_preserves_nested_field_filters(
     assert set(serialized["knowledge"]) == expected
 
 
+@pytest.mark.parametrize("json_text", (False, True), ids=("tree", "text"))
+@pytest.mark.parametrize("filter_kind", ("include", "exclude"))
+@pytest.mark.parametrize("shape", ("list", "tuple", "mapping"))
+def test_nested_pure_path_transport_preserves_value_filters_and_field_set(
+    json_text: bool,
+    filter_kind: str,
+    shape: str,
+) -> None:
+    first = PurePosixPath("/evidence/first.json")
+    retained = PurePosixPath("/evidence/retained.json")
+    payloads: dict[str, object] = {
+        "list": [first, retained],
+        "tuple": (first, retained),
+        "mapping": {"first": first, "retained": retained},
+    }
+    expected_values: dict[str, object] = {
+        "list": [retained],
+        "tuple": (retained,),
+        "mapping": {"retained": retained},
+    }
+    selected = 1 if shape != "mapping" else "retained"
+    omitted = 0 if shape != "mapping" else "first"
+    kwargs: dict[str, object]
+    if filter_kind == "include":
+        kwargs = {
+            "include": {
+                "knowledge_state": True,
+                "value": {selected},
+                "evidence_ids": True,
+            }
+        }
+    else:
+        kwargs = {
+            "exclude": {"value": {omitted}},
+            "exclude_unset": True,
+        }
+    original = _present(payloads[shape])
+
+    if json_text:
+        serialized = cast(Any, original).model_dump_json(round_trip=True, **kwargs)
+        restored = KnowledgeValue[object].model_validate_json(serialized)
+    else:
+        serialized = cast(Any, original).model_dump(mode="json", round_trip=True, **kwargs)
+        restored = KnowledgeValue[object].model_validate_json(json.dumps(serialized))
+
+    assert restored.value == expected_values[shape]
+    assert restored.__pydantic_fields_set__ == {"knowledge_state", "value", "evidence_ids"}
+    retained_value = (
+        cast(dict[str, object], restored.value)["retained"]
+        if shape == "mapping"
+        else cast(list[object] | tuple[object, ...], restored.value)[0]
+    )
+    assert type(retained_value) is PurePosixPath
+
+
+@pytest.mark.parametrize("json_text", (False, True), ids=("tree", "text"))
+def test_pure_path_mapping_key_uses_reversible_pair_envelope_before_json_key_encoding(
+    json_text: bool,
+) -> None:
+    path_key = PurePosixPath("/evidence/key.json")
+    original = _present({path_key: {"source": PurePosixPath("/evidence/value.json")}})
+
+    if json_text:
+        serialized_text = original.model_dump_json(round_trip=True)
+    else:
+        serialized_tree = original.model_dump(mode="json", round_trip=True)
+        serialized_text = json.dumps(serialized_tree)
+    restored = KnowledgeValue[object].model_validate_json(serialized_text)
+
+    assert restored == original
+    restored_mapping = cast(dict[object, object], restored.value)
+    assert tuple(restored_mapping) == (path_key,)
+    assert type(next(iter(restored_mapping))) is PurePosixPath
+
+
+@pytest.mark.parametrize(
+    "error_factory",
+    (lambda: RuntimeError("comparison failed"), _AbortTraversal),
+    ids=("ordinary-exception", "baseexception"),
+)
+@pytest.mark.parametrize("json_text", (False, True), ids=("tree", "text"))
+def test_public_transport_context_cannot_bypass_parent_nested_revalidation(
+    error_factory: Callable[[], BaseException],
+    json_text: bool,
+) -> None:
+    error = error_factory()
+    _ComparisonBomb.error = error
+    parent = _OpaqueKnowledgeEnvelope(knowledge=_present(_ComparisonBomb()))
+    context: dict[str, object] = {"ntruth_opaque_path_transport": True}
+
+    def boundary(supplied_context: dict[str, object] | None) -> object:
+        if json_text:
+            return parent.model_dump_json(
+                round_trip=True,
+                context=supplied_context,
+            )
+        return parent.model_dump(
+            mode="json",
+            round_trip=True,
+            context=supplied_context,
+        )
+
+    with pytest.raises(PydanticSerializationError) as baseline:
+        boundary(None)
+    with pytest.raises(PydanticSerializationError) as captured:
+        boundary(context)
+
+    assert type(captured.value) is type(baseline.value)
+    assert str(captured.value) == str(baseline.value)
+    expected_marker = (
+        "canonical reconstruction failed" if type(error) is RuntimeError else "_AbortTraversal"
+    )
+    assert expected_marker in str(captured.value)
+    assert "Unable to serialize unknown type" not in str(captured.value)
+
+
 @pytest.mark.parametrize(
     "error_factory,expected_error",
     (

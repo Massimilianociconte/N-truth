@@ -39,7 +39,7 @@ from pydantic import (
     model_validator,
 )
 from pydantic.errors import PydanticSchemaGenerationError
-from pydantic_core import core_schema
+from pydantic_core import SchemaSerializer, core_schema
 
 from ntruth.runtime_tree import (
     ExactRuntimeTreeError,
@@ -155,84 +155,6 @@ def _encode_opaque_pure_paths_for_json(value: object) -> tuple[object, bool]:
             encoded_value_changed,
         )
     return value, False
-
-
-def _replace_opaque_pure_paths_in_serialized_tree(
-    serialized: object,
-    raw: object,
-    *,
-    path: str,
-) -> object:
-    """Replace serializer placeholders using the exact validated runtime tree."""
-
-    if type(raw) in _CANONICAL_PATH_TYPES_BY_NAME.values():
-        encoded, changed = _encode_opaque_pure_paths_for_json(raw)
-        if not changed:
-            raise ExactRuntimeTreeError(path=path, reason="invalid opaque path encoding")
-        return encoded
-    if type(raw) is list:
-        if type(serialized) is not list or len(serialized) != len(raw):
-            raise ExactRuntimeTreeError(path=path, reason="serialized container mismatch")
-        return [
-            _replace_opaque_pure_paths_in_serialized_tree(
-                serialized_item,
-                raw_item,
-                path=f"{path}[{index}]",
-            )
-            for index, (serialized_item, raw_item) in enumerate(
-                zip(cast(list[object], serialized), cast(list[object], raw), strict=True)
-            )
-        ]
-    if type(raw) is tuple:
-        if type(serialized) is not list or len(serialized) != len(raw):
-            raise ExactRuntimeTreeError(path=path, reason="serialized container mismatch")
-        return _opaque_json_envelope(
-            {
-                "kind": "tuple",
-                "items": [
-                    _replace_opaque_pure_paths_in_serialized_tree(
-                        serialized_item,
-                        raw_item,
-                        path=f"{path}[{index}]",
-                    )
-                    for index, (serialized_item, raw_item) in enumerate(
-                        zip(
-                            cast(list[object], serialized),
-                            cast(tuple[object, ...], raw),
-                            strict=True,
-                        )
-                    )
-                ],
-            }
-        )
-    if type(raw) is dict:
-        if type(serialized) is not dict or len(serialized) != len(raw):
-            raise ExactRuntimeTreeError(path=path, reason="serialized mapping mismatch")
-        if any(type(key) in _CANONICAL_PATH_TYPES_BY_NAME.values() for key in raw):
-            encoded, changed = _encode_opaque_pure_paths_for_json(raw)
-            if not changed:
-                raise ExactRuntimeTreeError(path=path, reason="invalid opaque path encoding")
-            return encoded
-        if _OPAQUE_JSON_TAG in raw:
-            encoded, changed = _encode_opaque_pure_paths_for_json(raw)
-            if not changed:
-                raise ExactRuntimeTreeError(path=path, reason="invalid opaque mapping encoding")
-            return encoded
-        restored: dict[object, object] = {}
-        raw_items = list(dict.items(cast(dict[object, object], raw)))
-        serialized_items = list(dict.items(cast(dict[object, object], serialized)))
-        if tuple(key for key, _ in raw_items) != tuple(key for key, _ in serialized_items):
-            raise ExactRuntimeTreeError(path=path, reason="serialized mapping key mismatch")
-        for index, ((key, raw_item), (_, serialized_item)) in enumerate(
-            zip(raw_items, serialized_items, strict=True)
-        ):
-            restored[key] = _replace_opaque_pure_paths_in_serialized_tree(
-                serialized_item,
-                raw_item,
-                path=f"{path}.value[{index}]",
-            )
-        return restored
-    return serialized
 
 
 def _decode_opaque_pure_paths_from_json(value: object, *, path: str) -> object:
@@ -1190,11 +1112,6 @@ class KnowledgeValue[T](KernelModel):
             serializer: SerializerFunctionWrapHandler,
             info: SerializationInfo,
         ) -> Any:
-            if (
-                type(info.context) is dict
-                and info.context.get("ntruth_opaque_path_transport") is True
-            ):
-                return serializer(candidate)
             if type(candidate) is dict:
                 KnowledgeValue._assert_canonical_model_type(cls)
                 raw = candidate
@@ -1269,18 +1186,9 @@ class KnowledgeValue[T](KernelModel):
                         state["conflicting_values"]
                     )
                     if value_changed or conflicts_changed:
-
-                        def path_only_fallback(value: object) -> object:
-                            encoded, changed = _encode_opaque_pure_paths_for_json(value)
-                            if not changed:
-                                raise TypeError(
-                                    f"unsupported opaque JSON type: {type(value).__name__}"
-                                )
-                            return encoded
-
-                        transport = type(checked).__pydantic_serializer__.to_python(
+                        transport = SchemaSerializer(schema).to_python(
                             checked,
-                            mode="json",
+                            mode="python",
                             include=cast(Any, info.include),
                             exclude=cast(Any, info.exclude),
                             by_alias=info.by_alias,
@@ -1292,29 +1200,25 @@ class KnowledgeValue[T](KernelModel):
                             serialize_as_any=info.serialize_as_any,
                             polymorphic_serialization=info.polymorphic_serialization,
                             warnings="error",
-                            fallback=path_only_fallback,
-                            context={"ntruth_opaque_path_transport": True},
+                            context=info.context,
                         )
                         if type(transport) is not dict:
                             raise ExactRuntimeTreeError(
                                 path="$.knowledge_value",
                                 reason="serialized model payload mismatch",
                             )
-                        if value_changed and "value" in transport:
-                            transport["value"] = _replace_opaque_pure_paths_in_serialized_tree(
-                                transport["value"],
-                                state["value"],
-                                path="$.knowledge_value.value",
+                        encoded_transport, changed = _encode_opaque_pure_paths_for_json(transport)
+                        if not changed or type(encoded_transport) is not dict:
+                            raise ExactRuntimeTreeError(
+                                path="$.knowledge_value",
+                                reason="invalid opaque path transport",
                             )
-                        if conflicts_changed and "conflicting_values" in transport:
-                            transport["conflicting_values"] = (
-                                _replace_opaque_pure_paths_in_serialized_tree(
-                                    transport["conflicting_values"],
-                                    state["conflicting_values"],
-                                    path="$.knowledge_value.conflicting_values",
-                                )
-                            )
-                        return transport
+                        return TypeAdapter(object).dump_python(
+                            encoded_transport,
+                            mode="json",
+                            round_trip=info.round_trip,
+                            warnings="error",
+                        )
             return serializer(checked)
 
         return cast(
