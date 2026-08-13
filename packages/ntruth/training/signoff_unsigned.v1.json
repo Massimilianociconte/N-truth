@@ -1,0 +1,50 @@
+{
+  "artifact_type": "ntruth-pretraining-signoff-ledger",
+  "checksum": "5ac9f8b894ac46479bb08bb79df7bf07101bafdcbaa519f0d0797d42e8375bce",
+  "gold_declared": false,
+  "normative_registry_v9_frozen": false,
+  "schema_version": "1.0.0",
+  "slots": [
+    {
+      "artifact_sha256": null,
+      "note": "Human scientific owner must approve the PRD v9 registry",
+      "signed_at": null,
+      "signer_role": null,
+      "slot_id": "scientific_registry_v9",
+      "status": "UNSIGNED"
+    },
+    {
+      "artifact_sha256": null,
+      "note": "Data steward must close license/DUA/redistribution/use",
+      "signed_at": null,
+      "signer_role": null,
+      "slot_id": "data_steward_legal_dua",
+      "status": "UNSIGNED"
+    },
+    {
+      "artifact_sha256": null,
+      "note": "Independent dual annotation, agreement, adjudication",
+      "signed_at": null,
+      "signer_role": null,
+      "slot_id": "gold_dual_annotation_iaa",
+      "status": "UNSIGNED"
+    },
+    {
+      "artifact_sha256": null,
+      "note": "Appoint a custodian for test/external",
+      "signed_at": null,
+      "signer_role": null,
+      "slot_id": "independent_test_external_custodian",
+      "status": "UNSIGNED"
+    },
+    {
+      "artifact_sha256": null,
+      "note": "Human security review of the O_RDONLY FD runner",
+      "signed_at": null,
+      "signer_role": null,
+      "slot_id": "fd_security_review",
+      "status": "UNSIGNED"
+    }
+  ],
+  "substantive_training_allowed": false
+}

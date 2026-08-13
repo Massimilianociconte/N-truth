@@ -28,6 +28,11 @@ from ntruth.training.mlx_runtime import (
     run_training,
     verify_model,
 )
+from ntruth.training.pretraining_hold import (
+    build_pretraining_hold_packet,
+    hold_packet_as_machine_readable,
+    observe_identity_if_root,
+)
 from ntruth.training.readiness import OverallReadiness, project_small_model_training_readiness
 
 
@@ -291,8 +296,15 @@ def readiness(
     root_gate = evaluate_reality_gate((), purpose=GatePurpose.SUBSTANTIVE_TRAINING)
     projection = project_small_model_training_readiness(root_gate)
     payload = projection.as_machine_readable()
+    identity = observe_identity_if_root(dataset_root) if dataset_root is not None else None
     if dataset_root is not None:
-        payload["dataset_root_observation"] = _observe_dataset_root(dataset_root)
+        observation = _observe_dataset_root(dataset_root)
+        if identity is not None:
+            observation["identity_join"] = identity
+        payload["dataset_root_observation"] = observation
+    payload["pretraining_hold"] = hold_packet_as_machine_readable(
+        build_pretraining_hold_packet(projection, identity_observation=identity)
+    )
     _emit(payload)
     if projection.overall is OverallReadiness.NOT_READY:
         raise typer.Exit(code=2)

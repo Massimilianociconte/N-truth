@@ -1,0 +1,127 @@
+{
+  "allowed_tasks": [
+    "biomedical_entity_extraction",
+    "assay_extraction",
+    "experimental_role_tagging",
+    "caption_parsing"
+  ],
+  "annotation_status": "annotated",
+  "eligibility": {
+    "evaluation_eligible": false,
+    "requires_review": false,
+    "training_eligible": false
+  },
+  "forbidden_targets": [
+    "independent_n",
+    "experimental_unit",
+    "independently_assigned",
+    "allocation_level",
+    "application_level",
+    "determinability_state"
+  ],
+  "native_annotation_tier": "HUMAN_CURATED_GOLD",
+  "ntruth_usage_tier": "SILVER_AUXILIARY",
+  "payload": {
+    "entity_tags": [
+      "O"
+    ],
+    "kind": "token_classification",
+    "offset_authority": "unavailable",
+    "role_tags": [
+      "O"
+    ],
+    "source_metadata": {
+      "configurations": {
+        "ner": {
+          "is_category": [
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "roles_multi": {
+          "is_category": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      },
+      "transformation": {
+        "is_category": "preserved_opaque_not_mapped_to_tag_mask",
+        "original_text": "shared_exact_upstream_text"
+      }
+    },
+    "tokens": [
+      "x"
+    ]
+  },
+  "provenance": {
+    "sha256": "24ae95ab474e28d72495d1a77b0e9fb3c8300f16e89a8f873b8e17682d58fe32",
+    "source_url": "https://huggingface.co/datasets/EMBO/SourceData",
+    "transform_version": "1.2.0"
+  },
+  "record_id": "sourcedata:04333ae21badc91671a537e875bbca61b62f87e3:train:1:5e40b628eafd58ce",
+  "source": {
+    "commit": "04333ae21badc91671a537e875bbca61b62f87e3",
+    "dataset": "SourceData",
+    "document_id": "",
+    "segment_id": "train:1:5e40b628eafd58ce",
+    "version": "2.0.3"
+  },
+  "split": {
+    "authority": "upstream_official",
+    "group_id": "unknown_document_scope:04333ae21badc91671a537e875bbca61b62f87e3",
+    "name": "train"
+  },
+  "task_type": "token_classification"
+}

@@ -8,6 +8,8 @@ ontologia; queste versioni possono avanzare indipendentemente.
 
 ### Added
 
+- Corpus-native identity/eligibility join and unsigned pre-training hold packet
+  (`ntruth-ml readiness` surfaces `pretraining_hold`; user decides training).
 - PRD v9 registry decision pack (`docs/training/prd-v9-registry-decision-pack-v1.md`)
   and machine-readable draft (`packages/ntruth/schemas/registry_v9_draft.json`). The
   draft does not freeze the registry or GOLD.
