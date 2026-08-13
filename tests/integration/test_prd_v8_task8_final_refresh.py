@@ -152,6 +152,14 @@ def test_clean_checkout_closure_does_not_promote_platform_qualification() -> Non
         assert "SRR-V8-028" in partial[6]
 
 
+def test_public_status_records_the_final_task9_verification_date() -> None:
+    status = (REPOSITORY_ROOT / "docs" / "status-snapshot.md").read_text(encoding="utf-8")
+
+    assert "**Verified scope:** repository engineering contracts, 2026-08-13." in status
+    assert "**Scientific validation:** **`NOT_STARTED`**." in status
+    assert "**Training and External Challenge:** **`HOLD`**." in status
+
+
 def test_partial_and_missing_components_have_explicit_registered_blockers() -> None:
     components = _component_map()
 

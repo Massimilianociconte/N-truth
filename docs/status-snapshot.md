@@ -1,6 +1,6 @@
 # N-Truth clean-checkout status — PRD v8.0
 
-**Verified scope:** repository engineering contracts, 2026-08-09.
+**Verified scope:** repository engineering contracts, 2026-08-13.
 **Binding specification:** **N-Truth PRD v8.0**.
 **Repository implementation status:** **`IMPLEMENTED_WITH_EXPLICIT_BLOCKERS`**.
 **Scientific validation:** **`NOT_STARTED`**.
