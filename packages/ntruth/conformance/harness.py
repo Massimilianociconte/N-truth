@@ -317,8 +317,8 @@ def _check_evaluator_registry(
                     clause_id=pin.theory_clause_id,
                     rule_id=pin.rule_id,
                     message=(
-                        "reviewed evaluator pin differs from exact Theory clause/Rulebook "
-                        "contract bytes"
+                        "engineering evaluator identity pin differs from exact Theory "
+                        "clause/Rulebook contract bytes"
                     ),
                 )
             )
@@ -326,7 +326,9 @@ def _check_evaluator_registry(
         failures.append(
             ConformanceFailure(
                 code=ConformanceFailureCode.PIN_MISMATCH,
-                message="reviewed evaluator registry must cover every Theory clause exactly",
+                message=(
+                    "engineering evaluator identity registry must cover every Theory clause exactly"
+                ),
             )
         )
 

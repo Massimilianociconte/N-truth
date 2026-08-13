@@ -60,7 +60,7 @@ Core invariants:
 | Area | Repository implementation | Scientific boundary |
 |---|---|---|
 | Core Semantic Kernel | Strict v8 schemas, `KnowledgeValue`, evidence/support axes, query-scoped claims | Vocabulary and profile ambiguities remain registered |
-| Theory and Rulebook | Seven clause families, immutable assets, packaged conformance fixtures, reviewed code pins | Theory Reference Set and Derivation Gold remain unavailable |
+| Theory and Rulebook | Seven clause families, immutable assets, packaged conformance fixtures, engineering identity pins | Theory Reference Set and Derivation Gold remain unavailable |
 | Deterministic runtime | Bundle-gated derivation, proof verification, exact graph equality, Canonical Count Registry | Partial graph scoring and some positive payload shapes remain review-blocked |
 | Prospective/reporting | Immutable planned/executed records, reconciliation, neutral ReportBundle, JSON/YAML/HTML | Mixed-state aggregation remains fail-closed without reviewed policy |
 | Parser/training boundary | Candidate-only parser, adjudicated Gold target, protected TEST/EXTERNAL splits, anonymous FD consumption | Training can never proceed while Reality Gate v8 is HOLD |

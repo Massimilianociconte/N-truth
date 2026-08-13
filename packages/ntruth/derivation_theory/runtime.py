@@ -116,19 +116,22 @@ _REVIEWED_RULE_CHECKSUM_BY_ID = {
 
 
 class V8EvaluatorReviewRequired(ValueError):
-    """No reviewed executable is registered for the supplied scientific contract."""
+    """No engineering-pinned executable identity matches the supplied contract."""
 
     def __init__(self, *, clause_id: str | None = None) -> None:
         self.review_requirement = ScientificReviewRequirement(
             issue_id="SRR-V8-024",
             rationale=(
-                "A Theory/Rulebook successor requires an explicitly reviewed evaluator "
-                "artifact, including exact implementation bytes, before deterministic "
-                "re-derivation."
+                "The evaluator registry is an engineering identity gate only. A "
+                "Theory/Rulebook successor requires an engineering-pinned evaluator "
+                "artifact, including exact implementation bytes, plus separately "
+                "authorized scientific review before deterministic re-derivation."
             ),
         )
         suffix = f" for {clause_id}" if clause_id is not None else ""
-        super().__init__(f"SCIENTIFIC_REVIEW_REQUIRED: no reviewed v8 evaluator{suffix}")
+        super().__init__(
+            f"SCIENTIFIC_REVIEW_REQUIRED: no engineering-pinned v8 evaluator identity{suffix}"
+        )
 
 
 @dataclass(frozen=True)
@@ -249,7 +252,7 @@ def _reviewed_constant_payload(value: object) -> object:
     if value_type is dict:
         dict_value = cast(dict[object, object], value)
         if any(type(key) is not str for key in dict_value):
-            raise TypeError("reviewed callable dictionaries require exact string keys")
+            raise TypeError("pinned callable dictionaries require exact string keys")
         string_dict = cast(dict[str, object], dict_value)
         return {
             "type": "dict",
@@ -259,7 +262,7 @@ def _reviewed_constant_payload(value: object) -> object:
         }
     if value_type is CodeType:
         return {"type": "code", "value": _reviewed_code_payload(cast(CodeType, value))}
-    raise TypeError(f"unsupported reviewed callable constant: {value_type.__name__}")
+    raise TypeError(f"unsupported pinned callable constant: {value_type.__name__}")
 
 
 def _reviewed_code_payload(code: CodeType) -> dict[str, object]:
@@ -310,7 +313,7 @@ def _model_review_callables(
         for decorator_name in sorted(group):
             function = _unwrapped_function(group[decorator_name].func)
             if not inspect.isfunction(function):
-                raise TypeError("reviewed Pydantic callables must remain Python functions")
+                raise TypeError("pinned Pydantic callables must remain Python functions")
             dependencies.append(
                 (
                     (
@@ -328,7 +331,7 @@ def _module_attribute_callables(function: Any) -> tuple[tuple[str, Any], ...]:
 
     global_values = function.__globals__
     if type(global_values) is not dict:
-        raise TypeError("reviewed callable globals must remain an exact dict")
+        raise TypeError("pinned callable globals must remain an exact dict")
     instructions = tuple(dis.get_instructions(function))
     dependencies: list[tuple[str, Any]] = []
     for index, instruction in enumerate(instructions):
@@ -342,7 +345,7 @@ def _module_attribute_callables(function: Any) -> tuple[tuple[str, Any], ...]:
             if attribute_instruction.opname not in {"LOAD_ATTR", "LOAD_METHOD"}:
                 break
             if type(attribute_instruction.argval) is not str:
-                raise TypeError("reviewed module attribute names must remain exact strings")
+                raise TypeError("pinned module attribute names must remain exact strings")
             attribute_name = attribute_instruction.argval
             value = inspect.getattr_static(value, attribute_name)
             attribute_path = f"{attribute_path}.{attribute_name}"
@@ -356,7 +359,7 @@ def _reviewed_callable_closure(
     executable_dependencies: dict[str, Any],
     contract_dependencies: dict[str, type[BaseModel]],
 ) -> tuple[tuple[str, Any], ...]:
-    """Resolve the bounded live callable-global graph used by reviewed execution."""
+    """Resolve the bounded live callable-global graph used by engineering-pinned execution."""
 
     pending: list[tuple[str, object]] = [
         (f"executable:{name}", _unwrapped_function(dependency))
@@ -378,21 +381,21 @@ def _reviewed_callable_closure(
         binding, candidate = pending.pop(0)
         function = _unwrapped_function(candidate)
         if not inspect.isfunction(function):
-            raise TypeError("reviewed executable dependencies must remain Python functions")
+            raise TypeError("pinned executable dependencies must remain Python functions")
         dependencies.append((binding, function))
         if len(dependencies) > _MAX_REVIEWED_CALLABLE_BINDINGS:
-            raise ValueError("reviewed callable binding closure exceeds its fixed bound")
+            raise ValueError("pinned callable binding closure exceeds its fixed bound")
 
         marker = id(function)
         if marker in expanded:
             continue
         expanded.add(marker)
         if len(expanded) > _MAX_REVIEWED_CALLABLES:
-            raise ValueError("reviewed callable closure exceeds its fixed bound")
+            raise ValueError("pinned callable closure exceeds its fixed bound")
 
         global_values = function.__globals__
         if type(global_values) is not dict:
-            raise TypeError("reviewed callable globals must remain an exact dict")
+            raise TypeError("pinned callable globals must remain an exact dict")
         for global_name in sorted(set(function.__code__.co_names)):
             referenced = _unwrapped_function(global_values.get(global_name))
             if inspect.isfunction(referenced):
@@ -533,7 +536,7 @@ def _derivation_code_checksum(
     *,
     dependency_checksum: str | None = None,
 ) -> str:
-    """Hash the reviewed live evaluator and its scientific contract closure."""
+    """Hash the engineering-pinned evaluator and its scientific contract closure."""
 
     if dependency_checksum is None:
         dependency_checksum = _derivation_dependency_checksum()
@@ -786,7 +789,7 @@ def _checksum_check(bundle: ConformanceBundle) -> _RuntimeFailureCheck:
 
 
 def _evaluator_pin_check(bundle: ConformanceBundle) -> _RuntimeFailureCheck:
-    """Resolve every live evaluator against the external reviewed registry pins."""
+    """Resolve every live evaluator against the engineering-pinned registry identity gate."""
 
     first_error: Exception | None = None
     try:
@@ -826,7 +829,10 @@ def _evaluator_pin_check(bundle: ConformanceBundle) -> _RuntimeFailureCheck:
                     code=ConformanceFailureCode.PIN_MISMATCH,
                     clause_id=clause.clause_id,
                     rule_id=rule.rule_id,
-                    message="live derivation evaluator differs from its reviewed registry pin",
+                    message=(
+                        "live derivation evaluator differs from its engineering-pinned "
+                        "registry identity"
+                    ),
                 )
             )
 
@@ -840,7 +846,9 @@ def _evaluator_pin_check(bundle: ConformanceBundle) -> _RuntimeFailureCheck:
                 code=ConformanceFailureCode.PIN_MISMATCH,
                 clause_id="DT-E-INTERFERENCE-ESTIMAND",
                 rule_id="V8-E-INTERFERENCE",
-                message="live adequacy evaluator differs from its reviewed registry pin",
+                message=(
+                    "live adequacy evaluator differs from its engineering-pinned registry identity"
+                ),
             )
         )
     return _RuntimeFailureCheck(tuple(failures), first_error)

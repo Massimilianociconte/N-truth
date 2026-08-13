@@ -331,7 +331,7 @@ class ConformanceFixtureSet(KernelModel):
 
 
 class ReviewedEvaluatorArtifactPin(KernelModel):
-    """One exact scientific executable reviewed against immutable contract bytes."""
+    """One exact engineering identity pin over executable and contract bytes."""
 
     evaluator_kind: EvaluatorArtifactKind
     artifact_id: NonBlankStr
@@ -348,7 +348,7 @@ class ReviewedEvaluatorArtifactPin(KernelModel):
 
 
 class ReviewedEvaluatorRegistry(KernelModel):
-    """Pre-reviewed expected code digests; live source never updates this asset."""
+    """Engineering identity digests; live source never updates this asset."""
 
     registry_id: NonBlankStr
     registry_version: NonBlankStr
@@ -365,7 +365,7 @@ class ReviewedEvaluatorRegistry(KernelModel):
             for pin in self.artifact_pins
         ]
         if len(set(identities)) != len(identities):
-            raise ValueError("reviewed evaluator registry contains duplicate artifact pins")
+            raise ValueError("engineering identity registry contains duplicate artifact pins")
         derivation_pins = [
             pin
             for pin in self.artifact_pins
