@@ -60,7 +60,7 @@ CANONICAL_COMPONENT_DESCRIPTOR_SHA256: Final[Mapping[str, str]] = MappingProxyTy
             "0baf3bbcc78ec50b8839ba87e024afe461c41ff053ae1406f063522c8ccecb39"
         ),
         "core-semantic-kernel": (
-            "080f8a2ff5b341e1cf62a25d78b6884e7f14a6ec5659675f5fbd93cb9359cf0b"
+            "3c4f42b16ae9d46eac8102f967cabbfed70781a6041d700e5dfefb0add4e01b6"
         ),
         "corrections-rederivation": (
             "f25b0e4ad2c6d3b64543ad3e052a55305c3a4197602544a20c1c18ce19f4e4f2"
@@ -106,7 +106,7 @@ CANONICAL_COMPONENT_DESCRIPTOR_SHA256: Final[Mapping[str, str]] = MappingProxyTy
             "e51279ea806af239d70d8d883b1d6ee479e5f660fda9363a4558d0f54fc5db14"
         ),
         "rulebook-conformance": (
-            "0e3b9390eff43926dea22ee852dc36a15a4947d195164a3fe6c5f76e86deec7c"
+            "84f4438f23864a09f296d90e822ecbb49b41c904a2a420740f0b2e29cc58c29d"
         ),
         "statistical-handoff": ("cd05e8bbf4642a587971caa6838067c0b6de523a7b4ead4de59f1d8c24edea3e"),
         "v7-compatibility": ("069bf653a8b5e9267b59a58ffc5d78e429deb0a2a5cf812e77f8c87e162e7d64"),

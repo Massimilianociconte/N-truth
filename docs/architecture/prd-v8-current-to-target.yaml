@@ -13,7 +13,7 @@
       "public_api": ["python:ntruth.schemas.kernel:KernelModel", "python:ntruth.schemas.knowledge:KnowledgeValue"],
       "owner": "semantic-kernel",
       "adr_paths": ["docs/adr/0013-prd-v8-scientific-contract-migration.md"],
-      "test_paths": ["tests/unit/test_prd_v8_kernel_contracts.py", "tests/unit/test_prd_v8_kernel_fix_round1.py", "tests/unit/test_prd_v8_task9_knowledge_provenance_uniqueness.py", "tests/unit/test_prd_v8_task9_knowledge_provenance_uniqueness_fix1.py", "tests/unit/test_prd_v8_task9_knowledge_provenance_uniqueness_fix2.py", "tests/unit/test_prd_v8_task9_knowledge_provenance_uniqueness_fix3.py", "tests/unit/test_prd_v8_task9_knowledge_provenance_uniqueness_fix4.py", "tests/unit/test_prd_v8_task9_knowledge_provenance_uniqueness_fix5.py", "tests/unit/test_prd_v8_task9_knowledge_nested_boundary_fix6.py", "tests/integration/test_prd_v8_task8_fix1_repository_truth.py"],
+      "test_paths": ["tests/unit/test_prd_v8_kernel_contracts.py", "tests/unit/test_prd_v8_kernel_fix_round1.py", "tests/unit/test_prd_v8_task9_knowledge_provenance_uniqueness.py", "tests/unit/test_prd_v8_task9_knowledge_provenance_uniqueness_fix1.py", "tests/unit/test_prd_v8_task9_knowledge_provenance_uniqueness_fix2.py", "tests/unit/test_prd_v8_task9_knowledge_provenance_uniqueness_fix3.py", "tests/unit/test_prd_v8_task9_knowledge_provenance_uniqueness_fix4.py", "tests/unit/test_prd_v8_task9_knowledge_provenance_uniqueness_fix5.py", "tests/unit/test_prd_v8_task9_knowledge_nested_boundary_fix6.py", "tests/unit/test_prd_v8_task9_knowledge_nested_boundary_fix7.py", "tests/integration/test_prd_v8_task8_fix1_repository_truth.py"],
       "evidence_paths": ["docs/audits/prd-v8-full-migration/FINAL_IMPLEMENTATION_MATRIX.md"],
       "blocker_ids": []
     },
@@ -49,7 +49,7 @@
       "public_api": ["python:ntruth.conformance.harness:evaluate_conformance", "python:ntruth.derivation_theory.runtime:verify_runtime_bundle"],
       "owner": "rulebook-maintainers",
       "adr_paths": ["docs/adr/0013-prd-v8-scientific-contract-migration.md"],
-      "test_paths": ["tests/unit/test_prd_v8_derivation_theory_conformance.py", "tests/unit/test_prd_v8_task9_evaluator_transitive_digest.py", "tests/unit/test_prd_v8_task9_evaluator_transitive_digest_fix1.py", "tests/unit/test_prd_v8_task9_evaluator_transitive_digest_fix2.py", "tests/unit/test_prd_v8_task9_evaluator_transitive_digest_fix3.py", "tests/integration/test_prd_v8_packaged_conformance.py"],
+      "test_paths": ["tests/unit/test_prd_v8_derivation_theory_conformance.py", "tests/unit/test_prd_v8_task9_evaluator_transitive_digest.py", "tests/unit/test_prd_v8_task9_evaluator_transitive_digest_fix1.py", "tests/unit/test_prd_v8_task9_evaluator_transitive_digest_fix2.py", "tests/unit/test_prd_v8_task9_evaluator_transitive_digest_fix3.py", "tests/unit/test_prd_v8_task9_evaluator_registry_wording.py", "tests/integration/test_prd_v8_packaged_conformance.py"],
       "evidence_paths": ["packages/ntruth/conformance/assets/implementation-conformance-fixtures-simple-cell-culture-0.1.0.json"],
       "blocker_ids": []
     },

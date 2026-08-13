@@ -25,6 +25,7 @@ REQUIRED_TASK9_PATHS = {
             "tests/unit/test_prd_v8_task9_knowledge_provenance_uniqueness_fix4.py",
             "tests/unit/test_prd_v8_task9_knowledge_provenance_uniqueness_fix5.py",
             "tests/unit/test_prd_v8_task9_knowledge_nested_boundary_fix6.py",
+            "tests/unit/test_prd_v8_task9_knowledge_nested_boundary_fix7.py",
         },
     },
     "rulebook-conformance": {
@@ -37,6 +38,7 @@ REQUIRED_TASK9_PATHS = {
             "tests/unit/test_prd_v8_task9_evaluator_transitive_digest_fix1.py",
             "tests/unit/test_prd_v8_task9_evaluator_transitive_digest_fix2.py",
             "tests/unit/test_prd_v8_task9_evaluator_transitive_digest_fix3.py",
+            "tests/unit/test_prd_v8_task9_evaluator_registry_wording.py",
         },
     },
     "query-scoped-claims": {
