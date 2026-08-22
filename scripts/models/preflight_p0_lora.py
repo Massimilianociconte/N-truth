@@ -27,7 +27,7 @@ def main() -> int:
 
     model_path = REPO / cfg["model"]["local_path"]
     train_chat = REPO / cfg["data"]["train_path"]
-    val_chat = REPO / cfg["data"]["validation_path"]
+    REPO / cfg["data"]["validation_path"]
 
     # Count lines / tasks
     task_counts: dict[str, int] = {}
@@ -75,7 +75,7 @@ def main() -> int:
                 f"LoRA rank={cfg['training']['lora_parameters']['rank']} "
                 f"on {len(modules_found)} target key patterns"
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             trainable_note = f"model probe skipped: {exc}"
             modules_found = list(cfg["training"]["lora_parameters"]["keys"])
 

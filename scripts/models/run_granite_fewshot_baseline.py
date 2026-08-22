@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -135,10 +134,7 @@ def run_baseline(
     backend.load()
 
     modes: list[Literal["zero_shot", "few_shot"]]
-    if mode == "both":
-        modes = ["zero_shot", "few_shot"]
-    else:
-        modes = [mode]
+    modes = ["zero_shot", "few_shot"] if mode == "both" else [mode]
 
     report: dict[str, Any] = {
         "suite": "fewshot_p0_v1",
@@ -258,10 +254,7 @@ def main() -> int:
         "output_path": report.get("output_path"),
         "n_eval": report.get("n_eval"),
         "n_demos": report.get("n_demos"),
-        "modes": {
-            name: data["summary"]
-            for name, data in report.get("modes", {}).items()
-        },
+        "modes": {name: data["summary"] for name, data in report.get("modes", {}).items()},
         "scientific_validation_status": "NOT_STARTED",
     }
     print(json.dumps(compact, indent=2, sort_keys=True))

@@ -181,9 +181,7 @@ def _short_gold_for_stage(case: dict[str, Any], stage: StageName) -> dict[str, A
         "graph_set_id": f"demo-graph-{case_id}",
         "status": "complete",
         "provenance": {**prov, "stage": "candidate_graph_set"},
-        "experiment_block_title": (gold.get("experiment_blocks") or [{}])[0].get(
-            "title", ""
-        )
+        "experiment_block_title": (gold.get("experiment_blocks") or [{}])[0].get("title", "")
         if gold.get("experiment_blocks")
         else "",
         "evidence_spans": mini_spans,
@@ -232,9 +230,7 @@ def _build_messages(
     stage: StageName,
     few_shot: bool,
 ) -> list[dict[str, str]]:
-    messages: list[dict[str, str]] = [
-        {"role": "system", "content": _system_for_stage(stage)}
-    ]
+    messages: list[dict[str, str]] = [{"role": "system", "content": _system_for_stage(stage)}]
     user_payload = {
         "parser_input": case["parser_input"],
         "source_text": case.get("source_text", ""),
@@ -310,18 +306,18 @@ def _assess_stage(raw: str, stage: StageName) -> dict[str, Any]:
         out["validation_error"] = None
         dumped = model.model_dump(mode="json")
         # completeness: fraction of list fields non-empty if gold would have items — here structural
-        list_fields = [
-            k for k, v in dumped.items() if isinstance(v, list)
-        ]
+        list_fields = [k for k, v in dumped.items() if isinstance(v, list)]
         out["required_field_completeness"] = 1.0  # schema valid ⇒ required present
         out["list_field_counts"] = {k: len(dumped[k]) for k in list_fields}
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         out["validation_error"] = str(exc)
     return out
 
 
-def compute_max_tokens_budget(cases: list[dict[str, Any]], stage: StageName, backend: Any) -> dict[str, Any]:
-    """max_tokens ≥ p95(gold_output_tokens) × 1.5, capped."""
+def compute_max_tokens_budget(
+    cases: list[dict[str, Any]], stage: StageName, backend: Any
+) -> dict[str, Any]:
+    """max_tokens ≥ p95(gold_output_tokens) x 1.5, capped."""
 
     token_counts: list[int] = []
     for case in cases:
@@ -332,7 +328,7 @@ def compute_max_tokens_budget(cases: list[dict[str, Any]], stage: StageName, bac
     if not token_counts:
         p95 = 256
     else:
-        idx = min(len(token_counts) - 1, int(round(0.95 * (len(token_counts) - 1))))
+        idx = min(len(token_counts) - 1, round(0.95 * (len(token_counts) - 1)))
         p95 = token_counts[idx]
     budget = max(256, int(p95 * 1.5))
     # Cap runtime-friendly for stage outputs
@@ -366,9 +362,8 @@ def audit_baseline(backend: Any, cases: list[dict[str, Any]]) -> dict[str, Any]:
                 "short_tokens": len(backend.tokenize(short)),
             }
         )
-    from ntruth.model_backends.stage_schemas import stage_json_schema
     from ntruth.model_backends.constrained import compile_schema_probe, probe_outlines_mlx
-    from ntruth.model_backends.stage_schemas import STAGE_SCHEMA_REGISTRY
+    from ntruth.model_backends.stage_schemas import STAGE_SCHEMA_REGISTRY, stage_json_schema
 
     schema_sizes = {}
     for name, cls in STAGE_SCHEMA_REGISTRY.items():
@@ -389,8 +384,7 @@ def audit_baseline(backend: Any, cases: list[dict[str, Any]]) -> dict[str, Any]:
         "demo_lengths": demo_lens,
         "schema_compile": schema_sizes,
         "schema_json_bytes": {
-            k: len(json.dumps(stage_json_schema(k)).encode())
-            for k in STAGE_SCHEMA_REGISTRY
+            k: len(json.dumps(stage_json_schema(k)).encode()) for k in STAGE_SCHEMA_REGISTRY
         },
         "official_status": {
             "migration_status": "ARCHITECTURE_MIGRATED",
@@ -428,9 +422,7 @@ def run_matrix(
 
     try:
         audit = audit_baseline(backend, cases)
-        budget = compute_max_tokens_budget(
-            demos_all + evals[: min(20, len(evals))], stage, backend
-        )
+        budget = compute_max_tokens_budget(demos_all + evals[: min(20, len(evals))], stage, backend)
         max_tokens = budget["max_tokens"]
         report: dict[str, Any] = {
             "experiment": "B4_constrained_matrix",
@@ -457,9 +449,7 @@ def run_matrix(
             constrained = meta["decoding"] == "constrained"
             rows: list[dict[str, Any]] = []
             for case in evals:
-                messages = _build_messages(
-                    case, demos, stage=stage, few_shot=few_shot
-                )
+                messages = _build_messages(case, demos, stage=stage, few_shot=few_shot)
                 # Prompt token count
                 prompt = backend.apply_chat_template(messages, add_generation_prompt=True)
                 prompt_tokens = len(backend.tokenize(prompt))
@@ -477,7 +467,7 @@ def run_matrix(
                 try:
                     gen = backend.generate_structured(req)
                     error = None
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:
                     gen = None
                     error = str(exc)
                 latency = (time.perf_counter() - t0) * 1000.0
@@ -513,9 +503,7 @@ def run_matrix(
                         "candidate_only": assess["candidate_only"],
                         "forbidden_keys": assess["forbidden_keys"],
                         "validation_error": assess.get("validation_error"),
-                        "required_field_completeness": assess.get(
-                            "required_field_completeness"
-                        ),
+                        "required_field_completeness": assess.get("required_field_completeness"),
                         "latency_ms": latency,
                         "raw_preview": (gen.text or "")[:800],
                         "prompt_tokens_est": prompt_tokens,
@@ -593,9 +581,7 @@ def main() -> int:
 
         profile = load_profile(PROFILE)
         model_path = (REPO / profile["model"]["local_path"]).resolve()
-        backend = create_model_backend(
-            model_path=model_path, profile=profile, max_tokens=512
-        )
+        backend = create_model_backend(model_path=model_path, profile=profile, max_tokens=512)
         backend.load()
         try:
             report = audit_baseline(backend, _load_cases())
@@ -635,10 +621,7 @@ def main() -> int:
         combined["stages"][stage] = {
             "max_tokens": report["max_tokens"],
             "token_budget": report["token_budget"],
-            "summaries": {
-                cond: data["summary"]
-                for cond, data in report["conditions"].items()
-            },
+            "summaries": {cond: data["summary"] for cond, data in report["conditions"].items()},
         }
         stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
         path = OUT / f"matrix-{stage}-{stamp}.json"

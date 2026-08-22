@@ -92,17 +92,11 @@ class ValidationStackReport(FrozenModel):
             raise ValueError(
                 "scientifically_acceptable richiede schema_valid, "
                 "referentially_valid, hard_verified"
-                + (
-                    " e human_confirmed_decisive"
-                    if self.require_human_confirmation
-                    else ""
-                )
+                + (" e human_confirmed_decisive" if self.require_human_confirmation else "")
                 + "; JSON/syntax valid non bastano"
             )
         if self.scientifically_acceptable and not self.schema_valid:
-            raise ValueError(
-                "scientifically_acceptable non puo essere True con solo syntax_valid"
-            )
+            raise ValueError("scientifically_acceptable non puo essere True con solo syntax_valid")
         if self.semantically_reviewed:
             semantic = _layer_map(self.layers).get(ValidationLayer.SEMANTIC_VERIFIER)
             if semantic is None or semantic.outcome is not LayerOutcome.PASS:
@@ -190,9 +184,7 @@ def build_validation_stack_report(
     # JSON Schema layer: prefer explicit signal, else fall back to schema_valid.
     json_ok = schema_valid if json_schema_ok is None else json_schema_ok
     # Grammar is syntax-only; if unknown, treat as not_run rather than inventing pass.
-    grammar_outcome = _bool_or_not_run(
-        grammar_constrained_ok, ValidationLayer.GRAMMAR_CONSTRAINED
-    )
+    grammar_outcome = _bool_or_not_run(grammar_constrained_ok, ValidationLayer.GRAMMAR_CONSTRAINED)
     # Without an explicit grammar signal, syntax is JSON-valid only.
     syntax_valid = bool(json_ok) and (
         grammar_constrained_ok is True or grammar_constrained_ok is None
@@ -222,14 +214,10 @@ def build_validation_stack_report(
 
     # Explicit fail when required and not confirmed; N/A when policy waives.
     if require_human_confirmation:
-        human_outcome = (
-            LayerOutcome.PASS if human_confirmed_decisive else LayerOutcome.FAIL
-        )
+        human_outcome = LayerOutcome.PASS if human_confirmed_decisive else LayerOutcome.FAIL
     else:
         human_outcome = (
-            LayerOutcome.PASS
-            if human_confirmed_decisive
-            else LayerOutcome.NOT_APPLICABLE
+            LayerOutcome.PASS if human_confirmed_decisive else LayerOutcome.NOT_APPLICABLE
         )
 
     layers: list[LayerResult] = [

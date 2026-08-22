@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Mapping, MutableMapping, Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from ntruth.model_backends.base import MODEL_MUST_NOT_EMIT
@@ -155,15 +155,20 @@ def analyze_structural_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
             issues.append(f"null_list_field:{field}")
         elif not isinstance(value, list | tuple):
             issues.append(f"wrong_type_list_field:{field}:{type(value).__name__}")
-    for required in ("schema_version", "result_id", "stage", "status", "provenance", "graph_set_id"):
+    for required in (
+        "schema_version",
+        "result_id",
+        "stage",
+        "status",
+        "provenance",
+        "graph_set_id",
+    ):
         if required not in payload:
             issues.append(f"missing_required:{required}")
     return {
         "forbidden_keys": forbidden,
         "structural_issues": issues,
-        "list_field_present": {
-            field: field in payload for field in _LIST_FIELDS
-        },
+        "list_field_present": {field: field in payload for field in _LIST_FIELDS},
     }
 
 
@@ -214,7 +219,7 @@ def assess_prediction(
         if gold is not None:
             result["score"] = score_output(predicted, gold)
         return result
-    except Exception as exc:  # noqa: BLE001 — diagnostica
+    except Exception as exc:
         result["validation_error"] = str(exc)
 
     if not apply_safe_normalize:
@@ -237,14 +242,10 @@ def assess_prediction(
         if gold is not None:
             result["score"] = score_output(predicted, gold)
         # schema_valid resta False: solo dopo normalize
-    except Exception as exc:  # noqa: BLE001
-        result["validation_error"] = (
-            f"raw={result['validation_error']}; after_normalize={exc}"
-        )
+    except Exception as exc:
+        result["validation_error"] = f"raw={result['validation_error']}; after_normalize={exc}"
         if gold is not None:
-            result["score"] = score_invalid_output(
-                gold, result["validation_error"] or "invalid"
-            )
+            result["score"] = score_invalid_output(gold, result["validation_error"] or "invalid")
     return result
 
 

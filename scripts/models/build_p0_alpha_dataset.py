@@ -35,7 +35,7 @@ def main() -> int:
             seed=args.seed,
             dev_cases_path=DEV_CASES,
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         print(f"FAILED: {exc}", file=sys.stderr)
         return 1
     print(json.dumps(manifest, indent=2, sort_keys=True))

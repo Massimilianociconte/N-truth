@@ -32,9 +32,10 @@ statistical tests, or free-form `RuleResult`s.
 > **experimental and not intended for scientific decision-making** without human
 > review. Scientific validation status is **`NOT_STARTED`**. A provisional local
 > Granite runtime is **`PARTIALLY_VERIFIED` only** for one registered MLX community
-> 4-bit fingerprint. Substantive LoRA training is **`HOLD_PENDING_REAL_ANCHOR`**.
-> No gold corpus, no scientifically trained N-Truth model, and no externally
-> validated performance claim exist.
+> 4-bit fingerprint. Substantive LoRA training is **`HOLD_PENDING_REAL_ANCHOR`** and
+> the hold is enforced in code by `ntruth-ml train`, not only documented. No gold
+> corpus, no scientifically trained N-Truth model, and no externally validated
+> performance claim exist.
 
 Repository: [github.com/Massimilianociconte/N-truth](https://github.com/Massimilianociconte/N-truth)<br>
 Issues: [bug reports and feature requests](https://github.com/Massimilianociconte/N-truth/issues)<br>

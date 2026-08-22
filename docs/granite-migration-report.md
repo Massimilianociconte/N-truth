@@ -51,9 +51,9 @@ evaluate_claim_gate("internal_pilot")
 #  "required_next_state": "PARTIALLY_VERIFIED", ...}
 
 can_run_exploratory_benchmarks()  # True se non FAILED
-can_run_internal_pilot()          # da PARTIALLY_VERIFIED
-can_run_external_validation()     # solo VERIFIED
-is_scientifically_releasable()    # VERIFIED + EXTERNAL_VALIDATED
+can_run_internal_pilot()  # da PARTIALLY_VERIFIED
+can_run_external_validation()  # solo VERIFIED
+is_scientifically_releasable()  # VERIFIED + EXTERNAL_VALIDATED
 evaluate_qualification_against_artifact(current_artifact={...})
 canonical_fingerprint_hash(artifact)  # SHA-256 payload canonico
 append_qualification_transition(...)  # log append-only auditabile

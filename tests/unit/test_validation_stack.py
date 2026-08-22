@@ -108,9 +108,7 @@ def test_missing_human_confirmation_blocks_when_required() -> None:
         require_human_confirmation=True,
     )
     assert report.scientifically_acceptable is False
-    human = next(
-        item for item in report.layers if item.layer is ValidationLayer.HUMAN_CONFIRMATION
-    )
+    human = next(item for item in report.layers if item.layer is ValidationLayer.HUMAN_CONFIRMATION)
     assert human.outcome is LayerOutcome.FAIL
 
 
@@ -123,9 +121,7 @@ def test_human_not_required_policy_allows_acceptability() -> None:
         require_human_confirmation=False,
     )
     assert report.scientifically_acceptable is True
-    human = next(
-        item for item in report.layers if item.layer is ValidationLayer.HUMAN_CONFIRMATION
-    )
+    human = next(item for item in report.layers if item.layer is ValidationLayer.HUMAN_CONFIRMATION)
     assert human.outcome is LayerOutcome.NOT_APPLICABLE
 
 
@@ -154,9 +150,7 @@ def test_author_assertion_alone_fails_evidence_support() -> None:
     assert empty.outcome is LayerOutcome.FAIL
     assert EVIDENCE_SUPPORT_EMPTY_CODE in empty.codes
 
-    ok = evidence_support_from_types(
-        [EvidenceType.AUTHOR_ASSERTION, EvidenceType.SAMPLE_METADATA]
-    )
+    ok = evidence_support_from_types([EvidenceType.AUTHOR_ASSERTION, EvidenceType.SAMPLE_METADATA])
     assert ok.outcome is LayerOutcome.PASS
 
     report = build_validation_stack_report(
