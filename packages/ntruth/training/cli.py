@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Literal
 
@@ -230,13 +231,13 @@ def benchmark_resources(
     deterministici. Non inventa picchi: senza misure complete fallisce.
     """
 
+    from ntruth.runtime_resources.schema import RuntimeProfileName
     from ntruth.training.mlx_runtime import load_profile
     from ntruth.training.runtime_benchmark import (
         DEFAULT_WORKLOADS,
         ProfileWorkload,
         run_full_runtime_benchmark,
     )
-    from ntruth.runtime_resources.schema import RuntimeProfileName
 
     try:
         loaded = load_profile(profile.resolve())
@@ -245,6 +246,7 @@ def benchmark_resources(
             if model is not None
             else (repo.resolve() / loaded["model"]["local_path"]).resolve()
         )
+        workloads: Sequence[ProfileWorkload]
         if quick:
             workloads = (
                 ProfileWorkload(

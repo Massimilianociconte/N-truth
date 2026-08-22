@@ -117,9 +117,9 @@ def _default_mlx_factory(
     adapter_path: Path | None,
     max_tokens: int,
 ) -> ComponentFactory:
-    def factory(device: RuntimeDevice):
-        from ntruth.training.mlx_component import MLXGenerateComponent
+    from ntruth.training.mlx_component import MLXGenerateComponent
 
+    def factory(device: RuntimeDevice) -> MLXGenerateComponent:
         try:
             return MLXGenerateComponent(
                 model_path=model_path,
@@ -224,8 +224,7 @@ def run_predict_bundle(
             payload = dict(request)
         else:
             raise MLXPipelineError(
-                f"request[{index}] deve essere str o mapping, ricevuto "
-                f"{type(request).__name__}"
+                f"request[{index}] deve essere str o mapping, ricevuto {type(request).__name__}"
             )
         inputs.append(
             RuntimeInput(

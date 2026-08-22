@@ -85,12 +85,13 @@ class MLXGenerateComponent:
 
         # Percorso preferito: backend Granite astratto.
         try:
+            from ntruth.model_backends.errors import RuntimeDevice as BackendDevice
             from ntruth.model_backends.factory import create_model_backend
 
             self._backend = create_model_backend(
                 model_path=self.model_path,
                 adapter_path=self.adapter_path,
-                device=device,
+                device=BackendDevice(device.value),
                 max_tokens=max_tokens,
                 profile=profile,
                 allow_legacy=False,
@@ -104,9 +105,7 @@ class MLXGenerateComponent:
             from mlx_lm import generate, load
             from mlx_lm.sample_utils import make_sampler
         except ImportError as exc:
-            raise ComponentLoadError(
-                "mlx-lm non installato; usare uv sync --extra ml"
-            ) from exc
+            raise ComponentLoadError("mlx-lm non installato; usare uv sync --extra ml") from exc
 
         _apply_device_preference(device)
         try:

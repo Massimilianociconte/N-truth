@@ -1009,6 +1009,59 @@ def _mlx_command(config_path: Path) -> list[str]:
     return [sys.executable, "-m", "mlx_lm", "lora", "--config", str(config_path)]
 
 
+TRAINING_PROGRAM_REGISTRY_RELPATH = Path("models") / "registry" / "training_program.json"
+
+
+def assert_substantive_training_allowed(
+    repo_root: Path,
+    *,
+    smoke_test: bool,
+) -> dict[str, Any]:
+    """Fail-closed sul gate ``training_execution_gate`` del registry.
+
+    Finché il registry registra ``substantive_p0_training_allowed=false``
+    (attualmente ``HOLD_PENDING_REAL_ANCHOR``), l'addestramento sostantivo e
+    bloccato nel codice, non solo nella documentazione. Il smoke ingegneristico
+    isolato resta permesso finché ``engineering_smoke_training_allowed`` non
+    venga anch'esso revocato. Un registry mancante/ illeggibile blocca tutto.
+    """
+
+    gate_path = Path(repo_root) / TRAINING_PROGRAM_REGISTRY_RELPATH
+    try:
+        program = json.loads(gate_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise MLXPipelineError(
+            f"training program registry illeggibile ({gate_path}): {exc}; "
+            "gate fail-closed: addestramento bloccato"
+        ) from exc
+    if not isinstance(program, dict):
+        raise MLXPipelineError(f"training program registry non valido: {gate_path}")
+
+    gate = str(program.get("training_execution_gate", "UNKNOWN"))
+    substantive_allowed = bool(program.get("substantive_p0_training_allowed", False))
+    smoke_allowed = bool(program.get("engineering_smoke_training_allowed", False))
+    summary = {
+        "training_execution_gate": gate,
+        "substantive_p0_training_allowed": substantive_allowed,
+        "engineering_smoke_training_allowed": smoke_allowed,
+        "registry_path": str(gate_path),
+    }
+    if smoke_test:
+        if not smoke_allowed:
+            raise MLXPipelineError(
+                f"smoke ingegneristico revocato dal registry "
+                f"(engineering_smoke_training_allowed=false, gate={gate})"
+            )
+        return summary
+    if not substantive_allowed:
+        raise MLXPipelineError(
+            f"addestramento sostantivo bloccato dal registry: "
+            f"training_execution_gate={gate}, substantive_p0_training_allowed=false; "
+            "usare --runtime-smoke-only per il smoke ingegneristico isolato"
+        )
+    return summary
+
+
 def run_training(
     profile_path: Path,
     repo_root: Path,
@@ -1026,6 +1079,10 @@ def run_training(
     il controller interrompe dopo ``patience`` fasi senza miglioramento.
     """
 
+    training_program = assert_substantive_training_allowed(
+        repo_root,
+        smoke_test=smoke_test,
+    )
     profile = load_profile(profile_path)
     machine = doctor(profile_path, repo_root)
     if not machine["ready_to_train"]:
@@ -1039,7 +1096,6 @@ def run_training(
     allowed_seeds = tuple(int(item) for item in training["seeds"])
     if seed not in allowed_seeds and not smoke_test:
         raise MLXPipelineError(f"seed non preregistrato: {seed}; ammessi {allowed_seeds}")
-
     state_path = run_dir / "run-state.json"
     if run_dir.exists() and any(run_dir.iterdir()) and not resume:
         raise MLXPipelineError("run directory non vuota; usare --resume o una nuova directory")
@@ -1055,7 +1111,6 @@ def run_training(
     )
     patience = int(training["early_stopping_patience"])
     min_delta = float(training["early_stopping_min_delta"])
-    state: dict[str, Any]
     if resume:
         try:
             state = json.loads(state_path.read_text(encoding="utf-8"))
@@ -1095,6 +1150,7 @@ def run_training(
             "schema_version": RUN_SCHEMA_VERSION,
             "status": "running",
             "started_at": utc_now(),
+            "training_program": training_program,
             "profile_sha256": sha256_file(profile_path),
             "dataset_snapshot_sha256": dataset["snapshot_sha256"],
             "dataset_snapshot_id": dataset["snapshot_id"],

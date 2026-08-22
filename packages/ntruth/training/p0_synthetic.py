@@ -11,9 +11,8 @@ from __future__ import annotations
 import hashlib
 import json
 import random
-import re
-from collections.abc import Iterable, Sequence
-from dataclasses import dataclass, field
+from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
@@ -73,7 +72,7 @@ def _graph_hash(graph: CanonicalGraph) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Graph families (seed templates) — ~50 families × variants = 2k examples
+# Graph families (seed templates) — ~50 families x variants = 2k examples
 # ---------------------------------------------------------------------------
 
 
@@ -381,7 +380,7 @@ def render_text(
 
     # Entities
     for label, ntype in graph.entities:
-        pool = _ACTIVE if style != "passive" else _PASSIVE
+        pool: tuple[str, ...] = _ACTIVE if style != "passive" else _PASSIVE
         if style == "mixed":
             pool = _ACTIVE + _PASSIVE
         clause = add_clause(rng.choice(pool), entity=label)
@@ -394,9 +393,7 @@ def render_text(
         quant, value, unit = graph.count
         unit_word = graph.entities[0][0] if graph.entities else unit
         if quant == "EXACT" and value is not None:
-            clause = add_clause(
-                rng.choice(_COUNT_EXACT), n=str(value), unit=unit_word
-            )
+            clause = add_clause(rng.choice(_COUNT_EXACT), n=str(value), unit=unit_word)
             observation["visible"]["count"] = {
                 "quantifier": "EXACT",
                 "value": value,
@@ -404,9 +401,7 @@ def render_text(
                 "clause": clause,
             }
         elif quant == "APPROXIMATE" and value is not None:
-            clause = add_clause(
-                rng.choice(_COUNT_APPROX), n=str(value), unit=unit_word
-            )
+            clause = add_clause(rng.choice(_COUNT_APPROX), n=str(value), unit=unit_word)
             observation["visible"]["count"] = {
                 "quantifier": "APPROXIMATE",
                 "value": value,
@@ -417,9 +412,7 @@ def render_text(
             lo, hi = 8, 10
             if value is not None:
                 lo, hi = max(1, value - 1), value + 1
-            clause = add_clause(
-                rng.choice(_COUNT_RANGE), lo=str(lo), hi=str(hi), unit=unit_word
-            )
+            clause = add_clause(rng.choice(_COUNT_RANGE), lo=str(lo), hi=str(hi), unit=unit_word)
             observation["visible"]["count"] = {
                 "quantifier": "RANGE",
                 "lower_bound": lo,
@@ -487,10 +480,10 @@ def render_text(
             if clause in text:
                 start = text.index(clause)
                 # tighter span on entity label if possible
-                lab = item["label"]
+                lab = str(item["label"])
                 if lab in text[start : start + len(clause)]:
-                    rel = text[start : start + len(clause)].index(lab)
-                    s0, s1 = start + rel, start + rel + len(lab)
+                    rel_pos = text[start : start + len(clause)].index(lab)
+                    s0, s1 = start + rel_pos, start + rel_pos + len(lab)
                 else:
                     s0, s1 = start, start + len(clause)
                 spans.append(
@@ -840,10 +833,8 @@ def generate_p0_alpha_records(
                 observation=obs,
                 graph=g,
             )
-        except Exception as exc:  # noqa: BLE001
-            rejection_log.append(
-                {"reason": f"target_build_failed:{exc}", "family_id": g.family_id}
-            )
+        except Exception as exc:
+            rejection_log.append({"reason": f"target_build_failed:{exc}", "family_id": g.family_id})
             return None
 
         # Validate all targets
@@ -852,10 +843,8 @@ def generate_p0_alpha_records(
             EntityCountStage.model_validate(targets["TASK_ENTITY_COUNT"])
             CandidateRelationStage.model_validate(targets["TASK_EXPLICIT_RELATIONS"])
             MinimalCandidateGraphStage.model_validate(targets["TASK_FACTOR_ENDPOINT"])
-        except Exception as exc:  # noqa: BLE001
-            rejection_log.append(
-                {"reason": f"schema_invalid:{exc}", "family_id": g.family_id}
-            )
+        except Exception as exc:
+            rejection_log.append({"reason": f"schema_invalid:{exc}", "family_id": g.family_id})
             return None
 
         # Candidate-only: no forbidden keys in targets
@@ -896,8 +885,12 @@ def generate_p0_alpha_records(
             "text_sha256": th,
             "seed": seed,
             "renderer_version": RENDERER_VERSION,
-            "perturbation_manifest": pert
-            + ([f"style:{style}", f"invert:{invert}", f"distract:{distract}"]),
+            "perturbation_manifest": [
+                *pert,
+                f"style:{style}",
+                f"invert:{invert}",
+                f"distract:{distract}",
+            ],
             "training_eligible": split == "train",
             "evaluation_eligible": split in {"train", "validation"},
             "generator_inaccessible": False,
@@ -1009,7 +1002,7 @@ def quality_gate(records: Sequence[dict[str, Any]], report: dict[str, Any]) -> d
                 MinimalCandidateGraphStage.model_validate(target)
             else:
                 errors.append(f"unknown_task:{task}")
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             errors.append(f"schema:{rec['record_id']}:{exc}")
     # family split
     train_f = {r["family_id"] for r in records if r["split"] == "train"}
@@ -1087,9 +1080,7 @@ def write_snapshot(
     write_chat(output_dir / "validation.chat.jsonl", "validation")
 
     # empty test placeholder
-    (output_dir / "TEST_REAL_PLACEHOLDER.jsonl").write_text(
-        "", encoding="utf-8"
-    )
+    (output_dir / "TEST_REAL_PLACEHOLDER.jsonl").write_text("", encoding="utf-8")
     (output_dir / "TEST_REAL_PLACEHOLDER.README.md").write_text(
         "# TEST_REAL placeholder\n\nEmpty and inaccessible. Do not populate from synthetic "
         "or from B4_CONSTRAINED_DEV.\n",
@@ -1132,10 +1123,10 @@ def write_snapshot(
 
 ## Contents
 
-- Train: {manifest['n_train']} records
-- Validation: {manifest['n_validation']} records
+- Train: {manifest["n_train"]} records
+- Validation: {manifest["n_validation"]} records
 - Source: graph-first synthetic (`{RENDERER_VERSION}`)
-- Tasks: {', '.join(P0_TASKS)}
+- Tasks: {", ".join(P0_TASKS)}
 
 ## Protection
 
@@ -1152,7 +1143,7 @@ runtime_qualification_status: PARTIALLY_VERIFIED
 
 ## Quality gate
 
-passed={gate['passed']} errors={gate['error_count']} task_counts={gate['task_counts']}
+passed={gate["passed"]} errors={gate["error_count"]} task_counts={gate["task_counts"]}
 
 ## Use
 
