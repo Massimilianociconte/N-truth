@@ -176,6 +176,8 @@ STAGE_PROMPTS: dict[str, str] = {
 
 
 __all__ = [
+    "STAGE_PROMPTS",
+    "STAGE_SCHEMA_REGISTRY",
     "CandidateRelationStage",
     "CountMini",
     "EndpointMini",
@@ -186,8 +188,6 @@ __all__ = [
     "FactorMini",
     "MinimalCandidateGraphStage",
     "RelationMini",
-    "STAGE_PROMPTS",
-    "STAGE_SCHEMA_REGISTRY",
     "StageProvenanceMini",
     "stage_json_schema",
     "stage_schema",

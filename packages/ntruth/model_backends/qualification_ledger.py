@@ -19,6 +19,7 @@ Garanzie:
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import sqlite3
@@ -215,10 +216,7 @@ def store_evidence_payload(
             raise QualificationLedgerError(f"evidence file corrotto: {target}")
         return digest, relative.as_posix()
 
-    if isinstance(evidence, Mapping):
-        text = _canonical_json(dict(evidence))
-    else:
-        text = str(evidence)
+    text = _canonical_json(dict(evidence)) if isinstance(evidence, Mapping) else str(evidence)
     data = text.encode("utf-8")
     digest = _sha256_bytes(data)
     relative = Path("sha256") / digest[:2] / digest
@@ -296,7 +294,9 @@ class QualificationLedger:
         ).fetchone()
         if row is None:
             return None
-        return {key: row[key] for key in row.keys()}
+        # sqlite3.Row non supporta l'appartenenza per chiave ne la conversione
+        # diretta a dict: si itera su (indice, nome colonna).
+        return {key: row[index] for index, key in enumerate(row.keys())}
 
     def count(self) -> int:
         row = self.connection.execute(
@@ -445,9 +445,7 @@ class QualificationLedger:
                 latest = self.latest()
                 previous_hash = None if latest is None else latest.transition_hash
                 if latest is not None and latest.sequence != current_max:
-                    raise QualificationLedgerError(
-                        "incoerenza max_sequence vs latest.sequence"
-                    )
+                    raise QualificationLedgerError("incoerenza max_sequence vs latest.sequence")
 
                 transition_hash = compute_transition_hash(
                     sequence=sequence,
@@ -512,10 +510,8 @@ class QualificationLedger:
                     raise QualificationLedgerError("ledger_meta assente durante append")
                 self.connection.execute("COMMIT")
             except sqlite3.Error as exc:
-                try:
+                with contextlib.suppress(sqlite3.Error):
                     self.connection.execute("ROLLBACK")
-                except sqlite3.Error:
-                    pass
                 raise QualificationLedgerError(f"append fallito: {exc}") from exc
 
         record = self.latest()
@@ -537,12 +533,11 @@ class QualificationLedger:
         """Crea GENESIS se ledger non inizializzato. Blocca reseed silenzioso."""
 
         if self.is_initialized():
-            if self.count() == 0:
-                if not allow_reseed:
-                    raise QualificationLedgerError(
-                        "ledger_meta.initialized=1 ma catena vuota: "
-                        "possibile wipe; passare allow_reseed=True solo con conferma esplicita"
-                    )
+            if self.count() == 0 and not allow_reseed:
+                raise QualificationLedgerError(
+                    "ledger_meta.initialized=1 ma catena vuota: "
+                    "possibile wipe; passare allow_reseed=True solo con conferma esplicita"
+                )
             return None
         if self.count() > 0 and not allow_reseed:
             raise QualificationLedgerError(
@@ -586,10 +581,8 @@ class QualificationLedger:
                 )
                 self.connection.execute("COMMIT")
             except sqlite3.Error as exc:
-                try:
+                with contextlib.suppress(sqlite3.Error):
                     self.connection.execute("ROLLBACK")
-                except sqlite3.Error:
-                    pass
                 raise QualificationLedgerError(f"ensure_genesis fallito: {exc}") from exc
 
         return self.append(

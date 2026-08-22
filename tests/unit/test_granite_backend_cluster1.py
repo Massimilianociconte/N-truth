@@ -28,8 +28,16 @@ from ntruth.model_backends.profile import (
 )
 
 
-def test_default_provider_is_still_qwen_cluster1() -> None:
-    assert resolve_provider() is ModelProvider.LEGACY_QWEN
+def test_default_provider_is_granite_and_legacy_is_opt_in() -> None:
+    # Contratto post-migrazione (README + ADR-0010 + registry): Granite e il
+    # provider default; legacy_qwen richiede opt-in esplicito.
+    assert resolve_provider() is ModelProvider.GRANITE
+    import pytest as _pytest
+
+    from ntruth.model_backends.registry import ModelRegistryError as _MRE
+
+    with _pytest.raises(_MRE):
+        create_model_backend(model_path=Path("/tmp/qwen"), provider="legacy_qwen")
 
 
 def test_granite_provider_explicit_only() -> None:
@@ -61,7 +69,7 @@ def test_technical_profile_validates_and_forbids_operational_status() -> None:
 
 def test_granite_missing_weights_explicit_error(tmp_path: Path) -> None:
     backend = GraniteBackend(model_path=tmp_path / "no-such-model")
-    with pytest.raises(ComponentLoadError, match="assenti|missing|pesi"):
+    with pytest.raises(ComponentLoadError, match=r"assenti|missing|pesi"):
         backend.load()
 
 
@@ -77,11 +85,20 @@ def test_granite_constrained_request_fails_closed() -> None:
     assert backend.supports_constrained_decoding() is False
 
 
-def test_factory_default_is_qwen_backend(tmp_path: Path) -> None:
-    backend = create_model_backend(model_path=tmp_path / "qwen")
-    from ntruth.model_backends.legacy.qwen_backend import LegacyQwenBackend
+def test_factory_default_is_granite_and_legacy_requires_opt_in(tmp_path: Path) -> None:
+    from ntruth.model_backends.registry import ModelRegistryError
 
-    assert isinstance(backend, LegacyQwenBackend)
+    backend = create_model_backend(model_path=tmp_path / "granite")
+    assert isinstance(backend, GraniteBackend)
+
+    import pytest as _pytest
+
+    with _pytest.raises(ModelRegistryError):
+        create_model_backend(
+            model_path=tmp_path / "qwen",
+            provider="legacy_qwen",
+            allow_legacy=False,
+        )
 
 
 def test_factory_granite_explicit(tmp_path: Path) -> None:
@@ -103,9 +120,7 @@ def test_granite_load_unload_reload_with_mock(tmp_path: Path) -> None:
     fake_model = object()
     fake_tok = MagicMock()
     fake_tok.encode = lambda text, add_special_tokens=False: [1, 2, 3]
-    fake_tok.apply_chat_template = MagicMock(
-        return_value="<|start_of_role|>user<|end_of_role|>hi"
-    )
+    fake_tok.apply_chat_template = MagicMock(return_value="<|start_of_role|>user<|end_of_role|>hi")
     fake_tok.eos_token = "</s>"
 
     def fake_generate(*_a: Any, **_k: Any) -> str:

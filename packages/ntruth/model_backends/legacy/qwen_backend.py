@@ -35,8 +35,8 @@ class LegacyQwenBackend(ModelBackend):
     ) -> None:
         if not enabled:
             raise RuntimeError(
-                "LegacyQwenBackend rifiutato: enabled=False "
-                "(in cluster 1 il default Qwen usa enabled=True)."
+                "LegacyQwenBackend rifiutato senza opt-in legacy esplicito "
+                "(enabled=False): usare allow_legacy=True o NTRUTH_ALLOW_LEGACY_QWEN=1."
             )
         self.model_path = Path(model_path)
         self.adapter_path = Path(adapter_path) if adapter_path is not None else None
@@ -64,10 +64,10 @@ class LegacyQwenBackend(ModelBackend):
             acquired_at=None,
             model_card_url="https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507",
             scientifically_selected=False,
-            role=ModelRole.BOOTSTRAP_CANDIDATE,
+            role=ModelRole.LEGACY_UNSUPPORTED,
             local_path=str(self.model_path),
             notes=(
-                "Existing MLX bootstrap path; not scientifically selected.",
+                "Legacy pre-migration bootstrap path; opt-in only; not scientifically selected.",
                 "Candidate facts only.",
             ),
         )

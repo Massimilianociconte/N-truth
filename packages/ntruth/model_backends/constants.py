@@ -14,9 +14,7 @@ GRANITE_MLX_REPO = "mlx-community/granite-4.1-3b-4bit"
 GRANITE_MLX_REVISION = "b1b476b5a17c46b7d6cd663b4a8ed44b66720aef"
 GRANITE_MLX_WEIGHT_FILE = "model.safetensors"
 GRANITE_MLX_WEIGHT_BYTES = 2_127_162_429
-GRANITE_MLX_WEIGHT_SHA256 = (
-    "cff9d052cc3c68ea66b3d364788eb96fca2be82868d9ad92bd968e73b125194d"
-)
+GRANITE_MLX_WEIGHT_SHA256 = "cff9d052cc3c68ea66b3d364788eb96fca2be82868d9ad92bd968e73b125194d"
 
 # Relative path under repo (gitignored weights).
 GRANITE_MLX_LOCAL_RELPATH = "models/local/granite-4.1-3b-4bit"

@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 
 import pytest
 
 from ntruth.model_backends import (
-    DEFAULT_MODEL_ID,
+    GRANITE_CANONICAL_MODEL_ID,
     MODEL_MUST_NOT_EMIT,
     ModelProvider,
     create_model_backend,
@@ -29,7 +28,7 @@ from ntruth.training.mlx_runtime import MLXPipelineError, load_profile
 
 def test_default_provider_is_granite() -> None:
     assert resolve_provider() is ModelProvider.GRANITE
-    assert DEFAULT_MODEL_ID == "ibm-granite/granite-4.1-3b"
+    assert GRANITE_CANONICAL_MODEL_ID == "ibm-granite/granite-4.1-3b"
     assert "granite" in default_profile_path().name
 
 
@@ -57,7 +56,10 @@ def test_registry_lists_granite_primary_and_community_mlx() -> None:
 
     status = qualification_status(registry)
     assert status["migration_status"] == MigrationStatus.ARCHITECTURE_MIGRATED
-    assert status["runtime_qualification_status"] == RuntimeQualificationStatus.UNVERIFIED
+    # Lo stato atteso e quello REGISTRATO in models/registry/default.json,
+    # unica fonte autorevole: PARTIALLY_VERIFIED per il fingerprint MLX
+    # community 4-bit (mirror di README e docs/status-snapshot.md).
+    assert status["runtime_qualification_status"] == RuntimeQualificationStatus.PARTIALLY_VERIFIED
     assert status["scientific_validation_status"] == ScientificValidationStatus.NOT_STARTED
     assert "non è ancora" in status["summary"] or "non e ancora" in status["summary"].replace(
         "è", "e"
@@ -65,13 +67,15 @@ def test_registry_lists_granite_primary_and_community_mlx() -> None:
     assert is_scientifically_releasable(registry) is False
     # Fail-closed sui claim, non sulla ricerca esplorativa
     assert can_run_exploratory_benchmarks(registry) is True
-    assert can_run_internal_pilot(registry) is False
+    # PARTIALLY_VERIFIED abilita i pilot interni, NON la validazione esterna.
+    assert can_run_internal_pilot(registry) is True
     assert can_run_external_validation(registry) is False
     gates = claim_gates(registry)
     assert gates["exploratory_benchmark"]["allowed"] is True
-    assert gates["internal_pilot"]["allowed"] is False
-    assert gates["internal_pilot"]["reason"] == "RUNTIME_UNVERIFIED"
-    assert gates["internal_pilot"]["required_next_state"] == "PARTIALLY_VERIFIED"
+    assert gates["internal_pilot"]["allowed"] is True
+    assert gates["internal_pilot"]["reason"] == "OK_INTERNAL_PILOT"
+    assert gates["external_validation"]["allowed"] is False
+    assert gates["external_validation"]["required_next_state"] == "VERIFIED"
     assert gates["scientifically_releasable"]["allowed"] is False
     assert isinstance(registry["qualification"]["transition_log"], list)
     assert registry["qualification"]["transition_log"][0]["sequence"] == 1
@@ -95,7 +99,7 @@ def _log_entry(**kwargs: object) -> dict:
 def test_scientific_status_cannot_advance_on_unverified_runtime() -> None:
     from ntruth.model_backends.registry import ModelRegistryError, _validate_qualification_block
 
-    with pytest.raises(ModelRegistryError, match="INVALID|runtime|PARTIALLY_VERIFIED"):
+    with pytest.raises(ModelRegistryError, match=r"INVALID|runtime|PARTIALLY_VERIFIED"):
         _validate_qualification_block(
             {
                 "migration_status": "ARCHITECTURE_MIGRATED",
@@ -294,8 +298,11 @@ def test_verified_without_artifact_is_invalid() -> None:
 
 
 def test_external_validated_without_verified_runtime_is_invalid() -> None:
-    from ntruth.model_backends.registry import ModelRegistryError, _validate_qualification_block
-    from ntruth.model_backends.registry import canonical_fingerprint_hash
+    from ntruth.model_backends.registry import (
+        ModelRegistryError,
+        _validate_qualification_block,
+        canonical_fingerprint_hash,
+    )
 
     art = _artifact()
     art["canonical_fingerprint_sha256"] = canonical_fingerprint_hash(art)
@@ -341,7 +348,7 @@ def test_factory_default_is_granite_backend() -> None:
 def test_legacy_provider_without_opt_in_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("NTRUTH_MODEL_PROVIDER", "legacy_qwen")
     monkeypatch.delenv("NTRUTH_ALLOW_LEGACY_QWEN", raising=False)
-    with pytest.raises(ModelRegistryError, match="legacy Qwen disabilitato|opt-in|ALLOW_LEGACY"):
+    with pytest.raises(ModelRegistryError, match=r"legacy Qwen disabilitato|opt-in|ALLOW_LEGACY"):
         create_model_backend(model_path=Path("/tmp/qwen"), allow_legacy=False)
 
 
