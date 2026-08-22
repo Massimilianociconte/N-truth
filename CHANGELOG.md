@@ -6,6 +6,28 @@ ontologia; queste versioni possono avanzare indipendentemente.
 
 ## [Unreleased]
 
+### Fixed
+
+- Graph core: the allocated/analysed count heuristic now requires an exclusion
+  process typed for the same unit type; untyped or foreign-type exclusions keep
+  the conservative contradiction path instead of fabricating an aggregate `n`.
+- Graph core: aggregate node provenance origin is selected via an explicit
+  priority order, never by set iteration (NFR-02 determinism).
+- Graph core: declared-n group matching is casefolded consistently; truncated
+  contrast pairs (>6 per factor) emit an explicit question instead of losing
+  scope silently; `derived_count` gains a cycle guard.
+- Rules: alert conflict linkage no longer depends on precondition text;
+  malformed predicate arity raises `UnknownPredicate` (fail-closed) instead of
+  `IndexError`.
+- Parsers: archive limits are enforced on actually decompressed bytes (zip-bomb
+  route via forged central-directory metadata closed); DOCX/JATS table cells are
+  formula-neutralized like CSV/XLSX; JATS ENTITY scan covers UTF-16/32 ASCII
+  representations; `.csv` delimiter pinned to comma; leading `+` numerics
+  neutralized for spreadsheet round-trips.
+- API: `/v7/report` and `/v8/report` read only paths inside run directories
+  registered in this API process; TrustedHost allowlist drops the test host.
+- Governance: constant-time hash comparisons in the authorization path.
+
 ### Desktop
 
 - First-run welcome keeps the synthetic demo behind an explicit action.
