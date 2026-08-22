@@ -478,7 +478,9 @@ def test_quick_design_api_rejects_recursive_parser_final_fields() -> None:
         "query_scope_id": submission.pipeline_request.query.id,
     }
 
-    response = TestClient(create_app(), base_url="http://127.0.0.1").post("/v8/quick-design", json=payload)
+    response = TestClient(create_app(), base_url="http://127.0.0.1").post(
+        "/v8/quick-design", json=payload
+    )
 
     assert response.status_code == 422
     assert "final field" in response.text.lower()

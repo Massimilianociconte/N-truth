@@ -390,8 +390,7 @@ def create_app() -> Any:
                 detail={
                     "code": "report_path_outside_active_runs",
                     "message": (
-                        "Percorso fuori dai run attivi di questa sessione API: "
-                        f"{{report_path}}"
+                        "Percorso fuori dai run attivi di questa sessione API: {report_path}"
                     ),
                 },
             )
@@ -421,8 +420,7 @@ def create_app() -> Any:
                 detail={
                     "code": "report_path_outside_active_runs",
                     "message": (
-                        "Percorso fuori dai run attivi di questa sessione API: "
-                        f"{{report_path}}"
+                        "Percorso fuori dai run attivi di questa sessione API: {report_path}"
                     ),
                 },
             )

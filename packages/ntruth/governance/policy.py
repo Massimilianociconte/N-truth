@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hmac
-
 from datetime import UTC, datetime
 
 from ntruth.governance.models import (
@@ -85,9 +84,7 @@ def authorize(
         if license_manifest.asset_id != record.license_manifest_id:
             raise GovernanceDenied("license_id_mismatch", "license_manifest_id non coerente")
         assert record.license_manifest_hash is not None
-        if not hmac.compare_digest(
-            license_manifest.manifest_hash(), record.license_manifest_hash
-        ):
+        if not hmac.compare_digest(license_manifest.manifest_hash(), record.license_manifest_hash):
             raise GovernanceDenied("license_changed", "manifest licenza modificato")
         automated_release = requested in {
             GovernanceAction.TRAIN,
