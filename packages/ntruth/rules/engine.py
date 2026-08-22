@@ -432,11 +432,10 @@ def _alert_for(
     if not evidence_ids:
         missing.append("nessuna evidenza localizzata disponibile per questo scope")
 
-    conflicts = (
-        tuple(c.id for c in context.build.contradictions if c.status == "unresolved")
-        if "contradiction_unresolved" in " ".join(rule.normalized_preconditions())
-        else ()
-    )
+    # Il link audit alert->contraddizione non dipende dal testo delle
+    # precondizioni: qualunque astensione/attivazione deve restare tracciata
+    # alle contraddizioni irrisolte presenti nel blocco (PRD FR-024).
+    conflicts = tuple(c.id for c in context.build.contradictions if c.status == "unresolved")
 
     return Alert(
         id=stable_id("alr", block_id, rule.rule_id, assessment.id),

@@ -123,13 +123,17 @@ def build_graph(block_id: str, extraction: ExtractionResult) -> BuildResult:
     source_entity_types = {fact.node_type for fact in extraction.entities}
     design_only_required = design_required_types - required_types - source_entity_types
     required_types.update(design_required_types)
-    has_exclusions = any(process.kind == "exclusion" for process in processes)
+    excluded_types = frozenset(
+        process.node_type
+        for process in processes
+        if process.kind == "exclusion" and process.node_type is not None
+    )
     aggregate_nodes = _build_nodes(
         block_id,
         extraction.entities,
         required_types,
         acc,
-        has_exclusions=has_exclusions,
+        excluded_types=excluded_types,
         design_only_required=design_only_required,
     )
     instance_nodes, instance_index = _build_instance_nodes(
@@ -175,6 +179,28 @@ def build_graph(block_id: str, extraction: ExtractionResult) -> BuildResult:
 
 
 # --------------------------------------------------------------------- nodi
+
+# Priorita esplicita e stabile per l'origine di un nodo aggregato. La scelta
+# non deve mai dipendere dall'ordine di iterazione di un set (NFR-02):
+# ProvenanceKind e uno StrEnum il cui hash e randomizzato per processo.
+_ORIGIN_PRIORITY: tuple[ProvenanceKind, ...] = (
+    ProvenanceKind.TABULAR,
+    ProvenanceKind.EXPLICIT,
+    ProvenanceKind.ADJUDICATION,
+    ProvenanceKind.USER,
+    ProvenanceKind.RULE,
+    ProvenanceKind.MODEL,
+    ProvenanceKind.DERIVED,
+)
+
+
+def _aggregate_origin(origins: set[ProvenanceKind]) -> ProvenanceKind:
+    """Origine aggregata deterministica: prima priorita presente nel set."""
+
+    for kind in _ORIGIN_PRIORITY:
+        if kind in origins:
+            return kind
+    return ProvenanceKind.DERIVED
 
 
 def _required_types(extraction: ExtractionResult) -> set[NodeType]:
@@ -272,7 +298,7 @@ def _build_nodes(
     required: set[NodeType],
     acc: _Accumulator,
     *,
-    has_exclusions: bool = False,
+    excluded_types: frozenset[NodeType] = frozenset(),
     design_only_required: set[NodeType] | None = None,
 ) -> dict[NodeType, GraphNode]:
     grouped: dict[NodeType, list[EntityFact]] = {}
@@ -312,11 +338,7 @@ def _build_nodes(
         per_parent = sorted({f.count for f in facts if f.count is not None and f.per_parent})
         evidence_ids = tuple(dict.fromkeys(f.evidence.id for f in facts if f.evidence is not None))
         origins = {f.origin for f in facts}
-        origin = (
-            ProvenanceKind.TABULAR
-            if ProvenanceKind.TABULAR in origins
-            else (next(iter(origins)) if origins else ProvenanceKind.DERIVED)
-        )
+        origin = _aggregate_origin(origins)
 
         attributes: dict[str, str | int | float | bool | None] = {"aggregate": True}
         if not facts and node_type in (design_only_required or set()):
@@ -324,9 +346,12 @@ def _build_nodes(
         count: int | None = None
         if len(totals) == 1:
             count = totals[0]
-        elif len(totals) == 2 and has_exclusions:
-            # Due conteggi diversi con esclusioni riportate sono la differenza
-            # attesa tra allocato e analizzato, non una contraddizione (ARRIVE 2.0).
+        elif len(totals) == 2 and node_type in excluded_types:
+            # Due conteggi diversi con esclusioni riportate per lo stesso tipo
+            # di unita sono la differenza attesa tra allocato e analizzato, non
+            # una contraddizione (ARRIVE 2.0). Un processo di esclusione che non
+            # dichiara il tipo di unita non autorizza questa lettura: in quel
+            # caso resta valida la via conservativa della contraddizione.
             count = min(totals)
             attributes["n_allocated"] = max(totals)
             attributes["n_analyzed"] = min(totals)
@@ -949,9 +974,30 @@ def _build_contrasts(
             continue
         pairs = list(combinations(sorted(levels), 2))
         if len(pairs) > MAX_CONTRASTS_PER_FACTOR:
+            dropped = pairs[MAX_CONTRASTS_PER_FACTOR:]
             acc.warnings.append(
                 f"fattore '{factor.name}': {len(pairs)} confronti possibili, "
                 f"analizzati i primi {MAX_CONTRASTS_PER_FACTOR}"
+            )
+            # Lo scope dei contrasti scartati non deve sparire in silenzio:
+            # senza domanda esplicita quei scope resterebbero senza verdetto.
+            acc.questions.append(
+                Question(
+                    id=stable_id(
+                        "qst",
+                        block_id,
+                        "contrast-truncated",
+                        factor.name,
+                        *(pair for pair_pair in dropped for pair in pair_pair),
+                    ),
+                    text=(
+                        f"fattore '{factor.name}': {len(dropped)} confronti oltre il limite "
+                        f"di {MAX_CONTRASTS_PER_FACTOR} non hanno un contratto di confronto; "
+                        "dichiarare i contrasti rilevanti o giustificare l'esclusione."
+                    ),
+                    reason="confronti troncati per limite per fattore",
+                    missing_field=f"contrasts[{factor.name}]",
+                )
             )
             pairs = pairs[:MAX_CONTRASTS_PER_FACTOR]
         for group_a, group_b in pairs:

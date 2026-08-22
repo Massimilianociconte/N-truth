@@ -134,7 +134,13 @@ def predicate(name: str) -> Callable[[PredicateFn], PredicateFn]:
 
 
 def evaluate(expression: str, context: RuleContext) -> bool:
-    """Valuta un predicato normalizzato. Solleva UnknownPredicate se ignoto."""
+    """Valuta un predicato normalizzato. Solleva UnknownPredicate se ignoto.
+
+    Una espressione malformata (per esempio arity errata) non deve mai produrre
+    un IndexError grezzo: resta ``UnknownPredicate``, quindi unevaluable e
+    fail-closed secondo il contratto del rules engine.
+    """
+
     match = _CALL.match(expression.strip())
     if not match:
         raise UnknownPredicate(expression)
@@ -143,7 +149,10 @@ def evaluate(expression: str, context: RuleContext) -> bool:
     if fn is None:
         raise UnknownPredicate(expression)
     args = [a.strip() for a in match.group("args").split(",") if a.strip()]
-    value = fn(context, args)
+    try:
+        value = fn(context, args)
+    except IndexError as exc:
+        raise UnknownPredicate(expression) from exc
     return not value if match.group("negated") else value
 
 
