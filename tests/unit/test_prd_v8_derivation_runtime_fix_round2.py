@@ -252,7 +252,7 @@ def test_unqualified_http_analyze_fails_closed_and_v7_is_explicit(tmp_path: Path
     api_module = import_module("ntruth.api.app")
     source = tmp_path / "methods.md"
     source.write_text("# Methods\nTwo wells received treatment.", encoding="utf-8")
-    client = TestClient(api_module.create_app())
+    client = TestClient(api_module.create_app(), base_url="http://127.0.0.1")
     canonical_out = tmp_path / "canonical-api-out"
     payload = {"source": str(source), "out": str(canonical_out)}
 

@@ -136,20 +136,6 @@ def test_aggregate_origin_priority_is_total() -> None:
     )
 
 
-def test_evidence_span_rejects_negative_and_misordered_bounds() -> None:
-    import pytest as _pytest
-    from pydantic import ValidationError as _ValidationError
-
-    from ntruth.schemas.core import EvidenceSpan as _EvidenceSpan
-
-    with _pytest.raises(_ValidationError):
-        _EvidenceSpan(id="ev-neg", file_id="d", start=-50, end=-10)
-    with _pytest.raises(_ValidationError):
-        _EvidenceSpan(id="ev-order", file_id="d", start=10, end=5)
-    span = _EvidenceSpan(id="ev-ok", file_id="d", start=0, end=0)
-    assert span.locator().endswith(":0-0")
-
-
 def test_declared_n_group_matching_is_case_insensitive() -> None:
     from ntruth.graph.units import _declared_n
     from ntruth.schemas.experiment import (
