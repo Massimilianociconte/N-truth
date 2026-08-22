@@ -11,6 +11,7 @@ import csv
 import io
 import re
 import zipfile
+import zlib
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -69,7 +70,7 @@ _XML_START = re.compile(
 )
 
 #: Prefissi che i fogli di calcolo interpretano come formula (CSV injection).
-_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t=", "\r=")
+_FORMULA_PREFIXES = ("=", "+", "-", "@")
 
 #: Frasi che tentano di dare istruzioni a un agente. Il contenuto dei documenti
 #: e sempre dato, mai comando: qui viene solo segnalato.
@@ -179,6 +180,13 @@ def check_file(
 
     if _starts_with_zip_signature(path) or zipfile.is_zipfile(path):
         report.warnings.extend(_check_archive(path))
+        if any(w.startswith("BLOCK:") for w in report.warnings):
+            blocking = next(w for w in report.warnings if w.startswith("BLOCK:"))
+            return SafetyReport(
+                path=path, accepted=False, reason=blocking.removeprefix("BLOCK:").strip()
+            )
+        # I metadati sono forgabili: la decisione usa i byte decompressi reali.
+        report.warnings.extend(_probe_decompressed_bytes(path))
         if any(w.startswith("BLOCK:") for w in report.warnings):
             blocking = next(w for w in report.warnings if w.startswith("BLOCK:"))
             return SafetyReport(
@@ -345,7 +353,13 @@ def _media_type_matches(expected: str, detected: str) -> bool:
 
 
 def _check_archive(path: Path) -> list[str]:
-    """DOCX e XLSX sono archivi zip: verificare rapporto di compressione e macro."""
+    """DOCX e XLSX sono archivi zip: verificare rapporto di compressione e macro.
+
+    I metadati del central directory sono forgabili: questa prima passata resta
+    un filtro economico, ma la garanzia effettiva arriva da
+    ``_probe_decompressed_bytes`` che conta i byte realmente decompressi.
+    """
+
     warnings: list[str] = []
     try:
         with zipfile.ZipFile(path) as zf:
@@ -369,7 +383,7 @@ def _check_archive(path: Path) -> list[str]:
                 total_uncompressed += member.file_size
                 if member.compress_size > 0:
                     ratio = member.file_size / member.compress_size
-                    if ratio > MAX_COMPRESSION_RATIO and member.file_size > 10 * 1024 * 1024:
+                    if ratio > MAX_COMPRESSION_RATIO:
                         warnings.append(
                             f"BLOCK: rapporto di compressione anomalo su {name} ({ratio:.0f}x)"
                         )
@@ -383,17 +397,80 @@ def _check_archive(path: Path) -> list[str]:
     return warnings
 
 
+_PROBE_CHUNK_BYTES = 1024 * 1024
+
+
+def _probe_decompressed_bytes(path: Path) -> list[str]:
+    """Decomprime davvero ogni membro contando i byte prodotti.
+
+    I limiti dichiarati nell'header non sono fiducia: qui il budget
+    ``MAX_UNCOMPRESSED_BYTES`` e il rapporto ``MAX_COMPRESSION_RATIO`` vengono
+    applicati ai byte effettivamente letti dallo stream deflate, chiudendo la
+    via della zip bomb con metadati forgiati.
+    """
+
+    warnings: list[str] = []
+    try:
+        with zipfile.ZipFile(path) as zf:
+            cumulative = 0
+            for member in zf.infolist():
+                if member.is_dir():
+                    continue
+                produced = 0
+                try:
+                    with zf.open(member) as stream:
+                        while True:
+                            chunk = stream.read(_PROBE_CHUNK_BYTES)
+                            if not chunk:
+                                break
+                            produced += len(chunk)
+                            cumulative += len(chunk)
+                            if produced > MAX_UNCOMPRESSED_BYTES:
+                                warnings.append(
+                                    f"BLOCK: membro {member.filename} supera "
+                                    f"{MAX_UNCOMPRESSED_BYTES} byte decompressi reali"
+                                )
+                                return warnings
+                            if cumulative > MAX_UNCOMPRESSED_BYTES:
+                                warnings.append(
+                                    f"BLOCK: totale decompresso reale supera "
+                                    f"{MAX_UNCOMPRESSED_BYTES} byte su {member.filename}"
+                                )
+                                return warnings
+                except (zipfile.BadZipFile, OSError, EOFError, zlib.error) as exc:
+                    warnings.append(f"BLOCK: membro {member.filename} illeggibile ({exc})")
+                    return warnings
+                if (
+                    member.compress_size > 0
+                    and produced / member.compress_size > MAX_COMPRESSION_RATIO
+                ):
+                    warnings.append(
+                        "BLOCK: rapporto di compressione reale anomalo su "
+                        f"{member.filename} ({produced / member.compress_size:.0f}x)"
+                    )
+                    return warnings
+    except zipfile.BadZipFile as exc:
+        warnings.append(f"BLOCK: archivio illeggibile durante la verifica ({exc})")
+    return warnings
+
+
 def neutralize_formula(value: str) -> tuple[str, bool]:
-    """Disinnesca le formule nelle celle. Il valore originale resta nel testo citato."""
+    """Disinnesca le formule nelle celle. Il valore originale resta nel testo citato.
+
+    Un valore numerico negativo non e una formula; un valore con ``+`` iniziale
+    viene neutralizzato perche Excel/LibreOffice lo reinterprettano come formula
+    al round-trip (OWASP CSV injection).
+    """
+
     stripped = value.lstrip()
     if stripped.startswith(_FORMULA_PREFIXES):
-        # Un valore numerico negativo non e una formula.
-        candidate = stripped.lstrip("+-")
         try:
             float(stripped)
         except ValueError:
-            if candidate and stripped[0] in "=+-@":
-                return "'" + value, True
+            return "'" + value, True
+        if stripped.startswith("+"):
+            # "+49" e numericamente valido ma resta un vettore di injection.
+            return "'" + value, True
     return value, False
 
 

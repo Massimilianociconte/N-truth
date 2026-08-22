@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ntruth.ingest.safety import neutralize_formula
 from ntruth.parsers.base import ParseFailure, RawBlock, RawDocument, RawTable
 from ntruth.parsers.sections import looks_like_heading
 from ntruth.schemas.document import ParserStatus
@@ -64,12 +65,19 @@ def _convert_table(table: object, name: str) -> RawTable | None:
     rows = getattr(table, "rows", [])
     if not rows:
         return None
-    header_cells = [c.text.strip() for c in rows[0].cells]
+    header_cells = [_safe_cell(c.text) for c in rows[0].cells]
     header = [h or f"col_{i + 1}" for i, h in enumerate(header_cells)]
     out = RawTable(name=name, columns=header)
     for row in rows[1:]:
-        cells = [c.text.strip() for c in row.cells]
+        cells = [_safe_cell(c.text) for c in row.cells]
         if len(cells) < len(header):
             cells.extend([""] * (len(header) - len(cells)))
         out.rows.append(dict(zip(header, cells[: len(header)], strict=True)))
     return out
+
+
+def _safe_cell(text: str) -> str:
+    """Le celle Word non sono esportabili come formula: stessa policy dei CSV."""
+
+    safe, _ = neutralize_formula(text.strip())
+    return safe
