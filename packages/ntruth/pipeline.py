@@ -42,9 +42,13 @@ from ntruth.reporting.positive import build_positive_output
 from ntruth.rules.engine import apply_rules
 from ntruth.rules.loader import load_ruleset
 from ntruth.schemas.claims import (
+    DerivedClaim,
     DerivedClaimSet,
     DesignAdequacyFinding,
+    ReportBundle,
+    ReportContract,
     ReportResolutionState,
+    aggregate_report_resolution,
 )
 from ntruth.schemas.core import Determinability, Severity, stable_id
 from ntruth.schemas.document import DocumentIR, ParserStatus
@@ -119,6 +123,44 @@ class AnalysisResult:
     @property
     def evaluations(self) -> tuple[RuleEvaluation, ...]:
         return self.block_analyses[0].evaluations
+
+    @property
+    def report_bundle(self) -> ReportBundle | None:
+        """ReportBundle v8 (Appendice AF): nessuno stato claim viene perso.
+
+        Aggrega i claim di tutti i blocchi con la risoluzione §10.4 e il
+        Reality Gate fail-closed (NFR-28): il default e' sempre ``BLOCKED``,
+        il passaggio richiede attestazione esplicita fuori dalla pipeline.
+        Nessun claim derivato -> nessun bundle (mai un report vuoto, §10.2).
+        """
+        claims: list[DerivedClaim] = [
+            claim
+            for analysis in self.block_analyses
+            for claim_set in analysis.derived_claim_sets
+            for claim in claim_set.claims
+        ]
+        if not claims:
+            return None
+        findings = tuple(
+            finding
+            for analysis in self.block_analyses
+            for finding in analysis.design_adequacy_findings
+        )
+        resolution = aggregate_report_resolution(
+            tuple(claim.determinability_state for claim in claims)
+        )
+        contract = ReportContract(
+            report_resolution_state=resolution,
+            claim_ids=tuple(claim.claim_id for claim in claims),
+            theory_version=claims[0].theory_version,
+            ruleset_version=claims[0].ruleset_version,
+        )
+        return ReportBundle(
+            claims=tuple(claims),
+            report_resolution_state=resolution,
+            design_adequacy_findings=findings,
+            contract=contract,
+        )
 
 
 def analyze_project(

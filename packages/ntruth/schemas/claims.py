@@ -16,11 +16,14 @@ from pydantic import AliasChoices, Field, model_validator
 
 from ntruth.schemas.core import Determinability, FrozenModel, stable_id
 from ntruth.schemas.kernel import (
+    ConflictRecord,
     KnowledgeState,
     KnowledgeValue,
     ProfileCoverageStatement,
     ProfileCoverageStatus,
+    ScenarioCoverage,
     ScenarioCoverageStatus,
+    SensitivityRecord,
     SupportGrade,
 )
 
@@ -398,3 +401,94 @@ class DesignAdequacyFinding(FrozenModel):
             "DesignAdequacyFinding non e' derivabile da DeterminabilityState "
             f"({state.value}): servono finding tipizzati con evidence proprie"
         )
+
+
+# ---------------------------------------------------------------------------
+# ReportBundle, ReportContract e Reality Gate v8 (Appendice AF, NFR-28)
+# ---------------------------------------------------------------------------
+
+
+class ReportGateStatus(StrEnum):
+    """Stato del Reality Gate sul bundle (NFR-28: fail-closed)."""
+
+    PASSED = "PASSED"
+    BLOCKED = "BLOCKED"
+
+
+class RealityGate(FrozenModel):
+    """Reality Gate v8 (§0.7, NFR-28): il default e' ``BLOCKED``.
+
+    Il passaggio richiede attestazione esplicita (evidence + rationale):
+    il silenzio o l'assenza di revisione non aprono mai il gate.
+    """
+
+    status: ReportGateStatus = ReportGateStatus.BLOCKED
+    blockers: tuple[str, ...] = ()
+    evidence_ids: tuple[str, ...] = ()
+    rationale: str = ""
+
+    @model_validator(mode="after")
+    def _passed_is_attested(self) -> Self:
+        if self.status is ReportGateStatus.PASSED and (
+            not self.evidence_ids or not self.rationale.strip()
+        ):
+            raise ValueError("Reality Gate PASSED richiede evidence e rationale esplicite (NFR-28)")
+        return self
+
+
+class ReportContract(FrozenModel):
+    """Contratto di contenuto normativo del report (§10.4, Appendice AF).
+
+    Dichiara cosa il bundle contiene (claim ids, risoluzione, versioni):
+    la coerenza con il contenuto e' verificata dal ``ReportBundle``.
+    """
+
+    report_resolution_state: ReportResolutionState
+    claim_ids: tuple[str, ...]
+    theory_version: str | None = None
+    ruleset_version: str | None = None
+
+    @model_validator(mode="after")
+    def _non_empty(self) -> Self:
+        if not self.claim_ids:
+            raise ValueError("contract senza claim: nessun report scientifico esiste")
+        if len(self.claim_ids) != len(set(self.claim_ids)):
+            raise ValueError("claim_ids duplicati nel contract")
+        return self
+
+
+class ReportBundle(FrozenModel):
+    """Bundle v8 finale (Appendice AF): claim + risoluzione + adeguatezza.
+
+    Aggrega senza perdere granularita' (§10.4): il summary non sostituisce
+    mai gli stati dei singoli claim. Il Reality Gate e' fail-closed: nessun
+    bundle e' ``PASSED`` senza attestazione esplicita.
+    """
+
+    claims: tuple[DerivedClaim, ...]
+    report_resolution_state: ReportResolutionState
+    design_adequacy_findings: tuple[DesignAdequacyFinding, ...] = ()
+    scenario_coverages: tuple[ScenarioCoverage, ...] = ()
+    profile_coverage: ProfileCoverageStatement | None = None
+    sensitivity_records: tuple[SensitivityRecord, ...] = ()
+    conflicts: tuple[ConflictRecord, ...] = ()
+    contract: ReportContract
+    reality_gate: RealityGate = Field(default_factory=RealityGate)
+
+    @model_validator(mode="after")
+    def _contract_coherent(self) -> Self:
+        if not self.claims:
+            raise ValueError("ReportBundle senza claim")
+        if self.contract.report_resolution_state is not self.report_resolution_state:
+            raise ValueError("contract e bundle dichiarano risoluzioni diverse")
+        bundle_ids = tuple(claim.claim_id for claim in self.claims)
+        if len(bundle_ids) != len(set(bundle_ids)):
+            raise ValueError("claim_id duplicati nel bundle")
+        if set(self.contract.claim_ids) != set(bundle_ids):
+            raise ValueError("contract.claim_ids incoerente con i claim del bundle")
+        record_ids = {record.id for record in self.sensitivity_records}
+        referenced = {reference for claim in self.claims for reference in claim.sensitivity_records}
+        dangling = referenced - record_ids
+        if dangling:
+            raise ValueError(f"sensitivity dichiarate dai claim assenti dal bundle: {dangling}")
+        return self

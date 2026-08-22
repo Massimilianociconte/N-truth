@@ -17,7 +17,7 @@ conservativo quando la policy non e' determinata dal PRD (registro SRR).
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from ntruth.derivation_theory.models import ClauseFamily, DerivationTheory
@@ -51,6 +51,7 @@ from ntruth.schemas.experiment import (
 )
 from ntruth.schemas.kernel import (
     ESTIMAND_UNSUPPORTED_OR_UNSPECIFIED,
+    ConfirmationEvent,
     ExposureAssessment,
     InferentialQuery,
     InterferenceStatus,
@@ -60,6 +61,7 @@ from ntruth.schemas.kernel import (
     ProfileCoverageStatus,
     ScenarioCoverage,
     ScenarioCoverageStatus,
+    SensitivityRecord,
     SupportGrade,
 )
 from ntruth.schemas.rules import RuleEvaluation, Ruleset
@@ -164,6 +166,11 @@ class ClaimDerivation:
     profile_coverage: ProfileCoverageStatement | None
     report_resolution_state: ReportResolutionState
     memo: PredicateMemo
+    #: Dipendenza claim -> assessment per la sensitivity (§9.7): mai una
+    #: ri-derivazione completa, solo ri-valutazione dei claim dipendenti.
+    assessment_by_claim: Mapping[str, str] = field(default_factory=dict)
+    #: Assessment per id: contesto dichiarato della ri-valutazione (§9.7).
+    assessments_by_id: Mapping[str, UnitAssessment] = field(default_factory=dict)
 
     @property
     def claims(self) -> tuple[DerivedClaim, ...]:
@@ -203,6 +210,7 @@ def derive_claim_set(
     all_states: list[Determinability] = []
 
     requested = {query.id: query for query in (queries or ())}
+    assessment_by_claim: dict[str, str] = {}
     for assessment in assessments:
         query = _query_for_assessment(assessment, requested)
         context = _context_for(build, graph_index, assessment, evidence_by_id)
@@ -235,6 +243,7 @@ def derive_claim_set(
         if claims:
             claim_sets.append(DerivedClaimSet(query_id=query.id, claims=tuple(claims)))
             all_states.extend(claim.determinability_state for claim in claims)
+            assessment_by_claim.update({claim.claim_id: assessment.id for claim in claims})
 
     findings = _design_adequacy_findings(block, claim_sets, evidence_by_id)
     findings.extend(_interference_findings(exposures, claim_sets, evidence_by_id))
@@ -253,6 +262,8 @@ def derive_claim_set(
         profile_coverage=profile_coverage,
         report_resolution_state=resolution,
         memo=memo,
+        assessment_by_claim=assessment_by_claim,
+        assessments_by_id={assessment.id: assessment for assessment in assessments},
     )
 
 
@@ -887,3 +898,134 @@ def _profile_coverage(
             f"registrati: {', '.join(known_gaps) if known_gaps else 'nessuno'} (§7.17)"
         ),
     )
+
+
+# ---------------------------------------------------------------------------
+# Sensitivity (§9.7, Appendice R.2): mai una ri-derivazione completa
+# ---------------------------------------------------------------------------
+
+#: Marker fail-closed quando il controfattuale non e' computabile (§9.7).
+SENSITIVITY_REVIEW_REQUIRED = "SCIENTIFIC_REVIEW_REQUIRED"
+
+
+def sensitivity_analysis(
+    derivation: ClaimDerivation,
+    *,
+    confirmation: ConfirmationEvent,
+    decisive_predicate: str,
+    confirmed_value: bool = True,
+) -> tuple[SensitivityRecord, ...]:
+    """SensitivityRecord per il predicato decisivo confermato (§9.7).
+
+    Capovolge SOLO quel predicato nella memo e ri-valuta SOLO i claim che lo
+    dichiarano in ``required_predicates`` (indice di dipendenza, singolo
+    passaggio): mai una ri-derivazione completa. Quando il controfattuale non
+    e' computabile dai campi dichiarati, il record porta il marker
+    ``SCIENTIFIC_REVIEW_REQUIRED`` (fail-closed), nessun output inventato.
+    """
+    if not decisive_predicate.strip():
+        raise ValueError("sensitivity senza predicato decisivo")
+
+    # Indice di dipendenza: un solo passaggio sui claim gia' derivati.
+    dependent = [
+        claim for claim in derivation.claims if decisive_predicate in claim.required_predicates
+    ]
+    records: list[SensitivityRecord] = []
+    for claim in dependent:
+        assessment_id = derivation.assessment_by_claim.get(claim.claim_id)
+        assessment = (
+            derivation.assessments_by_id.get(assessment_id) if assessment_id else None
+        )
+        counterfactual_value = not confirmed_value
+        memo = derivation.memo
+        if assessment_id is not None:
+            # Flip del solo predicato decisivo nella memo (§9.7).
+            memo = derivation.memo.flipped(decisive_predicate, assessment_id, counterfactual_value)
+        output = _counterfactual_output(claim, assessment, memo, decisive_predicate, assessment_id)
+        records.append(
+            SensitivityRecord(
+                id=stable_id("SENS", claim.claim_id, decisive_predicate, confirmation.id),
+                derived_claim_id=claim.claim_id,
+                decisive_predicate_id=decisive_predicate,
+                current_support_grade=confirmation.support_grade,
+                current_value=confirmed_value,
+                counterfactual_value=counterfactual_value,
+                current_output=_current_output(claim),
+                counterfactual_output=output,
+                interpretation=_sensitivity_interpretation(output),
+            )
+        )
+    return tuple(records)
+
+
+def _current_output(claim: DerivedClaim) -> dict[str, Any]:
+    """Output corrente del claim nel formato §9.7 (dict non vuoto)."""
+    if isinstance(claim.value.value, dict):
+        return dict(claim.value.value)
+    return {"value": claim.value.value, "knowledge_state": claim.value.knowledge_state.value}
+
+
+def _counterfactual_output(
+    claim: DerivedClaim,
+    assessment: UnitAssessment | None,
+    memo: PredicateMemo,
+    decisive_predicate: str,
+    assessment_id: str | None,
+) -> dict[str, Any]:
+    """Ri-valutazione del solo claim sulla memo capovolta, senza ri-derivazione.
+
+    Computabile oggi solo per l'EU count il cui predicato decisivo risulta
+    falso nella memo capovolta: la molteplicita' non supportata ricade sul
+    solo source count dichiarato (esempio §9.7: n=4 self-report -> n=1).
+    Ogni altro caso resta fail-closed sul marker, mai un valore inventato.
+    """
+    flipped_value = (
+        memo.get(decisive_predicate, assessment_id) if assessment_id is not None else _MISSING
+    )
+    if (
+        claim.claim_type is ClaimType.EXPERIMENTAL_UNIT_COUNT
+        and flipped_value is False
+        and assessment is not None
+        and assessment.biological_source_count is not None
+    ):
+        return {"experimental_unit_count": assessment.biological_source_count}
+    return {"marker": SENSITIVITY_REVIEW_REQUIRED}
+
+
+def _sensitivity_interpretation(counterfactual_output: dict[str, Any]) -> str:
+    if "marker" in counterfactual_output:
+        return (
+            "Counterfactual non computabile dai campi dichiarati: "
+            f"{SENSITIVITY_REVIEW_REQUIRED} (fail-closed, §9.7)"
+        )
+    return "The reported n depends entirely on this confirmation."
+
+
+def with_sensitivity_records(
+    derivation: ClaimDerivation, records: Sequence[SensitivityRecord]
+) -> ClaimDerivation:
+    """Collega i record ai claim (``sensitivity_records``) senza mutare altro."""
+    by_claim: dict[str, list[str]] = {}
+    for record in records:
+        by_claim.setdefault(record.derived_claim_id, []).append(record.id)
+    if not by_claim:
+        return derivation
+    claim_sets = tuple(
+        DerivedClaimSet(
+            query_id=claim_set.query_id,
+            claims=tuple(
+                claim.model_copy(
+                    update={
+                        "sensitivity_records": tuple(
+                            dict.fromkeys((*claim.sensitivity_records, *by_claim[claim.claim_id]))
+                        )
+                    }
+                )
+                if claim.claim_id in by_claim
+                else claim
+                for claim in claim_set.claims
+            ),
+        )
+        for claim_set in derivation.claim_sets
+    )
+    return replace(derivation, claim_sets=claim_sets)
