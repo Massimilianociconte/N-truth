@@ -225,13 +225,25 @@ class GraphIndex:
     # ------------------------------------------------------------------ derivati
 
     def derived_count(self, node_type: NodeType) -> int | None:
-        """Conteggio totale, ricavato se necessario risalendo la gerarchia."""
+        """Conteggio totale, ricavato se necessario risalendo la gerarchia.
+
+        Il guard ``_seen`` rende la funzione totale anche su gerarchie non
+        validate a monte (cicli): senza di esso una catena circolare produrrebbe
+        ``RecursionError`` invece di un risultato assente/unevaluable.
+        """
+
+        return self._derived_count(node_type, frozenset())
+
+    def _derived_count(self, node_type: NodeType, seen: frozenset[NodeType]) -> int | None:
+        if node_type in seen:
+            return None
         direct = self.count(node_type)
         if direct is not None:
             return direct
+        next_seen = seen | {node_type}
         for parent in self.direct_parents(node_type):
             per = self.per_parent(node_type, parent)
-            parent_count = self.derived_count(parent)
+            parent_count = self._derived_count(parent, next_seen)
             if per is not None and parent_count is not None:
                 return per * parent_count
         return None

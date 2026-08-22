@@ -141,7 +141,11 @@ def evaluate(expression: str, context: RuleContext) -> bool:
     if fn is None:
         raise UnknownPredicate(expression)
     args = [a.strip() for a in match.group("args").split(",") if a.strip()]
-    value = fn(context, args)
+    try:
+        value = fn(context, args)
+    except IndexError as exc:
+        # Arity errata => unevaluable fail-closed, mai IndexError grezzo.
+        raise UnknownPredicate(expression) from exc
     return not value if match.group("negated") else value
 
 

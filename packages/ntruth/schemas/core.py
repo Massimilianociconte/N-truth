@@ -114,8 +114,8 @@ class EvidenceSpan(FrozenModel):
     file_id: str
     section_id: str | None = None
     section_title: str | None = None
-    start: int | None = None
-    end: int | None = None
+    start: int | None = Field(default=None, ge=0)
+    end: int | None = Field(default=None, ge=0)
     cell: CellRef | None = None
     text: str = ""
     parser_version: str = "0.0.0"
