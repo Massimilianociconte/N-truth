@@ -43,6 +43,7 @@ CURRENT_DOCUMENTS = (
     "docs/architecture/prd-v8-current-to-target.yaml",
     "docs/audits/prd-v8-full-migration/IMPLEMENTATION_GAP_REPORT.md",
     "docs/audits/prd-v8-full-migration/FINAL_IMPLEMENTATION_MATRIX.md",
+    "docs/audits/prd-v8-full-migration/PRD_V9_FINAL_SYSTEM_REVIEW.md",
     "docs/audits/prd-v8-full-migration/REQUIREMENT_TRACEABILITY_MATRIX.md",
     "docs/audits/prd-v8-full-migration/SCIENTIFIC_REVIEW_REGISTER.md",
     "docs/audits/prd-v8-full-migration/SOURCE_RECONCILIATION.md",

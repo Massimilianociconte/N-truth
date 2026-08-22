@@ -8,9 +8,27 @@ vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
 vi.stubGlobal("scrollTo", vi.fn());
 Element.prototype.scrollIntoView = vi.fn();
 
+function enterSyntheticDemo(): void {
+  fireEvent.click(screen.getByRole("button", { name: "Apri demo sintetica" }));
+}
+
 describe("N-Truth workspace", () => {
+  it("starts on a live welcome path that does not show the synthetic demo as the project", () => {
+    render(<App />);
+    expect(screen.getByRole("heading", { name: /Chiarisci il disegno/ })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Blocchi sperimentali" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Demo storica · dati sintetici")).not.toBeInTheDocument();
+    expect(screen.getByText("HANDOFF_ONLY")).toBeInTheDocument();
+    expect(screen.getByText("NOT_STARTED")).toBeInTheDocument();
+    expect(screen.getByText("HOLD")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Stato e limiti" }));
+    expect(screen.getByRole("heading", { name: "Limiti e gate" })).toBeInTheDocument();
+    expect(screen.queryByText(/in arrivo/i)).not.toBeInTheDocument();
+  });
+
   it("labels synthetic demonstration data and exposes the three synchronized views", () => {
     render(<App />);
+    enterSyntheticDemo();
     expect(screen.getByText("Demo storica · dati sintetici")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Blocchi sperimentali" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Target inferenziale" })).toBeInTheDocument();
@@ -20,6 +38,7 @@ describe("N-Truth workspace", () => {
 
   it("keeps export gated until the unvalidated domain is acknowledged", () => {
     render(<App />);
+    enterSyntheticDemo();
     const exportButton = screen.getByRole("button", { name: "Esporta demo JSON" });
     expect(exportButton).toBeDisabled();
     fireEvent.click(screen.getByRole("checkbox", { name: "Ho verificato il limite e confermo" }));
@@ -28,6 +47,7 @@ describe("N-Truth workspace", () => {
 
   it("requires a rationale before applying a candidate correction", () => {
     render(<App />);
+    enterSyntheticDemo();
     const apply = screen.getByRole("button", { name: /Applica e ricalcola/ });
     expect(apply).toBeDisabled();
     fireEvent.change(screen.getByRole("spinbutton", { name: "Nuovo valore di n" }), { target: { value: "8" } });
@@ -37,6 +57,7 @@ describe("N-Truth workspace", () => {
 
   it("requires and records target plus minimum estimand before compilation", () => {
     render(<App />);
+    enterSyntheticDemo();
     fireEvent.click(screen.getByRole("button", { name: "Modifica target" }));
     const compile = screen.getByRole("button", { name: /Conferma target ed estimand/ });
     expect(compile).toBeDisabled();
@@ -50,6 +71,7 @@ describe("N-Truth workspace", () => {
 
   it("shows the non-certifying review output and typed evidence", () => {
     render(<App />);
+    enterSyntheticDemo();
     expect(screen.getByRole("heading", { name: "Methods e percorso di revisione" })).toBeInTheDocument();
     expect(screen.getByText(/Tipo AUTHOR_ASSERTION/)).toBeInTheDocument();
     fireEvent.click(screen.getByText(/DRIVER · mappatura informativa/));
@@ -58,6 +80,7 @@ describe("N-Truth workspace", () => {
 
   it("switches the interface language independently from the report payload", () => {
     render(<App />);
+    enterSyntheticDemo();
     fireEvent.click(screen.getByRole("button", { name: "Switch interface to English" }));
     expect(screen.getByRole("heading", { name: "Experiment blocks" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Experimental design graph" })).toBeInTheDocument();
@@ -67,6 +90,7 @@ describe("N-Truth workspace", () => {
 
   it("edits graph nodes through an append-only candidate correction", () => {
     render(<App />);
+    enterSyntheticDemo();
     fireEvent.click(screen.getByRole("button", { name: "Modifica grafo" }));
     fireEvent.change(screen.getByLabelText("Etichetta"), {
       target: { value: "Coltura aggiunta dall'utente" },
@@ -78,6 +102,7 @@ describe("N-Truth workspace", () => {
 
   it("indexes candidate exports by block instead of relabeling a stale payload", () => {
     render(<App />);
+    enterSyntheticDemo();
     const candidateExport = screen.getByRole("button", { name: "Esporta candidate" });
     expect(candidateExport).toBeDisabled();
     fireEvent.change(screen.getByRole("spinbutton", { name: "Nuovo valore di n" }), {
@@ -95,6 +120,7 @@ describe("N-Truth workspace", () => {
 
   it("offers only scientifically allocatable node types for factor levels", () => {
     render(<App />);
+    enterSyntheticDemo();
     fireEvent.click(screen.getByRole("button", { name: "Modifica grafo" }));
     const allocation = screen.getByLabelText("Allocazione");
     const values = within(allocation)

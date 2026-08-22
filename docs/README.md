@@ -12,6 +12,7 @@ Challenge use remain HOLD.
 | [architettura.md](architettura.md) | Current v8 layers and invariants |
 | [architecture/prd-v8-current-to-target.yaml](architecture/prd-v8-current-to-target.yaml) | Machine-readable implementation map |
 | [audits/prd-v8-full-migration/FINAL_IMPLEMENTATION_MATRIX.md](audits/prd-v8-full-migration/FINAL_IMPLEMENTATION_MATRIX.md) | Final requirement-by-requirement implementation status |
+| [audits/prd-v8-full-migration/PRD_V9_FINAL_SYSTEM_REVIEW.md](audits/prd-v8-full-migration/PRD_V9_FINAL_SYSTEM_REVIEW.md) | PRD v9 review of the v8 tree: MISSING/PARTIAL disposition, no scientific closure |
 | [audits/prd-v8-full-migration/REQUIREMENT_TRACEABILITY_MATRIX.md](audits/prd-v8-full-migration/REQUIREMENT_TRACEABILITY_MATRIX.md) | Immutable Phase 1 clean-checkout baseline |
 | [audits/prd-v8-full-migration/SCIENTIFIC_REVIEW_REGISTER.md](audits/prd-v8-full-migration/SCIENTIFIC_REVIEW_REGISTER.md) | Append-only scientific blockers |
 | [audits/prd-v8-full-migration/SOURCE_RECONCILIATION.md](audits/prd-v8-full-migration/SOURCE_RECONCILIATION.md) | PDF/Markdown authority reconciliation |

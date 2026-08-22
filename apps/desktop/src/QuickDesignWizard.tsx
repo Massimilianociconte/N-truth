@@ -80,8 +80,8 @@ function AnswerField({
             })
           }
         >
-          <option value="PROVIDED">PROVIDED</option>
-          <option value="NOT_AVAILABLE">NOT_AVAILABLE</option>
+          <option value="PROVIDED">Presente · PROVIDED</option>
+          <option value="NOT_AVAILABLE">Non disponibile · NOT_AVAILABLE</option>
         </select>
       </label>
       <label className="field-label">
@@ -519,6 +519,11 @@ export function QuickDesignWizard({
             </button>
           ) : (
             <section className="guided-review" aria-label="Review anteprima Quick Design">
+              <p className="preview-authority" data-testid="preview-authority">
+                {language === "it"
+                  ? "Anteprima client non canonica. Non è il risultato Python e non approva il disegno."
+                  : "Non-canonical client preview. Not the Python result and not design approval."}
+              </p>
               <div className="v8-contract-pins">
                 <span>{preview.summary.scenario_coverage_status}</span>
                 <span>{preview.summary.strategy_module_status}</span>

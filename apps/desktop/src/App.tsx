@@ -213,10 +213,102 @@ function focusId(view: View): string {
   }[view];
 }
 
+function WelcomeHome({
+  language,
+  apiState,
+  onStartDesign,
+  onOpenDemo,
+}: {
+  language: "it" | "en";
+  apiState: "checking" | "online" | "offline";
+  onStartDesign: () => void;
+  onOpenDemo: () => void;
+}) {
+  const it = language === "it";
+  return (
+    <section className="welcome" aria-labelledby="welcome-heading">
+      <p className="welcome-kicker">{it ? "Compilatore locale · un solo Mac" : "Local compiler · this Mac only"}</p>
+      <h1 id="welcome-heading">{it ? "Chiarisci il disegno prima di contare l’n." : "Settle the design before you count n."}</h1>
+      <p className="welcome-lead">
+        {it
+          ? "N-Truth registra fatti, lacune e claim. Non approva un esperimento e non sostituisce un biostatistico."
+          : "N-Truth records facts, gaps and claims. It does not approve an experiment and does not replace a biostatistician."}
+      </p>
+      <ul className="welcome-pins" aria-label={it ? "Stato scientifico" : "Scientific status"}>
+        <li><span>HANDOFF_ONLY</span> {it ? "nessun test statistico consigliato" : "no statistical test is recommended"}</li>
+        <li><span>NOT_STARTED</span> {it ? "validazione scientifica non iniziata" : "scientific validation has not started"}</li>
+        <li><span>HOLD</span> {it ? "training e External Challenge fermi" : "training and External Challenge remain held"}</li>
+      </ul>
+      <p className="welcome-honesty">
+        {it
+          ? "La determinabilità non è approvazione del disegno. Un’anteprima del browser non è il risultato canonico Python."
+          : "Determinability is not design approval. A browser preview is not the canonical Python result."}
+      </p>
+      <div className="welcome-actions">
+        <button type="button" className="button primary" onClick={onStartDesign}>
+          {it ? "Progetta un esperimento" : "Design an experiment"}
+        </button>
+        <button type="button" className="button secondary" onClick={onOpenDemo}>
+          {it ? "Apri demo sintetica" : "Open synthetic demo"}
+        </button>
+      </div>
+      <p className="welcome-next">
+        {apiState === "online"
+          ? it
+            ? "Passo successivo: compila in Quick Design. Il PREVIEW resta non canonico finché non confermi."
+            : "Next: compile in Quick Design. PREVIEW stays non-canonical until you confirm."
+          : it
+            ? "API offline. Puoi aprire la demo sintetica, oppure avvia ntruth-api per compilare."
+            : "API offline. Open the synthetic demo, or start ntruth-api to compile."}
+      </p>
+    </section>
+  );
+}
+
+function StatusSheet({
+  language,
+  apiState,
+  onClose,
+}: {
+  language: "it" | "en";
+  apiState: "checking" | "online" | "offline";
+  onClose: () => void;
+}) {
+  const it = language === "it";
+  return (
+    <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <section className="dialog status-sheet" role="dialog" aria-modal="true" aria-labelledby="status-title">
+        <div className="dialog-header">
+          <div>
+            <span className="eyebrow">{it ? "Stato del prodotto" : "Product status"}</span>
+            <h2 id="status-title">{it ? "Limiti e gate" : "Limits and gates"}</h2>
+          </div>
+          <button type="button" aria-label={it ? "Chiudi" : "Close"} onClick={onClose}><X size={20} /></button>
+        </div>
+        <div className="status-sheet-body">
+          <dl className="v8-definition-grid">
+            <div><dt>API</dt><dd>{apiState === "online" ? (it ? "loopback attiva" : "loopback online") : apiState === "offline" ? (it ? "non raggiungibile" : "unreachable") : (it ? "verifica…" : "checking…")}</dd></div>
+            <div><dt>Validazione scientifica</dt><dd>NOT_STARTED</dd></div>
+            <div><dt>Training / External Challenge</dt><dd>HOLD</dd></div>
+            <div><dt>Modulo statistico</dt><dd>HANDOFF_ONLY</dd></div>
+          </dl>
+          <p>
+            {it
+              ? "Questi gate non si aprono da questa schermata. Completeness strutturale non è verità biologica."
+              : "These gates cannot be opened from this screen. Structural completeness is not biological truth."}
+          </p>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 export function App() {
   const [report, setReport] = useState<Report>(DEMO_REPORT);
   const [quickDesignResult, setQuickDesignResult] = useState<QuickDesignV8Response>();
-  const [isDemo, setIsDemo] = useState(true);
+  const [surface, setSurface] = useState<"welcome" | "workspace">("welcome");
+  const [showStatus, setShowStatus] = useState(false);
+  const [isDemo, setIsDemo] = useState(false);
   const [activeView, setActiveView] = useState<View>("project");
   const [selectedBlockId, setSelectedBlockId] = useState(DEMO_REPORT.blocks[0].id);
   const [selectedAlertId, setSelectedAlertId] = useState(DEMO_REPORT.blocks[0].alerts[0].id);
@@ -759,6 +851,7 @@ export function App() {
   const onAnalysis = (response: AnalysisResponse) => {
     setQuickDesignResult(undefined);
     setReport(response.report);
+    setSurface("workspace");
     setIsDemo(false);
     setSessionId(response.session_id);
     setArtifacts(response.artifacts);
@@ -778,6 +871,7 @@ export function App() {
   const onQuickDesign = (response: QuickDesignV8Response) => {
     setQuickDesignResult(response);
     setIsDemo(false);
+    setSurface("workspace");
     setSessionId(undefined);
     setArtifacts({});
     setPrivacyAudit(undefined);
@@ -787,6 +881,16 @@ export function App() {
     setCandidateExports({});
     closeImport();
     setNotice(`PRD v8 ReportBundle ${response.report.report_id} compilato.`);
+  };
+
+  const openSyntheticDemo = () => {
+    setReport(DEMO_REPORT);
+    setQuickDesignResult(undefined);
+    setIsDemo(true);
+    setSurface("workspace");
+    setSelectedBlockId(DEMO_REPORT.blocks[0].id);
+    setSelectedAlertId(DEMO_REPORT.blocks[0].alerts[0].id);
+    setDomainAcknowledged(false);
   };
 
   const reviewed = report.blocks.filter((item) => item.corrections.length > 0).length;
@@ -817,8 +921,8 @@ export function App() {
           })}
         </nav>
         <div className="sidebar-footer">
-          <button className="nav-item" onClick={() => setNotice(uiLanguage === "it" ? "Impostazioni locali in arrivo." : "Local settings are not available yet.")}>
-            <Settings size={19} /> <span>{uiLanguage === "it" ? "Impostazioni" : "Settings"}</span>
+          <button className="nav-item" onClick={() => setShowStatus(true)}>
+            <Settings size={19} /> <span>{uiLanguage === "it" ? "Stato e limiti" : "Status and limits"}</span>
           </button>
           <button className="nav-item" onClick={() => setNotice(report.disclaimer)}>
             <Info size={19} /> <span>{uiLanguage === "it" ? "Limiti" : "Limitations"}</span>
@@ -839,9 +943,11 @@ export function App() {
               <strong>
                 {quickDesignResult
                   ? `Quick Design · ${quickDesignResult.report.report_id}`
-                  : report.project_name}
+                  : surface === "welcome"
+                    ? (uiLanguage === "it" ? "Sessione nuova" : "New session")
+                    : report.project_name}
               </strong>
-              {isDemo && <span className="demo-label">{uiLanguage === "it" ? "Demo storica · dati sintetici" : "Historical demo · synthetic data"}</span>}
+              {isDemo && surface === "workspace" && <span className="demo-label">{uiLanguage === "it" ? "Demo storica · dati sintetici" : "Historical demo · synthetic data"}</span>}
             </div>
           </div>
           <div className="topbar-actions">
@@ -870,7 +976,18 @@ export function App() {
           </div>
         )}
 
-        {quickDesignResult ? (
+        {showStatus && (
+          <StatusSheet language={uiLanguage} apiState={apiState} onClose={() => setShowStatus(false)} />
+        )}
+
+        {surface === "welcome" && !quickDesignResult ? (
+          <WelcomeHome
+            language={uiLanguage}
+            apiState={apiState}
+            onStartDesign={() => setShowImport(true)}
+            onOpenDemo={openSyntheticDemo}
+          />
+        ) : quickDesignResult ? (
           <ReportBundleV8View result={quickDesignResult} language={uiLanguage} />
         ) : (
           <>

@@ -7,6 +7,7 @@ funzione e impedire che un file arbitrario diventi codice, percorso o istruzione
 
 from __future__ import annotations
 
+import os
 import re
 import zipfile
 from dataclasses import dataclass, field
@@ -87,6 +88,76 @@ def resolve_inside(root: Path, candidate: Path) -> Path:
     if root_resolved != target and root_resolved not in target.parents:
         raise SafetyError(f"percorso fuori dal workspace: {candidate}")
     return target
+
+
+def discover_ingest_candidates(
+    source: Path,
+) -> tuple[tuple[Path, ...], tuple[SafetyReport, ...]]:
+    """Elenca i file da ingerire senza seguire symlink di file o di cartella.
+
+    ``Path.rglob`` attraversa le directory symlink e puo copiare file esterni
+    al workspace. Questo enumeratore usa ``os.walk(followlinks=False)`` e
+    rifiuta ogni symlink prima che ``check_file`` ne legga il contenuto.
+    """
+
+    root = source.expanduser()
+    if root.is_symlink():
+        return (
+            (),
+            (
+                SafetyReport(
+                    path=root,
+                    accepted=False,
+                    reason="symlink di directory non ammesso"
+                    if root.is_dir()
+                    else "symlink non ammesso",
+                ),
+            ),
+        )
+    if not root.is_dir():
+        return (root,), ()
+
+    accepted: list[Path] = []
+    rejected: list[SafetyReport] = []
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=False, topdown=True):
+        current = Path(dirpath)
+        keep: list[str] = []
+        for name in dirnames:
+            child = current / name
+            if child.is_symlink():
+                rejected.append(
+                    SafetyReport(
+                        path=child,
+                        accepted=False,
+                        reason="symlink di directory non ammesso",
+                    )
+                )
+                continue
+            keep.append(name)
+        dirnames[:] = keep
+        for name in filenames:
+            path = current / name
+            if path.is_symlink():
+                rejected.append(
+                    SafetyReport(path=path, accepted=False, reason="symlink non ammesso")
+                )
+                continue
+            if not path.is_file():
+                rejected.append(
+                    SafetyReport(path=path, accepted=False, reason="non e un file regolare")
+                )
+                continue
+            if path.suffix.lower() not in SUPPORTED_EXTENSIONS:
+                rejected.append(
+                    SafetyReport(
+                        path=path,
+                        accepted=False,
+                        reason=f"estensione non supportata ({path.suffix or 'assente'})",
+                    )
+                )
+                continue
+            accepted.append(path)
+    return tuple(sorted(accepted)), tuple(rejected)
 
 
 def check_file(path: Path, *, total_bytes_so_far: int = 0) -> SafetyReport:

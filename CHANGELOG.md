@@ -6,6 +6,34 @@ ontologia; queste versioni possono avanzare indipendentemente.
 
 ## [Unreleased]
 
+### Desktop
+
+- First-run welcome keeps the synthetic demo behind an explicit action.
+  Determinability, HOLD and HANDOFF_ONLY stay visible as limits, not approval.
+- Replaced the inert settings control with a status sheet. Visual system is a
+  single paper/ink palette; client PREVIEW is labeled non-canonical.
+
+### Added
+
+- PRD v9 engineering sidecar (not a rename of the v8 kernel): Canonical Schema
+  Registry 9.0.0, FactorRole/ContrastType EU eligibility, assignment-anchored
+  ExperimentalUnitClaim, ContrastSupport evaluation, MaterialLineage count
+  identity, SupportProfile writer, Safe Methods sentence contract, Quick Design
+  v9 (role before levels), and combined `gate_experimental_unit_claim`.
+  Strategy remains `HANDOFF_ONLY`. Scientific validation remains `NOT_STARTED`.
+
+### Security
+
+- Directory ingest no longer follows directory or file symlinks
+  (`discover_ingest_candidates`); escaped trees outside the source folder are
+  rejected instead of copied.
+
+### Documentation
+
+- Added the PRD v9 final system review of this v8 tree, including operational
+  dispositions for the four `MISSING` rows and the 48 `PARTIAL` rows. Scientific
+  validation remains `NOT_STARTED`; training and External Challenge remain `HOLD`.
+
 ### PRD v8.0 migration
 
 - Migrated the repository to the PRD v8 semantic kernel: query-scoped

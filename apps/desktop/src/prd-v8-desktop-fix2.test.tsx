@@ -316,6 +316,7 @@ async function completeGuidedFlow(fetchMock: ReturnType<typeof vi.fn>): Promise<
   fireEvent.click(screen.getByRole("button", { name: "Genera anteprima verificabile" }));
 
   expect(await screen.findByText("NON_EXHAUSTIVE")).toBeInTheDocument();
+  expect(screen.getByTestId("preview-authority")).toHaveTextContent("non canonica");
   expect(screen.getByText("factor · factor_levels")).toBeInTheDocument();
   expect(
     screen.getByText("experimental_unit_instances · source_diversity"),

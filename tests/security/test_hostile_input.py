@@ -18,6 +18,7 @@ from ntruth.ingest.safety import (
     SafetyError,
     check_file,
     detect_injection,
+    discover_ingest_candidates,
     neutralize_formula,
     resolve_inside,
 )
@@ -158,6 +159,51 @@ def test_symlinks_are_not_ingested(tmp_path: Path) -> None:
     assert not report.accepted
     assert report.reason is not None
     assert "symlink" in report.reason
+
+
+def test_directory_symlink_does_not_ingest_escaped_files(tmp_path: Path) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    escaped = outside / "secret.md"
+    escaped.write_text("# Methods\n\nEscaped cells were treated.\n", encoding="utf-8")
+
+    source = tmp_path / "src"
+    source.mkdir()
+    (source / "local.md").write_text("# Methods\n\nLocal cells were treated.\n", encoding="utf-8")
+    escape = source / "escape"
+    escape.symlink_to(outside, target_is_directory=True)
+
+    accepted, rejected = discover_ingest_candidates(source)
+    assert accepted == (source / "local.md",)
+    assert any(
+        item.path == escape and item.reason == "symlink di directory non ammesso"
+        for item in rejected
+    )
+    assert escaped not in accepted
+
+    project = Project.create(tmp_path / "prj", name="t")
+    result = project.add(source)
+    stored_names = {item.filename for item in result.accepted}
+    assert stored_names == {"local.md"}
+    assert "secret.md" not in stored_names
+
+
+def test_symlink_source_directory_is_rejected(tmp_path: Path) -> None:
+    real = tmp_path / "real-src"
+    real.mkdir()
+    (real / "m.md").write_text("# Methods\n\nCells were treated.\n", encoding="utf-8")
+    link = tmp_path / "linked-src"
+    link.symlink_to(real, target_is_directory=True)
+
+    accepted, rejected = discover_ingest_candidates(link)
+    assert accepted == ()
+    assert len(rejected) == 1
+    assert rejected[0].reason == "symlink di directory non ammesso"
+
+    project = Project.create(tmp_path / "prj", name="t")
+    result = project.add(link)
+    assert result.accepted == []
+    assert result.has_rejections
 
 
 def test_workspace_stays_inside_the_project(tmp_path: Path) -> None:

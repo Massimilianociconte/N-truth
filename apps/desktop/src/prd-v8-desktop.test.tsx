@@ -86,6 +86,7 @@ describe("PRD v8 desktop scientific boundary", () => {
   it("exposes HANDOFF_ONLY and keeps determinability separate from design adequacy", () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
     render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Apri demo sintetica" }));
 
     expect(screen.getByText("Demo storica · dati sintetici")).toBeInTheDocument();
     expect(screen.getByText("HANDOFF_ONLY")).toBeInTheDocument();
@@ -103,6 +104,7 @@ describe("PRD v8 desktop scientific boundary", () => {
   it("keeps adequacy unassessed when a user only confirms the structural target", () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
     render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Apri demo sintetica" }));
 
     fireEvent.click(screen.getByRole("button", { name: "Modifica target" }));
     fireEvent.change(screen.getByPlaceholderText(/Perché questo è il target corretto/), {
