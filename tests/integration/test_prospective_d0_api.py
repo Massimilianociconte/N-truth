@@ -69,7 +69,7 @@ def test_compile_session_and_export_are_local_and_serializable() -> None:
 
     from ntruth.api.app import create_app
 
-    client = TestClient(create_app())
+    client = TestClient(create_app(), base_url="http://127.0.0.1")
     response = client.post("/v1/prospective/d0/compile", json=_api_payload())
 
     assert response.status_code == 200, response.text
@@ -118,7 +118,7 @@ def test_invalid_cross_row_payload_returns_structured_422_and_no_session() -> No
     rows = list(payload["rows"])  # type: ignore[arg-type]
     rows[1] = {**rows[1], "wellId": "A01", "factorLevel": "drug"}
     payload["rows"] = rows
-    client = TestClient(create_app())
+    client = TestClient(create_app(), base_url="http://127.0.0.1")
 
     response = client.post("/v1/prospective/d0/compile", json=payload)
 
@@ -139,7 +139,7 @@ def test_missing_or_evicted_prospective_session_is_404() -> None:
 
     from ntruth.api.app import create_app
 
-    client = TestClient(create_app())
+    client = TestClient(create_app(), base_url="http://127.0.0.1")
     response = client.get("/v1/prospective/d0/sessions/not-present")
     export = client.get("/v1/prospective/d0/sessions/not-present/export")
 
@@ -162,7 +162,7 @@ def test_export_blocks_identifiers_without_echoing_sensitive_values() -> None:
         "fileRef": "/Users/alice/private.csv",
     }
     payload["rows"] = rows
-    client = TestClient(create_app())
+    client = TestClient(create_app(), base_url="http://127.0.0.1")
 
     compiled = client.post("/v1/prospective/d0/compile", json=payload)
     assert compiled.status_code == 200, compiled.text
@@ -191,7 +191,9 @@ def test_noncanonical_ruleset_is_rejected_without_path_disclosure(
     payload = _api_payload()
     payload["rulesetId"] = ruleset_id
     payload["rulesetVersion"] = ruleset_version
-    response = TestClient(create_app()).post("/v1/prospective/d0/compile", json=payload)
+    response = TestClient(create_app(), base_url="http://127.0.0.1").post(
+        "/v1/prospective/d0/compile", json=payload
+    )
 
     assert response.status_code == 422
     detail = response.json()["detail"]
@@ -208,7 +210,7 @@ def test_oversized_prospective_body_is_rejected_before_json_parsing() -> None:
 
     from ntruth.api.app import create_app
 
-    response = TestClient(create_app()).post(
+    response = TestClient(create_app(), base_url="http://127.0.0.1").post(
         "/v1/prospective/d0/compile",
         content=b"{" + b"x" * MAX_PROSPECTIVE_D0_BODY_BYTES + b"}",
         headers={"content-type": "application/json"},
@@ -217,7 +219,7 @@ def test_oversized_prospective_body_is_rejected_before_json_parsing() -> None:
     assert response.status_code == 413
     assert response.json()["detail"]["code"] == "prospective_payload_too_large"
 
-    chunked = TestClient(create_app()).post(
+    chunked = TestClient(create_app(), base_url="http://127.0.0.1").post(
         "/v1/prospective/d0/compile",
         content=iter([b"{", b" " * (MAX_PROSPECTIVE_D0_BODY_BYTES + 1024), b"}"]),
         headers={"content-type": "application/json"},

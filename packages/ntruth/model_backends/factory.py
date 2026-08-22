@@ -1,7 +1,8 @@
-"""Factory backend — cluster 1: Qwen resta il percorso default esistente.
+"""Factory backend — default Granite (ADR-0010), legacy Qwen solo con opt-in.
 
-Granite è disponibile esplicitamente, non promosso a default operativo.
-Nessuna lettura di models/registry/.
+Il percorso pre-migrazione Qwen resta disponibile come bootstrap esplicito:
+richiede ``allow_legacy=True`` oppure ``NTRUTH_ALLOW_LEGACY_QWEN=1|true|yes``.
+La policy di promozione e qualificazione vive in ``ntruth.model_backends.registry``.
 """
 
 from __future__ import annotations
@@ -24,10 +25,10 @@ def resolve_provider(*, provider: str | None = None) -> ModelProvider:
     """Risolve il provider senza registry.
 
     Precedenza: argomento ``provider`` → env ``NTRUTH_MODEL_PROVIDER`` →
-    default ``legacy_qwen`` (comportamento pre-migrazione versionato).
+    default ``granite`` (modello Train A provisionale registrato, ADR-0010).
     """
 
-    raw = (provider or os.environ.get("NTRUTH_MODEL_PROVIDER") or "legacy_qwen").strip().lower()
+    raw = (provider or os.environ.get("NTRUTH_MODEL_PROVIDER") or "granite").strip().lower()
     if raw in {"granite", "ibm-granite", "granite_4.1"}:
         return ModelProvider.GRANITE
     if raw in {"legacy_qwen", "qwen", "qwen3", "legacy"}:
@@ -45,16 +46,19 @@ def create_model_backend(
     max_tokens: int = 1024,
     profile: dict[str, Any] | None = None,
     provider: str | None = None,
-    allow_legacy: bool = True,
+    allow_legacy: bool = False,
 ) -> ModelBackend:
-    """Crea un backend.
+    """Crea un backend fail-closed rispetto alla policy legacy.
 
-    - **Default (cluster 1):** ``legacy_qwen`` se non specificato diversamente.
-    - **Granite:** solo con ``provider="granite"`` o ``NTRUTH_MODEL_PROVIDER=granite``.
-
-    ``allow_legacy`` è accettato per compatibilità; il default non richiede opt-in
-    per Qwen in questo cluster (Qwen è ancora il percorso esistente).
+    - **Default:** Granite (provisional primary Train A; mai scientificamente selezionato).
+    - **Legacy Qwen:** mai senza opt-in esplicito — ``allow_legacy=True`` oppure
+      env ``NTRUTH_ALLOW_LEGACY_QWEN=1|true|yes``. Nessun fallback silenzioso.
     """
+
+    from ntruth.model_backends.registry import (
+        ModelRegistryError,
+        legacy_opt_in_enabled,
+    )
 
     chosen = resolve_provider(provider=provider)
     model = (profile or {}).get("model", {}) if profile else {}
@@ -85,8 +89,13 @@ def create_model_backend(
     if chosen is ModelProvider.LEGACY_QWEN:
         from ntruth.model_backends.legacy.qwen_backend import LegacyQwenBackend
 
-        # Cluster 1: Qwen remains the existing default path.
-        _ = allow_legacy  # reserved for cluster 2 promotion policy
+        opt_in = legacy_opt_in_enabled(allow_legacy=allow_legacy)
+        if not opt_in:
+            raise ModelRegistryError(
+                "legacy Qwen disabilitato di default: serve opt-in esplicito "
+                "(allow_legacy=True oppure NTRUTH_ALLOW_LEGACY_QWEN=1); "
+                "il default supportato e NTRUTH_MODEL_PROVIDER=granite"
+            )
         return LegacyQwenBackend(
             model_path=model_path,
             adapter_path=adapter_path,

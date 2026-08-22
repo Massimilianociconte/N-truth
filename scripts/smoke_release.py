@@ -47,7 +47,14 @@ from ntruth.training.mlx_runtime import load_profile
 
 assert DEFAULT_PROFILE.is_file(), DEFAULT_PROFILE
 profile = load_profile(DEFAULT_PROFILE)
-assert profile["model"]["revision"] == "50d427756c6b1b2fe0c0a10f67fbda1fc8e82c1b"
+# Profilo Granite (ADR-0010): conversione community MLX con revision registrata.
+assert profile["model"]["repository"] == "mlx-community/granite-4.1-3b-4bit", profile[
+    "model"
+].get("repository")
+assert (
+    profile["model"]["revision"]
+    == "b1b476b5a17c46b7d6cd663b4a8ed44b66720aef"
+), profile["model"].get("revision")
 print(f"ML profile ok · {DEFAULT_PROFILE.name}")
 """.strip()
 

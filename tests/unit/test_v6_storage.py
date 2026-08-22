@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import sqlite3
 from pathlib import Path
 
@@ -519,3 +520,32 @@ def test_same_basename_sha_prefix_collision_never_overwrites_a_source(tmp_path: 
     assert len({item.relative_path for item in accepted}) == 3
     assert [project.path_of(item).read_bytes() for item in accepted] == list(payloads)
     assert not project.verify_integrity()
+
+
+def test_verify_integrity_detects_direct_file_tampering(tmp_path: Path) -> None:
+    database_path = tmp_path / "state.sqlite3"
+    project_id = "prj-tamper"
+    with StorageDatabase(database_path) as database:
+        database.upsert_project(
+            project_id=project_id,
+            name="studio",
+            manifest_path="manifest.json",
+            manifest_checksum="b" * 64,
+        )
+        database.append_revision(project_id=project_id, payload={"value": 1})
+    with StorageDatabase(database_path) as database:
+        assert database.verify_integrity() == {"revisions": 1, "plan_execution_records": 0}
+
+    # Attore locale con accesso al file: droppa i trigger e riscrive il payload.
+    forged = tmp_path / "forged.sqlite3"
+    shutil.copyfile(database_path, forged)
+    connection = sqlite3.connect(forged)
+    try:
+        connection.execute("DROP TRIGGER IF EXISTS revisions_forbid_update")
+        connection.execute("UPDATE revisions SET payload_json = '{\"value\": 999}'")
+        connection.commit()
+    finally:
+        connection.close()
+
+    with StorageDatabase(forged) as database, pytest.raises(StorageIntegrityError):
+        database.verify_integrity()

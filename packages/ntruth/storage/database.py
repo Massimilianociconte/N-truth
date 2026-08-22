@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import sqlite3
 from collections.abc import Iterator, Mapping
@@ -119,6 +120,33 @@ class StorageDatabase:
         if not self._closed:
             self.connection.close()
             self._closed = True
+
+    def verify_integrity(self) -> dict[str, int]:
+        """Riverifica i checksum dei payload letti dal database.
+
+        I trigger append-only impediscono UPDATE/DELETE via SQL ma non la
+        modifica esadecimale diretta del file: qui ogni payload con
+        ``content_checksum`` viene riletto e riconfrontato. Ritorna i conteggi
+        verificati; solleva ``StorageIntegrityError`` alla prima divergenza.
+        """
+
+        counts = {"revisions": 0, "plan_execution_records": 0}
+        for table, key in (
+            ("revisions", "revision_id"),
+            ("plan_execution_records", "record_id"),
+        ):
+            rows = self.connection.execute(
+                f"SELECT {key} AS record_key, content_checksum AS expected, payload_json "
+                f"FROM {table}"
+            ).fetchall()
+            for row in rows:
+                actual = hashlib.sha256(str(row["payload_json"]).encode("utf-8")).hexdigest()
+                if not hmac.compare_digest(actual, str(row["expected"])):
+                    raise StorageIntegrityError(
+                        f"checksum payload alterato in {table}:{row['record_key']}"
+                    )
+                counts[table] += 1
+        return counts
 
     @contextmanager
     def transaction(self) -> Iterator[None]:

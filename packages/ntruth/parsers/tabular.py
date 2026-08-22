@@ -36,7 +36,15 @@ class CsvParser:
         except OSError as exc:  # pragma: no cover
             raise ParseFailure(path, f"lettura fallita ({exc})") from exc
 
-        delimiter = "\t" if path.suffix.lower() == ".tsv" else _sniff_delimiter(content)
+        # Il contratto D0/extended per .csv e il separatore virgola: lo sniffing
+        # resta solo per estensioni non ambigue, perche la prosa puo flippare
+        # il delimiter rilevato e spezzare le righe a meta pipeline.
+        if path.suffix.lower() == ".tsv":
+            delimiter = "\t"
+        elif path.suffix.lower() == ".csv":
+            delimiter = ","
+        else:
+            delimiter = _sniff_delimiter(content)
         reader = csv.reader(io.StringIO(content), delimiter=delimiter)
         table = _build_table(path.stem, reader, doc)
         if table is not None:

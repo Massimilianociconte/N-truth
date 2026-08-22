@@ -30,7 +30,7 @@ def _client():
 
     from ntruth.api.app import create_app
 
-    return TestClient(create_app())
+    return TestClient(create_app(), base_url="http://127.0.0.1")
 
 
 def _design() -> ProspectiveD0Draft:

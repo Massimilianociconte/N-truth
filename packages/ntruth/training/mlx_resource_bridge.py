@@ -24,7 +24,6 @@ from ntruth.runtime_resources.manager import (
     ComponentFactory,
     ComponentLoadError,
     ResourceProbe,
-    RuntimeComponent,
     RuntimeInput,
     RuntimeResourceManager,
     StageInvocation,
@@ -118,9 +117,9 @@ def _default_mlx_factory(
     adapter_path: Path | None,
     max_tokens: int,
 ) -> ComponentFactory:
-    def factory(device: RuntimeDevice) -> RuntimeComponent:
-        from ntruth.training.mlx_component import MLXGenerateComponent
+    from ntruth.training.mlx_component import MLXGenerateComponent
 
+    def factory(device: RuntimeDevice) -> MLXGenerateComponent:
         try:
             return MLXGenerateComponent(
                 model_path=model_path,

@@ -140,11 +140,14 @@ disallow_untyped_defs = true
 module = [
     "huggingface_hub",
     "huggingface_hub.*",
+    "mlx",
+    "mlx.*",
     "mlx_lm",
     "mlx_lm.*",
     "outlines",
     "outlines.*",
     "transformers",
     "transformers.*",
+    "uvicorn",
 ]
 ignore_missing_imports = true

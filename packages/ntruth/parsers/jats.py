@@ -9,6 +9,7 @@ import re
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
+from ntruth.ingest.safety import neutralize_formula
 from ntruth.parsers.base import ParseFailure, RawBlock, RawDocument, RawTable
 from ntruth.schemas.document import ParserStatus
 
@@ -26,7 +27,10 @@ class JatsParser:
         raw = path.read_bytes()
         # Il rifiuto avviene sui byte prima di costruire XMLParser o invocare
         # ElementTree: anche le entita interne non possono essere espanse.
-        if _FORBIDDEN_DTD.search(raw):
+        # La seconda scansione senza NUL copre le serializzazioni UTF-16/UTF-32
+        # dei caratteri ASCII (es. b"<\\x00!\\x00D"), altrimenti invisibili al
+        # pattern byte-level; un falso positivo rifiuta fail-closed.
+        if _FORBIDDEN_DTD.search(raw) or _FORBIDDEN_DTD.search(raw.replace(b"\x00", b"")):
             raise ParseFailure(path, "DOCTYPE/ENTITY non ammessi negli input XML/JATS")
 
         parser = ET.XMLParser()
@@ -130,7 +134,8 @@ def _text_of(element: ET.Element | None) -> str:
 def _convert_table(element: ET.Element, name: str, caption: str | None) -> RawTable | None:
     rows: list[list[str]] = []
     for tr in element.iter("tr"):
-        cells = [_text_of(td) for td in list(tr) if td.tag in {"td", "th"}]
+        # Le celle JATS non sono esportabili come formula: stessa policy dei CSV.
+        cells = [neutralize_formula(_text_of(td))[0] for td in list(tr) if td.tag in {"td", "th"}]
         if cells:
             rows.append(cells)
     if len(rows) < 2:

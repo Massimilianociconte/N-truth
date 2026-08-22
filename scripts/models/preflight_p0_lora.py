@@ -27,6 +27,7 @@ def main() -> int:
 
     model_path = REPO / cfg["model"]["local_path"]
     train_chat = REPO / cfg["data"]["train_path"]
+    REPO / cfg["data"]["validation_path"]
 
     # Count lines / tasks
     task_counts: dict[str, int] = {}

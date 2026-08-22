@@ -480,10 +480,10 @@ def render_text(
             if clause in text:
                 start = text.index(clause)
                 # tighter span on entity label if possible
-                lab = item["label"]
+                lab = str(item["label"])
                 if lab in text[start : start + len(clause)]:
-                    rel_off = text[start : start + len(clause)].index(lab)
-                    s0, s1 = start + rel_off, start + rel_off + len(lab)
+                    rel_pos = text[start : start + len(clause)].index(lab)
+                    s0, s1 = start + rel_pos, start + rel_pos + len(lab)
                 else:
                     s0, s1 = start, start + len(clause)
                 spans.append(

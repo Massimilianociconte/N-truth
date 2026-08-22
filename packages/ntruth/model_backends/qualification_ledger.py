@@ -294,7 +294,9 @@ class QualificationLedger:
         ).fetchone()
         if row is None:
             return None
-        return dict(row)
+        # sqlite3.Row non supporta l'appartenenza per chiave ne la conversione
+        # diretta a dict: si itera su (indice, nome colonna).
+        return {key: row[index] for index, key in enumerate(row.keys())}
 
     def count(self) -> int:
         row = self.connection.execute(

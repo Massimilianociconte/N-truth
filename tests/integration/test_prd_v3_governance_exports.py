@@ -137,7 +137,7 @@ def test_api_distribution_readiness_is_explicit_and_fail_closed(tmp_path: Path) 
 
     source = tmp_path / "methods.md"
     source.write_text(METHODS, encoding="utf-8")
-    client = TestClient(create_app())
+    client = TestClient(create_app(), base_url="http://127.0.0.1")
     analyzed = client.post(
         "/v1/analyze",
         json={

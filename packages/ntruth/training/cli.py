@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Literal
 
@@ -245,8 +246,9 @@ def benchmark_resources(
             if model is not None
             else (repo.resolve() / loaded["model"]["local_path"]).resolve()
         )
+        workloads: Sequence[ProfileWorkload]
         if quick:
-            workloads: tuple[ProfileWorkload, ...] = (
+            workloads = (
                 ProfileWorkload(
                     RuntimeProfileName.LOW_MEMORY,
                     prompt_chars=800,

@@ -337,7 +337,7 @@ def _analyze_block(
             verification_valid=not verification.violations,
         )
         # Semantic non puo sanare hard-invalid; viene comunque eseguito per audit.
-        semantic = verify_semantic(invalid_block)
+        semantic = verify_semantic(invalid_block, source_texts=document.texts or None)
         return BlockAnalysis(
             document=document,
             block=invalid_block,
@@ -404,7 +404,7 @@ def _analyze_block(
     )
     block = apply_output_policy(block)
     verification = verify_block(block, additional_violations=build.violations)
-    semantic = verify_semantic(block)
+    semantic = verify_semantic(block, source_texts=document.texts or None)
     compilation = finalize_experiment_block_compilation(
         block,
         supported_profile=supported_profile,

@@ -775,7 +775,7 @@ def predict_and_score(
             del record_id, gold
             raw = first_raws[index]
             try:
-                predicted: CandidateGraphSet | None = validate_candidate_graph_pair(
+                predicted = validate_candidate_graph_pair(
                     parser_input,
                     parse_prediction_text(raw),
                 )
@@ -850,7 +850,7 @@ def predict_and_score(
             for record_id, prompt_messages, parser_input, gold in prepared:
                 raw_outputs: list[str] = []
                 validation_error: str | None = None
-                predicted = None
+                stage_predicted: CandidateGraphSet | None = None
                 attempts = 2 if retry_invalid_once else 1
                 for attempt in range(attempts):
                     messages = _attempt_messages(
@@ -867,7 +867,7 @@ def predict_and_score(
                     )
                     raw_outputs.append(raw)
                     try:
-                        predicted = validate_candidate_graph_pair(
+                        stage_predicted = validate_candidate_graph_pair(
                             parser_input,
                             parse_prediction_text(raw),
                         )
@@ -879,7 +879,7 @@ def predict_and_score(
                     record_id=record_id,
                     gold=gold,
                     raw_outputs=raw_outputs,
-                    predicted=predicted,
+                    predicted=stage_predicted,
                     validation_error=validation_error,
                 )
                 scores.append(score)

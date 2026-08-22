@@ -317,7 +317,7 @@ def _assess_stage(raw: str, stage: StageName) -> dict[str, Any]:
 def compute_max_tokens_budget(
     cases: list[dict[str, Any]], stage: StageName, backend: Any
 ) -> dict[str, Any]:
-    """max_tokens >= p95(gold_output_tokens) x 1.5, capped."""
+    """max_tokens ≥ p95(gold_output_tokens) x 1.5, capped."""
 
     token_counts: list[int] = []
     for case in cases:

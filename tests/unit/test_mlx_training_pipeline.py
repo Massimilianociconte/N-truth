@@ -339,3 +339,68 @@ def test_runtime_smoke_dataset_is_allowed_only_with_explicit_smoke_gate(tmp_path
     result = validate_mlx_dataset(output, smoke_test=True)
     assert result["counts"] == {"train": 4, "valid": 2, "test": 2}
     assert result["smoke_test"] is True
+
+
+def test_substantive_training_blocked_by_registry_hold(tmp_path: Path) -> None:
+    import pytest as _pytest
+
+    from ntruth.training.mlx_runtime import MLXPipelineError, assert_substantive_training_allowed
+
+    registry = tmp_path / "models" / "registry"
+    registry.mkdir(parents=True)
+    (registry / "training_program.json").write_text(
+        json.dumps(
+            {
+                "training_execution_gate": "HOLD_PENDING_REAL_ANCHOR",
+                "substantive_p0_training_allowed": False,
+                "engineering_smoke_training_allowed": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+    with _pytest.raises(MLXPipelineError, match="HOLD_PENDING_REAL_ANCHOR"):
+        assert_substantive_training_allowed(tmp_path, smoke_test=False)
+    summary = assert_substantive_training_allowed(tmp_path, smoke_test=True)
+    assert summary["engineering_smoke_training_allowed"] is True
+
+
+def test_substantive_training_allowed_when_registry_opens(tmp_path: Path) -> None:
+    from ntruth.training.mlx_runtime import assert_substantive_training_allowed
+
+    registry = tmp_path / "models" / "registry"
+    registry.mkdir(parents=True)
+    (registry / "training_program.json").write_text(
+        json.dumps(
+            {
+                "training_execution_gate": "OPEN_AFTER_GATES",
+                "substantive_p0_training_allowed": True,
+                "engineering_smoke_training_allowed": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+    summary = assert_substantive_training_allowed(tmp_path, smoke_test=False)
+    assert summary["substantive_p0_training_allowed"] is True
+
+
+def test_missing_registry_fails_closed_for_both_modes(tmp_path: Path) -> None:
+    import pytest as _pytest
+
+    from ntruth.training.mlx_runtime import MLXPipelineError, assert_substantive_training_allowed
+
+    with _pytest.raises(MLXPipelineError, match="fail-closed"):
+        assert_substantive_training_allowed(tmp_path, smoke_test=False)
+    with _pytest.raises(MLXPipelineError, match="fail-closed"):
+        assert_substantive_training_allowed(tmp_path, smoke_test=True)
+
+
+def test_bundled_registry_blocks_substantive_training() -> None:
+    from pathlib import Path as _Path
+
+    import pytest as _pytest
+
+    from ntruth.training.mlx_runtime import MLXPipelineError, assert_substantive_training_allowed
+
+    repo_root = _Path(__file__).resolve().parents[2]
+    with _pytest.raises(MLXPipelineError, match="training_execution_gate"):
+        assert_substantive_training_allowed(repo_root, smoke_test=False)

@@ -50,11 +50,12 @@ from ntruth.schemas.core import (
 from ntruth.schemas.experiment import (
     CountKind,
     CountQuantifier,
+    CountRecord,
     ExperimentBlock,
     Factor,
     TriState,
 )
-from ntruth.schemas.graph import RelationType
+from ntruth.schemas.graph import NodeType, RelationType
 
 
 class SemanticBackend(StrEnum):
@@ -243,43 +244,134 @@ def _decisive_factor_support(
     )
 
 
-def _numeric_lifecycle_consistency(block: ExperimentBlock) -> list[SemanticCheck]:
-    """Confronta count EXACT con ordine lifecycle quando presenti e same-scope."""
+_LIFECYCLE_ORDER: tuple[CountKind, ...] = (
+    CountKind.PLANNED_N,
+    CountKind.ALLOCATED_N,
+    CountKind.TREATED_N,
+    CountKind.OBSERVED_N,
+    CountKind.ANALYSED_N,
+)
 
-    exact: dict[CountKind, list[int]] = {}
+
+def _count_scope_key(
+    count: CountRecord,
+) -> tuple[
+    NodeType | None,
+    str | None,
+    str | None,
+    str | None,
+    str | None,
+    str | None,
+]:
+    """Chiave di comparabilita: solo coppie con la stessa chiave vengono confrontate."""
+
+    return (
+        count.scope.unit_type,
+        count.scope.factor_id,
+        count.scope.contrast_id,
+        count.scope.group_or_level,
+        count.scope.endpoint_id,
+        count.scope.timepoint,
+    )
+
+
+def _format_count_scope(key: tuple[object, ...]) -> str:
+    parts = [str(item) for item in key if item is not None]
+    return "/".join(parts) if parts else "global"
+
+
+def _numeric_lifecycle_consistency(block: ExperimentBlock) -> list[SemanticCheck]:
+    """Confronta count EXACT con ordine lifecycle quando presenti e same-scope.
+
+    I confronti avvengono solo tra valori con la medesima chiave di scope: due
+    PLANNED per gruppi diversi non disattivano piu l'intera catena e un valore
+    per-scope non viene confrontato con un globale. ``EXCLUDED_N`` e coperto da
+    vincoli laterali conservativi (escluse <= allocate; escluse + analizzate
+    <= allocate). Valorimultipli entro la stessa chiave sono segnalati come
+    conflitto invece di essere ignorati.
+    """
+
+    exact_by_scope: dict[tuple[object, ...], dict[CountKind, set[int]]] = {}
     for count in block.count_records:
         if count.quantifier is not CountQuantifier.EXACT:
             continue
         if count.value is None:
             continue
-        exact.setdefault(count.kind, []).append(int(count.value))
+        key = _count_scope_key(count)
+        kinds = exact_by_scope.setdefault(key, {})
+        kinds.setdefault(count.kind, set()).add(int(count.value))
 
-    order = (
-        CountKind.PLANNED_N,
-        CountKind.ALLOCATED_N,
-        CountKind.TREATED_N,
-        CountKind.OBSERVED_N,
-        CountKind.ANALYSED_N,
-    )
     checks: list[SemanticCheck] = []
-    present = [
-        (kind, values[0]) for kind, values in exact.items() if len(values) == 1 and kind in order
-    ]
-    present_map = dict(present)
-    for left, right in itertools.pairwise(order):
-        if left in present_map and right in present_map:
-            ok = present_map[left] >= present_map[right]
-            checks.append(
-                _check(
-                    check_id=f"numeric-{left.value}-{right.value}",
-                    code="numeric_lifecycle_order",
-                    message=(
-                        f"{left.value}={present_map[left]} vs {right.value}={present_map[right]}: "
-                        + ("ordine rispettato" if ok else "ordine violato")
-                    ),
-                    passed=ok,
+    for scope_key in sorted(exact_by_scope, key=repr):
+        by_kind = exact_by_scope[scope_key]
+        scope_label = _format_count_scope(scope_key)
+
+        # Stesso scope con valori diversi per lo stesso kind: conflitto esplicito.
+        for kind in sorted(by_kind, key=lambda item: item.value):
+            values = by_kind[kind]
+            if len(values) > 1:
+                ordered_values = sorted(values)
+                checks.append(
+                    _check(
+                        check_id=f"numeric-conflict-{kind.value}-{scope_label}",
+                        code="numeric_lifecycle_conflicting_within_scope",
+                        message=(
+                            f"{kind.value} [{scope_label}]: valori {ordered_values} "
+                            "conflittuali nello stesso scope"
+                        ),
+                        passed=False,
+                    )
                 )
-            )
+
+        singles = {kind: next(iter(values)) for kind, values in by_kind.items() if len(values) == 1}
+        for left, right in itertools.pairwise(_LIFECYCLE_ORDER):
+            if left in singles and right in singles:
+                ok = singles[left] >= singles[right]
+                checks.append(
+                    _check(
+                        check_id=f"numeric-{left.value}-{right.value}-{scope_label}",
+                        code="numeric_lifecycle_order",
+                        message=(
+                            f"{left.value}={singles[left]} vs {right.value}={singles[right]} "
+                            f"[{scope_label}]: " + ("ordine rispettato" if ok else "ordine violato")
+                        ),
+                        passed=ok,
+                    )
+                )
+
+        excluded = singles.get(CountKind.EXCLUDED_N)
+        if excluded is not None:
+            allocated = singles.get(CountKind.ALLOCATED_N)
+            analysed = singles.get(CountKind.ANALYSED_N)
+            if allocated is not None:
+                ok_excluded = excluded <= allocated
+                checks.append(
+                    _check(
+                        check_id=f"numeric-excluded-allocated-{scope_label}",
+                        code="numeric_lifecycle_order",
+                        message=(
+                            f"excluded_n={excluded} vs allocated_n={allocated} "
+                            f"[{scope_label}]: "
+                            + ("ordine rispettato" if ok_excluded else "ordine violato")
+                        ),
+                        passed=ok_excluded,
+                    )
+                )
+            if allocated is not None and analysed is not None:
+                ok_disjoint = excluded + analysed <= allocated
+                checks.append(
+                    _check(
+                        check_id=f"numeric-excluded-analysed-{scope_label}",
+                        code="numeric_lifecycle_partition",
+                        message=(
+                            f"excluded_n={excluded} + analysed_n={analysed} vs "
+                            f"allocated_n={allocated} [{scope_label}]: "
+                            + ("partizione coerente" if ok_disjoint else "partizione violata")
+                        ),
+                        passed=ok_disjoint,
+                    )
+                )
+
     if not checks:
         checks.append(
             _check(

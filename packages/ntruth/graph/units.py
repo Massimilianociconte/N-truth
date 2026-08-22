@@ -739,10 +739,13 @@ def _declared_n(
                     (statement.scope.timepoint, scope.timepoint),
                 )
             )
-            group_is_exact = scope.group is None or statement.scope.group in {
-                scope.group,
-                "per_group",
-            }
+            group_is_exact = scope.group is None or (
+                statement.scope.group == "per_group"
+                or (
+                    statement.scope.group is not None
+                    and statement.scope.group.casefold() == scope.group.casefold()
+                )
+            )
             if exact_ids and group_is_exact:
                 strictly_scoped.append(statement)
         pool = strictly_scoped

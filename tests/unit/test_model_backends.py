@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from ntruth.model_backends import (
-    DEFAULT_MODEL_ID,
+    GRANITE_CANONICAL_MODEL_ID,
     MODEL_MUST_NOT_EMIT,
     ModelProvider,
     create_model_backend,
@@ -25,33 +25,13 @@ from ntruth.model_backends.registry import (
 )
 from ntruth.training.mlx_runtime import MLXPipelineError, load_profile
 
-# I test marcati con _GRANITE_DEFAULT_XFAIL codificano lo stato target
-# "Granite come default" non ancora implementato nella baseline v7-era.
-# Non dipendono dalla disponibilita' dei pesi (GraniteBackend e' lazy e non
-# scarica nulla in costruzione): falliscono perche' factory.resolve_provider
-# usa ancora legacy_qwen come default "pre-migrazione versionato" e il test
-# cluster1 test_default_provider_is_still_qwen_cluster1 congela quello stato.
-# Il flip del default e una decisione di prodotto fuori scope FASE 1;
-# strict=True fa fallire forte se il target venisse implementato.
-_GRANITE_DEFAULT_XFAIL = pytest.mark.xfail(
-    reason=(
-        "Specifica target Granite-by-default: il default resta legacy_qwen "
-        "versionato pre-migrazione (factory.resolve_provider, budget "
-        "NFR-06/cluster1); nessun download modello richiesto. strict: se il "
-        "default diventa Granite rimuovere il marker e aggiornare cluster1."
-    ),
-    strict=True,
-)
 
-
-@_GRANITE_DEFAULT_XFAIL
 def test_default_provider_is_granite() -> None:
     assert resolve_provider() is ModelProvider.GRANITE
-    assert DEFAULT_MODEL_ID == "ibm-granite/granite-4.1-3b"
+    assert GRANITE_CANONICAL_MODEL_ID == "ibm-granite/granite-4.1-3b"
     assert "granite" in default_profile_path().name
 
 
-@_GRANITE_DEFAULT_XFAIL
 def test_registry_lists_granite_primary_and_community_mlx() -> None:
     from ntruth.model_backends.registry import (
         MigrationStatus,
@@ -76,7 +56,10 @@ def test_registry_lists_granite_primary_and_community_mlx() -> None:
 
     status = qualification_status(registry)
     assert status["migration_status"] == MigrationStatus.ARCHITECTURE_MIGRATED
-    assert status["runtime_qualification_status"] == RuntimeQualificationStatus.UNVERIFIED
+    # Lo stato atteso e quello REGISTRATO in models/registry/default.json,
+    # unica fonte autorevole: PARTIALLY_VERIFIED per il fingerprint MLX
+    # community 4-bit (mirror di README e docs/status-snapshot.md).
+    assert status["runtime_qualification_status"] == RuntimeQualificationStatus.PARTIALLY_VERIFIED
     assert status["scientific_validation_status"] == ScientificValidationStatus.NOT_STARTED
     assert "non è ancora" in status["summary"] or "non e ancora" in status["summary"].replace(
         "è", "e"
@@ -84,13 +67,15 @@ def test_registry_lists_granite_primary_and_community_mlx() -> None:
     assert is_scientifically_releasable(registry) is False
     # Fail-closed sui claim, non sulla ricerca esplorativa
     assert can_run_exploratory_benchmarks(registry) is True
-    assert can_run_internal_pilot(registry) is False
+    # PARTIALLY_VERIFIED abilita i pilot interni, NON la validazione esterna.
+    assert can_run_internal_pilot(registry) is True
     assert can_run_external_validation(registry) is False
     gates = claim_gates(registry)
     assert gates["exploratory_benchmark"]["allowed"] is True
-    assert gates["internal_pilot"]["allowed"] is False
-    assert gates["internal_pilot"]["reason"] == "RUNTIME_UNVERIFIED"
-    assert gates["internal_pilot"]["required_next_state"] == "PARTIALLY_VERIFIED"
+    assert gates["internal_pilot"]["allowed"] is True
+    assert gates["internal_pilot"]["reason"] == "OK_INTERNAL_PILOT"
+    assert gates["external_validation"]["allowed"] is False
+    assert gates["external_validation"]["required_next_state"] == "VERIFIED"
     assert gates["scientifically_releasable"]["allowed"] is False
     assert isinstance(registry["qualification"]["transition_log"], list)
     assert registry["qualification"]["transition_log"][0]["sequence"] == 1
@@ -348,7 +333,6 @@ def test_model_must_not_emit_scientific_verdicts() -> None:
     assert "determinability_verdict" in MODEL_MUST_NOT_EMIT
 
 
-@_GRANITE_DEFAULT_XFAIL
 def test_factory_default_is_granite_backend() -> None:
     backend = create_model_backend(
         model_path=Path("/tmp/granite-placeholder"),
@@ -361,7 +345,6 @@ def test_factory_default_is_granite_backend() -> None:
     assert any("community" in note.casefold() for note in meta.notes)
 
 
-@_GRANITE_DEFAULT_XFAIL
 def test_legacy_provider_without_opt_in_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("NTRUTH_MODEL_PROVIDER", "legacy_qwen")
     monkeypatch.delenv("NTRUTH_ALLOW_LEGACY_QWEN", raising=False)
@@ -369,7 +352,6 @@ def test_legacy_provider_without_opt_in_raises(monkeypatch: pytest.MonkeyPatch) 
         create_model_backend(model_path=Path("/tmp/qwen"), allow_legacy=False)
 
 
-@_GRANITE_DEFAULT_XFAIL
 def test_legacy_provider_with_allow_legacy_flag(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("NTRUTH_MODEL_PROVIDER", "legacy_qwen")
     monkeypatch.delenv("NTRUTH_ALLOW_LEGACY_QWEN", raising=False)
@@ -391,7 +373,6 @@ def test_legacy_provider_with_env_opt_in(monkeypatch: pytest.MonkeyPatch) -> Non
     assert isinstance(backend, LegacyQwenBackend)
 
 
-@_GRANITE_DEFAULT_XFAIL
 def test_legacy_backend_without_enabled_flag_raises() -> None:
     with pytest.raises(RuntimeError, match="opt-in"):
         LegacyQwenBackend(model_path=Path("/tmp/x"), enabled=False)

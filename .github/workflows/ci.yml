@@ -32,6 +32,8 @@ jobs:
           pnpm build
       - name: Rebuild locked environment
         run: uv sync --extra dev --extra api --locked
+      - name: Verify lockfile is up to date
+        run: uv lock --check
       - name: Lint
         run: uv run ruff check .
       - name: Format check
@@ -42,6 +44,8 @@ jobs:
         run: uv run pytest -m invariant --disable-warnings
       - name: Tests
         run: uv run pytest --disable-warnings
+      - name: ML CLI contract smoke (no model download)
+        run: uv run ntruth-ml --help
       - name: Build wheel and source distribution
         run: uv build
       - name: Verify packaged UI and scientific assets

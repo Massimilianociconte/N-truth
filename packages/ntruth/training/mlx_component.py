@@ -17,7 +17,7 @@ def _apply_device_preference(device: RuntimeDevice) -> None:
     """Imposta un hint di device MLX se disponibile, senza interrompere il load."""
 
     try:
-        import mlx.core as mx  # type: ignore[import-not-found]
+        import mlx.core as mx
     except ImportError:
         return
     try:

@@ -411,16 +411,16 @@ def _family_counts() -> list[dict[str, Any]]:
         ),
     ]
     for spec in specs:
-        case_id = cast(str, spec[0])
-        split = spec[1]
-        text = cast(str, spec[2])
-        span = cast(str, spec[3])
+        case_id = str(spec[0])
+        split = str(spec[1])
+        text = str(spec[2])
+        span = str(spec[3])
         value = spec[4]
-        unit = cast(NodeType, spec[5])
-        label = cast(str, spec[6])
-        quant = spec[7] if len(spec) > 7 else CountQuantifier.EXACT
-        lo = spec[8] if len(spec) > 8 else None
-        hi = spec[9] if len(spec) > 9 else None
+        unit = cast("NodeType", spec[5])
+        label = str(spec[6])
+        quant = cast("CountQuantifier", spec[7]) if len(spec) > 7 else CountQuantifier.EXACT
+        lo = cast("int | None", spec[8] if len(spec) > 8 else None)
+        hi = cast("int | None", spec[9] if len(spec) > 9 else None)
         file_id = f"file-{case_id}"
         e1 = _span(evidence_id=f"ev-{case_id}", file_id=file_id, text=span, full=text)
         block = CandidateExperimentBlock(
@@ -682,10 +682,10 @@ def _family_factor_endpoint_relations() -> list[dict[str, Any]]:
         rel,
     ) in rel_specs:
         file_id = f"file-{case_id}"
-        # same span ok if identical text
-        ea = _span(evidence_id=f"ev-{case_id}-a", file_id=file_id, text=span_a, full=text)
         spans: tuple[ParserAIEvidenceSpan, ...]
         edge_ev: tuple[str, ...]
+        # same span ok if identical text
+        ea = _span(evidence_id=f"ev-{case_id}-a", file_id=file_id, text=span_a, full=text)
         if span_b != span_a:
             eb = _span(evidence_id=f"ev-{case_id}-b", file_id=file_id, text=span_b, full=text)
             spans = (ea, eb)

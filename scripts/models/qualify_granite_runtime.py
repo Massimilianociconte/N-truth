@@ -631,11 +631,11 @@ def run_qualification() -> dict[str, Any]:
     missing = sorted(required - set(by_name))
     failed = sorted(name for name in required if name in by_name and not by_name[name]["ok"])
     # structured_output: allow pass if JSON extracted OR schema path verified
-    if (
-        "structured_output_conforming" in failed
-        and by_name.get("schema_contract_path_verified", {}).get("ok")
+    schema_ok = (
+        by_name.get("schema_contract_path_verified", {}).get("ok")
         and evidence.get("structured_parsed") is not None
-    ):
+    )
+    if "structured_output_conforming" in failed and schema_ok:
         failed = [f for f in failed if f != "structured_output_conforming"]
         by_name["structured_output_conforming"]["ok"] = True
         by_name["structured_output_conforming"]["detail"] += (

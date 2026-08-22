@@ -530,6 +530,19 @@ def match_relations(
         pp = {key(r) for r in pred if _norm_text(r.get("relation_type")) == t}
         type_rows.append({"type": t, **_set_prf(pp, gp)})
     macro = sum(float(r["f1"]) for r in type_rows) / len(type_rows) if type_rows else 0.0
+    # decisive subset
+    [
+        r
+        for r in gold
+        if _norm_text(r.get("relation_type")) in DECISIVE_RELATIONS
+        or r.get("relation_type") in DECISIVE_RELATIONS
+    ]
+    [
+        r
+        for r in pred
+        if _norm_text(r.get("relation_type")) in DECISIVE_RELATIONS
+        or r.get("relation_type") in DECISIVE_RELATIONS
+    ]
     # our stage schema only has nested_in/derived_from/other — map
     gold_dec_keys = {
         key(r)
@@ -697,16 +710,19 @@ def classify_failures(
             add("ENTITY_ID_MISMATCH", "dangling source/target labels")
 
     elif stage == "candidate_graph_minimal":
-        graph_m = metrics.get("graph") or {}
-        if graph_m.get("empty_output_bias"):
+        graph_metrics = metrics.get("graph") or {}
+        if graph_metrics.get("empty_output_bias"):
             add("EMPTY_OUTPUT_BIAS", "empty graph with non-empty gold")
             add("UNDER_EXTRACTION", "empty minimal graph")
-        if float((graph_m.get("nodes") or {}).get("f1") or 0) < 1.0:
-            add("CORRECT_SCHEMA_WRONG_CONTENT", f"node_f1={graph_m.get('nodes', {}).get('f1')}")
-        if float((graph_m.get("edges") or {}).get("f1") or 0) < 1.0 and gold_relation_items(
+        if float((graph_metrics.get("nodes") or {}).get("f1") or 0) < 1.0:
+            add(
+                "CORRECT_SCHEMA_WRONG_CONTENT",
+                f"node_f1={graph_metrics.get('nodes', {}).get('f1')}",
+            )
+        if float((graph_metrics.get("edges") or {}).get("f1") or 0) < 1.0 and gold_relation_items(
             gold_case
         ):
-            add("MISSING_REQUIRED_RELATION", f"edge_f1={graph_m.get('edges', {}).get('f1')}")
+            add("MISSING_REQUIRED_RELATION", f"edge_f1={graph_metrics.get('edges', {}).get('f1')}")
 
     return failures
 

@@ -64,7 +64,7 @@ ontologia; queste versioni possono avanzare indipendentemente.
   `sequence=max+1` in `BEGIN IMMEDIATE`, GENESIS + anti-reseed, hash chaining,
   evidence content-addressed; policy ledger-first (JSON mirror rigenerabile).
 
-### Added
+### Added (PRD v6.1 refresh)
 
 - Revisione PRD v6.1 con Synthetic Task Use Matrix, Runtime Resource Budget, Lean
   Governance Matrix, registro delle affermazioni assolute, response matrix e
