@@ -302,7 +302,7 @@ def test_raw_canonical_route_cannot_claim_guided_confirmation() -> None:
     submission = confirmed.submission_audit_snapshot.value
     assert submission is not None
 
-    response = TestClient(create_app()).post(
+    response = TestClient(create_app(), base_url="http://127.0.0.1").post(
         "/v8/quick-design",
         json=submission.model_dump(mode="json"),
     )

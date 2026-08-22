@@ -132,7 +132,7 @@ def test_explicit_quick_design_v7_cli_is_visibly_deprecated() -> None:
 
 
 def test_v8_quick_design_api_returns_canonical_neutral_report() -> None:
-    client = TestClient(create_app())
+    client = TestClient(create_app(), base_url="http://127.0.0.1")
 
     response = client.post("/v8/quick-design", json=_submission_payload(raw_wizard=True))
 
@@ -151,7 +151,7 @@ def test_v8_quick_design_api_returns_canonical_neutral_report() -> None:
 
 
 def test_v8_quick_design_api_rejects_direct_scientific_verdict_fields() -> None:
-    client = TestClient(create_app())
+    client = TestClient(create_app(), base_url="http://127.0.0.1")
     payload = _submission_payload()
     payload["determinability"] = "DETERMINATE"
     payload["design_adequate"] = True
@@ -162,7 +162,7 @@ def test_v8_quick_design_api_rejects_direct_scientific_verdict_fields() -> None:
 
 
 def test_explicit_v7_quick_design_api_is_qualified_and_deprecated() -> None:
-    client = TestClient(create_app())
+    client = TestClient(create_app(), base_url="http://127.0.0.1")
 
     response = client.post(
         "/v7/quick-design",

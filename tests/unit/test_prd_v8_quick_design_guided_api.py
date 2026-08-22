@@ -13,7 +13,7 @@ from ntruth.api.app import create_app
 def test_guided_confirm_atomically_returns_the_canonical_result() -> None:
     """Catches a UI/backend adapter requiring mutable post-confirm resubmission."""
 
-    client = TestClient(create_app())
+    client = TestClient(create_app(), base_url="http://127.0.0.1")
     draft = guided_fixture._draft().model_dump(mode="json")
 
     preview_response = client.post(
@@ -54,7 +54,7 @@ def test_guided_confirm_atomically_returns_the_canonical_result() -> None:
 
 
 def test_guided_build_endpoint_recomputes_preview_and_preserves_typed_blockers() -> None:
-    client = TestClient(create_app())
+    client = TestClient(create_app(), base_url="http://127.0.0.1")
     draft_model = guided_fixture._draft()
     draft = draft_model.model_dump(mode="json")
     preview = client.post(

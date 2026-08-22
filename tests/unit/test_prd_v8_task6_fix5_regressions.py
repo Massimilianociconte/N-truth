@@ -284,7 +284,7 @@ def test_api_rejects_conflict_values_forged_behind_consistent_local_binding() ->
 
     forged = _as_raw_wizard(_forged_conflicting_submission())
 
-    response = TestClient(create_app()).post(
+    response = TestClient(create_app(), base_url="http://127.0.0.1").post(
         "/v8/quick-design",
         json=forged.model_dump(mode="json"),
     )

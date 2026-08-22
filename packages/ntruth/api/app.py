@@ -191,7 +191,9 @@ def create_app() -> Any:
     )
     api.add_middleware(
         TrustedHostMiddleware,
-        allowed_hosts=["127.0.0.1", "localhost", "testserver"],
+        # Nessun host di test in produzione: i TestClient usano
+        # base_url="http://127.0.0.1" (vedi tests/integration).
+        allowed_hosts=["127.0.0.1", "localhost"],
     )
     sessions = SessionRegistry()
 
@@ -374,7 +376,25 @@ def create_app() -> Any:
 
     @api.get("/v8/report")
     def report_v8(path: str) -> dict[str, Any]:
-        report_path = Path(path).expanduser()
+        report_path = Path(path).expanduser().resolve()
+        # Containment: il report deve appartenere a un run attivo registrato
+        # in questo processo. Nessuna lettura arbitraria del filesystem.
+        allowed_roots = [
+            Path(session.execution.run_dir).resolve() for session in sessions.iter_sessions()
+        ]
+        if not any(
+            report_path == root or report_path.is_relative_to(root) for root in allowed_roots
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": "report_path_outside_active_runs",
+                    "message": (
+                        "Percorso fuori dai run attivi di questa sessione API: "
+                        f"{{report_path}}"
+                    ),
+                },
+            )
         if not report_path.is_file():
             raise HTTPException(status_code=404, detail=f"Report non trovato: {report_path}")
         try:
@@ -387,7 +407,25 @@ def create_app() -> Any:
     def report_v7(path: str) -> dict[str, Any]:
         """Explicitly qualified legacy report reader."""
 
-        report_path = Path(path).expanduser()
+        report_path = Path(path).expanduser().resolve()
+        # Containment: il report deve appartenere a un run attivo registrato
+        # in questo processo. Nessuna lettura arbitraria del filesystem.
+        allowed_roots = [
+            Path(session.execution.run_dir).resolve() for session in sessions.iter_sessions()
+        ]
+        if not any(
+            report_path == root or report_path.is_relative_to(root) for root in allowed_roots
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": "report_path_outside_active_runs",
+                    "message": (
+                        "Percorso fuori dai run attivi di questa sessione API: "
+                        f"{{report_path}}"
+                    ),
+                },
+            )
         if not report_path.is_file():
             raise HTTPException(status_code=404, detail=f"Report non trovato: {report_path}")
         try:

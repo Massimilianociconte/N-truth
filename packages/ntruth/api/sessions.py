@@ -212,3 +212,9 @@ class SessionRegistry:
                 raise SessionNotFound(session_id) from exc
             self._sessions.move_to_end(session_id)
             return session
+
+    def iter_sessions(self) -> tuple[AnalysisSession, ...]:
+        """Snapshot stabile delle sessioni attive (per containment check)."""
+
+        with self._lock:
+            return tuple(self._sessions.values())

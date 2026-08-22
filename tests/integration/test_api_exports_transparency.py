@@ -373,7 +373,7 @@ def test_fastapi_health_acknowledgement_report_and_parity(tmp_path: Path) -> Non
         domain="quantitative_microscopy",
     )
 
-    client = TestClient(create_app())
+    client = TestClient(create_app(), base_url="http://127.0.0.1")
     health = client.get("/v1/health")
     assert health.status_code == 200
     assert health.json()["offline_core"] is True
