@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import sqlite3
 from collections.abc import Iterator, Mapping
@@ -119,6 +120,33 @@ class StorageDatabase:
         if not self._closed:
             self.connection.close()
             self._closed = True
+
+    def verify_integrity(self) -> dict[str, int]:
+        """Riverifica i checksum dei payload letti dal database.
+
+        I trigger append-only impediscono UPDATE/DELETE via SQL ma non la
+        modifica esadecimale diretta del file: qui ogni payload con
+        ``content_checksum`` viene riletto e riconfrontato. Ritorna i conteggi
+        verificati; solleva ``StorageIntegrityError`` alla prima divergenza.
+        """
+
+        counts = {"revisions": 0, "plan_execution_records": 0}
+        for table, key in (
+            ("revisions", "revision_id"),
+            ("plan_execution_records", "record_id"),
+        ):
+            rows = self.connection.execute(
+                f"SELECT {key} AS record_key, content_checksum AS expected, payload_json "
+                f"FROM {table}"
+            ).fetchall()
+            for row in rows:
+                actual = hashlib.sha256(str(row["payload_json"]).encode("utf-8")).hexdigest()
+                if not hmac.compare_digest(actual, str(row["expected"])):
+                    raise StorageIntegrityError(
+                        f"checksum payload alterato in {table}:{row['record_key']}"
+                    )
+                counts[table] += 1
+        return counts
 
     @contextmanager
     def transaction(self) -> Iterator[None]:
@@ -466,9 +494,7 @@ class StorageDatabase:
             ).fetchall()
         else:
             if status not in {"candidate", "adjudicated_gold"}:
-                raise StorageIntegrityError(
-                    f"status plan_execution non ammesso: {status!r}"
-                )
+                raise StorageIntegrityError(f"status plan_execution non ammesso: {status!r}")
             rows = self.connection.execute(
                 """
                 SELECT * FROM plan_execution_records
@@ -499,13 +525,10 @@ class StorageDatabase:
                 (candidate_id,),
             ).fetchone()
             if candidate_row is None:
-                raise StorageIntegrityError(
-                    f"candidato plan_execution assente: {candidate_id}"
-                )
+                raise StorageIntegrityError(f"candidato plan_execution assente: {candidate_id}")
             if str(candidate_row["status"]) != "candidate":
                 raise StorageIntegrityError(
-                    f"record {candidate_id} non e un candidato (status="
-                    f"{candidate_row['status']!r})"
+                    f"record {candidate_id} non e un candidato (status={candidate_row['status']!r})"
                 )
 
             existing_gold = self.connection.execute(
@@ -517,8 +540,7 @@ class StorageDatabase:
             ).fetchone()
             if existing_gold is not None:
                 raise StorageIntegrityError(
-                    f"gold gia presente per candidato {candidate_id}: "
-                    f"{existing_gold['record_id']}"
+                    f"gold gia presente per candidato {candidate_id}: {existing_gold['record_id']}"
                 )
 
             project_id = str(candidate_row["project_id"])
@@ -684,9 +706,7 @@ def _plan_execution_from_row(row: sqlite3.Row) -> PlanExecutionStorageRecord:
         payload_json=str(row["payload_json"]),
         actor_role=str(row["actor_role"]) if row["actor_role"] is not None else None,
         parent_candidate_id=(
-            str(row["parent_candidate_id"])
-            if row["parent_candidate_id"] is not None
-            else None
+            str(row["parent_candidate_id"]) if row["parent_candidate_id"] is not None else None
         ),
         created_at=str(row["created_at"]),
     )

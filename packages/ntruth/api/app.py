@@ -191,7 +191,9 @@ def create_app() -> Any:
     )
     api.add_middleware(
         TrustedHostMiddleware,
-        allowed_hosts=["127.0.0.1", "localhost", "testserver"],
+        # Nessun host di test in produzione: i TestClient usano
+        # base_url="http://127.0.0.1" (vedi tests/integration).
+        allowed_hosts=["127.0.0.1", "localhost"],
     )
     sessions = SessionRegistry()
     prospective_sessions = ProspectiveSessionRegistry()
@@ -407,7 +409,10 @@ def create_app() -> Any:
             database.upsert_project(
                 project_id=project_id,
                 name=project_id,
-                manifest_path="manifest.json",
+                # Nessun manifest esiste in questo percorso: il checksum e
+                # quello del record piano/esecuzione di bootstrap. Il marcatore
+                # esplicito evita la bugia semantica "manifest.json".
+                manifest_path="plan-execution-bootstrap",
                 manifest_checksum=manifest_checksum,
             )
 
@@ -470,9 +475,25 @@ def create_app() -> Any:
 
     @api.get("/v1/prospective/plan-execution/{record_id}")
     def get_plan_execution(record_id: str, project_dir: str) -> dict[str, Any]:
-        """Carica un record piano/esecuzione da storage locale."""
+        """Carica un record piano/esecuzione da storage locale.
 
+        Lettura senza side effect: un GET non crea directory ne database;
+        il progetto deve esistere gia (la creazione avviene solo in POST).
+        """
+
+        root = Path(project_dir).expanduser()
+        if not (root / "ntruth.sqlite3").is_file():
+            # Stesso codice di un record assente: la lettura resta idempotente
+            # e non crea directory ne database come side effect.
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "code": "plan_execution_not_found",
+                    "message": "Record piano/esecuzione non trovato",
+                },
+            )
         with _open_project_database(project_dir) as database:
+            database.verify_integrity()
             stored = database.get_plan_execution(record_id)
         if stored is None:
             raise HTTPException(
@@ -540,9 +561,7 @@ def create_app() -> Any:
                     status_code=409,
                     detail={
                         "code": "plan_execution_gold_mismatch",
-                        "message": (
-                            "gold.plan_execution.record_id non coincide con il candidato"
-                        ),
+                        "message": ("gold.plan_execution.record_id non coincide con il candidato"),
                     },
                 )
             if candidate.content_checksum != plan_execution_checksum:
@@ -623,7 +642,24 @@ def create_app() -> Any:
     @api.get("/v1/report")
     @api.get("/v1/reports")
     def report(path: str) -> dict[str, Any]:
-        report_path = Path(path).expanduser()
+        report_path = Path(path).expanduser().resolve()
+        # Containment: il report deve appartenere a un run attivo registrato
+        # in questo processo. Nessuna lettura arbitraria del filesystem.
+        allowed_roots = [
+            Path(session.execution.run_dir).resolve() for session in sessions.iter_sessions()
+        ]
+        if not any(
+            report_path == root or report_path.is_relative_to(root) for root in allowed_roots
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": "report_path_outside_active_runs",
+                    "message": (
+                        f"Percorso fuori dai run attivi di questa sessione API: {report_path}"
+                    ),
+                },
+            )
         if not report_path.is_file():
             raise HTTPException(status_code=404, detail=f"Report non trovato: {report_path}")
         try:
