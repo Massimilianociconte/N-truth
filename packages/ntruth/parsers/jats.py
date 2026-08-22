@@ -8,6 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
+from ntruth.ingest.safety import neutralize_formula
 from ntruth.parsers.base import ParseFailure, RawBlock, RawDocument, RawTable
 from ntruth.schemas.document import ParserStatus
 
@@ -31,7 +32,10 @@ class JatsParser:
             raise ParseFailure(path, f"XML non valido (riga {exc.position[0]})") from exc
 
         doc = RawDocument(parser=self.name)
-        if b"<!ENTITY" in raw:
+        # La seconda scansione senza NUL copre le serializzazioni UTF-16/UTF-32
+        # dei caratteri ASCII (es. b"<\\x00!\\x00E"), altrimenti invisibili al
+        # confronto byte-level; un falso positivo rifiuta fail-closed.
+        if b"<!ENTITY" in raw or b"<!ENTITY" in raw.replace(b"\x00", b""):
             doc.warnings.append("dichiarazioni ENTITY ignorate per sicurezza")
 
         title = _text_of(root.find(".//article-title"))
@@ -127,7 +131,8 @@ def _text_of(element: ET.Element | None) -> str:
 def _convert_table(element: ET.Element, name: str, caption: str | None) -> RawTable | None:
     rows: list[list[str]] = []
     for tr in element.iter("tr"):
-        cells = [_text_of(td) for td in list(tr) if td.tag in {"td", "th"}]
+        # Le celle JATS non sono esportabili come formula: stessa policy dei CSV.
+        cells = [neutralize_formula(_text_of(td))[0] for td in list(tr) if td.tag in {"td", "th"}]
         if cells:
             rows.append(cells)
     if len(rows) < 2:
