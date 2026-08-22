@@ -233,3 +233,116 @@ def test_source_grounding_detects_missing_excerpt() -> None:
     assert any(
         item.code == "evidence_span_not_in_source" for item in result.checks if not item.passed
     )
+
+
+def test_numeric_lifecycle_compares_same_scope_only() -> None:
+    """PLANNED per gruppo A non disattiva la catena PLANNED/ALLOCATED del gruppo B."""
+
+    evidence = (_span("ev-multi", etype=EvidenceType.STRUCTURAL_FACT, text="counts"),)
+    prov = Provenance(
+        origin=ProvenanceKind.EXPLICIT,
+        evidence_ids=("ev-multi",),
+        parser_version="test",
+    )
+
+    def scoped(scope: CountScope, kind: CountKind, value: int) -> CountRecord:
+        return CountRecord(
+            count_id=f"c-{kind.value}-{scope.group_or_level}",
+            kind=kind,
+            value=value,
+            quantifier=CountQuantifier.EXACT,
+            scope=scope,
+            evidence_ids=("ev-multi",),
+            provenance=prov,
+        )
+
+    group_a = _scope(LifecycleStatus.PLANNED).model_copy(update={"group_or_level": "A"})
+    planned_a = group_a.model_copy(update={"lifecycle": LifecycleStatus.PLANNED})
+    allocated_a = group_a.model_copy(update={"lifecycle": LifecycleStatus.ALLOCATED})
+    group_b = _scope(LifecycleStatus.PLANNED).model_copy(update={"group_or_level": "B"})
+    planned_b = group_b.model_copy(update={"lifecycle": LifecycleStatus.PLANNED})
+
+    counts = (
+        scoped(planned_a, CountKind.PLANNED_N, 6),
+        scoped(allocated_a, CountKind.ALLOCATED_N, 4),
+        scoped(planned_b, CountKind.PLANNED_N, 8),
+    )
+    result = verify_semantic(_block(counts=counts, evidence=evidence))
+    order_checks = [item for item in result.checks if item.code == "numeric_lifecycle_order"]
+    assert len(order_checks) == 1, "solo la catena dello scope A deve essere confrontata"
+    assert all(item.passed for item in order_checks)
+
+
+def test_excluded_n_partition_is_checked_in_same_scope() -> None:
+    evidence = (_span("ev-excl", etype=EvidenceType.STRUCTURAL_FACT, text="counts"),)
+    prov = Provenance(
+        origin=ProvenanceKind.EXPLICIT,
+        evidence_ids=("ev-excl",),
+        parser_version="test",
+    )
+    base_scope = _scope(LifecycleStatus.ALLOCATED).model_copy(
+        update={
+            "group_or_level": "pooled",
+            "unknown_reasons": {
+                "timepoint": "not applicable to this endpoint",
+            },
+        }
+    )
+
+    def rec(kind: CountKind, value: int, lifecycle: LifecycleStatus) -> CountRecord:
+        return CountRecord(
+            count_id=f"c-{kind.value}",
+            kind=kind,
+            value=value,
+            quantifier=CountQuantifier.EXACT,
+            scope=base_scope.model_copy(update={"lifecycle": lifecycle}),
+            evidence_ids=("ev-excl",),
+            provenance=prov,
+        )
+
+    ok_counts = (
+        rec(CountKind.ALLOCATED_N, 20, LifecycleStatus.ALLOCATED),
+        rec(CountKind.EXCLUDED_N, 5, LifecycleStatus.EXCLUDED),
+        rec(CountKind.ANALYSED_N, 15, LifecycleStatus.ANALYSED),
+    )
+    ok_result = verify_semantic(_block(counts=ok_counts, evidence=evidence))
+    assert not any(
+        item.code == "numeric_lifecycle_partition" and not item.passed for item in ok_result.checks
+    )
+
+    bad_counts = (
+        rec(CountKind.ALLOCATED_N, 20, LifecycleStatus.ALLOCATED),
+        rec(CountKind.EXCLUDED_N, 9, LifecycleStatus.EXCLUDED),
+        rec(CountKind.ANALYSED_N, 15, LifecycleStatus.ANALYSED),
+    )
+    bad_result = verify_semantic(_block(counts=bad_counts, evidence=evidence))
+    assert any(
+        item.code == "numeric_lifecycle_partition" and not item.passed for item in bad_result.checks
+    )
+
+
+def test_conflicting_values_within_same_scope_fail_visibly() -> None:
+    evidence = (_span("ev-conf", etype=EvidenceType.STRUCTURAL_FACT, text="counts"),)
+    prov = Provenance(
+        origin=ProvenanceKind.EXPLICIT,
+        evidence_ids=("ev-conf",),
+        parser_version="test",
+    )
+    scope = _scope(LifecycleStatus.ALLOCATED)
+    counts = tuple(
+        CountRecord(
+            count_id=f"c-alloc-{value}",
+            kind=CountKind.ALLOCATED_N,
+            value=value,
+            quantifier=CountQuantifier.EXACT,
+            scope=scope,
+            evidence_ids=("ev-conf",),
+            provenance=prov,
+        )
+        for value in (10, 12)
+    )
+    result = verify_semantic(_block(counts=counts, evidence=evidence))
+    assert any(
+        item.code == "numeric_lifecycle_conflicting_within_scope" and not item.passed
+        for item in result.checks
+    )
