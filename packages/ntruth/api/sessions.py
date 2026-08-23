@@ -195,9 +195,18 @@ class SessionRegistry:
         self._sessions: OrderedDict[str, AnalysisSession] = OrderedDict()
         self._lock = RLock()
 
-    def create(self, execution: AnalysisExecution) -> AnalysisSession:
+    def create(
+        self,
+        execution: AnalysisExecution,
+        *,
+        session_id: str | None = None,
+    ) -> AnalysisSession:
         with self._lock:
-            session_id = secrets.token_urlsafe(18)
+            if session_id is not None:
+                if session_id in self._sessions:
+                    raise SessionNotFound(session_id)  # id già attivo: niente overwrite
+            else:
+                session_id = secrets.token_urlsafe(18)
             session = AnalysisSession(id=session_id, execution=execution)
             self._sessions[session_id] = session
             while len(self._sessions) > self._max_sessions:

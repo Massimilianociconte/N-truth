@@ -9,6 +9,11 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from ntruth import SCHEMA_VERSION, __version__
+from ntruth.api.session_journal import (
+    append_entry as journal_append_entry,
+    journal_dir_from_env,
+    read_entry as journal_read_entry,
+)
 from ntruth.api.sessions import (
     SessionArtifactNotFound,
     SessionBlockNotFound,
@@ -196,6 +201,7 @@ def create_app() -> Any:
         allowed_hosts=["127.0.0.1", "localhost"],
     )
     sessions = SessionRegistry()
+    session_journal_dir = journal_dir_from_env()
 
     @api.get("/health")
     @api.get("/v1/health")
@@ -238,6 +244,24 @@ def create_app() -> Any:
             detail={"code": "SCIENTIFIC_REVIEW_REQUIRED", "issue_id": "SRR-V8-008"},
         )
 
+    def _v7_response(execution: Any, session_id: str) -> dict[str, Any]:
+        return {
+            "report": report_to_dict(execution.result.report),
+            "ingest_summary": execution.ingest.summary(),
+            "artifacts": {name: str(path) for name, path in execution.written.items()},
+            "domain_transparency": execution.transparency.model_dump(mode="json"),
+            "session_id": session_id,
+            "run_id": execution.run_id,
+            "revision": execution.revision,
+            "output_dir": str(execution.run_dir),
+            "privacy_audit": execution.privacy_audit.model_dump(mode="json"),
+            "share_readiness": execution.share_readiness.model_dump(mode="json"),
+            "contract": {
+                "code": "DEPRECATED_V7_ADAPTER",
+                "version": "v7",
+            },
+        }
+
     @api.post("/v7/analyze")
     def analyze_v7(payload: AnalyzeRequest) -> dict[str, Any]:
         try:
@@ -264,22 +288,82 @@ def create_app() -> Any:
         except (FileNotFoundError, NoUsableFilesError, SafetyError, RulesetNotFound) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         session = sessions.create(execution)
-        return {
-            "report": report_to_dict(execution.result.report),
-            "ingest_summary": execution.ingest.summary(),
-            "artifacts": {name: str(path) for name, path in execution.written.items()},
-            "domain_transparency": execution.transparency.model_dump(mode="json"),
-            "session_id": session.id,
-            "run_id": execution.run_id,
-            "revision": execution.revision,
-            "output_dir": str(execution.run_dir),
-            "privacy_audit": execution.privacy_audit.model_dump(mode="json"),
-            "share_readiness": execution.share_readiness.model_dump(mode="json"),
-            "contract": {
-                "code": "DEPRECATED_V7_ADAPTER",
-                "version": "v7",
-            },
-        }
+        if session_journal_dir is not None:
+            journal_append_entry(
+                session_journal_dir,
+                session.id,
+                {
+                    "lane": "v7",
+                    "source": payload.source,
+                    "out": payload.out,
+                    "project_dir": payload.project_dir,
+                    "language": payload.language,
+                    "domain": payload.domain,
+                    "ruleset_id": payload.ruleset_id,
+                    "ruleset_version": payload.ruleset_version,
+                    "acknowledge_unvalidated_domain": payload.acknowledge_unvalidated_domain,
+                },
+            )
+        return _v7_response(execution, session.id)
+
+    @api.post("/v1/sessions/{session_id}/resume")
+    def resume_session(session_id: str) -> dict[str, Any]:
+        """Ricostruisce esplicitamente una sessione journallata dopo un restart.
+
+        Replay deterministico della richiesta registrata: nessuna resurrezione
+        silenziosa al boot, nessuna sovrascrittura di run precedenti (l'analisi
+        crea una nuova revisione append-only). Fail-closed sul checksum.
+        """
+
+        if session_journal_dir is None:
+            raise HTTPException(
+                status_code=404,
+                detail={"code": "session_journal_disabled"},
+            )
+        try:
+            live = sessions.get(session_id)
+        except SessionNotFound:
+            live = None
+        if live is not None:
+            return _v7_response(live.execution, session_id)
+
+        entry = journal_read_entry(session_journal_dir, session_id)
+        if entry is None:
+            raise HTTPException(
+                status_code=404,
+                detail={"code": "session_not_resumable", "session_id": session_id},
+            )
+        request = entry.request
+        if request.get("lane") != "v7":
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "session_lane_not_resumable", "lane": str(request.get("lane"))},
+            )
+        try:
+            execution = execute_analysis_v7_adapter(
+                Path(str(request["source"])),
+                out=Path(str(request["out"])),
+                project_dir=Path(str(request["project_dir"])) if request.get("project_dir") else None,
+                language=str(request.get("language", "it")),
+                domain=str(request.get("domain", "quantitative_microscopy")),
+                ruleset_id=str(request.get("ruleset_id", "")),
+                ruleset_version=str(request.get("ruleset_version", "")),
+                require_domain_acknowledgement=True,
+                acknowledged_unvalidated_domain=bool(request.get("acknowledge_unvalidated_domain")),
+            )
+        except DomainAcknowledgementRequired as exc:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "domain_acknowledgement_required",
+                    "message": str(exc),
+                    "domain_transparency": exc.transparency.model_dump(mode="json"),
+                },
+            ) from exc
+        except (FileNotFoundError, NoUsableFilesError, SafetyError, RulesetNotFound) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        session = sessions.create(execution, session_id=session_id)
+        return _v7_response(execution, session.id)
 
     @api.post("/v8/quick-design")
     def quick_design_v8(payload: QuickDesignV8Submission) -> dict[str, Any]:
