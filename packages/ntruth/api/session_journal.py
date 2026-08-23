@@ -47,7 +47,7 @@ def _payload_bytes(session_id: str, request: dict[str, object]) -> bytes:
     line = json.dumps(
         {**payload, "payload_sha256": digest}, ensure_ascii=False, sort_keys=True
     )
-    return f"{line}\n".encode("utf-8")
+    return f"{line}\n".encode()
 
 
 def append_entry(directory: Path, session_id: str, request: dict[str, object]) -> None:

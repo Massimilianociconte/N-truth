@@ -11,7 +11,11 @@ from pydantic import BaseModel, Field
 from ntruth import SCHEMA_VERSION, __version__
 from ntruth.api.session_journal import (
     append_entry as journal_append_entry,
+)
+from ntruth.api.session_journal import (
     journal_dir_from_env,
+)
+from ntruth.api.session_journal import (
     read_entry as journal_read_entry,
 )
 from ntruth.api.sessions import (
