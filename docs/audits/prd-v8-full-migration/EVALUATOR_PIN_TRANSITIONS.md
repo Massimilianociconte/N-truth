@@ -23,5 +23,8 @@ regole restano identici salvo indicazione esplicita.
   rulebook declared `dc10b6a53cc754b2be1263a83561dcb1c1faf555b80e61013a4dd45e28761c97`;
   theory declared invariato (`aa376398…`).
 - **Esito:** `verify_runtime_bundle` PASS; suite completa verde.
+- **Anchor repository-truth:** il descrittore `rulebook-conformance` della mappa
+  `prd-v8-current-to-target.yaml` e' stato ri-ancorato (`4567fa88…`) con la
+  stessa procedura audited: cambio di identita dei percorsi, non di semantica.
 - **Non coperto:** alcuna pretesa di approvazione scientifica; i blocker
   SRR restano aperti verso i reviewer esterni.
