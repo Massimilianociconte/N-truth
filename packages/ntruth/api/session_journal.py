@@ -44,9 +44,7 @@ def _payload_bytes(session_id: str, request: dict[str, object]) -> bytes:
     payload = {"session_id": session_id, "request": request}
     canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-    line = json.dumps(
-        {**payload, "payload_sha256": digest}, ensure_ascii=False, sort_keys=True
-    )
+    line = json.dumps({**payload, "payload_sha256": digest}, ensure_ascii=False, sort_keys=True)
     return f"{line}\n".encode()
 
 
@@ -71,7 +69,9 @@ def read_entry(directory: Path, session_id: str) -> JournalEntry | None:
             record = json.loads(line)
             claimed = str(record.get("payload_sha256"))
             payload = {"session_id": record["session_id"], "request": record["request"]}
-            canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+            canonical = json.dumps(
+                payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+            )
             actual = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
             if actual != claimed:
                 raise JournalCorruptError("checksum mismatch")

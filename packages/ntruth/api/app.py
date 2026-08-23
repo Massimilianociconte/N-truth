@@ -347,7 +347,9 @@ def create_app() -> Any:
             execution = execute_analysis_v7_adapter(
                 Path(str(request["source"])),
                 out=Path(str(request["out"])),
-                project_dir=Path(str(request["project_dir"])) if request.get("project_dir") else None,
+                project_dir=Path(str(request["project_dir"]))
+                if request.get("project_dir")
+                else None,
                 language=str(request.get("language", "it")),
                 domain=str(request.get("domain", "quantitative_microscopy")),
                 ruleset_id=str(request.get("ruleset_id", "")),
