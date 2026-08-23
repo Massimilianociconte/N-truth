@@ -6,6 +6,33 @@ ontologia; queste versioni possono avanzare indipendentemente.
 
 ## [Unreleased]
 
+### Added
+
+- Executable SRR mechanization matrix: 17 positive/negative conformance tests
+  sealing the code-level mechanisms prescribed by the scientific-review
+  register (vocabulary pinning, legacy-key rejection, state-payload blockers,
+  UNKNOWN_WITH_REASON source classes and more). External scientific closure
+  remains explicitly out of scope.
+- Visual span locator for EvidenceSpan corrections: two-click selection with
+  absolute document coordinates, appended to the immutable correction patch as
+  an auditable `ntruth.evidence_span.refine` entry.
+- Opt-in durable session journal (`NTRUTH_SESSION_JOURNAL_DIR`) with explicit
+  replay via `POST /v1/sessions/{id}/resume`; corrupted lines quarantined,
+  default behaviour unchanged (ephemeral in-memory registry).
+- Optional OCR adapter contract (`ntruth.ocr`) with mandatory per-page
+  provenance and a fail-closed empty registry; no engine bundled.
+- Accessibility invariants for dialogs (Escape-to-close, initial focus) plus a
+  permanent test that every button exposes an accessible name.
+- CI: third-party actions pinned by commit SHA; `CITATION.cff` gains
+  `date-released`.
+
+### Changed
+
+- Engineering pin transition `reviewed-evaluator-registry` 0.1.0 -> 0.1.1 to
+  carry the EvidenceSpan offset-domain hardening onto the canonical line
+  without invalidating SRR-V8-024; transition recorded in
+  `docs/audits/prd-v8-full-migration/EVALUATOR_PIN_TRANSITIONS.md`.
+
 ### Fixed
 
 - Graph core: the allocated/analysed count heuristic now requires an exclusion

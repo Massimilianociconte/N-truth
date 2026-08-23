@@ -47,3 +47,9 @@ The audited implementation is the isolated worktree
 `fe089eff42c16e3fa55606be340c85df57c5442b`. The historical worktree
 `.worktrees/prd-v8-migration` is dirty and divergent and was used only as read-only reference;
 none of its uncommitted state is accepted as current implementation evidence.
+
+## Errata register
+
+| ID | Fonte | Erratum | Azione canonica | Stato |
+|---|---|---|---|---|
+| ERR-SRR-V8-020 | PRD v9, App. K T06 (PDF p.131) | Il rendering PDF tronca l'azione su una pipe non escapata. | Il Markdown integrale resta la fonte autorevole; il rendering PDF difettoso è registrato qui come erratum editoriale e non genera requisiti implementativi aggiuntivi. | REGISTRATO 2026-08-23 — chiusura editoriale esterna pendente (conferma dell'owner del documento). |
