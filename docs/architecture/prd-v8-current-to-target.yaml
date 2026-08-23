@@ -43,7 +43,7 @@
     },
     {
       "component_id": "rulebook-conformance",
-      "current_paths": ["packages/ntruth/conformance/harness.py", "packages/ntruth/derivation_theory/runtime.py", "rulesets/ntruth-v8-core-0.1.0.json", "theories/reviewed-evaluator-registry-0.1.0.json"],
+      "current_paths": ["packages/ntruth/conformance/harness.py", "packages/ntruth/derivation_theory/runtime.py", "rulesets/ntruth-v8-core-0.1.0.json", "theories/reviewed-evaluator-registry-0.1.1.json"],
       "target": "Theory-clause-pinned Rulebook with positive, negative and counterfactual closure",
       "status": "IMPLEMENTED",
       "public_api": ["python:ntruth.conformance.harness:evaluate_conformance", "python:ntruth.derivation_theory.runtime:verify_runtime_bundle"],

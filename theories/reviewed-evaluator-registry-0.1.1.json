@@ -1,13 +1,13 @@
 {
   "schema_version": "8.0.0",
   "registry_id": "ntruth-reviewed-evaluator-registry",
-  "registry_version": "0.1.0",
+  "registry_version": "0.1.1",
   "artifact_pins": [
     {
       "schema_version": "8.0.0",
       "evaluator_kind": "DERIVATION",
       "artifact_id": "ntruth-python-derivation-DT-A-ASSIGNMENT-UNIT",
-      "artifact_version": "0.1.0",
+      "artifact_version": "0.1.1",
       "theory_id": "ntruth-derivation-theory",
       "theory_version": "0.1.0",
       "theory_checksum": "aa37639893e2ba7732496f2eb6a121291e0aad2d3bae51501c8f1ea9e9b6464f",
@@ -16,13 +16,13 @@
       "rule_id": "V8-A-ASSIGNMENT-UNIT",
       "rule_version": "0.1.0",
       "rule_checksum": "552c9dc9b05dd3a31cbf2d747c45dbe3ef7ce15a14b18df072b4a6bfd2629908",
-      "implementation_source_digest": "ae5374fec35f593820ea0ba7cddf50d40f62b70213d573aa88fe287012e6ad8b"
+      "implementation_source_digest": "fc6a2c08d690754234696bda373f93fc8a8619cd57e28b0423377b5294a013ea"
     },
     {
       "schema_version": "8.0.0",
       "evaluator_kind": "DERIVATION",
       "artifact_id": "ntruth-python-derivation-DT-B-EXPERIMENTAL-UNIT",
-      "artifact_version": "0.1.0",
+      "artifact_version": "0.1.1",
       "theory_id": "ntruth-derivation-theory",
       "theory_version": "0.1.0",
       "theory_checksum": "aa37639893e2ba7732496f2eb6a121291e0aad2d3bae51501c8f1ea9e9b6464f",
@@ -31,13 +31,13 @@
       "rule_id": "V8-B-EXPERIMENTAL-UNIT",
       "rule_version": "0.1.0",
       "rule_checksum": "4530ea94565420a6c3cf6d648487de3ea2ea028cc3c55008374536970c854e58",
-      "implementation_source_digest": "0d3f6d70e46d6ceade472dfb3007b9c09d1e88a10b923af99ddc32f453617d3c"
+      "implementation_source_digest": "11e3fae4f04f59ee5b17c137faff68c687b91f2c12fc081a7c43fc3bc3b77966"
     },
     {
       "schema_version": "8.0.0",
       "evaluator_kind": "DERIVATION",
       "artifact_id": "ntruth-python-derivation-DT-C-EXPERIMENTAL-UNIT-COUNT",
-      "artifact_version": "0.1.0",
+      "artifact_version": "0.1.1",
       "theory_id": "ntruth-derivation-theory",
       "theory_version": "0.1.0",
       "theory_checksum": "aa37639893e2ba7732496f2eb6a121291e0aad2d3bae51501c8f1ea9e9b6464f",
@@ -46,13 +46,13 @@
       "rule_id": "V8-C-EXPERIMENTAL-UNIT-COUNT",
       "rule_version": "0.1.0",
       "rule_checksum": "9adbeda8903c6cc01fab79aca8894392adec19d2c6ee6f326631b4467004bb2f",
-      "implementation_source_digest": "0419b6f2b9714a23380e7dc4ba3bb0ae1a53509bf6426eb425b0b33629aa2260"
+      "implementation_source_digest": "cd060789b395133b39b0e814dda68a199fde31b444c273c9c415b85295d5abe1"
     },
     {
       "schema_version": "8.0.0",
       "evaluator_kind": "DERIVATION",
       "artifact_id": "ntruth-python-derivation-DT-D-BIOLOGICAL-SOURCE-COUNT",
-      "artifact_version": "0.1.0",
+      "artifact_version": "0.1.1",
       "theory_id": "ntruth-derivation-theory",
       "theory_version": "0.1.0",
       "theory_checksum": "aa37639893e2ba7732496f2eb6a121291e0aad2d3bae51501c8f1ea9e9b6464f",
@@ -61,13 +61,13 @@
       "rule_id": "V8-D-BIOLOGICAL-SOURCE-COUNT",
       "rule_version": "0.1.0",
       "rule_checksum": "afa97c4c6a971e871a0dcabd3c44cacecee18ae63a2874d1a6093a3369c6170f",
-      "implementation_source_digest": "68cd62fc0db4ac760c5fe060416e4f7a4241d0e6f667999367c6bd301d0be75e"
+      "implementation_source_digest": "b4906bb3177e9765f6e39a0d16f9eaf924e76819306d095851c1f1968bf322b7"
     },
     {
       "schema_version": "8.0.0",
       "evaluator_kind": "DERIVATION",
       "artifact_id": "ntruth-python-derivation-DT-E-INTERFERENCE-ESTIMAND",
-      "artifact_version": "0.1.0",
+      "artifact_version": "0.1.1",
       "theory_id": "ntruth-derivation-theory",
       "theory_version": "0.1.0",
       "theory_checksum": "aa37639893e2ba7732496f2eb6a121291e0aad2d3bae51501c8f1ea9e9b6464f",
@@ -76,13 +76,13 @@
       "rule_id": "V8-E-INTERFERENCE",
       "rule_version": "0.1.0",
       "rule_checksum": "3494b23193de54df74e4fb990e804727d0f89d4f25feeea34537e84b5638bb93",
-      "implementation_source_digest": "5571ed7b940d131aab4ad6d2ada04322efdb3e469765ebdb328e3f36999e124b"
+      "implementation_source_digest": "7056da28bc4b19ded86129f8a04077fa3236dbb73b4fc20b278c841fe5e06548"
     },
     {
       "schema_version": "8.0.0",
       "evaluator_kind": "DERIVATION",
       "artifact_id": "ntruth-python-derivation-DT-F-ANALYTICAL-DEPENDENCE",
-      "artifact_version": "0.1.0",
+      "artifact_version": "0.1.1",
       "theory_id": "ntruth-derivation-theory",
       "theory_version": "0.1.0",
       "theory_checksum": "aa37639893e2ba7732496f2eb6a121291e0aad2d3bae51501c8f1ea9e9b6464f",
@@ -91,13 +91,13 @@
       "rule_id": "V8-F-ANALYTICAL-DEPENDENCE",
       "rule_version": "0.1.0",
       "rule_checksum": "8b27aca224fe346a44da0f6ce348c651712e1ceb6afd7952feb721b3eef4f7c1",
-      "implementation_source_digest": "575be13889c2ad8799de4a764b7c70c0a2601246fe5e7cc225e4f17ebb7dbbc8"
+      "implementation_source_digest": "d8822dd11a7718f08bde5e545a1d93aaad5bb92fea5741b4b9b03e2419dd190c"
     },
     {
       "schema_version": "8.0.0",
       "evaluator_kind": "DERIVATION",
       "artifact_id": "ntruth-python-derivation-DT-G-INFERENCE-SCOPE",
-      "artifact_version": "0.1.0",
+      "artifact_version": "0.1.1",
       "theory_id": "ntruth-derivation-theory",
       "theory_version": "0.1.0",
       "theory_checksum": "aa37639893e2ba7732496f2eb6a121291e0aad2d3bae51501c8f1ea9e9b6464f",
@@ -106,13 +106,13 @@
       "rule_id": "V8-G-INFERENCE-SCOPE",
       "rule_version": "0.1.0",
       "rule_checksum": "a5d89e9a8a950eb1b1adff970805a656e2e4e722b86ae132e2d80c01cd0d36b8",
-      "implementation_source_digest": "942e909f61ca3f0402bcbafceb444710682f19b776b08946b248fb6657f48ae8"
+      "implementation_source_digest": "de5fe0cf69118f8f5c8780baa9f5472d270cea757ddff723c92c7bf0b83b6b88"
     },
     {
       "schema_version": "8.0.0",
       "evaluator_kind": "ADEQUACY",
       "artifact_id": "ntruth-python-adequacy-interference-v8",
-      "artifact_version": "0.1.0",
+      "artifact_version": "0.1.1",
       "theory_id": "ntruth-derivation-theory",
       "theory_version": "0.1.0",
       "theory_checksum": "aa37639893e2ba7732496f2eb6a121291e0aad2d3bae51501c8f1ea9e9b6464f",
@@ -124,5 +124,5 @@
       "implementation_source_digest": "287691ed17a5af98c20a49684952e337374d750e801d27dc4a81edeb75fb898d"
     }
   ],
-  "declared_checksum": "303a61eb63849301e34a8030519ce91e6e3a7034f22b068e854979aedbe67b93"
+  "declared_checksum": "fb0be8b34e9f736d5fbe1a30f9c5151b701d3847880cb72bef3dd7f892f4b91f"
 }

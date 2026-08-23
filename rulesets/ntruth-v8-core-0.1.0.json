@@ -17,8 +17,8 @@
   "fixture_set_version": "0.1.0",
   "fixture_set_checksum": "f7a9b4c0a009fcbf1ae4c7a2bb3b15d8392225cb6e040ec17e2187cb396918e6",
   "evaluator_registry_id": "ntruth-reviewed-evaluator-registry",
-  "evaluator_registry_version": "0.1.0",
-  "evaluator_registry_checksum": "303a61eb63849301e34a8030519ce91e6e3a7034f22b068e854979aedbe67b93",
+  "evaluator_registry_version": "0.1.1",
+  "evaluator_registry_checksum": "fb0be8b34e9f736d5fbe1a30f9c5151b701d3847880cb72bef3dd7f892f4b91f",
   "rules": [
     {
       "schema_version": "8.0.0",
@@ -2524,5 +2524,5 @@
       "rationale": "RuleChallenge outcome-dependent payload and change-versus-migration semantics remain under review."
     }
   ],
-  "declared_checksum": "3e8cdb2567106a400b4e075b4d2526c520d24d45cf2778fe5d06524e4293535a"
+  "declared_checksum": "dc10b6a53cc754b2be1263a83561dcb1c1faf555b80e61013a4dd45e28761c97"
 }

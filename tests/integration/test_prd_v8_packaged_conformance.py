@@ -35,7 +35,7 @@ def test_built_wheel_installs_and_conforms_from_package_resources(tmp_path: Path
     assert len(sdists) == 1
     with tarfile.open(sdists[0], "r:gz") as archive:
         assert any(
-            name.endswith("/theories/reviewed-evaluator-registry-0.1.0.json")
+            name.endswith("/theories/reviewed-evaluator-registry-0.1.1.json")
             for name in archive.getnames()
         )
 

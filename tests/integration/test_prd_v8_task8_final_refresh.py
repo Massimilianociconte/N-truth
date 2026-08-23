@@ -45,7 +45,7 @@ REQUIRED_TASK9_PATHS = {
     "rulebook-conformance": {
         "current_paths": {
             "packages/ntruth/derivation_theory/runtime.py",
-            "theories/reviewed-evaluator-registry-0.1.0.json",
+            "theories/reviewed-evaluator-registry-0.1.1.json",
         },
         "test_paths": {
             "tests/unit/test_prd_v8_task9_evaluator_transitive_digest.py",
