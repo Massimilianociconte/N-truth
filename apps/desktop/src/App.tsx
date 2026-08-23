@@ -276,15 +276,29 @@ function StatusSheet({
   onClose: () => void;
 }) {
   const it = language === "it";
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => closeButtonRef.current?.focus(), []);
   return (
-    <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <section className="dialog status-sheet" role="dialog" aria-modal="true" aria-labelledby="status-title">
+    <div
+      className="dialog-backdrop"
+      role="presentation"
+      onKeyDown={(event) => {
+        if (event.key === "Escape") onClose();
+      }}
+      onMouseDown={(event) => event.target === event.currentTarget && onClose()}
+    >
+      <section
+        className="dialog status-sheet"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="status-title"
+      >
         <div className="dialog-header">
           <div>
             <span className="eyebrow">{it ? "Stato del prodotto" : "Product status"}</span>
             <h2 id="status-title">{it ? "Limiti e gate" : "Limits and gates"}</h2>
           </div>
-          <button type="button" aria-label={it ? "Chiudi" : "Close"} onClick={onClose}><X size={20} /></button>
+          <button ref={closeButtonRef} type="button" aria-label={it ? "Chiudi" : "Close"} onClick={onClose}><X size={20} /></button>
         </div>
         <div className="status-sheet-body">
           <dl className="v8-definition-grid">
