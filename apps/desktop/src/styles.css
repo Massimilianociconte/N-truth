@@ -668,3 +668,14 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.84em; }
 @media (prefers-reduced-motion: reduce) {
   * { scroll-behavior: auto !important; animation-duration: 0.01ms !important; }
 }
+
+/* ---- SpanLocator (visual evidence refinement) ---- */
+.span-locator { margin-top: 12px; border: 1px dashed var(--line-strong, #c9c2b4); border-radius: 10px; padding: 12px 14px; background: rgba(255,255,255,.5); }
+.span-locator-head { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13.5px; }
+.span-locator-range { margin-left: auto; font-size: 12.5px; color: var(--teal-deep, #0A524B); }
+.span-locator-hint { font-size: 12px; margin: 6px 0 8px; }
+.span-locator-text { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; line-height: 1.7; cursor: text; user-select: none; outline: none; }
+.span-char { padding: 0; border-radius: 2px; }
+.span-char.highlighted { background: #E8B36B; color: #241708; }
+.span-char.anchor { background: var(--amber, #C77D2B); color: #fff; }
+.span-refined-note { font-size: 12.5px; color: var(--teal-deep, #0A524B); margin-top: 8px; }

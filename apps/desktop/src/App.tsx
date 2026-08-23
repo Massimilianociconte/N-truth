@@ -56,6 +56,7 @@ import {
   downloadProspectiveArtifact,
   QuickDesignWizard,
 } from "./QuickDesignWizard";
+import { SpanLocator, refinementPatchEntry, type SpanRefinement } from "./SpanLocator";
 import type {
   Alert,
   AnalysisResponse,
@@ -1153,7 +1154,7 @@ export function App() {
               canRedo={isDemo ? demoFuture.length > 0 : Boolean(selectedBlock && (correctionState[selectedBlock.id]?.redo.length ?? 0) > 0)}
               onUndo={undo}
               onRedo={redo}
-              onApply={async (value, rationale, reason) => {
+              onApply={async (value, rationale, reason, refinement) => {
                 if (!selectedBlock) return;
                 const evidenceIds = selectedEvidence ? [selectedEvidence.id] : [];
                 if (isDemo) {
@@ -1165,10 +1166,16 @@ export function App() {
                   return;
                 }
                 try {
+                  // Il raffinamento visivo dello span viaggia dentro la patch
+                  // immutabile come voce d'audit esplicita (mai riscrittura).
+                  const patch: Array<Record<string, unknown>> = [
+                    { op: "replace", path: "/n_statements/0/value", value },
+                  ];
+                  if (refinement !== undefined) patch.push(refinementPatchEntry(refinement));
                   const response = await applyCorrection(sessionId, selectedBlock.id, {
                     reason,
                     rationale,
-                    patch: [{ op: "replace", path: "/n_statements/0/value", value }],
+                    patch,
                     evidence_ids: evidenceIds,
                     reviewer_role: "reviewer",
                     verified: false,
@@ -2533,7 +2540,12 @@ function CorrectionPanel({
   canRedo: boolean;
   onUndo: () => void;
   onRedo: () => void;
-  onApply: (value: number, rationale: string, reason: string) => Promise<void> | void;
+  onApply: (
+    value: number,
+    rationale: string,
+    reason: string,
+    refinement?: SpanRefinement,
+  ) => Promise<void> | void;
   onExport: () => void;
   hasCandidate: boolean;
   exportAllowed: boolean;
@@ -2543,6 +2555,9 @@ function CorrectionPanel({
   const [rationale, setRationale] = useState("");
   const [reason, setReason] = useState("typo");
   const [busy, setBusy] = useState(false);
+  const [refinement, setRefinement] = useState<SpanRefinement | null>(null);
+
+  useEffect(() => setRefinement(null), [block?.id, current]);
 
   useEffect(() => setNextValue(String(current ?? "")), [block?.id, current]);
 
@@ -2552,8 +2567,9 @@ function CorrectionPanel({
     if (!Number.isInteger(parsed) || parsed < 0 || rationale.trim().length < 8) return;
     setBusy(true);
     try {
-      await onApply(parsed, rationale.trim(), reason);
+      await onApply(parsed, rationale.trim(), reason, refinement ?? undefined);
       setRationale("");
+      setRefinement(null);
     } finally {
       setBusy(false);
     }
@@ -2595,6 +2611,23 @@ function CorrectionPanel({
             <textarea value={rationale} onChange={(event) => setRationale(event.target.value)} placeholder={language === "it" ? "Cita la fonte o spiega il giudizio (minimo 8 caratteri)." : "Cite the source or explain the judgement (minimum 8 characters)."} rows={3} />
           </label>
           <div className="correction-footnote"><Link2 size={14} /> {evidence ? evidenceLocator(evidence) : (language === "it" ? "nessuna evidenza collegata" : "no linked evidence")}</div>
+          {evidence && (
+            <SpanLocator
+              evidence={evidence}
+              language={language}
+              onApply={(value) => {
+                setRefinement(value);
+                setRationale((current) =>
+                  current.trim().length >= 8 ? current : `${value.locator}: ${current}`.trim(),
+                );
+              }}
+            />
+          )}
+          {refinement && (
+            <p className="span-refined-note" data-testid="span-refined-note">
+              {language === "it" ? "Evidenza raffinata" : "Refined evidence"}: <code>{refinement.locator}</code>
+            </p>
+          )}
           <div className="form-actions">
             <span className="candidate-note"><Sparkles size={15} /> {isDemo ? (language === "it" ? "Demo non scientifica" : "Non-scientific demo") : (language === "it" ? "Annotazione candidata, non gold" : "Candidate annotation, not gold")}</span>
             <button className="button primary compact" disabled={busy || rationale.trim().length < 8 || nextValue === String(current ?? "")}>
