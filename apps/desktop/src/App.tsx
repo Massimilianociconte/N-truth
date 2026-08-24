@@ -236,9 +236,9 @@ function WelcomeHome({
           : "N-Truth records facts, gaps and claims. It does not approve an experiment and does not replace a biostatistician."}
       </p>
       <ul className="welcome-pins" aria-label={it ? "Stato scientifico" : "Scientific status"}>
-        <li><span>HANDOFF_ONLY</span> {it ? "nessun test statistico consigliato" : "no statistical test is recommended"}</li>
-        <li><span>NOT_STARTED</span> {it ? "validazione scientifica non iniziata" : "scientific validation has not started"}</li>
-        <li><span>HOLD</span> {it ? "training e External Challenge fermi" : "training and External Challenge remain held"}</li>
+        <li><strong>HANDOFF_ONLY</strong>{it ? "nessun test statistico consigliato" : "no statistical test is recommended"}</li>
+        <li><strong>NOT_STARTED</strong>{it ? "validazione scientifica non iniziata" : "scientific validation has not started"}</li>
+        <li><strong>HOLD</strong>{it ? "training e External Challenge fermi" : "training and External Challenge remain held"}</li>
       </ul>
       <p className="welcome-honesty">
         {it
@@ -907,6 +907,14 @@ export function App() {
     setSelectedAlertId(DEMO_REPORT.blocks[0].alerts[0].id);
     setDomainAcknowledged(false);
   };
+
+  // Deep-link QA/demo: ?demo=1 apre il workspace sintetico, ?status=1 il pannello gate.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("demo") === "1") openSyntheticDemo();
+    if (params.get("status") === "1") setShowStatus(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const reviewed = report.blocks.filter((item) => item.corrections.length > 0).length;
   const progress = report.blocks.length ? Math.round((reviewed / report.blocks.length) * 100) : 0;
@@ -2394,14 +2402,21 @@ function GraphView({
         >
           <svg viewBox={`0 0 720 ${canvasHeight}`} aria-hidden="true">
             <defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" /></marker></defs>
-            {relations.map((relation) => {
+            {relations.map((relation, index) => {
               const source = positions.get(relation.source);
               const target = positions.get(relation.target);
               if (!source || !target) return null;
               return (
                 <g key={relation.id}>
                   <line x1={source.x} y1={source.y} x2={target.x} y2={target.y} markerEnd="url(#arrow)" />
-                  <text x={(source.x + target.x) / 2} y={(source.y + target.y) / 2 - 7}>{relation.type.replaceAll("_", " ")}</text>
+                  <text
+                    className="graph-edge-label"
+                    x={(source.x + target.x) / 2}
+                    y={(source.y + target.y) / 2 - (index % 2 === 0 ? 9 : -16)}
+                    textAnchor="middle"
+                  >
+                    {relation.type.replaceAll("_", " ")}
+                  </text>
                 </g>
               );
             })}
