@@ -659,3 +659,4 @@ select { max-width: 100%; }
   .review-bar { grid-template-columns: 1fr; }
   .diff-row { grid-template-columns: 1fr; }
 }
+.panel-heading.collapsible { cursor: pointer; }

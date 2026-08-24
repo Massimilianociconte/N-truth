@@ -1125,8 +1125,8 @@ export function App() {
               aria-labelledby="graph-heading"
             >
               <div
-                className={`panel-heading${collapsed["graph-panel"] ? " collapsible" : ""}`}
-                onClick={collapsed["graph-panel"] ? () => togglePanel("graph-panel") : undefined}
+                className={`panel-heading collapsible${collapsed["graph-panel"] ? " collapsed-head" : ""}`}
+                onClick={() => togglePanel("graph-panel")}
               >
                 <div>
                   <span className="eyebrow">{uiLanguage === "it" ? "Struttura ricostruita" : "Reconstructed structure"}</span>
@@ -1139,16 +1139,21 @@ export function App() {
                     </span>
                   )}
                   <span className="count-label">{selectedBlock?.hierarchy.nodes.length ?? 0}</span>
-                  <button
-                    type="button"
-                    className="panel-toggle"
-                    aria-expanded={!collapsed["graph-panel"]}
-                    aria-controls="graph-body"
-                    aria-label={collapsed["graph-panel"] ? (uiLanguage === "it" ? "Espandi grafo" : "Expand graph") : (uiLanguage === "it" ? "Comprimi grafo" : "Collapse graph")}
-                    onClick={() => togglePanel("graph-panel")}
-                  >
-                    <ChevronDown size={19} />
-                  </button>
+                  {!collapsed["graph-panel"] && (
+                    <button
+                      type="button"
+                      className="panel-toggle"
+                      aria-expanded
+                      aria-controls="graph-body"
+                      aria-label={uiLanguage === "it" ? "Comprimi grafo" : "Collapse graph"}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        togglePanel("graph-panel");
+                      }}
+                    >
+                      <ChevronDown size={19} />
+                    </button>
+                  )}
                 </span>
               </div>
               <div className="panel-collapse" id="graph-body" role="group">
@@ -1173,8 +1178,8 @@ export function App() {
               aria-labelledby="issues-heading"
             >
               <div
-                className={`panel-heading${collapsed["issues-panel"] ? " collapsible" : ""}`}
-                onClick={collapsed["issues-panel"] ? () => togglePanel("issues-panel") : undefined}
+                className={`panel-heading collapsible${collapsed["issues-panel"] ? " collapsed-head" : ""}`}
+                onClick={() => togglePanel("issues-panel")}
               >
                 <div>
                   <span className="eyebrow">Ruleset {String(report.versions.ruleset_version ?? "—")}</span>
@@ -1187,16 +1192,21 @@ export function App() {
                     </span>
                   )}
                   <span className="count-label">{selectedBlock?.alerts.length ?? 0}</span>
-                  <button
-                    type="button"
-                    className="panel-toggle"
-                    aria-expanded={!collapsed["issues-panel"]}
-                    aria-controls="issues-body"
-                    aria-label={collapsed["issues-panel"] ? (uiLanguage === "it" ? "Espandi questioni" : "Expand issues") : (uiLanguage === "it" ? "Comprimi questioni" : "Collapse issues")}
-                    onClick={() => togglePanel("issues-panel")}
-                  >
-                    <ChevronDown size={19} />
-                  </button>
+                  {!collapsed["issues-panel"] && (
+                    <button
+                      type="button"
+                      className="panel-toggle"
+                      aria-expanded
+                      aria-controls="issues-body"
+                      aria-label={uiLanguage === "it" ? "Comprimi questioni" : "Collapse issues"}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        togglePanel("issues-panel");
+                      }}
+                    >
+                      <ChevronDown size={19} />
+                    </button>
+                  )}
                 </span>
               </div>
               <div className="panel-collapse" id="issues-body">
@@ -1808,8 +1818,8 @@ function ReviewOutputPanel({
   return (
     <section className={`panel review-output-panel ${collapsed ? "collapsed" : ""}`} aria-labelledby="review-output-heading">
       <div
-        className={`panel-heading${collapsed ? " collapsible" : ""}`}
-        onClick={collapsed && onToggle ? onToggle : undefined}
+        className={`panel-heading collapsible${collapsed ? " collapsed-head" : ""}`}
+        onClick={onToggle}
       >
         <div>
           <span className="eyebrow">
@@ -1826,14 +1836,17 @@ function ReviewOutputPanel({
             </span>
           )}
           <span className={`compiler-status review-status-${output.path_status}`}>{pathLabel}</span>
-          {onToggle && (
+          {onToggle && !collapsed && (
             <button
               type="button"
               className="panel-toggle"
-              aria-expanded={!collapsed}
+              aria-expanded
               aria-controls="review-output-body"
-              aria-label={collapsed ? (language === "it" ? "Espandi output" : "Expand output") : (language === "it" ? "Comprimi output" : "Collapse output")}
-              onClick={onToggle}
+              aria-label={language === "it" ? "Comprimi output" : "Collapse output"}
+              onClick={(event) => {
+                event.stopPropagation();
+                onToggle();
+              }}
             >
               <ChevronDown size={19} />
             </button>
