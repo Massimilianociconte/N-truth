@@ -9,7 +9,7 @@ replayando le patch attive sullo snapshot di base.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
@@ -157,11 +157,19 @@ class CorrectionAuditEvent:
 
 @dataclass(frozen=True, slots=True)
 class CorrectionLedger:
-    """Storia immutabile di correzioni e undo/redo per un blocco."""
+    """Storia immutabile di correzioni e undo/redo per un blocco.
+
+    L'integrità e la materializzazione sono memorizzate lazy **per istanza**:
+    essendo il ledger immutabile, ogni apply/undo/redo produce una nuova
+    istanza, quindi il memo non può mai servire stato stantio. Questo elimina
+    il replay completo a ogni accesso (O(n²) per sessione) mantenendo le
+    stesse garanzie di verifica.
+    """
 
     _base_json: str
     records: tuple[CorrectionRecord, ...] = ()
     audit_trail: tuple[CorrectionAuditEvent, ...] = ()
+    _memo: dict[str, object] = field(default_factory=dict, compare=False, repr=False)
 
     @classmethod
     def start(cls, block: ExperimentBlock) -> CorrectionLedger:
@@ -221,12 +229,23 @@ class CorrectionLedger:
 
     @property
     def current_block(self) -> ExperimentBlock:
+        cached = self._memo.get("current_block")
+        if isinstance(cached, ExperimentBlock):
+            return cached
         self.assert_integrity()
-        return self._materialize(self.active_correction_ids)
+        block = self._materialize(self.active_correction_ids)
+        self._memo["current_block"] = block
+        self._memo["current_checksum"] = _scientific_checksum(block)
+        return block
 
     @property
     def current_checksum(self) -> str:
-        return _scientific_checksum(self.current_block)
+        cached = self._memo.get("current_checksum")
+        if isinstance(cached, str):
+            return cached
+        checksum = _scientific_checksum(self.current_block)
+        self._memo["current_checksum"] = checksum
+        return checksum
 
     def apply(self, correction: Correction) -> CorrectionLedger:
         """Applica una patch e accoda record + audit event in una nuova istanza."""
