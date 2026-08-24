@@ -46,3 +46,7 @@ e dell'API.
 
 Prima di un commit verificare sempre `git status --short` e `git check-ignore` sui
 percorsi dati attesi.
+
+- `packages/ntruth/api/session_journal.py` — journal durevole opt-in delle sessioni di analisi (resume esplicito).
+- `apps/desktop/src/SpanLocator.tsx` — selettore visivo degli span di evidenza per le correzioni umane.
+- `packages/ntruth/ocr/` — contratto adattatori OCR opzionali con provenance obbligatoria (nessun engine incluso).

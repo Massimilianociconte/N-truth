@@ -36,6 +36,8 @@ jobs:
         run: uv run python scripts/check_prd_v8_contracts.py
       - name: Verify lockfile is up to date
         run: uv lock --check
+      - name: ML CLI contract smoke (no model download)
+        run: uv run ntruth-ml --help
       - name: Lint
         run: uv run ruff check .
       - name: Format check
