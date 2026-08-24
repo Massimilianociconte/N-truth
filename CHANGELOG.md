@@ -8,6 +8,21 @@ ontologia; queste versioni possono avanzare indipendentemente.
 
 ### Added
 
+- Second hardening sprint: expected-positive/negative tests for the Appendix-A
+  PRD-example scanner (SRR-002/004/005/006/007), qualitative-only boundary
+  status sealed (SRR-016), and the ExternalReferenceFreeze contract giving the
+  reference custodian a fail-closed, checksum-carrying mechanism for the
+  SRR-021 snapshot freeze (rights closure stays external).
+- O_NOFOLLOW hardening on source hashing and manifest reads (TOCTOU).
+- Correction-ledger integrity and materialization memoized per immutable
+  instance (removes the O(n²) replay per correction session).
+- SBOM records the component version and an explicit deterministic
+  timestamp policy; CI adds the ML CLI contract smoke; a dated clean-checkout
+  verification record (3340 tests from a virgin clone) is archived under
+  docs/audits.
+
+### Changed (earlier in this release)
+
 - Executable SRR mechanization matrix: 17 positive/negative conformance tests
   sealing the code-level mechanisms prescribed by the scientific-review
   register (vocabulary pinning, legacy-key rejection, state-payload blockers,
