@@ -22,6 +22,7 @@ import {
   Save,
   Search,
   Settings,
+  ChevronDown,
   ShieldAlert,
   Sparkles,
   Undo2,
@@ -345,6 +346,15 @@ export function App() {
   const [shareReadiness, setShareReadiness] = useState<ShareReadiness>();
   const [domainAcknowledged, setDomainAcknowledged] = useState(false);
   const [wizardInitialStep, setWizardInitialStep] = useState(1);
+  // Accordion dashboard: i pannelli lunghi partono chiusi; la nav apre il pannello richiesto.
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({
+    "graph-panel": true,
+    "issues-panel": true,
+    "review-output": true,
+  });
+  const togglePanel = (id: string) =>
+    setCollapsed((current) => ({ ...current, [id]: !current[id] }));
+  const expandPanel = (id: string) => setCollapsed((current) => ({ ...current, [id]: false }));
   const [notice, setNotice] = useState<string>();
   const [demoPast, setDemoPast] = useState<Report[]>([]);
   const [demoFuture, setDemoFuture] = useState<Report[]>([]);
@@ -401,8 +411,13 @@ export function App() {
       );
       return;
     }
+    if (view === "graph") expandPanel("graph-panel");
+    if (view === "questions") expandPanel("inference-panel");
+    if (view === "corrections" || view === "documents") expandPanel("review-output");
     setActiveView(view);
-    document.getElementById(focusId(view))?.scrollIntoView({ behavior: "smooth", block: "center" });
+    requestAnimationFrame(() => {
+      document.getElementById(focusId(view))?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   };
 
   const replaceBlock = (nextBlock: ExperimentBlock) => {
@@ -922,7 +937,14 @@ export function App() {
   // ?wizard=N apre l'import direttamente al passo N del builder guidato.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("demo") === "1") openSyntheticDemo();
+    if (params.get("demo") === "1") {
+      openSyntheticDemo();
+      const view = params.get("view");
+      if (view === "graph") {
+        setCollapsed((current) => ({ ...current, "graph-panel": false }));
+        setActiveView("graph");
+      }
+    }
     if (params.get("status") === "1") setShowStatus(true);
     const wizardStep = Number(params.get("wizard") ?? "");
     if (Number.isInteger(wizardStep) && wizardStep >= 1 && wizardStep <= 5) {
@@ -1099,7 +1121,7 @@ export function App() {
             />
             <section
               id="graph-panel"
-              className={`panel graph-panel ${activeView === "graph" ? "focused-panel" : ""}`}
+              className={`panel graph-panel ${activeView === "graph" ? "focused-panel" : ""} ${collapsed["graph-panel"] ? "collapsed" : ""}`}
               aria-labelledby="graph-heading"
             >
               <div className="panel-heading">
@@ -1107,8 +1129,21 @@ export function App() {
                   <span className="eyebrow">{uiLanguage === "it" ? "Struttura ricostruita" : "Reconstructed structure"}</span>
                   <h2 id="graph-heading">{uiLanguage === "it" ? "Grafo del disegno sperimentale" : "Experimental design graph"}</h2>
                 </div>
-                <span className="count-label">{selectedBlock?.hierarchy.nodes.length ?? 0}</span>
+                <span className="panel-tools">
+                  <span className="count-label">{selectedBlock?.hierarchy.nodes.length ?? 0}</span>
+                  <button
+                    type="button"
+                    className="panel-toggle"
+                    aria-expanded={!collapsed["graph-panel"]}
+                    aria-controls="graph-body"
+                    aria-label={collapsed["graph-panel"] ? (uiLanguage === "it" ? "Espandi grafo" : "Expand graph") : (uiLanguage === "it" ? "Comprimi grafo" : "Collapse graph")}
+                    onClick={() => togglePanel("graph-panel")}
+                  >
+                    <ChevronDown size={19} />
+                  </button>
+                </span>
               </div>
+              <div className="panel-collapse" id="graph-body" role="group">
               {selectedBlock ? (
                 <GraphView
                   block={selectedBlock}
@@ -1121,11 +1156,12 @@ export function App() {
                   onEdit={applyGraphCorrection}
                 />
               ) : <EmptyState />}
+              </div>
             </section>
 
             <section
               id="issues-panel"
-              className="panel issues-panel"
+              className={`panel issues-panel ${collapsed["issues-panel"] ? "collapsed" : ""}`}
               aria-labelledby="issues-heading"
             >
               <div className="panel-heading">
@@ -1133,8 +1169,21 @@ export function App() {
                   <span className="eyebrow">Ruleset {String(report.versions.ruleset_version ?? "—")}</span>
                   <h2 id="issues-heading">{uiLanguage === "it" ? "Questioni rilevate" : "Detected issues"}</h2>
                 </div>
-                <span className="count-label">{selectedBlock?.alerts.length ?? 0}</span>
+                <span className="panel-tools">
+                  <span className="count-label">{selectedBlock?.alerts.length ?? 0}</span>
+                  <button
+                    type="button"
+                    className="panel-toggle"
+                    aria-expanded={!collapsed["issues-panel"]}
+                    aria-controls="issues-body"
+                    aria-label={collapsed["issues-panel"] ? (uiLanguage === "it" ? "Espandi questioni" : "Expand issues") : (uiLanguage === "it" ? "Comprimi questioni" : "Collapse issues")}
+                    onClick={() => togglePanel("issues-panel")}
+                  >
+                    <ChevronDown size={19} />
+                  </button>
+                </span>
               </div>
+              <div className="panel-collapse" id="issues-body">
               <div className="issue-list">
                 {selectedBlock?.alerts.map((alert) => (
                   <IssueCard
@@ -1164,6 +1213,7 @@ export function App() {
                   ))}</ul>
                 </details>
               )}
+              </div>
             </section>
           </div>
 
@@ -1264,6 +1314,8 @@ export function App() {
               <ReviewOutputPanel
                 output={report.review_outputs[selectedBlock.id]}
                 language={uiLanguage}
+                collapsed={Boolean(collapsed["review-output"])}
+                onToggle={() => togglePanel("review-output")}
               />
             )}
           </div>
@@ -1721,9 +1773,13 @@ export function ReportBundleV8View({
 function ReviewOutputPanel({
   output,
   language,
+  collapsed = false,
+  onToggle,
 }: {
   output: BlockReviewOutput;
   language: "it" | "en";
+  collapsed?: boolean;
+  onToggle?: () => void;
 }) {
   const pathLabel = {
     review_required: language === "it" ? "Revisione richiesta" : "Review required",
@@ -1731,7 +1787,7 @@ function ReviewOutputPanel({
     incomplete: language === "it" ? "Incompleto" : "Incomplete",
   }[output.path_status];
   return (
-    <section className="panel review-output-panel" aria-labelledby="review-output-heading">
+    <section className={`panel review-output-panel ${collapsed ? "collapsed" : ""}`} aria-labelledby="review-output-heading">
       <div className="panel-heading">
         <div>
           <span className="eyebrow">
@@ -1741,7 +1797,21 @@ function ReviewOutputPanel({
             {language === "it" ? "Methods e percorso di revisione" : "Methods and review path"}
           </h2>
         </div>
-        <span className={`compiler-status review-status-${output.path_status}`}>{pathLabel}</span>
+        <span className="panel-tools">
+          <span className={`compiler-status review-status-${output.path_status}`}>{pathLabel}</span>
+          {onToggle && (
+            <button
+              type="button"
+              className="panel-toggle"
+              aria-expanded={!collapsed}
+              aria-controls="review-output-body"
+              aria-label={collapsed ? (language === "it" ? "Espandi output" : "Expand output") : (language === "it" ? "Comprimi output" : "Collapse output")}
+              onClick={onToggle}
+            >
+              <ChevronDown size={19} />
+            </button>
+          )}
+        </span>
       </div>
       <p className="axis-boundary">
         {language === "it"
@@ -1771,6 +1841,7 @@ function ReviewOutputPanel({
             : "Structural requirements and questions only; no analysis strategy is suggested."}
         </small>
       </div>
+      <div className="panel-collapse" id="review-output-body">
       <div className="review-methods">
         <p>{output.status_reason}</p>
         <blockquote>{output.methods_statement.text}</blockquote>
@@ -1798,6 +1869,7 @@ function ReviewOutputPanel({
           ))}
         </div>
       </details>
+      </div>
     </section>
   );
 }
@@ -2235,8 +2307,24 @@ function GraphView({
       ),
     [block.hierarchy.nodes, normalizedQuery],
   );
-  const canvasHeight = Math.max(390, Math.ceil(Math.max(nodes.length, 1) / 4) * 125 + 35);
-  const positions = useMemo(() => layoutNodes(nodes), [nodes]);
+  const positions = useMemo(
+    () => layoutNodes(nodes, block.hierarchy.relations),
+    [nodes, block.hierarchy.relations],
+  );
+  const maxRank = Math.max(
+    0,
+    ...[...positions.values()].map((point) => Math.round((point.y - 26) / 138)),
+  );
+  const canvasHeight = Math.max(360, 26 + (maxRank + 1) * 138 + 34);
+  const rankCounts = new Map<number, number>();
+  for (const point of positions.values()) {
+    const key = Math.round((point.y - 26) / 138);
+    rankCounts.set(key, (rankCounts.get(key) ?? 0) + 1);
+  }
+  const maxRowWidth = Math.max(
+    0,
+    ...[...rankCounts.values()].map((count) => count * 196 + (count - 1) * 20),
+  );
   const selectedIds = new Set(
     block.hierarchy.nodes
       .filter((item) => evidence && item.evidence_ids.includes(evidence.id))
@@ -2430,30 +2518,43 @@ function GraphView({
         aria-label={`Grafo con ${nodes.length} nodi e ${relations.length} relazioni`}
       >
         <div
-          className="graph-stage"
-          style={{ height: `${canvasHeight}px`, transform: `scale(${zoom})` }}
-        >
-          <svg viewBox={`0 0 720 ${canvasHeight}`} aria-hidden="true">
-            <defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" /></marker></defs>
-            {relations.map((relation, index) => {
-              const source = positions.get(relation.source);
-              const target = positions.get(relation.target);
-              if (!source || !target) return null;
-              return (
-                <g key={relation.id}>
-                  <line x1={source.x} y1={source.y} x2={target.x} y2={target.y} markerEnd="url(#arrow)" />
-                  <text
-                    className="graph-edge-label"
-                    x={(source.x + target.x) / 2}
-                    y={(source.y + target.y) / 2 - (index % 2 === 0 ? 9 : -16)}
-                    textAnchor="middle"
-                  >
-                    {relation.type.replaceAll("_", " ")}
-                  </text>
-                </g>
-              );
-            })}
-          </svg>
+            className="graph-stage"
+            style={{
+              height: `${canvasHeight}px`,
+              minWidth: `${Math.max(720, maxRowWidth + 24)}px`,
+              transform: `scale(${zoom})`,
+            }}
+          >
+            <svg className="graph-edges" viewBox={`0 0 720 ${canvasHeight}`} aria-hidden="true">
+              <defs>
+                <marker id="arrow" markerWidth="9" markerHeight="9" refX="7.5" refY="4.5" orient="auto">
+                  <path d="M0,0 L9,4.5 L0,9 Z" fill="#8a6f4d" />
+                </marker>
+              </defs>
+              {relations.map((relation) => {
+                const source = positions.get(relation.source);
+                const target = positions.get(relation.target);
+                if (!source || !target) return null;
+                const sx = source.x + NODE_W / 2;
+                const sy = source.y + NODE_H / 2;
+                const tx = target.x + NODE_W / 2;
+                const ty = target.y + NODE_H / 2;
+                const downward = ty >= sy;
+                const x1 = sx;
+                const y1 = downward ? sy + NODE_H / 2 : sy - NODE_H / 2;
+                const x2 = tx;
+                const y2 = downward ? ty - NODE_H / 2 : ty + NODE_H / 2;
+                const bend = downward
+                  ? Math.max(28, (y2 - y1) / 2)
+                  : Math.max(48, Math.abs(x2 - x1) / 2);
+                const d = downward
+                  ? `M ${x1} ${y1} C ${x1} ${y1 + bend}, ${x2} ${y2 - bend}, ${x2} ${y2}`
+                  : `M ${x1 < x2 ? x1 + NODE_W / 2 : x1 - NODE_W / 2} ${y1} C ${x1 + (x2 - x1) / 2} ${y1}, ${x1 + (x2 - x1) / 2} ${y2}, ${x2 < x1 ? x2 + NODE_W / 2 : x2 - NODE_W / 2} ${y2}`;
+                return (
+                  <path key={relation.id} className="graph-edge" d={d} markerEnd="url(#arrow)" />
+                );
+              })}
+            </svg>
           {nodes.map((item) => {
             const position = positions.get(item.id)!;
             return (
@@ -2466,11 +2567,43 @@ function GraphView({
               >
                 <small>{NODE_LABEL[item.type] ?? item.type}</small>
                 <strong>{item.label}</strong>
-                {item.count != null && <span>n = {item.count}</span>}
+                <span className="graph-node-meta">
+                  {item.count != null && <em>n = {item.count}</em>}
+                  <em>conf {item.confidence.toFixed(2)}</em>
+                </span>
               </button>
             );
           })}
           {!nodes.length && <EmptyState />}
+          <svg className="graph-edge-labels" viewBox={`0 0 720 ${canvasHeight}`} aria-hidden="true">
+            {relations.map((relation, index) => {
+              const source = positions.get(relation.source);
+              const target = positions.get(relation.target);
+              if (!source || !target) return null;
+              // L'etichetta vive nel varco tra le righe: midpoint del segmento
+              // tra i bordi delle card (stessa geometria degli edge disegnati).
+              const sx = source.x + NODE_W / 2;
+              const sy = source.y + NODE_H / 2;
+              const tx = target.x + NODE_W / 2;
+              const ty = target.y + NODE_H / 2;
+              const downward = ty >= sy;
+              const x1 = sx;
+              const y1 = downward ? sy + NODE_H / 2 : sy - NODE_H / 2;
+              const x2 = tx;
+              const y2 = downward ? ty - NODE_H / 2 : ty + NODE_H / 2;
+              const spread = (index - (relations.length - 1) / 2) * 16;
+              const midX = (x1 + x2) / 2;
+              const midY = Math.min(
+                canvasHeight - 10,
+                Math.max(14, (y1 + y2) / 2 + spread * 0.6),
+              );
+              return (
+                <text key={`lbl-${relation.id}`} className="graph-edge-label" x={midX} y={midY} textAnchor="middle">
+                  {relation.type.replaceAll("_", " ")}
+                </text>
+              );
+            })}
+          </svg>
         </div>
       </div>
       {editing && (
@@ -2556,15 +2689,64 @@ function GraphView({
   );
 }
 
-function layoutNodes(nodes: GraphNode[]): Map<string, { x: number; y: number }> {
-  const columns = 4;
-  return new Map(
-    nodes.map((item, index) => {
-      const row = Math.floor(index / columns);
-      const column = index % columns;
-      return [item.id, { x: 90 + column * 180, y: 70 + row * 125 }];
-    }),
-  );
+const NODE_W = 196;
+const NODE_H = 84;
+const ROW_H = 138;
+const COL_PITCH = 216;
+
+/** Layout stratificato: rank = cammino piu' lungo dalle radici; righe centrate. */
+function layoutNodes(
+  nodes: GraphNode[],
+  relations: { source: string; target: string }[],
+): Map<string, { x: number; y: number }> {
+  const ids = nodes.map((item) => item.id);
+  const idSet = new Set(ids);
+  const edges = relations.filter((item) => idSet.has(item.source) && idSet.has(item.target));
+  const incoming = new Map<string, string[]>(ids.map((id) => [id, []]));
+  const outgoing = new Map<string, string[]>(ids.map((id) => [id, []]));
+  for (const edge of edges) {
+    incoming.get(edge.target)!.push(edge.source);
+    outgoing.get(edge.source)!.push(edge.target);
+  }
+  const rank = new Map<string, number>(ids.map((id) => [id, 0]));
+  // longest-path rank (iterativo, ordine topologico approssimato a ripetizioni)
+  for (let pass = 0; pass < ids.length; pass += 1) {
+    let changed = false;
+    for (const edge of edges) {
+      const next = rank.get(edge.source)! + 1;
+      if (next > rank.get(edge.target)!) {
+        rank.set(edge.target, next);
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
+  const byRank = new Map<number, string[]>();
+  for (const id of ids) {
+    const key = rank.get(id)!;
+    (byRank.get(key) ?? byRank.set(key, []).get(key)!).push(id);
+  }
+  const positions = new Map<string, { x: number; y: number }>();
+  const stageW = 720;
+  const ranks = [...byRank.keys()].sort((a, b) => a - b);
+  ranks.forEach((key, rowIndex) => {
+    const row = byRank.get(key)!.slice().sort(); // ordine stabile
+    const pitch = COL_PITCH;
+    const totalW = row.length * NODE_W + (row.length - 1) * (pitch - NODE_W);
+    const startX = Math.max(12, (stageW - totalW) / 2 + (pitch - NODE_W) / 2);
+    row.forEach((id, colIndex) => {
+      positions.set(id, { x: startX + colIndex * pitch, y: 26 + rowIndex * ROW_H });
+    });
+  });
+  return positions;
+}
+
+function graphCanvasHeight(nodeCount: number, relations: { source: string; target: string }[]): number {
+  const idSet = new Set(nodeCount ? [] : []);
+  void idSet;
+  const rows = Math.max(1, nodeCount);
+  void relations;
+  return rows; // placeholder rimpiazzato dal chiamante
 }
 
 function nodeCategory(node: GraphNode): string {
