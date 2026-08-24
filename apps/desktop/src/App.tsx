@@ -58,6 +58,12 @@ import {
   QuickDesignWizard,
 } from "./QuickDesignWizard";
 import { SpanLocator, refinementPatchEntry, type SpanRefinement } from "./SpanLocator";
+import {
+  clearCheckpoint,
+  loadCheckpoint,
+  markCheckpointClosed,
+  saveCheckpoint,
+} from "./checkpoint";
 import type {
   Alert,
   AnalysisResponse,
@@ -272,11 +278,13 @@ function StatusSheet({
   apiState,
   disclaimer,
   onClose,
+  onCloseProject,
 }: {
   language: "it" | "en";
   apiState: "checking" | "online" | "offline";
   disclaimer?: string;
   onClose: () => void;
+  onCloseProject?: () => void;
 }) {
   const it = language === "it";
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -316,6 +324,24 @@ function StatusSheet({
               : "These gates cannot be opened from this screen. Structural completeness is not biological truth."}
           </p>
           {disclaimer && <p className="status-disclaimer">{disclaimer}</p>}
+          {onCloseProject && (
+            <div className="status-close-project">
+              <button
+                type="button"
+                className="button compact"
+                onClick={() => {
+                  onCloseProject();
+                }}
+              >
+                {language === "it" ? "Chiudi progetto e torna alla welcome" : "Close project and return to welcome"}
+              </button>
+              <small>
+                {language === "it"
+                  ? "Elimina il checkpoint locale di questa sessione."
+                  : "Clears this session's local checkpoint."}
+              </small>
+            </div>
+          )}
         </div>
       </section>
     </div>
@@ -349,6 +375,7 @@ export function App() {
   const [shareReadiness, setShareReadiness] = useState<ShareReadiness>();
   const [domainAcknowledged, setDomainAcknowledged] = useState(false);
   const [wizardInitialStep, setWizardInitialStep] = useState(1);
+  const [restoreInfo, setRestoreInfo] = useState<{ abrupt: boolean; at: string }>();
   // Accordion dashboard: i pannelli lunghi partono chiusi; la nav apre il pannello richiesto.
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({
     "graph-panel": true,
@@ -954,8 +981,107 @@ export function App() {
       setWizardInitialStep(wizardStep);
       setShowImport(true);
     }
+
+    // ---- Checkpoint: ripristino del progetto aperto (refresh, crash, spegnimento)
+    const checkpoint = loadCheckpoint();
+    if (checkpoint && checkpoint.payload.surface === "workspace" && checkpoint.payload.report) {
+      try {
+        const cp = checkpoint.payload;
+        setReport(cp.report as typeof DEMO_REPORT);
+        if (cp.quick_design) setQuickDesignResult(cp.quick_design as QuickDesignV8Response);
+        setIsDemo(cp.is_demo);
+        setSurface("workspace");
+        if (cp.session_id) setSessionId(cp.session_id);
+        const ui = cp.ui;
+        if (ui) {
+          if (ui.selected_block) setSelectedBlockId(ui.selected_block);
+          if (ui.selected_alert) setSelectedAlertId(ui.selected_alert);
+          if (ui.selected_evidence) setSelectedEvidenceId(ui.selected_evidence);
+          setActiveView((ui.active_view as View) ?? "experiments");
+          setCollapsed(ui.collapsed ?? {});
+          setDomainAcknowledged(Boolean(ui.domain_acknowledged));
+        }
+        if (cp.corrections) setCorrectionState(cp.corrections as typeof correctionState);
+        if (cp.candidate_exports) setCandidateExports(cp.candidate_exports as typeof candidateExports);
+        if (cp.audit) setAudit(cp.audit as typeof audit);
+        if (cp.privacy) setPrivacyAudit(cp.privacy as PrivacyAudit);
+        if (cp.share) setShareReadiness(cp.share as ShareReadiness);
+        const at = new Date(cp.saved_at).toLocaleTimeString(uiLanguage === "it" ? "it-IT" : "en-GB");
+        setRestoreInfo({ abrupt: checkpoint.abrupt, at });
+        saveCheckpoint({ status: "open" });
+      } catch {
+        // Checkpoint incompatibile: si riparte dalla welcome senza bloccare l'app.
+      }
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ---- Autosave checkpoint (debounce 400ms) + flush su chiusura/nascondimento
+  useEffect(() => {
+    if (surface !== "workspace") return;
+    const timer = window.setTimeout(() => {
+      saveCheckpoint({
+        surface,
+        is_demo: isDemo,
+        session_id: sessionId,
+        report,
+        quick_design: quickDesignResult,
+        corrections: correctionState,
+        candidate_exports: candidateExports,
+        audit,
+        privacy: privacyAudit,
+        share: shareReadiness,
+        ui: {
+          active_view: activeView,
+          selected_block: selectedBlockId,
+          selected_alert: selectedAlertId,
+          selected_evidence: selectedEvidenceId,
+          collapsed,
+          domain_acknowledged: domainAcknowledged,
+        },
+      });
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [
+    surface, isDemo, sessionId, report, quickDesignResult, correctionState,
+    candidateExports, audit, privacyAudit, shareReadiness, activeView,
+    selectedBlockId, selectedAlertId, selectedEvidenceId, collapsed,
+    domainAcknowledged,
+  ]);
+
+  useEffect(() => {
+    const flush = () => markCheckpointClosed();
+    const save = () => saveCheckpoint({ status: "open" });
+    window.addEventListener("pagehide", flush);
+    window.addEventListener("beforeunload", flush);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") save();
+    });
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      window.removeEventListener("beforeunload", flush);
+    };
+  }, []);
+
+  const closeProject = () => {
+    clearCheckpoint();
+    setRestoreInfo(undefined);
+    setSurface("welcome");
+    setQuickDesignResult(undefined);
+    setIsDemo(false);
+    setSessionId(undefined);
+    setReport(DEMO_REPORT);
+    setSelectedBlockId(DEMO_REPORT.blocks[0]?.id);
+    setSelectedAlertId(DEMO_REPORT.blocks[0]?.alerts[0]?.id);
+    setSelectedEvidenceId(undefined);
+    setCorrectionState({});
+    setCandidateExports({});
+    setAudit({});
+    setPrivacyAudit(undefined);
+    setShareReadiness(undefined);
+    setActiveView("project");
+    setShowStatus(false);
+  };
 
   const reviewed = report.blocks.filter((item) => item.corrections.length > 0).length;
   const progress = report.blocks.length ? Math.round((reviewed / report.blocks.length) * 100) : 0;
@@ -1013,6 +1139,35 @@ export function App() {
       </aside>
 
       <main className="app-main" id="workspace">
+        {restoreInfo && surface === "workspace" && (
+          <div className="restore-banner" role="status">
+            <History size={17} />
+            <span>
+              {restoreInfo.abrupt
+                ? uiLanguage === "it"
+                  ? `Ripristino automatico dopo un'interruzione non volontaria — checkpoint delle ${restoreInfo.at}.`
+                  : `Automatic recovery after an unexpected shutdown — checkpoint from ${restoreInfo.at}.`
+                : uiLanguage === "it"
+                  ? `Progetto riaperto dal checkpoint locale delle ${restoreInfo.at}.`
+                  : `Project reopened from the local checkpoint at ${restoreInfo.at}.`}
+            </span>
+            <button
+              type="button"
+              className="button compact"
+              onClick={() => {
+                clearCheckpoint();
+                setRestoreInfo(undefined);
+                setNotice(
+                  uiLanguage === "it"
+                    ? "Checkpoint locale eliminato: il progetto resta aperto in memoria."
+                    : "Local checkpoint cleared: the project stays open in memory.",
+                );
+              }}
+            >
+              {uiLanguage === "it" ? "Ignora checkpoint" : "Dismiss checkpoint"}
+            </button>
+          </div>
+        )}
         <header className="topbar">
           <div className="project-title">
             <BookOpen size={20} />
@@ -1054,7 +1209,15 @@ export function App() {
         )}
 
         {showStatus && (
-          <StatusSheet language={uiLanguage} apiState={apiState} disclaimer={report.disclaimer} onClose={() => setShowStatus(false)} />
+          <StatusSheet
+            language={uiLanguage}
+            apiState={apiState}
+            disclaimer={report.disclaimer}
+            onClose={() => setShowStatus(false)}
+            onCloseProject={() => {
+              closeProject();
+            }}
+          />
         )}
 
         {surface === "welcome" && !quickDesignResult ? (

@@ -660,3 +660,15 @@ select { max-width: 100%; }
   .diff-row { grid-template-columns: 1fr; }
 }
 .panel-heading.collapsible { cursor: pointer; }
+
+/* ------------------------------------------------------------- checkpoint/recovery */
+.restore-banner {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin: var(--space-4) var(--space-5) 0; padding: 13px 18px;
+  border: 1px solid #e4c9b4; border-left: 5px solid var(--teal);
+  border-radius: var(--radius-soft); background: var(--teal-pale);
+  color: var(--teal-dark); font-size: 0.92rem; line-height: 1.5;
+}
+.restore-banner span { flex: 1; min-width: 260px; }
+.status-close-project { display: grid; gap: 8px; justify-items: start; border-top: 1px dashed var(--border); padding-top: 14px; }
+.status-close-project small { color: var(--ink-muted); }
