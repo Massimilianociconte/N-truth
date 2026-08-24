@@ -10,9 +10,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import BinaryIO
 
 from ntruth import SCHEMA_VERSION
 from ntruth.ingest.safety import (
@@ -52,9 +54,20 @@ class IngestResult:
         return "\n".join(lines)
 
 
+def _open_nofollow(path: Path) -> BinaryIO:
+    """Apre in lettura rifiutando i symlink sul componente finale (TOCTOU)."""
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        return os.fdopen(os.open(path, flags), "rb")
+    except OSError as exc:
+        if exc.errno == getattr(os, "ELOOP", None) or "symlink" in str(exc).casefold():
+            raise SafetyError(f"symlink non seguito durante l'apertura: {path}") from exc
+        raise
+
+
 def sha256_of(path: Path, chunk: int = 1 << 20) -> str:
     digest = hashlib.sha256()
-    with path.open("rb") as fh:
+    with _open_nofollow(path) as fh:
         while block := fh.read(chunk):
             digest.update(block)
     return digest.hexdigest()
@@ -105,7 +118,11 @@ class Project:
         manifest_path = root / MANIFEST_NAME
         if not manifest_path.is_file():
             raise SafetyError(f"manifest assente in {root}")
-        manifest = ProjectManifest.model_validate_json(manifest_path.read_text(encoding="utf-8"))
+        # O_NOFOLLOW: un manifest sostituito da un symlink tra check e lettura
+        # fallisce chiudo invece di seguire il collegamento.
+        with _open_nofollow(manifest_path) as handle:
+            manifest_payload = handle.read().decode("utf-8")
+        manifest = ProjectManifest.model_validate_json(manifest_payload)
         _validate_manifest_paths(root, manifest)
         return cls(root, manifest)
 

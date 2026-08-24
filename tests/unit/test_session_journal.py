@@ -123,3 +123,15 @@ def test_resume_unknown_session_is_404(tmp_path: Path, monkeypatch: pytest.Monke
     response = client.post("/v1/sessions/nope/resume")
     assert response.status_code == 404
     assert response.json()["detail"]["code"] == "session_not_resumable"
+
+
+def test_sha256_of_refuses_symlinked_source(tmp_path: Path) -> None:
+    from ntruth.ingest.project import SafetyError, sha256_of
+
+    real = tmp_path / "real.txt"
+    real.write_text("payload", encoding="utf-8")
+    link = tmp_path / "link.txt"
+    link.symlink_to(real)
+
+    with pytest.raises(SafetyError):
+        sha256_of(link)
