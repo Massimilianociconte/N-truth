@@ -270,10 +270,12 @@ function WelcomeHome({
 function StatusSheet({
   language,
   apiState,
+  disclaimer,
   onClose,
 }: {
   language: "it" | "en";
   apiState: "checking" | "online" | "offline";
+  disclaimer?: string;
   onClose: () => void;
 }) {
   const it = language === "it";
@@ -313,6 +315,7 @@ function StatusSheet({
               ? "Questi gate non si aprono da questa schermata. Completeness strutturale non è verità biologica."
               : "These gates cannot be opened from this screen. Structural completeness is not biological truth."}
           </p>
+          {disclaimer && <p className="status-disclaimer">{disclaimer}</p>}
         </div>
       </section>
     </div>
@@ -1001,9 +1004,6 @@ export function App() {
           <button className="nav-item" onClick={() => setShowStatus(true)}>
             <Settings size={19} /> <span>{uiLanguage === "it" ? "Stato e limiti" : "Status and limits"}</span>
           </button>
-          <button className="nav-item" onClick={() => setNotice(report.disclaimer)}>
-            <Info size={19} /> <span>{uiLanguage === "it" ? "Limiti" : "Limitations"}</span>
-          </button>
           <div className="build-status">
             <span>v0.1.0</span>
             <span className={`status-dot ${apiState}`} />
@@ -1054,7 +1054,7 @@ export function App() {
         )}
 
         {showStatus && (
-          <StatusSheet language={uiLanguage} apiState={apiState} onClose={() => setShowStatus(false)} />
+          <StatusSheet language={uiLanguage} apiState={apiState} disclaimer={report.disclaimer} onClose={() => setShowStatus(false)} />
         )}
 
         {surface === "welcome" && !quickDesignResult ? (
@@ -1231,6 +1231,15 @@ export function App() {
               )}
               </div>
             </section>
+
+            {selectedBlock && report.review_outputs?.[selectedBlock.id] && (
+              <ReviewOutputPanel
+                output={report.review_outputs[selectedBlock.id]}
+                language={uiLanguage}
+                collapsed={Boolean(collapsed["review-output"])}
+                onToggle={() => togglePanel("review-output")}
+              />
+            )}
           </div>
 
           <div className="right-stack">
@@ -1245,10 +1254,12 @@ export function App() {
                   <h2 id="evidence-heading">{uiLanguage === "it" ? "Evidenza" : "Evidence"}</h2>
                 </div>
                 {selectedAlert && (
-                  <Confidence
-                    value={selectedAlert.premise_confidence ?? selectedAlert.confidence}
-                    label={uiLanguage === "it" ? "Confidenza premesse" : "Premise confidence"}
-                  />
+                  <span className="panel-tools">
+                    <Confidence
+                      value={selectedAlert.premise_confidence ?? selectedAlert.confidence}
+                      label={uiLanguage === "it" ? "Confidenza premesse" : "Premise confidence"}
+                    />
+                  </span>
                 )}
               </div>
               <div className="source-locator"><FileText size={15} /> {evidenceLocator(selectedEvidence)}</div>
@@ -1326,14 +1337,6 @@ export function App() {
               hasCandidate={Boolean(selectedCandidateExport)}
               exportAllowed={!privacyExportBlocked}
               />
-            {selectedBlock && report.review_outputs?.[selectedBlock.id] && (
-              <ReviewOutputPanel
-                output={report.review_outputs[selectedBlock.id]}
-                language={uiLanguage}
-                collapsed={Boolean(collapsed["review-output"])}
-                onToggle={() => togglePanel("review-output")}
-              />
-            )}
           </div>
         </section>
 
@@ -1819,7 +1822,7 @@ function ReviewOutputPanel({
         <span className="panel-tools">
           {collapsed && (
             <span className="expand-hint">
-              {language === "it" ? "Espansi assi e handoff" : "Expand axes and handoff"}
+              {language === "it" ? "Espandi assi e handoff" : "Expand axes and handoff"}
             </span>
           )}
           <span className={`compiler-status review-status-${output.path_status}`}>{pathLabel}</span>
@@ -1837,6 +1840,7 @@ function ReviewOutputPanel({
           )}
         </span>
       </div>
+      <div className="panel-collapse" id="review-output-body">
       <p className="axis-boundary">
         {language === "it"
           ? "La determinabilità non è approvazione del disegno."
@@ -1865,7 +1869,6 @@ function ReviewOutputPanel({
             : "Structural requirements and questions only; no analysis strategy is suggested."}
         </small>
       </div>
-      <div className="panel-collapse" id="review-output-body">
       <div className="review-methods">
         <p>{output.status_reason}</p>
         <blockquote>{output.methods_statement.text}</blockquote>
@@ -2862,7 +2865,6 @@ function CorrectionPanel({
           <div className="diff-row">
             <span><small>{language === "it" ? "Campo" : "Field"}</small><code>/n_statements/0/value</code></span>
             <span><small>{language === "it" ? "Valore precedente" : "Previous value"}</small><del>n = {current ?? "—"}</del></span>
-            <ChevronRight size={19} />
             <label><small>{language === "it" ? "Valore nuovo" : "New value"}</small><span className="n-input">n = <input aria-label={language === "it" ? "Nuovo valore di n" : "New n value"} type="number" min="0" step="1" value={nextValue} onChange={(event) => setNextValue(event.target.value)} /></span></label>
           </div>
           <label className="field-label">{language === "it" ? "Motivo" : "Reason"}
