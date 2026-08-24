@@ -344,6 +344,7 @@ export function App() {
   const [privacyAudit, setPrivacyAudit] = useState<PrivacyAudit>();
   const [shareReadiness, setShareReadiness] = useState<ShareReadiness>();
   const [domainAcknowledged, setDomainAcknowledged] = useState(false);
+  const [wizardInitialStep, setWizardInitialStep] = useState(1);
   const [notice, setNotice] = useState<string>();
   const [demoPast, setDemoPast] = useState<Report[]>([]);
   const [demoFuture, setDemoFuture] = useState<Report[]>([]);
@@ -390,7 +391,16 @@ export function App() {
     }
   }, [selectedAlertId, selectedBlock]);
 
+  const workspaceActive = surface === "workspace" || quickDesignResult !== undefined;
   const navigate = (view: View) => {
+    if (!workspaceActive) {
+      setNotice(
+        uiLanguage === "it"
+          ? "Nessun progetto attivo: apri la demo sintetica o importa le fonti per attivare la navigazione."
+          : "No active project: open the synthetic demo or import sources to enable navigation.",
+      );
+      return;
+    }
     setActiveView(view);
     document.getElementById(focusId(view))?.scrollIntoView({ behavior: "smooth", block: "center" });
   };
@@ -908,11 +918,17 @@ export function App() {
     setDomainAcknowledged(false);
   };
 
-  // Deep-link QA/demo: ?demo=1 apre il workspace sintetico, ?status=1 il pannello gate.
+  // Deep-link QA/demo: ?demo=1 workspace sintetico, ?status=1 pannello gate,
+  // ?wizard=N apre l'import direttamente al passo N del builder guidato.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("demo") === "1") openSyntheticDemo();
     if (params.get("status") === "1") setShowStatus(true);
+    const wizardStep = Number(params.get("wizard") ?? "");
+    if (Number.isInteger(wizardStep) && wizardStep >= 1 && wizardStep <= 5) {
+      setWizardInitialStep(wizardStep);
+      setShowImport(true);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -929,12 +945,21 @@ export function App() {
         <nav className="primary-nav">
           {NAVIGATION.map(({ id, it, en, icon: NavIcon }) => {
             const label = uiLanguage === "it" ? it : en;
+            const disabled = !workspaceActive;
             return (
             <button
               key={id}
-              className={activeView === id ? "nav-item active" : "nav-item"}
+              className={`nav-item${disabled ? " disabled" : activeView === id ? " active" : ""}`}
               onClick={() => navigate(id)}
-              aria-current={activeView === id ? "page" : undefined}
+              aria-current={!disabled && activeView === id ? "page" : undefined}
+              aria-disabled={disabled || undefined}
+              title={
+                disabled
+                  ? uiLanguage === "it"
+                    ? "Attiva un progetto (demo o import) per usare questa sezione"
+                    : "Activate a project (demo or import) to use this section"
+                  : undefined
+              }
               aria-label={label}
             >
               <NavIcon size={20} strokeWidth={1.8} />
@@ -942,6 +967,13 @@ export function App() {
             </button>
             );
           })}
+          {!workspaceActive && (
+            <p className="nav-hint">
+              {uiLanguage === "it"
+                ? "Le sezioni si attivano con la demo o importando le fonti."
+                : "Sections activate with the demo or by importing sources."}
+            </p>
+          )}
         </nav>
         <div className="sidebar-footer">
           <button className="nav-item" onClick={() => setShowStatus(true)}>
@@ -1302,6 +1334,7 @@ export function App() {
           onClose={closeImport}
           onAnalysis={onAnalysis}
           onQuickDesign={onQuickDesign}
+          initialWizardStep={wizardInitialStep}
         />
       )}
     </div>
@@ -2684,12 +2717,14 @@ function ImportDialog({
   onClose,
   onAnalysis,
   onQuickDesign,
+  initialWizardStep = 1,
 }: {
   apiState: "checking" | "online" | "offline";
   uiLanguage: "it" | "en";
   onClose: () => void;
   onAnalysis: (result: AnalysisResponse) => void;
   onQuickDesign: (result: QuickDesignV8Response) => void;
+  initialWizardStep?: number;
 }) {
   const [mode, setMode] = useState<"v8" | "v7">("v8");
   const dialogRef = useRef<HTMLElement>(null);
@@ -2821,7 +2856,7 @@ function ImportDialog({
                   <strong>PRD v8 · guided builder · canonical lane atomica</strong>
                   <p>{uiLanguage === "it" ? "Il PREVIEW è solo revisione. CONFIRM esegue atomicamente il contratto canonico e conserva la submission esclusivamente come snapshot di audit non eseguibile." : "PREVIEW is review-only. CONFIRM atomically executes the canonical contract and retains the submission only as a non-executable audit snapshot."}</p>
                 </div>
-                <QuickDesignWizard language={uiLanguage} onComplete={onQuickDesign} />
+                <QuickDesignWizard language={uiLanguage} initialStep={initialWizardStep} onComplete={onQuickDesign} />
               </>
             ) : (
               <>

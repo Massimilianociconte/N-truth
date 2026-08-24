@@ -557,3 +557,18 @@ svg line { stroke: #b9a98f; stroke-width: 1.6px; }
 /* diff-row: etichette sempre impilate sopra il controllo */
 .diff-row label { display: grid; gap: 4px; font-size: 0.9rem; color: var(--navy-soft); font-weight: 650; }
 .diff-row label small { color: var(--ink-muted); font-size: 0.76rem; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 750; }
+
+/* ------------------------------------------------------------- nav disabled + hint */
+.nav-item.disabled { opacity: 0.55; }
+.nav-item.disabled:hover { background: rgb(122 62 36 / 5%); color: var(--navy-soft); cursor: help; }
+.nav-hint { margin: 4px 14px 8px; padding: 10px 12px; border: 1px dashed var(--border-strong); border-radius: var(--radius-soft); background: #fbf7ee; color: var(--ink-muted); font-size: 0.82rem; line-height: 1.5; }
+
+/* ------------------------------------------------------------- wizard layout fix */
+.dialog { width: min(780px, 100%); }
+.guided-answer { grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr); gap: 10px; }
+.guided-answer .field-label { min-width: 0; }
+.guided-answer select, .guided-answer input { width: 100%; min-width: 0; }
+.guided-step .guided-answer { min-width: 0; }
+.guided-grid:has(.guided-answer) { grid-template-columns: 1fr; }
+.guided-group-row { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.5fr) minmax(0, 1fr) 110px; }
+select { max-width: 100%; }

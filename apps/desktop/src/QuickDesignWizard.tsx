@@ -132,11 +132,13 @@ function scientificError(error: unknown, language: "it" | "en"): string {
 export function QuickDesignWizard({
   language,
   onComplete,
+  initialStep = 1,
 }: {
   language: "it" | "en";
   onComplete: (response: QuickDesignV8Response) => void;
+  initialStep?: number;
 }) {
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState(initialStep);
   const [blockTitle, setBlockTitle] = useState("");
   const [source, setSource] = useState(emptyAnswer);
   const [preparation, setPreparation] = useState(emptyAnswer);
