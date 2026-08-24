@@ -1124,12 +1124,20 @@ export function App() {
               className={`panel graph-panel ${activeView === "graph" ? "focused-panel" : ""} ${collapsed["graph-panel"] ? "collapsed" : ""}`}
               aria-labelledby="graph-heading"
             >
-              <div className="panel-heading">
+              <div
+                className={`panel-heading${collapsed["graph-panel"] ? " collapsible" : ""}`}
+                onClick={collapsed["graph-panel"] ? () => togglePanel("graph-panel") : undefined}
+              >
                 <div>
                   <span className="eyebrow">{uiLanguage === "it" ? "Struttura ricostruita" : "Reconstructed structure"}</span>
                   <h2 id="graph-heading">{uiLanguage === "it" ? "Grafo del disegno sperimentale" : "Experimental design graph"}</h2>
                 </div>
                 <span className="panel-tools">
+                  {collapsed["graph-panel"] && (
+                    <span className="expand-hint">
+                      {uiLanguage === "it" ? "Espandi grafo e editor" : "Expand graph and editor"}
+                    </span>
+                  )}
                   <span className="count-label">{selectedBlock?.hierarchy.nodes.length ?? 0}</span>
                   <button
                     type="button"
@@ -1164,12 +1172,20 @@ export function App() {
               className={`panel issues-panel ${collapsed["issues-panel"] ? "collapsed" : ""}`}
               aria-labelledby="issues-heading"
             >
-              <div className="panel-heading">
+              <div
+                className={`panel-heading${collapsed["issues-panel"] ? " collapsible" : ""}`}
+                onClick={collapsed["issues-panel"] ? () => togglePanel("issues-panel") : undefined}
+              >
                 <div>
                   <span className="eyebrow">Ruleset {String(report.versions.ruleset_version ?? "—")}</span>
                   <h2 id="issues-heading">{uiLanguage === "it" ? "Questioni rilevate" : "Detected issues"}</h2>
                 </div>
                 <span className="panel-tools">
+                  {collapsed["issues-panel"] && (
+                    <span className="expand-hint">
+                      {uiLanguage === "it" ? "Espandi alert e domande" : "Expand alerts and questions"}
+                    </span>
+                  )}
                   <span className="count-label">{selectedBlock?.alerts.length ?? 0}</span>
                   <button
                     type="button"
@@ -1788,7 +1804,10 @@ function ReviewOutputPanel({
   }[output.path_status];
   return (
     <section className={`panel review-output-panel ${collapsed ? "collapsed" : ""}`} aria-labelledby="review-output-heading">
-      <div className="panel-heading">
+      <div
+        className={`panel-heading${collapsed ? " collapsible" : ""}`}
+        onClick={collapsed && onToggle ? onToggle : undefined}
+      >
         <div>
           <span className="eyebrow">
             {language === "it" ? "Output di revisione · non certificante" : "Review output · non-certifying"}
@@ -1798,6 +1817,11 @@ function ReviewOutputPanel({
           </h2>
         </div>
         <span className="panel-tools">
+          {collapsed && (
+            <span className="expand-hint">
+              {language === "it" ? "Espansi assi e handoff" : "Expand axes and handoff"}
+            </span>
+          )}
           <span className={`compiler-status review-status-${output.path_status}`}>{pathLabel}</span>
           {onToggle && (
             <button

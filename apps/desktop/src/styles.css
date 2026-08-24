@@ -603,3 +603,16 @@ select { max-width: 100%; }
 .panel-toggle svg { transition: transform 140ms ease; }
 .panel.collapsed .panel-collapse { display: none; }
 .panel.collapsed .panel-heading { border-bottom: 0; }
+
+/* pannelli compressi: niente corpo vuoto, header invita all'apertura */
+.graph-panel.collapsed, .issues-panel.collapsed, .review-output-panel.collapsed { min-height: 0; }
+.panel.collapsed .panel-heading { cursor: pointer; }
+.panel.collapsed .panel-heading:hover { background: #fdf8f0; }
+.panel.collapsed .panel-heading:hover h2 { color: var(--teal-dark); }
+.expand-hint {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 12px; border-radius: 999px;
+  background: var(--teal-pale); color: var(--teal-dark);
+  font-size: 0.8rem; font-weight: 750;
+}
+.panel-heading.collapsible { user-select: none; }
