@@ -91,6 +91,12 @@ def _pnpm_components(lock_path: Path) -> list[dict[str, Any]]:
     return components
 
 
+def _ntruth_version() -> str:
+    from ntruth import __version__
+
+    return __version__
+
+
 def build_sbom(lock_path: Path, pnpm_lock_path: Path | None = None) -> dict[str, Any]:
     """Costruisce un documento CycloneDX stabile dai lockfile locali."""
 
@@ -150,6 +156,14 @@ def build_sbom(lock_path: Path, pnpm_lock_path: Path | None = None) -> dict[str,
                 {
                     "name": "ntruth:scope",
                     "value": "complete-development-lockfiles-not-runtime-only",
+                },
+                {"name": "ntruth:component-version", "value": _ntruth_version()},
+                {
+                    "name": "ntruth:timestamp-policy",
+                    "value": (
+                        "deterministic-omitted: the document must be byte-reproducible "
+                        "from the lockfiles (scripts/generate_sbom.py --check)"
+                    ),
                 },
             ],
         },

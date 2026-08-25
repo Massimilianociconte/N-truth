@@ -8134,6 +8134,14 @@
       {
         "name": "ntruth:scope",
         "value": "complete-development-lockfiles-not-runtime-only"
+      },
+      {
+        "name": "ntruth:component-version",
+        "value": "0.1.0"
+      },
+      {
+        "name": "ntruth:timestamp-policy",
+        "value": "deterministic-omitted: the document must be byte-reproducible from the lockfiles (scripts/generate_sbom.py --check)"
       }
     ],
     "tools": {

@@ -41,6 +41,36 @@ assert payload["offline_core"] is True, payload
 print(f"health ok · ntruth {__version__} · schema {SCHEMA_VERSION}")
 """.strip()
 
+V8_CONFORMANCE_SMOKE = """
+from ntruth.conformance import evaluate_conformance
+from ntruth.conformance.examples import (
+    evaluate_prd_v8_examples,
+    load_installed_prd_v8_example_registry,
+)
+from ntruth.derivation_theory import load_installed_bundle
+from ntruth.derivation_theory.runtime import build_execution_manifest, verify_runtime_bundle
+from ntruth.schemas.kernel import kernel_json_schemas
+from ntruth.schemas.schema_snapshot import load_installed_kernel_schema_snapshot
+
+bundle = load_installed_bundle()
+report = evaluate_conformance(bundle)
+assert report.passed, report.failures
+runtime_report = verify_runtime_bundle(bundle)
+assert runtime_report.passed, runtime_report.failures
+manifest = build_execution_manifest(bundle, runtime_report)
+example_report = evaluate_prd_v8_examples(load_installed_prd_v8_example_registry())
+schema_snapshot = load_installed_kernel_schema_snapshot()
+assert len(bundle.theory.clauses) == 7
+assert len(bundle.fixture_set.fixture_pins) == 21
+assert len(bundle.evaluator_registry.artifact_pins) == 8
+assert bundle.rulebook.evaluator_registry_checksum == bundle.evaluator_registry.declared_checksum
+assert len(manifest.implementation_rules) == 7
+assert manifest.evaluator_registry_checksum == bundle.evaluator_registry.declared_checksum
+assert example_report.passed, example_report.failures
+assert schema_snapshot.schemas == kernel_json_schemas()
+print(f"v8 conformance ok · {bundle.rulebook.rulebook_id}@{bundle.rulebook.rulebook_version}")
+""".strip()
+
 ML_PROFILE_SMOKE = """
 from ntruth.training.cli import DEFAULT_PROFILE
 from ntruth.training.mlx_runtime import load_profile
@@ -265,9 +295,15 @@ def smoke_distribution(
         env=env,
         label=f"Import API e health contract ({distribution.kind})",
     )
+    conformance_output = run_checked(
+        [str(python), "-c", V8_CONFORMANCE_SMOKE],
+        cwd=run_dir,
+        env=env,
+        label=f"PRD v8 package-resource conformance ({distribution.kind})",
+    )
     print(
         f"{distribution.kind}: {version_output} · ML CLI ok · {ml_profile_output} · "
-        f"{ml_runtime_output} · {health_output}"
+        f"{ml_runtime_output} · {health_output} · {conformance_output}"
     )
 
 

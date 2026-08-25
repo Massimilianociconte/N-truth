@@ -11,20 +11,39 @@ import hashlib
 import json
 import re
 import unicodedata
+from collections.abc import Iterator
 from dataclasses import dataclass
 from enum import StrEnum
 from math import isclose
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import Field, JsonValue, ValidationError, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    JsonValue,
+    SerializerFunctionWrapHandler,
+    field_validator,
+    model_serializer,
+    model_validator,
+)
 
 from ntruth.governance.lineage import CorpusSplit, validate_split_eligibility
+from ntruth.mvt_a.stage_schema import (
+    ALLOWED_CANDIDATE_COUNT_KINDS,
+    assert_no_final_scientific_fields,
+)
+from ntruth.parser_ai.contract import (
+    GoldParserTarget,
+    canonicalize_candidate_boundary_model,
+    canonicalize_gold_parser_target,
+)
 from ntruth.schemas.core import FrozenModel, content_checksum
+from ntruth.training.custody import ExternalChallengeDependency
 
-TRAINING_RECORD_SCHEMA_VERSION = "1.0.0"
+TRAINING_RECORD_SCHEMA_VERSION = "8.0.0"
 NORMALIZATION_VERSION = "1.0.0"
-MANIFEST_VERSION = "2.0.0"
+MANIFEST_VERSION = "8.0.0"
 
 
 class AnnotationStatus(StrEnum):
@@ -57,6 +76,13 @@ class SupervisionProvenance(FrozenModel):
     supplement_id: str | None = None
     preprint_id: str | None = None
     dataset_id: str | None = None
+    study_family_id: str | None = None
+    document_lineage_id: str | None = None
+    preprint_family_id: str | None = None
+    supplement_family_id: str | None = None
+    dataset_family_id: str | None = None
+    translation_family_id: str | None = None
+    paraphrase_family_id: str | None = None
     project_id: str | None = None
     bundle_id: str | None = None
     laboratory_id: str | None = None
@@ -67,8 +93,10 @@ class SupervisionProvenance(FrozenModel):
     license_or_authorization_id: str | None = None
     guideline_version: str
     reviewer_count: int = Field(default=0, ge=0)
+    reviewer_ids: tuple[str, ...] = ()
     reviewer_roles: tuple[str, ...] = ()
     adjudication_id: str | None = None
+    external_challenge_dependency: ExternalChallengeDependency | None = None
     synthetic: bool = False
 
     @field_validator(
@@ -78,6 +106,13 @@ class SupervisionProvenance(FrozenModel):
         "supplement_id",
         "preprint_id",
         "dataset_id",
+        "study_family_id",
+        "document_lineage_id",
+        "preprint_family_id",
+        "supplement_family_id",
+        "dataset_family_id",
+        "translation_family_id",
+        "paraphrase_family_id",
         "project_id",
         "bundle_id",
         "laboratory_id",
@@ -103,24 +138,98 @@ class SupervisionProvenance(FrozenModel):
             raise ValueError("reviewer_roles non puo contenere ruoli vuoti")
         return normalized
 
+    @field_validator("reviewer_ids")
+    @classmethod
+    def _non_blank_reviewer_ids(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        normalized = tuple(reviewer.strip() for reviewer in value)
+        if any(not reviewer for reviewer in normalized):
+            raise ValueError("reviewer_ids cannot contain blanks")
+        if len(normalized) != len(set(normalized)):
+            raise ValueError("reviewer_ids must be unique")
+        return normalized
+
+
+def _family_evidence(provenance: SupervisionProvenance) -> dict[str, str]:
+    fields = (
+        "publication_id",
+        "supplement_id",
+        "preprint_id",
+        "dataset_id",
+        "study_family_id",
+        "document_lineage_id",
+        "preprint_family_id",
+        "supplement_family_id",
+        "dataset_family_id",
+        "translation_family_id",
+        "paraphrase_family_id",
+        "project_id",
+        "bundle_id",
+        "laboratory_id",
+        "facility_id",
+        "corresponding_author_id",
+        "synthetic_family_id",
+        "counterfactual_family_id",
+    )
+    return {
+        field_name: value
+        for field_name in fields
+        if (value := getattr(provenance, field_name)) is not None
+    }
+
 
 class SupervisedRecord(FrozenModel):
     """Una riga JSONL supervisionata, ancora indipendente da qualsiasi split."""
 
-    schema_version: Literal["1.0.0"] = "1.0.0"
+    schema_version: Literal["8.0.0"] = "8.0.0"
     record_id: str
     task: str
     language: str
     domain: str | None = None
     input_text: str
-    target: dict[str, JsonValue] = Field(min_length=1)
+    target: GoldParserTarget
     provenance: SupervisionProvenance
     annotation_status: AnnotationStatus = AnnotationStatus.CANDIDATE
     training_eligible: bool = False
     evaluation_eligible: bool = False
     release_eligible: bool = False
-    requested_split: CorpusSplit | None = CorpusSplit.UNASSIGNED
+    model_selection_eligible: bool = False
+    split: CorpusSplit = CorpusSplit.UNASSIGNED
+    requested_split: CorpusSplit | None = None
     metadata: dict[str, JsonValue] = Field(default_factory=dict)
+
+    @field_validator("target", mode="before")
+    @classmethod
+    def _candidate_target_only(cls, value: Any) -> GoldParserTarget:
+        return canonicalize_gold_parser_target(value)
+
+    def _revalidated_for_serialization(self) -> SupervisedRecord:
+        return canonicalize_candidate_boundary_model(
+            self,
+            model_type=SupervisedRecord,
+            boundary_name="supervised record",
+        )
+
+    def model_dump(self, **kwargs: Any) -> dict[str, Any]:
+        """Serialize only after revalidating the complete supervised target."""
+
+        self._revalidated_for_serialization()
+        return BaseModel.model_dump(self, **kwargs)
+
+    def model_dump_json(self, **kwargs: Any) -> str:
+        """Serialize JSON only after revalidating the supervised target."""
+
+        self._revalidated_for_serialization()
+        return BaseModel.model_dump_json(self, **kwargs)
+
+    @model_serializer(mode="wrap")
+    def _serialize_after_raw_validation(
+        self,
+        handler: SerializerFunctionWrapHandler,
+    ) -> Any:
+        """Apply the exact raw gate when serialized inside another model."""
+
+        self._revalidated_for_serialization()
+        return handler(self)
 
     @field_validator("record_id", "task", "language", "input_text")
     @classmethod
@@ -138,6 +247,8 @@ class SupervisedRecord(FrozenModel):
 
     @model_validator(mode="after")
     def _validate_curation_and_use(self) -> SupervisedRecord:
+        if self.task != "parser_candidate_v8":
+            raise ValueError("canonical SupervisedRecord task must be parser_candidate_v8")
         if (
             self.annotation_status is AnnotationStatus.DOUBLE_REVIEWED
             and self.provenance.reviewer_count < 2
@@ -148,28 +259,92 @@ class SupervisedRecord(FrozenModel):
                 raise ValueError("adjudicated richiede almeno due revisioni")
             if self.provenance.adjudication_id is None:
                 raise ValueError("adjudicated richiede adjudication_id")
+        if self.annotation_status in {
+            AnnotationStatus.DOUBLE_REVIEWED,
+            AnnotationStatus.ADJUDICATED,
+        }:
+            if self.target.adjudication_id != self.provenance.adjudication_id:
+                raise ValueError("target/provenance adjudication mismatch")
+            if self.target.reviewer_ids != self.provenance.reviewer_ids:
+                raise ValueError("target/provenance reviewer identity mismatch")
+            target_roles = tuple(item.reviewer_role for item in self.target.submission_references)
+            if target_roles != self.provenance.reviewer_roles:
+                raise ValueError("target/provenance reviewer role mismatch")
+            if self.provenance.reviewer_count != len(self.provenance.reviewer_ids):
+                raise ValueError("reviewer_count must match reviewer identities")
         curated_statuses = {
             AnnotationStatus.DOUBLE_REVIEWED,
             AnnotationStatus.ADJUDICATED,
         }
-        any_eligible = self.training_eligible or self.evaluation_eligible or self.release_eligible
-        if any_eligible and self.annotation_status not in curated_statuses:
+        curation_gated = (
+            self.training_eligible or self.release_eligible or self.model_selection_eligible
+        )
+        if curation_gated and self.annotation_status not in curated_statuses:
             raise ValueError(
                 "un record candidate/single_reviewed non e idoneo per training, evaluation o release"
             )
+        if (
+            self.split is not CorpusSplit.UNASSIGNED
+            and self.requested_split is not None
+            and self.requested_split is not self.split
+        ):
+            raise ValueError("requested_split confligge con lo split canonico del record")
+        for gated_split in {self.split, self.requested_split}:
+            validate_split_eligibility(
+                gated_split,
+                training_eligible=self.training_eligible,
+                evaluation_eligible=self.evaluation_eligible,
+            )
+        if self.training_eligible and self.split in {
+            CorpusSplit.TEST,
+            CorpusSplit.EXTERNAL_CHALLENGE,
+        }:
+            raise ValueError(f"{self.split.name} split cannot have training_eligible=true")
+        if (
+            self.split is CorpusSplit.VALIDATION
+            and self.training_eligible
+            and not self.model_selection_eligible
+        ):
+            raise ValueError(
+                "VALIDATION training_eligible=true requires model_selection_eligible=true"
+            )
+        if self.split in {CorpusSplit.TEST, CorpusSplit.EXTERNAL_CHALLENGE} and (
+            self.model_selection_eligible
+        ):
+            raise ValueError(f"{self.split.name} split cannot have model_selection_eligible=true")
+        any_eligible = (
+            self.training_eligible
+            or self.evaluation_eligible
+            or self.release_eligible
+            or self.model_selection_eligible
+        )
         if any_eligible and self.provenance.license_or_authorization_id is None:
             raise ValueError("l'idoneita richiede licenza o autorizzazione esplicita")
-        validate_split_eligibility(
-            self.requested_split,
-            training_eligible=self.training_eligible,
-            evaluation_eligible=self.evaluation_eligible,
-        )
-        if self.provenance.synthetic and self.requested_split not in {
-            None,
-            CorpusSplit.UNASSIGNED,
-            CorpusSplit.TRAIN,
-        }:
-            raise ValueError("i record sintetici possono essere assegnati soltanto a train")
+        for synthetic_split in {self.split, self.requested_split}:
+            if self.provenance.synthetic and synthetic_split not in {
+                None,
+                CorpusSplit.UNASSIGNED,
+                CorpusSplit.TRAIN,
+            }:
+                raise ValueError("i record sintetici possono essere assegnati soltanto a train")
+        if self.split is CorpusSplit.EXTERNAL_CHALLENGE:
+            if (
+                self.provenance.study_family_id is None
+                or self.provenance.document_lineage_id is None
+            ):
+                raise ValueError(
+                    "EXTERNAL_CHALLENGE requires known study family and document lineage"
+                )
+            if self.provenance.external_challenge_dependency is None:
+                raise ValueError(
+                    "EXTERNAL_CHALLENGE requires Task 7 contamination/custody dependency pins"
+                )
+            if self.evaluation_eligible or self.release_eligible:
+                raise ValueError(
+                    "EXTERNAL_CHALLENGE remains SCIENTIFIC_REVIEW_REQUIRED until Task 7"
+                )
+        elif self.provenance.external_challenge_dependency is not None:
+            raise ValueError("External Challenge dependency is allowed only on its custodial split")
         return self
 
 
@@ -197,7 +372,7 @@ class SplitRatios(FrozenModel):
 class PreparationConfig(FrozenModel):
     """Configurazione completa e serializzabile della preparazione."""
 
-    record_schema_version: Literal["1.0.0"] = "1.0.0"
+    record_schema_version: Literal["8.0.0"] = "8.0.0"
     normalization_version: Literal["1.0.0"] = "1.0.0"
     seed: str = "ntruth-dataset-v1"
     near_duplicate_threshold: float = Field(default=0.92, ge=0.8, le=1.0)
@@ -258,23 +433,80 @@ class PreparedRecord(FrozenModel):
     leakage_group_id: str
     split: CorpusSplit
 
+    def _revalidated_for_serialization(self) -> PreparedRecord:
+        return canonicalize_candidate_boundary_model(
+            self,
+            model_type=PreparedRecord,
+            boundary_name="prepared record",
+        )
+
+    def model_dump(self, **kwargs: Any) -> dict[str, Any]:
+        """Serialize only after validating the complete prepared record tree."""
+
+        self._revalidated_for_serialization()
+        return BaseModel.model_dump(self, **kwargs)
+
+    def model_dump_json(self, **kwargs: Any) -> str:
+        """Serialize JSON only after validating the complete prepared record tree."""
+
+        self._revalidated_for_serialization()
+        return BaseModel.model_dump_json(self, **kwargs)
+
+    @model_serializer(mode="wrap")
+    def _serialize_after_raw_validation(
+        self,
+        handler: SerializerFunctionWrapHandler,
+    ) -> Any:
+        """Apply the exact raw gate when serialized inside a prepared dataset."""
+
+        self._revalidated_for_serialization()
+        return handler(self)
+
     @model_validator(mode="after")
     def _validate_final_split(self) -> PreparedRecord:
         if self.split is CorpusSplit.UNASSIGNED:
             raise ValueError("un record preparato deve avere uno split definitivo")
+        try:
+            canonical = GoldParserTarget.model_validate_json(self.canonical_target)
+        except ValueError as exc:
+            raise ValueError(f"canonical target is not a GoldParserTarget: {exc}") from exc
+        if canonical != self.record.target:
+            raise ValueError("canonical target does not match supervised GoldParserTarget")
         if self.record.provenance.synthetic and self.split is not CorpusSplit.TRAIN:
             raise ValueError("i record sintetici possono apparire soltanto in train")
+        if self.record.split is not CorpusSplit.UNASSIGNED and self.record.split is not self.split:
+            raise ValueError("prepared split does not preserve the supervised record split")
         validate_split_eligibility(
             self.split,
             training_eligible=self.record.training_eligible,
             evaluation_eligible=self.record.evaluation_eligible,
         )
+        if self.split in {CorpusSplit.TEST, CorpusSplit.EXTERNAL_CHALLENGE} and (
+            self.record.training_eligible
+        ):
+            raise ValueError(f"{self.split.name} prepared record cannot be training-eligible")
+        if (
+            self.split is CorpusSplit.VALIDATION
+            and self.record.training_eligible
+            and not self.record.model_selection_eligible
+        ):
+            raise ValueError(
+                "VALIDATION prepared training record requires model-selection eligibility"
+            )
+        if self.split in {CorpusSplit.TEST, CorpusSplit.EXTERNAL_CHALLENGE} and (
+            self.record.model_selection_eligible
+        ):
+            raise ValueError(
+                f"{self.split.name} prepared record cannot be model-selection eligible"
+            )
         return self
 
 
 class ManifestRecord(FrozenModel):
     record_id: str
     record_checksum: str = Field(pattern=r"^[0-9a-f]{64}$")
+    input_checksum: str = Field(pattern=r"^[0-9a-f]{64}$")
+    candidate_target_checksum: str = Field(pattern=r"^[0-9a-f]{64}$")
     exact_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
     near_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
     split: CorpusSplit
@@ -298,9 +530,20 @@ class ManifestRecord(FrozenModel):
     training_eligible: bool
     evaluation_eligible: bool = False
     release_eligible: bool = False
+    model_selection_eligible: bool = False
     license_or_authorization_id: str | None = None
     reviewer_count: int = Field(ge=0)
+    reviewer_ids: tuple[str, ...] = ()
+    reviewer_roles: tuple[str, ...] = ()
     adjudication_id: str | None = None
+    target_adjudication_id: str | None = None
+    submission_ids: tuple[str, ...] = ()
+    submission_checksums: tuple[str, ...] = ()
+    comparison_status: str | None = None
+    material_differences_checksum: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    candidate_count_kinds: tuple[str, ...] = ()
+    family_evidence: dict[str, str] = Field(default_factory=dict)
+    external_challenge_dependency: ExternalChallengeDependency | None = None
     synthetic: bool = False
 
     @model_validator(mode="after")
@@ -312,15 +555,60 @@ class ManifestRecord(FrozenModel):
             training_eligible=self.training_eligible,
             evaluation_eligible=self.evaluation_eligible,
         )
-        any_eligible = self.training_eligible or self.evaluation_eligible or self.release_eligible
-        if any_eligible and self.annotation_status not in {
+        if any(kind not in ALLOWED_CANDIDATE_COUNT_KINDS for kind in self.candidate_count_kinds):
+            raise ValueError("manifest contains an unreviewed candidate count kind")
+        if self.split in {CorpusSplit.TEST, CorpusSplit.EXTERNAL_CHALLENGE} and (
+            self.training_eligible
+        ):
+            raise ValueError(f"{self.split.name} manifest record cannot be training-eligible")
+        if (
+            self.split is CorpusSplit.VALIDATION
+            and self.training_eligible
+            and not self.model_selection_eligible
+        ):
+            raise ValueError(
+                "VALIDATION manifest training record requires model-selection eligibility"
+            )
+        if self.split in {CorpusSplit.TEST, CorpusSplit.EXTERNAL_CHALLENGE} and (
+            self.model_selection_eligible
+        ):
+            raise ValueError(
+                f"{self.split.name} manifest record cannot be model-selection eligible"
+            )
+        if self.split is CorpusSplit.EXTERNAL_CHALLENGE:
+            if not self.family_evidence.get("study_family_id") or not self.family_evidence.get(
+                "document_lineage_id"
+            ):
+                raise ValueError("EXTERNAL_CHALLENGE manifest family evidence is incomplete")
+            if self.external_challenge_dependency is None:
+                raise ValueError("EXTERNAL_CHALLENGE manifest lacks Task 7 dependency pins")
+            if self.evaluation_eligible or self.release_eligible:
+                raise ValueError("EXTERNAL_CHALLENGE manifest remains review-required")
+        elif self.external_challenge_dependency is not None:
+            raise ValueError("external dependency on non-challenge manifest record")
+        curation_gated = self.training_eligible or self.model_selection_eligible
+        if curation_gated and self.annotation_status not in {
             AnnotationStatus.DOUBLE_REVIEWED,
             AnnotationStatus.ADJUDICATED,
         }:
             raise ValueError("l'idoneita richiede revisione doppia o adjudication")
-        if any_eligible and self.reviewer_count < 2:
+        if self.annotation_status in {
+            AnnotationStatus.DOUBLE_REVIEWED,
+            AnnotationStatus.ADJUDICATED,
+        }:
+            if self.target_adjudication_id != self.adjudication_id:
+                raise ValueError("manifest target/provenance adjudication mismatch")
+            if len(self.submission_ids) != 2 or len(self.submission_checksums) != 2:
+                raise ValueError("manifest requires exactly two gold submission pins")
+            if len(self.reviewer_ids) != 2 or self.reviewer_count != len(self.reviewer_ids):
+                raise ValueError("manifest reviewer identity pins are incomplete")
+            if len(self.reviewer_roles) != 2:
+                raise ValueError("manifest reviewer role pins are incomplete")
+            if self.comparison_status is None or self.material_differences_checksum is None:
+                raise ValueError("manifest gold comparison pins are incomplete")
+        if curation_gated and self.reviewer_count < 2:
             raise ValueError("l'idoneita richiede almeno due reviewer")
-        if any_eligible and self.license_or_authorization_id is None:
+        if curation_gated and self.license_or_authorization_id is None:
             raise ValueError("l'idoneita richiede licenza o autorizzazione")
         if self.annotation_status is AnnotationStatus.ADJUDICATED and self.adjudication_id is None:
             raise ValueError("adjudicated richiede adjudication_id nel manifest")
@@ -358,7 +646,7 @@ class PreparationReport(FrozenModel):
 class DatasetManifest(FrozenModel):
     """Manifest content-addressed dell'output pronto per un futuro trainer."""
 
-    manifest_version: Literal["2.0.0"] = "2.0.0"
+    manifest_version: Literal["8.0.0"] = "8.0.0"
     dataset_id: str = ""
     parent_dataset_ids: tuple[str, ...] = ()
     record_schema_version: str
@@ -379,6 +667,22 @@ class DatasetManifest(FrozenModel):
             group_splits.setdefault(record.leakage_group_id, set()).add(record.split)
             if record.synthetic and record.split is not CorpusSplit.TRAIN:
                 raise ValueError("record sintetici ammessi soltanto in train")
+            if record.split in {CorpusSplit.TEST, CorpusSplit.EXTERNAL_CHALLENGE} and (
+                record.training_eligible
+            ):
+                raise ValueError(f"{record.split.name} manifest membership cannot train")
+            if (
+                record.split is CorpusSplit.VALIDATION
+                and record.training_eligible
+                and not record.model_selection_eligible
+            ):
+                raise ValueError(
+                    "VALIDATION manifest membership requires model-selection eligibility"
+                )
+            if record.split in {CorpusSplit.TEST, CorpusSplit.EXTERNAL_CHALLENGE} and (
+                record.model_selection_eligible
+            ):
+                raise ValueError(f"{record.split.name} manifest membership cannot select a model")
         if any(len(splits) > 1 for splits in group_splits.values()):
             raise ValueError("un leakage group attraversa split differenti")
         expected_records_checksum = self.computed_records_checksum()
@@ -427,6 +731,35 @@ class PreparedDataset(FrozenModel):
     manifest: DatasetManifest
     report: PreparationReport
 
+    def _revalidated_for_serialization(self) -> PreparedDataset:
+        return canonicalize_candidate_boundary_model(
+            self,
+            model_type=PreparedDataset,
+            boundary_name="prepared dataset",
+        )
+
+    def model_dump(self, **kwargs: Any) -> dict[str, Any]:
+        """Serialize only after validating the complete prepared dataset tree."""
+
+        self._revalidated_for_serialization()
+        return BaseModel.model_dump(self, **kwargs)
+
+    def model_dump_json(self, **kwargs: Any) -> str:
+        """Serialize JSON only after validating the complete prepared dataset tree."""
+
+        self._revalidated_for_serialization()
+        return BaseModel.model_dump_json(self, **kwargs)
+
+    @model_serializer(mode="wrap")
+    def _serialize_after_raw_validation(
+        self,
+        handler: SerializerFunctionWrapHandler,
+    ) -> Any:
+        """Apply the exact raw gate when serialized inside another model."""
+
+        self._revalidated_for_serialization()
+        return handler(self)
+
     @model_validator(mode="after")
     def _cross_check(self) -> PreparedDataset:
         prepared_by_id = {record.record.record_id: record for record in self.records}
@@ -438,7 +771,22 @@ class PreparedDataset(FrozenModel):
         for record_id, prepared in prepared_by_id.items():
             entry = manifest_by_id[record_id]
             if (
-                prepared.split is not entry.split
+                prepared.split is CorpusSplit.VALIDATION
+                and prepared.record.training_eligible
+                and not prepared.record.model_selection_eligible
+            ):
+                raise ValueError(
+                    "VALIDATION prepared membership requires model-selection eligibility"
+                )
+            if (
+                content_checksum(prepared.model_dump(mode="json")) != entry.record_checksum
+                or _manifest_input_checksum(prepared.record.input_text) != entry.input_checksum
+                or prepared.record.provenance.source_id != entry.source_id
+                or prepared.record.provenance.source_asset_id != entry.source_asset_id
+                or prepared.record.provenance.source_sha256 != entry.source_sha256
+                or prepared.record.provenance.governance_hash != entry.governance_hash
+                or prepared.record.provenance.synthetic != entry.synthetic
+                or prepared.split is not entry.split
                 or prepared.leakage_group_id != entry.leakage_group_id
                 or prepared.exact_fingerprint != entry.exact_fingerprint
                 or prepared.near_fingerprint != entry.near_fingerprint
@@ -446,6 +794,7 @@ class PreparedDataset(FrozenModel):
                 or prepared.record.training_eligible != entry.training_eligible
                 or prepared.record.evaluation_eligible != entry.evaluation_eligible
                 or prepared.record.release_eligible != entry.release_eligible
+                or prepared.record.model_selection_eligible != entry.model_selection_eligible
                 or (
                     prepared.record.provenance.license_or_authorization_id
                     != entry.license_or_authorization_id
@@ -468,7 +817,39 @@ class PreparedDataset(FrozenModel):
                     != entry.counterfactual_family_id
                 )
                 or prepared.record.provenance.reviewer_count != entry.reviewer_count
+                or prepared.record.provenance.reviewer_ids != entry.reviewer_ids
+                or prepared.record.provenance.reviewer_roles != entry.reviewer_roles
                 or prepared.record.provenance.adjudication_id != entry.adjudication_id
+                or prepared.record.target.adjudication_id != entry.target_adjudication_id
+                or content_checksum(prepared.record.target.candidate_target.model_dump(mode="json"))
+                != entry.candidate_target_checksum
+                or tuple(
+                    reference.submission_id
+                    for reference in prepared.record.target.submission_references
+                )
+                != entry.submission_ids
+                or tuple(
+                    reference.submission_sha256
+                    for reference in prepared.record.target.submission_references
+                )
+                != entry.submission_checksums
+                or prepared.record.target.comparison_status != entry.comparison_status
+                or content_checksum(
+                    [
+                        difference.model_dump(mode="json")
+                        for difference in prepared.record.target.material_differences
+                    ]
+                )
+                != entry.material_differences_checksum
+                or tuple(
+                    count.kind for count in prepared.record.target.candidate_target.candidate_counts
+                )
+                != entry.candidate_count_kinds
+                or _family_evidence(prepared.record.provenance) != entry.family_evidence
+                or (
+                    prepared.record.provenance.external_challenge_dependency
+                    != entry.external_challenge_dependency
+                )
             ):
                 raise ValueError(f"manifest incoerente per record {record_id}")
         if self.report.kept_count != len(self.records):
@@ -480,6 +861,14 @@ class PreparedDataset(FrozenModel):
 
 _ZERO_WIDTH = str.maketrans("", "", "\u200b\u200c\u200d\ufeff")
 _TOKEN_RE = re.compile(r"\w+", flags=re.UNICODE)
+
+
+def _manifest_input_checksum(input_text: str) -> str:
+    try:
+        payload = json.loads(input_text)
+    except json.JSONDecodeError:
+        payload = input_text
+    return content_checksum(payload)
 
 
 def _sha256(payload: str) -> str:
@@ -553,7 +942,7 @@ class NormalizedRecord:
 
 def normalize_record(record: SupervisedRecord, *, shingle_size: int) -> NormalizedRecord:
     normalized_input = normalize_text(record.input_text)
-    canonical_target = canonical_json(record.target)
+    canonical_target = canonical_json(record.target.model_dump(mode="json"))
     common = {
         "task": normalize_text(record.task),
         "language": normalize_text(record.language),
@@ -584,18 +973,43 @@ class DatasetFormatError(ValueError):
         super().__init__(f"riga JSONL {line_number}: {detail}")
 
 
+def _iter_jsonl_physical_lines(payload: bytes) -> Iterator[tuple[int, bytes]]:
+    """Yield LF-delimited bytes without treating other Unicode/newline values as framing."""
+
+    yield from enumerate(bytes.split(payload, b"\n"), start=1)
+
+
 def loads_supervised_jsonl(payload: str | bytes) -> tuple[SupervisedRecord, ...]:
     """Carica JSONL locale; le righe vuote sono ignorate ma mai emesse in output."""
 
-    text = payload.decode("utf-8") if isinstance(payload, bytes) else payload
+    if type(payload) is bytes:
+        raw_payload = payload
+    elif type(payload) is str:
+        try:
+            raw_payload = str.encode(payload, "utf-8")
+        except Exception as error:
+            line_number = (
+                str.count(payload, "\n", 0, error.start) + 1
+                if isinstance(error, UnicodeEncodeError)
+                else 1
+            )
+            raise DatasetFormatError(
+                line_number,
+                "payload JSONL testuale non codificabile in UTF-8",
+            ) from error
+    else:
+        raise DatasetFormatError(1, "payload JSONL deve usare str o bytes builtin")
     records: list[SupervisedRecord] = []
-    for line_number, line in enumerate(text.splitlines(), start=1):
+    for line_number, line in _iter_jsonl_physical_lines(raw_payload):
         if not line.strip():
             continue
         try:
             records.append(SupervisedRecord.model_validate_json(line))
-        except (ValidationError, ValueError) as error:
-            raise DatasetFormatError(line_number, str(error)) from error
+        except Exception as error:
+            raise DatasetFormatError(
+                line_number,
+                "record supervisionato JSONL non valido",
+            ) from error
     return tuple(records)
 
 
@@ -608,6 +1022,8 @@ def dumps_supervised_jsonl(records: tuple[SupervisedRecord, ...]) -> str:
         raise ValueError("record_id duplicati: impossibile produrre JSONL canonico")
     if not ordered:
         return ""
+    for record in ordered:
+        assert_no_final_scientific_fields(record.target)
     return "\n".join(canonical_json(record.model_dump(mode="json")) for record in ordered) + "\n"
 
 
@@ -617,6 +1033,8 @@ def dumps_prepared_jsonl(records: tuple[PreparedRecord, ...]) -> str:
     ordered = sorted(records, key=lambda record: record.record.record_id)
     if not ordered:
         return ""
+    for prepared in ordered:
+        assert_no_final_scientific_fields(prepared.record.target)
     return "\n".join(canonical_json(record.model_dump(mode="json")) for record in ordered) + "\n"
 
 

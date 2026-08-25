@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verifica che sdist e wheel contengano core, regole, ontologia e UI compilata."""
+"""Verifica che sdist e wheel contengano core, bundle v8, ontologia e UI compilata."""
 
 from __future__ import annotations
 
@@ -93,6 +93,17 @@ def check_wheel(path: Path) -> None:
         exact=(
             "ntruth/_ui/index.html",
             "ntruth/_bundled/models/granite-4.1-3b-mlx-qlora.json",
+            "ntruth/_bundled/theories/ntruth-derivation-theory-0.1.0.json",
+            "ntruth/_bundled/theories/simple-cell-culture-profile-closure-0.1.0.json",
+            "ntruth/_bundled/theories/reviewed-evaluator-registry-0.1.1.json",
+            "ntruth/_bundled/rulesets/ntruth-v8-core-0.1.0.json",
+            "ntruth/conformance/assets/reference-role-registry-0.1.0.json",
+            (
+                "ntruth/conformance/assets/"
+                "implementation-conformance-fixtures-simple-cell-culture-0.1.0.json"
+            ),
+            ("ntruth/conformance/assets/prd-v8-example-conformance-registry-8.0.0.json"),
+            "ntruth/schemas/assets/prd-v8-kernel-schemas-8.0.0.json",
         ),
         prefixes=(
             "ntruth/_ui/assets/",
@@ -117,7 +128,24 @@ def check_sdist(path: Path) -> None:
     _reject_private_or_local(names, root=root)
     _require(
         names,
-        exact=(f"{root}/apps/desktop/dist/index.html", f"{root}/pyproject.toml"),
+        exact=(
+            f"{root}/apps/desktop/dist/index.html",
+            f"{root}/pyproject.toml",
+            f"{root}/theories/ntruth-derivation-theory-0.1.0.json",
+            f"{root}/theories/simple-cell-culture-profile-closure-0.1.0.json",
+            f"{root}/theories/reviewed-evaluator-registry-0.1.1.json",
+            f"{root}/rulesets/ntruth-v8-core-0.1.0.json",
+            (f"{root}/packages/ntruth/conformance/assets/reference-role-registry-0.1.0.json"),
+            (
+                f"{root}/packages/ntruth/conformance/assets/"
+                "implementation-conformance-fixtures-simple-cell-culture-0.1.0.json"
+            ),
+            (
+                f"{root}/packages/ntruth/conformance/assets/"
+                "prd-v8-example-conformance-registry-8.0.0.json"
+            ),
+            (f"{root}/packages/ntruth/schemas/assets/prd-v8-kernel-schemas-8.0.0.json"),
+        ),
         prefixes=(f"{root}/apps/desktop/dist/assets/",),
     )
 

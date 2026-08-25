@@ -23,6 +23,7 @@ import {
   Save,
   Search,
   Settings,
+  ChevronDown,
   ShieldAlert,
   Sparkles,
   Undo2,
@@ -35,12 +36,15 @@ import {
   type FormEvent,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
 import {
   ApiError,
-  analyze,
+  apiErrorCode,
+  apiErrorIssueId,
+  analyzeV7,
   applyCorrection,
   confirmInferenceTarget,
   downloadJson,
@@ -51,18 +55,31 @@ import {
 } from "./api";
 import { CanonicalCorrectionForm, type CorrectionPatch } from "./CanonicalCorrectionForm";
 import { DEMO_REPORT } from "./data/demo";
+import {
+  downloadProspectiveArtifact,
+  QuickDesignWizard,
+} from "./QuickDesignWizard";
+import { SpanLocator, refinementPatchEntry, type SpanRefinement } from "./SpanLocator";
 import { ProspectiveD0Workspace } from "./d0/ProspectiveD0Workspace";
+import {
+  clearCheckpoint,
+  loadCheckpoint,
+  markCheckpointClosed,
+  saveCheckpoint,
+} from "./checkpoint";
 import type {
   Alert,
   AnalysisResponse,
   AuditEntry,
-  BlockPositiveOutput,
+  BlockReviewOutput,
   DesignCompilation,
   EvidenceSpan,
   ExperimentBlock,
   GraphNode,
   GraphRelation,
+  KnowledgeValue,
   PrivacyAudit,
+  QuickDesignV8Response,
   Report,
   Severity,
   ShareReadiness,
@@ -206,7 +223,7 @@ function formatAuditTime(value: string | undefined, language: "it" | "en"): stri
 function focusId(view: View): string {
   return {
     prospective: "d0-panel",
-    project: "blocks-panel",
+    project: "workspace",
     documents: "evidence-panel",
     experiments: "blocks-panel",
     graph: "graph-panel",
@@ -216,16 +233,147 @@ function focusId(view: View): string {
   }[view];
 }
 
+function WelcomeHome({
+  language,
+  apiState,
+  onStartDesign,
+  onOpenDemo,
+}: {
+  language: "it" | "en";
+  apiState: "checking" | "online" | "offline";
+  onStartDesign: () => void;
+  onOpenDemo: () => void;
+}) {
+  const it = language === "it";
+  return (
+    <section className="welcome" aria-labelledby="welcome-heading">
+      <p className="welcome-kicker">{it ? "Compilatore locale · un solo Mac" : "Local compiler · this Mac only"}</p>
+      <h1 id="welcome-heading">{it ? "Chiarisci il disegno prima di contare l’n." : "Settle the design before you count n."}</h1>
+      <p className="welcome-lead">
+        {it
+          ? "N-Truth registra fatti, lacune e claim. Non approva un esperimento e non sostituisce un biostatistico."
+          : "N-Truth records facts, gaps and claims. It does not approve an experiment and does not replace a biostatistician."}
+      </p>
+      <ul className="welcome-pins" aria-label={it ? "Stato scientifico" : "Scientific status"}>
+        <li><strong>HANDOFF_ONLY</strong>{it ? "nessun test statistico consigliato" : "no statistical test is recommended"}</li>
+        <li><strong>NOT_STARTED</strong>{it ? "validazione scientifica non iniziata" : "scientific validation has not started"}</li>
+        <li><strong>HOLD</strong>{it ? "training e External Challenge fermi" : "training and External Challenge remain held"}</li>
+      </ul>
+      <p className="welcome-honesty">
+        {it
+          ? "La determinabilità non è approvazione del disegno. Un’anteprima del browser non è il risultato canonico Python."
+          : "Determinability is not design approval. A browser preview is not the canonical Python result."}
+      </p>
+      <div className="welcome-actions">
+        <button type="button" className="button primary" onClick={onStartDesign}>
+          {it ? "Progetta un esperimento" : "Design an experiment"}
+        </button>
+        <button type="button" className="button secondary" onClick={onOpenDemo}>
+          {it ? "Apri demo sintetica" : "Open synthetic demo"}
+        </button>
+      </div>
+      <p className="welcome-next">
+        {apiState === "online"
+          ? it
+            ? "Passo successivo: compila in Quick Design. Il PREVIEW resta non canonico finché non confermi."
+            : "Next: compile in Quick Design. PREVIEW stays non-canonical until you confirm."
+          : it
+            ? "API offline. Puoi aprire la demo sintetica, oppure avvia ntruth-api per compilare."
+            : "API offline. Open the synthetic demo, or start ntruth-api to compile."}
+      </p>
+    </section>
+  );
+}
+
+function StatusSheet({
+  language,
+  apiState,
+  disclaimer,
+  onClose,
+  onCloseProject,
+}: {
+  language: "it" | "en";
+  apiState: "checking" | "online" | "offline";
+  disclaimer?: string;
+  onClose: () => void;
+  onCloseProject?: () => void;
+}) {
+  const it = language === "it";
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => closeButtonRef.current?.focus(), []);
+  return (
+    <div
+      className="dialog-backdrop"
+      role="presentation"
+      onKeyDown={(event) => {
+        if (event.key === "Escape") onClose();
+      }}
+      onMouseDown={(event) => event.target === event.currentTarget && onClose()}
+    >
+      <section
+        className="dialog status-sheet"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="status-title"
+      >
+        <div className="dialog-header">
+          <div>
+            <span className="eyebrow">{it ? "Stato del prodotto" : "Product status"}</span>
+            <h2 id="status-title">{it ? "Limiti e gate" : "Limits and gates"}</h2>
+          </div>
+          <button ref={closeButtonRef} type="button" aria-label={it ? "Chiudi" : "Close"} onClick={onClose}><X size={20} /></button>
+        </div>
+        <div className="status-sheet-body">
+          <dl className="v8-definition-grid">
+            <div><dt>API</dt><dd>{apiState === "online" ? (it ? "loopback attiva" : "loopback online") : apiState === "offline" ? (it ? "non raggiungibile" : "unreachable") : (it ? "verifica…" : "checking…")}</dd></div>
+            <div><dt>Validazione scientifica</dt><dd>NOT_STARTED</dd></div>
+            <div><dt>Training / External Challenge</dt><dd>HOLD</dd></div>
+            <div><dt>Modulo statistico</dt><dd>HANDOFF_ONLY</dd></div>
+          </dl>
+          <p>
+            {it
+              ? "Questi gate non si aprono da questa schermata. Completeness strutturale non è verità biologica."
+              : "These gates cannot be opened from this screen. Structural completeness is not biological truth."}
+          </p>
+          {disclaimer && <p className="status-disclaimer">{disclaimer}</p>}
+          {onCloseProject && (
+            <div className="status-close-project">
+              <button
+                type="button"
+                className="button compact"
+                onClick={() => {
+                  onCloseProject();
+                }}
+              >
+                {language === "it" ? "Chiudi progetto e torna alla welcome" : "Close project and return to welcome"}
+              </button>
+              <small>
+                {language === "it"
+                  ? "Elimina il checkpoint locale di questa sessione."
+                  : "Clears this session's local checkpoint."}
+              </small>
+            </div>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 export function App() {
   const [report, setReport] = useState<Report>(DEMO_REPORT);
-  const [isDemo, setIsDemo] = useState(true);
-  const [activeView, setActiveView] = useState<View>("prospective");
+  const [quickDesignResult, setQuickDesignResult] = useState<QuickDesignV8Response>();
+  const [surface, setSurface] = useState<"welcome" | "workspace">("welcome");
+  const [showStatus, setShowStatus] = useState(false);
+  const [isDemo, setIsDemo] = useState(false);
+  const [activeView, setActiveView] = useState<View>("project");
   const [selectedBlockId, setSelectedBlockId] = useState(DEMO_REPORT.blocks[0].id);
   const [selectedAlertId, setSelectedAlertId] = useState(DEMO_REPORT.blocks[0].alerts[0].id);
   const [selectedEvidenceId, setSelectedEvidenceId] = useState<string>();
   const [uiLanguage, setUiLanguage] = useState<"it" | "en">("it");
   const [apiState, setApiState] = useState<"checking" | "online" | "offline">("checking");
   const [showImport, setShowImport] = useState(false);
+  const importButtonRef = useRef<HTMLButtonElement>(null);
   const [sessionId, setSessionId] = useState<string>();
   const [artifacts, setArtifacts] = useState<Record<string, string>>({});
   const [audit, setAudit] = useState<Record<string, AuditEntry[]>>({});
@@ -238,6 +386,17 @@ export function App() {
   const [privacyAudit, setPrivacyAudit] = useState<PrivacyAudit>();
   const [shareReadiness, setShareReadiness] = useState<ShareReadiness>();
   const [domainAcknowledged, setDomainAcknowledged] = useState(false);
+  const [wizardInitialStep, setWizardInitialStep] = useState(1);
+  const [restoreInfo, setRestoreInfo] = useState<{ abrupt: boolean; at: string }>();
+  // Accordion dashboard: i pannelli lunghi partono chiusi; la nav apre il pannello richiesto.
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({
+    "graph-panel": true,
+    "issues-panel": true,
+    "review-output": true,
+  });
+  const togglePanel = (id: string) =>
+    setCollapsed((current) => ({ ...current, [id]: !current[id] }));
+  const expandPanel = (id: string) => setCollapsed((current) => ({ ...current, [id]: false }));
   const [notice, setNotice] = useState<string>();
   const [demoPast, setDemoPast] = useState<Report[]>([]);
   const [demoFuture, setDemoFuture] = useState<Report[]>([]);
@@ -284,9 +443,23 @@ export function App() {
     }
   }, [selectedAlertId, selectedBlock]);
 
+  const workspaceActive = surface === "workspace" || quickDesignResult !== undefined;
   const navigate = (view: View) => {
+    if (!workspaceActive && view !== "prospective") {
+      setNotice(
+        uiLanguage === "it"
+          ? "Nessun progetto attivo: apri la demo sintetica o importa le fonti per attivare la navigazione."
+          : "No active project: open the synthetic demo or import sources to enable navigation.",
+      );
+      return;
+    }
+    if (view === "graph") expandPanel("graph-panel");
+    if (view === "questions") expandPanel("inference-panel");
+    if (view === "corrections" || view === "documents") expandPanel("review-output");
     setActiveView(view);
-    document.getElementById(focusId(view))?.scrollIntoView({ behavior: "smooth", block: "center" });
+    requestAnimationFrame(() => {
+      document.getElementById(focusId(view))?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   };
 
   const replaceBlock = (nextBlock: ExperimentBlock) => {
@@ -307,7 +480,6 @@ export function App() {
     setDemoFuture([]);
     const sequence = selectedBlock.corrections.length;
     const correctionId = `demo-correction-${sequence + 1}`;
-    const recordedAt = new Date().toISOString();
     const nextBlock: ExperimentBlock = {
       ...selectedBlock,
       n_statements: selectedBlock.n_statements.map((statement, index) =>
@@ -323,7 +495,6 @@ export function App() {
           patch: [{ op: "replace", path: "/n_statements/0/value", value }],
           evidence_ids: evidenceIds,
           reviewer_role: "reviewer",
-          recorded_at: recordedAt,
           verified: false,
         },
       ],
@@ -339,7 +510,7 @@ export function App() {
           action: "apply",
           correction_id: correctionId,
           actor_role: "reviewer",
-          recorded_at: recordedAt,
+          recorded_at: new Date().toISOString(),
         },
       ],
     }));
@@ -528,7 +699,6 @@ export function App() {
         return { estimand, existingEstimand, existingEstimandIndex };
       });
       const correctionId = `${selectedBlock.id}-target-correction-${selectedBlock.corrections.length + 1}`;
-      const recordedAt = new Date().toISOString();
       const nextBlock: ExperimentBlock = {
         ...selectedBlock,
         inference_targets:
@@ -559,18 +729,17 @@ export function App() {
             ],
             evidence_ids: draft.evidence_ids,
             reviewer_role: draft.reviewer_role,
-            recorded_at: recordedAt,
             verified: false,
           },
         ],
       };
-      const readyCompilation: DesignCompilation = {
+      const structuralCompilation: DesignCompilation = {
         specification_id: `${selectedBlock.id}-design-confirmed`,
         status: "ready",
         abstained: false,
         elicitation: { questions: [], blocking_question_ids: [], complete: true },
         analysis_handoff: {
-          target_population_support: "supported",
+          target_population_support: "conditional",
           targets: nextBlock.inference_targets.map((item) => ({
             inference_target_id: item.id,
             status: item.status,
@@ -578,7 +747,7 @@ export function App() {
             claim_text: item.claim_text,
             population_of_inference: item.population_of_inference,
             target_biological_unit: item.target_biological_unit,
-            target_population_support: "supported" as const,
+            target_population_support: "conditional" as const,
             estimand_ids: nextBlock.estimands
               .filter(
                 (estimand) =>
@@ -611,7 +780,7 @@ export function App() {
         blocks: current.blocks.map((item) => (item.id === nextBlock.id ? nextBlock : item)),
         design_compilations: {
           ...current.design_compilations,
-          [nextBlock.id]: readyCompilation,
+          [nextBlock.id]: structuralCompilation,
         },
       }));
       setAudit((current) => ({
@@ -624,7 +793,7 @@ export function App() {
             action: "apply",
             correction_id: correctionId,
             actor_role: draft.reviewer_role,
-            recorded_at: recordedAt,
+            recorded_at: new Date().toISOString(),
           },
         ],
       }));
@@ -635,7 +804,7 @@ export function App() {
         block_id: selectedBlock.id,
         corrections: nextBlock.corrections,
       });
-      setNotice("Target inferenziale confermato nella demo; compilazione strutturale pronta.");
+      setNotice("Target inferenziale confermato nella demo; compilazione strutturale registrata.");
       return;
     }
     if (!sessionId) {
@@ -685,7 +854,6 @@ export function App() {
             patch,
             evidence_ids: selectedEvidence ? [selectedEvidence.id] : [],
             reviewer_role: "researcher",
-            recorded_at: recordedAt,
             verified: false,
           },
         ],
@@ -768,8 +936,15 @@ export function App() {
     );
   };
 
+  const closeImport = () => {
+    setShowImport(false);
+    window.setTimeout(() => importButtonRef.current?.focus(), 0);
+  };
+
   const onAnalysis = (response: AnalysisResponse) => {
+    setQuickDesignResult(undefined);
     setReport(response.report);
+    setSurface("workspace");
     setIsDemo(false);
     setSessionId(response.session_id);
     setArtifacts(response.artifacts);
@@ -778,12 +953,157 @@ export function App() {
     setSelectedEvidenceId(undefined);
     setUiLanguage(response.report.language === "en" ? "en" : "it");
     setDomainAcknowledged(!response.domain_transparency.requires_acknowledgement);
-    setShowImport(false);
+    closeImport();
     setNotice(response.ingest_summary);
     setAudit({});
     setCorrectionState({});
     setCandidateExports({});
     applyGovernanceState(response);
+  };
+
+  const onQuickDesign = (response: QuickDesignV8Response) => {
+    setQuickDesignResult(response);
+    setIsDemo(false);
+    setSurface("workspace");
+    setSessionId(undefined);
+    setArtifacts({});
+    setPrivacyAudit(undefined);
+    setShareReadiness(undefined);
+    setAudit({});
+    setCorrectionState({});
+    setCandidateExports({});
+    closeImport();
+    setNotice(`PRD v8 ReportBundle ${response.report.report_id} compilato.`);
+  };
+
+  const openSyntheticDemo = () => {
+    setReport(DEMO_REPORT);
+    setQuickDesignResult(undefined);
+    setIsDemo(true);
+    setSurface("workspace");
+    setSelectedBlockId(DEMO_REPORT.blocks[0].id);
+    setSelectedAlertId(DEMO_REPORT.blocks[0].alerts[0].id);
+    setDomainAcknowledged(false);
+  };
+
+  // Deep-link QA/demo: ?demo=1 workspace sintetico, ?status=1 pannello gate,
+  // ?wizard=N apre l'import direttamente al passo N del builder guidato.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("demo") === "1") {
+      openSyntheticDemo();
+      const view = params.get("view");
+      if (view === "graph") {
+        setCollapsed((current) => ({ ...current, "graph-panel": false }));
+        setActiveView("graph");
+      }
+    }
+    if (params.get("status") === "1") setShowStatus(true);
+    const wizardStep = Number(params.get("wizard") ?? "");
+    if (Number.isInteger(wizardStep) && wizardStep >= 1 && wizardStep <= 5) {
+      setWizardInitialStep(wizardStep);
+      setShowImport(true);
+    }
+
+    // ---- Checkpoint: ripristino del progetto aperto (refresh, crash, spegnimento)
+    const checkpoint = loadCheckpoint();
+    if (checkpoint && checkpoint.payload.surface === "workspace" && checkpoint.payload.report) {
+      try {
+        const cp = checkpoint.payload;
+        setReport(cp.report as typeof DEMO_REPORT);
+        if (cp.quick_design) setQuickDesignResult(cp.quick_design as QuickDesignV8Response);
+        setIsDemo(cp.is_demo);
+        setSurface("workspace");
+        if (cp.session_id) setSessionId(cp.session_id);
+        const ui = cp.ui;
+        if (ui) {
+          if (ui.selected_block) setSelectedBlockId(ui.selected_block);
+          if (ui.selected_alert) setSelectedAlertId(ui.selected_alert);
+          if (ui.selected_evidence) setSelectedEvidenceId(ui.selected_evidence);
+          setActiveView((ui.active_view as View) ?? "experiments");
+          setCollapsed(ui.collapsed ?? {});
+          setDomainAcknowledged(Boolean(ui.domain_acknowledged));
+        }
+        if (cp.corrections) setCorrectionState(cp.corrections as typeof correctionState);
+        if (cp.candidate_exports) setCandidateExports(cp.candidate_exports as typeof candidateExports);
+        if (cp.audit) setAudit(cp.audit as typeof audit);
+        if (cp.privacy) setPrivacyAudit(cp.privacy as PrivacyAudit);
+        if (cp.share) setShareReadiness(cp.share as ShareReadiness);
+        const at = new Date(cp.saved_at).toLocaleTimeString(uiLanguage === "it" ? "it-IT" : "en-GB");
+        setRestoreInfo({ abrupt: checkpoint.abrupt, at });
+        saveCheckpoint({ status: "open" });
+      } catch {
+        // Checkpoint incompatibile: si riparte dalla welcome senza bloccare l'app.
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ---- Autosave checkpoint (debounce 400ms) + flush su chiusura/nascondimento
+  useEffect(() => {
+    if (surface !== "workspace") return;
+    const timer = window.setTimeout(() => {
+      saveCheckpoint({
+        surface,
+        is_demo: isDemo,
+        session_id: sessionId,
+        report,
+        quick_design: quickDesignResult,
+        corrections: correctionState,
+        candidate_exports: candidateExports,
+        audit,
+        privacy: privacyAudit,
+        share: shareReadiness,
+        ui: {
+          active_view: activeView,
+          selected_block: selectedBlockId,
+          selected_alert: selectedAlertId,
+          selected_evidence: selectedEvidenceId,
+          collapsed,
+          domain_acknowledged: domainAcknowledged,
+        },
+      });
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [
+    surface, isDemo, sessionId, report, quickDesignResult, correctionState,
+    candidateExports, audit, privacyAudit, shareReadiness, activeView,
+    selectedBlockId, selectedAlertId, selectedEvidenceId, collapsed,
+    domainAcknowledged,
+  ]);
+
+  useEffect(() => {
+    const flush = () => markCheckpointClosed();
+    const save = () => saveCheckpoint({ status: "open" });
+    window.addEventListener("pagehide", flush);
+    window.addEventListener("beforeunload", flush);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") save();
+    });
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      window.removeEventListener("beforeunload", flush);
+    };
+  }, []);
+
+  const closeProject = () => {
+    clearCheckpoint();
+    setRestoreInfo(undefined);
+    setSurface("welcome");
+    setQuickDesignResult(undefined);
+    setIsDemo(false);
+    setSessionId(undefined);
+    setReport(DEMO_REPORT);
+    setSelectedBlockId(DEMO_REPORT.blocks[0]?.id);
+    setSelectedAlertId(DEMO_REPORT.blocks[0]?.alerts[0]?.id);
+    setSelectedEvidenceId(undefined);
+    setCorrectionState({});
+    setCandidateExports({});
+    setAudit({});
+    setPrivacyAudit(undefined);
+    setShareReadiness(undefined);
+    setActiveView("project");
+    setShowStatus(false);
   };
 
   const reviewed = report.blocks.filter((item) => item.corrections.length > 0).length;
@@ -799,12 +1119,21 @@ export function App() {
         <nav className="primary-nav">
           {NAVIGATION.map(({ id, it, en, icon: NavIcon }) => {
             const label = uiLanguage === "it" ? it : en;
+            const disabled = !workspaceActive;
             return (
             <button
               key={id}
-              className={activeView === id ? "nav-item active" : "nav-item"}
+              className={`nav-item${disabled ? " disabled" : activeView === id ? " active" : ""}`}
               onClick={() => navigate(id)}
-              aria-current={activeView === id ? "page" : undefined}
+              aria-current={!disabled && activeView === id ? "page" : undefined}
+              aria-disabled={disabled || undefined}
+              title={
+                disabled
+                  ? uiLanguage === "it"
+                    ? "Attiva un progetto (demo o import) per usare questa sezione"
+                    : "Activate a project (demo or import) to use this section"
+                  : undefined
+              }
               aria-label={label}
             >
               <NavIcon size={20} strokeWidth={1.8} />
@@ -812,13 +1141,17 @@ export function App() {
             </button>
             );
           })}
+          {!workspaceActive && (
+            <p className="nav-hint">
+              {uiLanguage === "it"
+                ? "Le sezioni si attivano con la demo o importando le fonti."
+                : "Sections activate with the demo or by importing sources."}
+            </p>
+          )}
         </nav>
         <div className="sidebar-footer">
-          <button className="nav-item" onClick={() => setNotice(uiLanguage === "it" ? "Impostazioni locali in arrivo." : "Local settings are not available yet.")}>
-            <Settings size={19} /> <span>{uiLanguage === "it" ? "Impostazioni" : "Settings"}</span>
-          </button>
-          <button className="nav-item" onClick={() => setNotice(report.disclaimer)}>
-            <Info size={19} /> <span>{uiLanguage === "it" ? "Limiti" : "Limitations"}</span>
+          <button className="nav-item" onClick={() => setShowStatus(true)}>
+            <Settings size={19} /> <span>{uiLanguage === "it" ? "Stato e limiti" : "Status and limits"}</span>
           </button>
           <div className="build-status">
             <span>v0.1.0</span>
@@ -829,12 +1162,47 @@ export function App() {
       </aside>
 
       <main className="app-main" id="workspace">
+        {restoreInfo && surface === "workspace" && (
+          <div className="restore-banner" role="status">
+            <History size={17} />
+            <span>
+              {restoreInfo.abrupt
+                ? uiLanguage === "it"
+                  ? `Ripristino automatico dopo un'interruzione non volontaria — checkpoint delle ${restoreInfo.at}.`
+                  : `Automatic recovery after an unexpected shutdown — checkpoint from ${restoreInfo.at}.`
+                : uiLanguage === "it"
+                  ? `Progetto riaperto dal checkpoint locale delle ${restoreInfo.at}.`
+                  : `Project reopened from the local checkpoint at ${restoreInfo.at}.`}
+            </span>
+            <button
+              type="button"
+              className="button compact"
+              onClick={() => {
+                clearCheckpoint();
+                setRestoreInfo(undefined);
+                setNotice(
+                  uiLanguage === "it"
+                    ? "Checkpoint locale eliminato: il progetto resta aperto in memoria."
+                    : "Local checkpoint cleared: the project stays open in memory.",
+                );
+              }}
+            >
+              {uiLanguage === "it" ? "Ignora checkpoint" : "Dismiss checkpoint"}
+            </button>
+          </div>
+        )}
         <header className="topbar">
           <div className="project-title">
             <BookOpen size={20} />
             <div>
-              <strong>{report.project_name}</strong>
-              {isDemo && <span className="demo-label">{uiLanguage === "it" ? "Dati sintetici dimostrativi" : "Synthetic demonstration data"}</span>}
+              <strong>
+                {quickDesignResult
+                  ? `Quick Design · ${quickDesignResult.report.report_id}`
+                  : surface === "welcome"
+                    ? (uiLanguage === "it" ? "Sessione nuova" : "New session")
+                    : report.project_name}
+              </strong>
+              {isDemo && surface === "workspace" && <span className="demo-label">{uiLanguage === "it" ? "Demo storica · dati sintetici" : "Historical demo · synthetic data"}</span>}
             </div>
           </div>
           <div className="topbar-actions">
@@ -846,7 +1214,11 @@ export function App() {
             >
               <Languages size={17} />{uiLanguage.toUpperCase()}
             </button>
-            <button className="button secondary" onClick={() => setShowImport(true)}>
+            <button
+              ref={importButtonRef}
+              className="button secondary"
+              onClick={() => setShowImport(true)}
+            >
               <Upload size={18} /> {uiLanguage === "it" ? "Importa fonti" : "Import sources"}
             </button>
           </div>
@@ -859,8 +1231,33 @@ export function App() {
           </div>
         )}
 
-        <ProspectiveD0Workspace active={activeView === "prospective"} language={uiLanguage} />
+        {showStatus && (
+          <StatusSheet
+            language={uiLanguage}
+            apiState={apiState}
+            disclaimer={report.disclaimer}
+            onClose={() => setShowStatus(false)}
+            onCloseProject={() => {
+              closeProject();
+            }}
+          />
+        )}
 
+        {(activeView === "prospective" || surface === "workspace") && (
+          <ProspectiveD0Workspace active={activeView === "prospective"} language={uiLanguage} />
+        )}
+
+        {activeView === "prospective" ? null : surface === "welcome" && !quickDesignResult ? (
+          <WelcomeHome
+            language={uiLanguage}
+            apiState={apiState}
+            onStartDesign={() => setShowImport(true)}
+            onOpenDemo={openSyntheticDemo}
+          />
+        ) : quickDesignResult ? (
+          <ReportBundleV8View result={quickDesignResult} language={uiLanguage} />
+        ) : (
+          <>
         <section className="workspace-grid">
           <section
             id="blocks-panel"
@@ -914,16 +1311,42 @@ export function App() {
             />
             <section
               id="graph-panel"
-              className={`panel graph-panel ${activeView === "graph" ? "focused-panel" : ""}`}
+              className={`panel graph-panel ${activeView === "graph" ? "focused-panel" : ""} ${collapsed["graph-panel"] ? "collapsed" : ""}`}
               aria-labelledby="graph-heading"
             >
-              <div className="panel-heading">
+              <div
+                className={`panel-heading collapsible${collapsed["graph-panel"] ? " collapsed-head" : ""}`}
+                onClick={() => togglePanel("graph-panel")}
+              >
                 <div>
                   <span className="eyebrow">{uiLanguage === "it" ? "Struttura ricostruita" : "Reconstructed structure"}</span>
                   <h2 id="graph-heading">{uiLanguage === "it" ? "Grafo del disegno sperimentale" : "Experimental design graph"}</h2>
                 </div>
-                <span className="count-label">{selectedBlock?.hierarchy.nodes.length ?? 0}</span>
+                <span className="panel-tools">
+                  {collapsed["graph-panel"] && (
+                    <span className="expand-hint">
+                      {uiLanguage === "it" ? "Espandi grafo e editor" : "Expand graph and editor"}
+                    </span>
+                  )}
+                  <span className="count-label">{selectedBlock?.hierarchy.nodes.length ?? 0}</span>
+                  {!collapsed["graph-panel"] && (
+                    <button
+                      type="button"
+                      className="panel-toggle"
+                      aria-expanded
+                      aria-controls="graph-body"
+                      aria-label={uiLanguage === "it" ? "Comprimi grafo" : "Collapse graph"}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        togglePanel("graph-panel");
+                      }}
+                    >
+                      <ChevronDown size={19} />
+                    </button>
+                  )}
+                </span>
               </div>
+              <div className="panel-collapse" id="graph-body" role="group">
               {selectedBlock ? (
                 <GraphView
                   block={selectedBlock}
@@ -936,20 +1359,47 @@ export function App() {
                   onEdit={applyGraphCorrection}
                 />
               ) : <EmptyState />}
+              </div>
             </section>
 
             <section
               id="issues-panel"
-              className="panel issues-panel"
+              className={`panel issues-panel ${collapsed["issues-panel"] ? "collapsed" : ""}`}
               aria-labelledby="issues-heading"
             >
-              <div className="panel-heading">
+              <div
+                className={`panel-heading collapsible${collapsed["issues-panel"] ? " collapsed-head" : ""}`}
+                onClick={() => togglePanel("issues-panel")}
+              >
                 <div>
                   <span className="eyebrow">Ruleset {String(report.versions.ruleset_version ?? "—")}</span>
                   <h2 id="issues-heading">{uiLanguage === "it" ? "Questioni rilevate" : "Detected issues"}</h2>
                 </div>
-                <span className="count-label">{selectedBlock?.alerts.length ?? 0}</span>
+                <span className="panel-tools">
+                  {collapsed["issues-panel"] && (
+                    <span className="expand-hint">
+                      {uiLanguage === "it" ? "Espandi alert e domande" : "Expand alerts and questions"}
+                    </span>
+                  )}
+                  <span className="count-label">{selectedBlock?.alerts.length ?? 0}</span>
+                  {!collapsed["issues-panel"] && (
+                    <button
+                      type="button"
+                      className="panel-toggle"
+                      aria-expanded
+                      aria-controls="issues-body"
+                      aria-label={uiLanguage === "it" ? "Comprimi questioni" : "Collapse issues"}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        togglePanel("issues-panel");
+                      }}
+                    >
+                      <ChevronDown size={19} />
+                    </button>
+                  )}
+                </span>
               </div>
+              <div className="panel-collapse" id="issues-body">
               <div className="issue-list">
                 {selectedBlock?.alerts.map((alert) => (
                   <IssueCard
@@ -979,7 +1429,17 @@ export function App() {
                   ))}</ul>
                 </details>
               )}
+              </div>
             </section>
+
+            {selectedBlock && report.review_outputs?.[selectedBlock.id] && (
+              <ReviewOutputPanel
+                output={report.review_outputs[selectedBlock.id]}
+                language={uiLanguage}
+                collapsed={Boolean(collapsed["review-output"])}
+                onToggle={() => togglePanel("review-output")}
+              />
+            )}
           </div>
 
           <div className="right-stack">
@@ -994,10 +1454,12 @@ export function App() {
                   <h2 id="evidence-heading">{uiLanguage === "it" ? "Evidenza" : "Evidence"}</h2>
                 </div>
                 {selectedAlert && (
-                  <Confidence
-                    value={selectedAlert.premise_confidence ?? selectedAlert.confidence}
-                    label={uiLanguage === "it" ? "Confidenza premesse" : "Premise confidence"}
-                  />
+                  <span className="panel-tools">
+                    <Confidence
+                      value={selectedAlert.premise_confidence ?? selectedAlert.confidence}
+                      label={uiLanguage === "it" ? "Confidenza premesse" : "Premise confidence"}
+                    />
+                  </span>
                 )}
               </div>
               <div className="source-locator"><FileText size={15} /> {evidenceLocator(selectedEvidence)}</div>
@@ -1076,12 +1538,6 @@ export function App() {
               hasCandidate={Boolean(selectedCandidateExport)}
               exportAllowed={!privacyExportBlocked}
               />
-            {selectedBlock && report.positive_outputs?.[selectedBlock.id] && (
-              <PositiveOutputPanel
-                output={report.positive_outputs[selectedBlock.id]}
-                language={uiLanguage}
-              />
-            )}
           </div>
         </section>
 
@@ -1139,45 +1595,491 @@ export function App() {
             </button>
           </div>
         </footer>
+          </>
+        )}
       </main>
 
-      {showImport && <ImportDialog apiState={apiState} uiLanguage={uiLanguage} onClose={() => setShowImport(false)} onAnalysis={onAnalysis} />}
+      {showImport && (
+        <ImportDialog
+          apiState={apiState}
+          uiLanguage={uiLanguage}
+          onClose={closeImport}
+          onAnalysis={onAnalysis}
+          onQuickDesign={onQuickDesign}
+          initialWizardStep={wizardInitialStep}
+        />
+      )}
     </div>
   );
 }
 
-function PositiveOutputPanel({
-  output,
+function scientificValueText(value: unknown): string {
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (Array.isArray(value)) return value.map(scientificValueText).join(" · ");
+  if (value && typeof value === "object") return JSON.stringify(value);
+  return "";
+}
+
+function KnowledgeStateValue({ value }: { value: KnowledgeValue }) {
+  const text = scientificValueText(value.value);
+  return (
+    <div className="knowledge-value">
+      <span className={`knowledge-state state-${value.knowledge_state.toLowerCase()}`}>
+        {value.knowledge_state}
+      </span>
+      {text && <code>{text}</code>}
+      {value.rationale && <small>{value.rationale}</small>}
+    </div>
+  );
+}
+
+export function ReportBundleV8View({
+  result,
   language,
 }: {
-  output: BlockPositiveOutput;
+  result: QuickDesignV8Response;
   language: "it" | "en";
 }) {
+  const report = result.report;
+  const planned = report.design_record_context.planned_design_record;
+  const executed = report.design_record_context.executed_design_record;
+  const reconciliation = report.design_record_context.reconciliation_record;
+  const prospectiveLedgers = report.prospective_input_ledgers;
+  const handoffItems = report.statistical_handoff.items;
+  const labels = language === "it"
+    ? {
+        source: "Fonti e contesto del disegno",
+        resolution: "Risoluzione del report",
+        claims: "Claim derivati per query inferenziale",
+        adequacy: "Valutazioni di adeguatezza del disegno",
+        counts: "Conteggi canonici",
+        coverage: "Copertura di scenari e profilo",
+        review: "Sensitività e domande di revisione",
+        handoff: "Handoff statistico",
+        limits: "Limiti inferenziali",
+      }
+    : {
+        source: "Sources and design context",
+        resolution: "Report resolution",
+        claims: "Derived claims by inferential query",
+        adequacy: "Design adequacy evaluations",
+        counts: "Canonical counts",
+        coverage: "Scenario and profile coverage",
+        review: "Sensitivities and review questions",
+        handoff: "Statistical handoff",
+        limits: "Inference limits",
+      };
+
+  return (
+    <section className="v8-report-workspace" aria-labelledby="v8-report-heading">
+      <header className="v8-report-header">
+        <div>
+          <span className="eyebrow">PRD v8 · canonical query-scoped output</span>
+          <h1 id="v8-report-heading">ReportBundle v8</h1>
+          <p>{report.epistemic_boundary}</p>
+        </div>
+        <div className="v8-contract-pins" aria-label="PRD v8 contract pins">
+          <span>{result.contract.code}</span>
+          <span>{result.contract.version}</span>
+          <span>{report.strategy_module_status}</span>
+          {result.artifacts.map((artifact) => (
+            <button
+              type="button"
+              className="button secondary compact"
+              key={artifact.artifact_id}
+              aria-label={`Scarica artefatto ${artifact.kind}`}
+              onClick={() => downloadProspectiveArtifact(artifact)}
+            >
+              <Download size={14} /> {artifact.kind}
+            </button>
+          ))}
+        </div>
+      </header>
+
+      <div className="v8-report-grid">
+        <section className="v8-card" aria-label="Sources and design context">
+          <h2>{labels.source}</h2>
+          <dl className="v8-definition-grid">
+            <div><dt>Report</dt><dd><code>{report.report_id}</code></dd></div>
+            <div><dt>Checksum</dt><dd><code>{report.content_checksum}</code></dd></div>
+            <div><dt>Design mode</dt><dd>{report.design_record_context.mode}</dd></div>
+            <div><dt>Planned design state</dt><dd>{planned.knowledge_state}</dd></div>
+            {planned.value && <div><dt>Plan ID</dt><dd><code>{planned.value.plan_id}</code></dd></div>}
+            <div><dt>Executed design state</dt><dd>{executed.knowledge_state}</dd></div>
+            <div><dt>Reconciliation state</dt><dd>{reconciliation.knowledge_state}</dd></div>
+            <div><dt>Prospective ledger state</dt><dd>{prospectiveLedgers.knowledge_state}</dd></div>
+          </dl>
+          <KnowledgeStateValue value={executed} />
+          <KnowledgeStateValue value={reconciliation} />
+          <details>
+            <summary>Verified pipeline lineage · {report.verified_pipeline_contexts.length}</summary>
+            <ul>
+              {report.verified_pipeline_contexts.map((context) => (
+                <li key={context.context_id}>
+                  <code>{context.context_id}</code>
+                  <small>context checksum: <code>{context.content_checksum}</code></small>
+                  <small>conformance bundle: <code>{context.conformance_bundle_checksum}</code></small>
+                </li>
+              ))}
+            </ul>
+          </details>
+          {prospectiveLedgers.knowledge_state === "PRESENT" && prospectiveLedgers.value && (
+            <details>
+              <summary>Prospective input ledgers · {prospectiveLedgers.value.length}</summary>
+              <ul>
+                {prospectiveLedgers.value.map((ledger) => (
+                  <li key={ledger.ledger_id}>
+                    <code>{ledger.ledger_id}</code>
+                    <small>ledger checksum: <code>{ledger.content_checksum}</code></small>
+                    <small>request checksum: <code>{ledger.request_checksum}</code></small>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+          <div className="v8-record-list">
+            {report.source_records.map((source) => (
+              <article key={source.source_id} aria-label={`Source ${source.source_id}`}>
+                <strong>{source.source_id}</strong>
+                <span>{source.source_context}</span>
+                <span>{source.source_class.token}</span>
+                <small>{source.source_class.registry_id}</small>
+                <small>{source.source_version}</small>
+              </article>
+            ))}
+          </div>
+          <details>
+            <summary>Evidence ledger · {report.evidence_records.length}</summary>
+            <ul>
+              {report.evidence_records.map((evidence) => (
+                <li key={evidence.evidence_id}>
+                  <code>{evidence.evidence_id}</code> · {evidence.evidence_type} · {evidence.source_id}
+                  <small>{evidence.locator}</small>
+                  <blockquote>{evidence.original_text}</blockquote>
+                </li>
+              ))}
+            </ul>
+          </details>
+        </section>
+
+        <section className="v8-card" aria-label="Report resolution">
+          <h2>{labels.resolution}</h2>
+          <KnowledgeStateValue value={report.report_resolution.resolution} />
+          <p className="v8-neutral-note">
+            {language === "it"
+              ? "La risoluzione aggrega stati query-scoped; non certifica la qualità del disegno."
+              : "Resolution aggregates query-scoped states; it does not certify design quality."}
+          </p>
+        </section>
+
+        <section className="v8-card v8-span-all" aria-label="Derived claims by inferential query">
+          <h2>{labels.claims}</h2>
+          {report.query_sections.map((querySection) => {
+            const claimSet = querySection.claim_set;
+            return (
+            <section className="v8-query-section" key={claimSet.claim_set_id}>
+              <h3>
+                {querySection.inferential_query.id} · {querySection.inferential_query.profile_id}
+              </h3>
+              <small>
+                counts: {querySection.count_record_ids.join(" · ")} · questions: {querySection.questions.length}
+              </small>
+              <div className="v8-claim-grid">
+                {claimSet.claims.map((claim) => (
+                  <article
+                    className="v8-claim"
+                    key={claim.claim_id}
+                    aria-label={`Derived claim ${claim.claim_id} for query ${claimSet.inferential_query_id}`}
+                  >
+                    <div className="v8-claim-heading">
+                      <strong>{claim.claim_type}</strong>
+                      <span>{claim.determinability_state}</span>
+                    </div>
+                    <code>{claim.claim_id}</code>
+                    <KnowledgeStateValue value={claim.value} />
+                    <dl>
+                      <div><dt>Support grade</dt><dd>{claim.support_grade.token}</dd></div>
+                      <div><dt>Vocabulary</dt><dd>{claim.support_grade.vocabulary_id}</dd></div>
+                    </dl>
+                    <details>
+                      <summary>Proof trace · {claim.proof_trace.length}</summary>
+                      <ul>
+                        {claim.proof_trace.map((step) => (
+                          <li key={step.step_id}>
+                            <code>{step.step_id}</code> · <code>{step.theory_clause_id}</code> → <code>{step.rule_id}</code>
+                            <ul>
+                              {step.predicate_references.map((reference) => (
+                                <li key={`${step.step_id}-${reference.predicate_id}`}>
+                                  <code>{reference.predicate_id}</code> · {reference.predicate_value.knowledge_state}
+                                  {reference.predicate_value.evidence_ids?.length
+                                    ? ` · evidence ${reference.predicate_value.evidence_ids.join(" · ")}`
+                                    : ""}
+                                  {reference.predicate_value.value !== null && reference.predicate_value.value !== undefined
+                                    ? ` · ${scientificValueText(reference.predicate_value.value)}`
+                                    : ""}
+                                </li>
+                              ))}
+                              {step.input_record_references.map((reference, referenceIndex) => (
+                                <li key={`${step.step_id}-input-${referenceIndex}`}>
+                                  input: <code>{scientificValueText(reference)}</code>
+                                </li>
+                              ))}
+                            </ul>
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                    <details>
+                      <summary>Predicate contract</summary>
+                      <strong>Required predicates</strong>
+                      <ul>{claim.required_predicates.map((predicate) => <li key={predicate}><code>{predicate}</code></li>)}</ul>
+                      <strong>Irrelevant predicates</strong>
+                      <ul>
+                        {claim.irrelevant_predicates.map((predicate) => (
+                          <li key={predicate.id}><code>{predicate.id}</code> · {predicate.rationale}</li>
+                        ))}
+                      </ul>
+                      <strong>Assumptions</strong>
+                      <ul>{claim.assumptions.map((assumption) => <li key={assumption}>{assumption}</li>)}</ul>
+                    </details>
+                  </article>
+                ))}
+              </div>
+              <details>
+                <summary>Query-scoped review records</summary>
+                <dl className="v8-definition-grid">
+                  <div><dt>AI</dt><dd>{querySection.ai_candidates.knowledge_state}</dd></div>
+                  <div><dt>Confirmations</dt><dd>{querySection.human_confirmations.knowledge_state}</dd></div>
+                  <div><dt>Conflicts</dt><dd>{querySection.conflicts.knowledge_state}</dd></div>
+                  <div><dt>Sensitivities</dt><dd>{querySection.sensitivities.knowledge_state}</dd></div>
+                </dl>
+                {[querySection.human_confirmations, querySection.conflicts, querySection.sensitivities]
+                  .filter((value) => value.knowledge_state === "PRESENT")
+                  .map((value, index) => (
+                    <pre key={`${claimSet.claim_set_id}-review-${index}`}>
+                      {JSON.stringify(value.value, null, 2)}
+                    </pre>
+                  ))}
+              </details>
+            </section>
+            );
+          })}
+        </section>
+
+        <section className="v8-card v8-span-all" aria-label="Design adequacy evaluations">
+          <h2>{labels.adequacy}</h2>
+          <p className="v8-neutral-note">
+            DETERMINATE ≠ good design. {language === "it" ? "Questo asse resta separato dai claim." : "This axis remains separate from claims."}
+          </p>
+          <div className="v8-record-list">
+            {report.design_adequacy_evaluations.map((evaluation) => (
+              <article
+                key={evaluation.evaluation_id}
+                aria-label={`Design adequacy ${evaluation.evaluation_id} for query ${evaluation.inferential_query_id}`}
+              >
+                <strong>{evaluation.axis}</strong>
+                <code>{evaluation.evaluation_id}</code>
+                <KnowledgeStateValue value={evaluation.outcome} />
+                <small>{evaluation.rationale}</small>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section className="v8-card" aria-label="Canonical counts">
+          <h2>{labels.counts}</h2>
+          <p><code>{report.count_registry.registry_version}</code></p>
+          <div className="v8-record-list">
+            {report.count_registry.records.map((count) => (
+              <article key={count.count_id} aria-label={`Canonical count ${count.count_id}`}>
+                <strong>{count.kind}</strong>
+                <span>{count.quantifier} · {count.origin}</span>
+                <KnowledgeStateValue value={count.value} />
+                <small>query: {count.scope.query_id}</small>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section className="v8-card" aria-label="Scenario and profile coverage">
+          <h2>{labels.coverage}</h2>
+          <strong>{report.profile_coverage.profile_id}</strong>
+          <p><code>{report.profile_coverage.statement_id}</code></p>
+          <p>{report.profile_coverage.contract_review.status} · {report.profile_coverage.contract_review.issue_id}</p>
+          <ul>
+            {report.scenario_coverages.map((coverage, index) => (
+              <li key={`${coverage.profile_id}-${index}`}>
+                <strong>{coverage.status}</strong> · {coverage.profile_id}
+                <KnowledgeStateValue value={coverage.omitted_dimensions} />
+                <KnowledgeStateValue value={coverage.caveat} />
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        <section className="v8-card" aria-label="Sensitivities and review questions">
+          <h2>{labels.review}</h2>
+          <dl className="v8-definition-grid">
+            <div><dt>Sensitivities</dt><dd>{report.sensitivities.knowledge_state}</dd></div>
+            <div><dt>Confirmations</dt><dd>{report.human_confirmations.knowledge_state}</dd></div>
+            <div><dt>Conflicts</dt><dd>{report.conflicts.knowledge_state}</dd></div>
+            <div><dt>AI candidates</dt><dd>{report.ai_candidates.map((item) => item.knowledge_state).join(" · ")}</dd></div>
+          </dl>
+          {[report.sensitivities, report.human_confirmations, report.conflicts]
+            .filter((value) => value.knowledge_state === "PRESENT")
+            .map((value, index) => (
+              <pre key={`global-review-record-${index}`}>{JSON.stringify(value.value, null, 2)}</pre>
+            ))}
+          <ul>
+            {report.questions.map((question) => (
+              <li key={question.question_id}>
+                <strong>{question.primary ? "Review focus" : "Review"}</strong> · {question.text}
+                <small>{question.inferential_query_id} · evidence: {question.evidence_required.join(" · ")}</small>
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        <section className="v8-card" aria-label="Statistical handoff">
+          <h2>{labels.handoff}</h2>
+          <strong>{report.statistical_handoff.strategy_module_status}</strong>
+          <div className="v8-record-list">
+            {handoffItems.map((item, index) => (
+              <article key={`${item.category}-${index}`}>
+                <strong>{item.category}</strong>
+                <span>{item.origin} · {item.authority}</span>
+                <small>
+                  query: {item.inferential_query_id} · evidence: {item.evidence_refs.join(" · ")}
+                </small>
+                {(item.predicate_ids.length > 0 || item.question_ids.length > 0) && (
+                  <small>
+                    predicates: {item.predicate_ids.join(" · ") || "N/A"} · questions: {item.question_ids.join(" · ") || "N/A"}
+                  </small>
+                )}
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section className="v8-card" aria-label="Confirmed graph and execution pins">
+          <h2>{language === "it" ? "Grafo confermato e pin di esecuzione" : "Confirmed graph and execution pins"}</h2>
+          <p>{report.confirmed_graph.nodes.length} nodes · {report.confirmed_graph.relations.length} relations</p>
+          <ul>
+            {report.confirmed_graph.nodes.map((node) => (
+              <li key={node.node_id}><code>{node.node_id}</code> · {node.node_type}</li>
+            ))}
+          </ul>
+          <dl className="v8-definition-grid">
+            <div><dt>Manifest</dt><dd><code>{report.execution_manifest.manifest_id}</code></dd></div>
+            <div><dt>Theory</dt><dd>{report.execution_manifest.theory_id} · {report.execution_manifest.theory_version}</dd></div>
+            <div><dt>Theory checksum</dt><dd><code>{report.execution_manifest.theory_checksum}</code></dd></div>
+            <div><dt>Rulebook</dt><dd>{report.execution_manifest.rulebook_id} · {report.execution_manifest.rulebook_version}</dd></div>
+            <div><dt>Rulebook checksum</dt><dd><code>{report.execution_manifest.rulebook_checksum}</code></dd></div>
+            <div><dt>Release blockers</dt><dd>{report.execution_manifest.release_blocker_issue_ids.join(" · ")}</dd></div>
+          </dl>
+        </section>
+
+        <section className="v8-card v8-span-all" aria-label="Inference limits">
+          <h2>{labels.limits}</h2>
+          <ul>{report.inference_limits.map((item) => <li key={item}>{item}</li>)}</ul>
+        </section>
+      </div>
+    </section>
+  );
+}
+
+function ReviewOutputPanel({
+  output,
+  language,
+  collapsed = false,
+  onToggle,
+}: {
+  output: BlockReviewOutput;
+  language: "it" | "en";
+  collapsed?: boolean;
+  onToggle?: () => void;
+}) {
   const pathLabel = {
-    ready_for_review: language === "it" ? "Pronto per revisione" : "Ready for review",
+    review_required: language === "it" ? "Revisione richiesta" : "Review required",
     conditional: language === "it" ? "Condizionale" : "Conditional",
     incomplete: language === "it" ? "Incompleto" : "Incomplete",
   }[output.path_status];
   return (
-    <section className="panel positive-output-panel" aria-labelledby="positive-output-heading">
-      <div className="panel-heading">
+    <section className={`panel review-output-panel ${collapsed ? "collapsed" : ""}`} aria-labelledby="review-output-heading">
+      <div
+        className={`panel-heading collapsible${collapsed ? " collapsed-head" : ""}`}
+        onClick={onToggle}
+      >
         <div>
           <span className="eyebrow">
-            {language === "it" ? "Output positivo · non certificante" : "Positive output · non-certifying"}
+            {language === "it" ? "Output di revisione · non certificante" : "Review output · non-certifying"}
           </span>
-          <h2 id="positive-output-heading">
+          <h2 id="review-output-heading">
             {language === "it" ? "Methods e percorso di revisione" : "Methods and review path"}
           </h2>
         </div>
-        <span className={`compiler-status positive-${output.path_status}`}>{pathLabel}</span>
+        <span className="panel-tools">
+          {collapsed && (
+            <span className="expand-hint">
+              {language === "it" ? "Espandi assi e handoff" : "Expand axes and handoff"}
+            </span>
+          )}
+          <span className={`compiler-status review-status-${output.path_status}`}>{pathLabel}</span>
+          {onToggle && !collapsed && (
+            <button
+              type="button"
+              className="panel-toggle"
+              aria-expanded
+              aria-controls="review-output-body"
+              aria-label={language === "it" ? "Comprimi output" : "Collapse output"}
+              onClick={(event) => {
+                event.stopPropagation();
+                onToggle();
+              }}
+            >
+              <ChevronDown size={19} />
+            </button>
+          )}
+        </span>
       </div>
-      <div className="positive-methods">
+      <div className="panel-collapse" id="review-output-body">
+      <p className="axis-boundary">
+        {language === "it"
+          ? "La determinabilità non è approvazione del disegno."
+          : "Determinability is not design approval."}
+      </p>
+      <div className="scientific-axis-grid">
+        <section className="scientific-axis axis-determinability" data-testid="axis-determinability">
+          <span>{language === "it" ? "Determinabilità" : "Determinability"}</span>
+          <strong>{output.determinability.state}</strong>
+          <small>{output.determinability.rationale}</small>
+        </section>
+        <section className="scientific-axis axis-design-adequacy" data-testid="axis-design-adequacy">
+          <span>{language === "it" ? "Adeguatezza del disegno" : "Design adequacy"}</span>
+          <strong>{output.design_adequacy.finding}</strong>
+          <small>{output.design_adequacy.rationale}</small>
+        </section>
+      </div>
+      <div className="statistical-handoff">
+        <div>
+          <span>{language === "it" ? "Handoff statistico" : "Statistical handoff"}</span>
+          <strong>{output.strategy_module_status}</strong>
+        </div>
+        <small>
+          {language === "it"
+            ? "Solo requisiti strutturali e domande; nessuna strategia di analisi viene suggerita."
+            : "Structural requirements and questions only; no analysis strategy is suggested."}
+        </small>
+      </div>
+      <div className="review-methods">
         <p>{output.status_reason}</p>
         <blockquote>{output.methods_statement.text}</blockquote>
         {output.methods_statement.limitations.map((item) => <small key={item}>{item}</small>)}
       </div>
       {output.plausible_graph_set && (
-        <details className="positive-details" open>
+        <details className="review-details" open>
           <summary>
             {language === "it" ? "Grafi alternativi non risolti" : "Unresolved alternative graphs"} · {output.plausible_graph_set.alternatives.length}
           </summary>
@@ -1202,7 +2104,7 @@ function PositiveOutputPanel({
         </details>
       )}
       {!!output.count_records?.length && (
-        <details className="positive-details">
+        <details className="review-details">
           <summary>{language === "it" ? "Registro canonico dei conteggi" : "Canonical count registry"} · {output.count_records.length}</summary>
           <ul>
             {output.count_records.map((record) => <li key={record.count_id}><code>{record.kind}</code> · {record.quantifier} · {record.value ?? (record.lower_bound != null || record.upper_bound != null ? `${record.lower_bound ?? "—"} - ${record.upper_bound ?? "—"}` : "—")} · {record.scope.lifecycle ?? "lifecycle unknown"}</li>)}
@@ -1210,24 +2112,18 @@ function PositiveOutputPanel({
         </details>
       )}
       {!!output.diagnostic_count_records?.length && (
-        <details className="positive-details diagnostic-counts" open>
+        <details className="review-details diagnostic-counts" open>
           <summary>{language === "it" ? "Diagnostica statistica separata · non replication" : "Separate statistical diagnostics · non replication"}</summary>
           <ul>{output.diagnostic_count_records.map((record) => <li key={record.count_id}><code>{record.kind}</code> = {record.value ?? "—"}</li>)}</ul>
         </details>
       )}
       {!!output.exclusion_records?.length && (
-        <details className="positive-details">
+        <details className="review-details">
           <summary>{language === "it" ? "Registro esclusioni" : "Exclusion registry"} · {output.exclusion_records.length}</summary>
           <ul>{output.exclusion_records.map((record) => <li key={record.id}>{record.unit_type} · {record.phase} · {record.prespecified} · {record.reason ?? "reason not reported"}</li>)}</ul>
         </details>
       )}
-      {!!output.candidate_analysis_strategies.length && (
-        <details className="positive-details">
-          <summary>{language === "it" ? "Strategie candidate" : "Candidate strategies"}</summary>
-          <ul>{output.candidate_analysis_strategies.map((item) => <li key={item}>{item}</li>)}</ul>
-        </details>
-      )}
-      <details className="positive-details">
+      <details className="review-details">
         <summary>DRIVER · {language === "it" ? "mappatura informativa" : "informative mapping"}</summary>
         <div className="driver-list">
           {output.driver_checklist.map((item) => (
@@ -1239,8 +2135,8 @@ function PositiveOutputPanel({
           ))}
         </div>
       </details>
-      <details className="positive-details">
-        <summary>{language === "it" ? "Fatti, asserzioni, inferenze, ipotesi e limiti" : "Facts, assertions, inferences, hypotheses and limitations"}</summary>
+      <details className="review-details">
+        <summary>{language === "it" ? "Fatti, inferenze, ipotesi e limiti" : "Facts, inferences, hypotheses and limitations"}</summary>
         <div className="statement-list">
           {output.statements.map((item) => (
             <div key={item.id} className={`statement-layer layer-${item.layer}`}>
@@ -1249,6 +2145,7 @@ function PositiveOutputPanel({
           ))}
         </div>
       </details>
+      </div>
     </section>
   );
 }
@@ -1506,7 +2403,7 @@ export function InferencePanel({
         </div>
         <span className={`compiler-status ${status}`}>
           {status === "ready" ? <Check size={14} /> : <CircleHelp size={14} />}
-          {status === "ready" ? (language === "it" ? "Pronto" : "Ready") : (language === "it" ? "Astensione" : "Abstained")}
+          {status === "ready" ? (language === "it" ? "Struttura completa" : "Structure complete") : (language === "it" ? "Astensione" : "Abstained")}
         </span>
       </div>
       {targets.length > 1 && (
@@ -1532,8 +2429,8 @@ export function InferencePanel({
       )}
       <div className="compiler-summary">
         <span>{language === "it" ? "Popolazione target" : "Target population"}</span>
-        <strong>{support === "supported" ? (language === "it" ? "Supportata dallo scope" : "Supported by scope") : support === "conditional" ? (language === "it" ? "Condizionale" : "Conditional") : (language === "it" ? "Non definita" : "Not defined")}</strong>
-        <small>{language === "it" ? "“Supportata” indica solo completezza strutturale, non validità scientifica." : "Supported means structural completeness only, not scientific validity."}</small>
+        <strong>{support === "supported" ? (language === "it" ? "Scope strutturalmente compilato" : "Scope structurally compiled") : support === "conditional" ? (language === "it" ? "Scope condizionale" : "Conditional scope") : (language === "it" ? "Scope non definito" : "Scope not defined")}</strong>
+        <small>{language === "it" ? "Questo stato descrive soltanto la struttura; non esprime adequacy o validità scientifica." : "This state describes structure only; it does not express adequacy or scientific validity."}</small>
       </div>
       {status === "ready" && target && !editing ? (
         <div className="confirmed-target">
@@ -1672,14 +2569,14 @@ function GraphView({
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    setRelationSource(block.hierarchy.nodes[0]?.id ?? "");
-    setRelationTarget(block.hierarchy.nodes[1]?.id ?? "");
-  }, [block.id, block.hierarchy.nodes.length]);
-
-  useEffect(() => {
     setExtendedCanvasEnabled(false);
     setEditing(false);
   }, [block.id]);
+
+  useEffect(() => {
+    setRelationSource(block.hierarchy.nodes[0]?.id ?? "");
+    setRelationTarget(block.hierarchy.nodes[1]?.id ?? "");
+  }, [block.id, block.hierarchy.nodes.length]);
 
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const nodes = useMemo(
@@ -1692,8 +2589,24 @@ function GraphView({
       ),
     [block.hierarchy.nodes, normalizedQuery],
   );
-  const canvasHeight = Math.max(390, Math.ceil(Math.max(nodes.length, 1) / 4) * 125 + 35);
-  const positions = useMemo(() => layoutNodes(nodes), [nodes]);
+  const positions = useMemo(
+    () => layoutNodes(nodes, block.hierarchy.relations),
+    [nodes, block.hierarchy.relations],
+  );
+  const maxRank = Math.max(
+    0,
+    ...[...positions.values()].map((point) => Math.round((point.y - 26) / 138)),
+  );
+  const canvasHeight = Math.max(360, 26 + (maxRank + 1) * 138 + 34);
+  const rankCounts = new Map<number, number>();
+  for (const point of positions.values()) {
+    const key = Math.round((point.y - 26) / 138);
+    rankCounts.set(key, (rankCounts.get(key) ?? 0) + 1);
+  }
+  const maxRowWidth = Math.max(
+    0,
+    ...[...rankCounts.values()].map((count) => count * 196 + (count - 1) * 20),
+  );
   const selectedIds = new Set(
     block.hierarchy.nodes
       .filter((item) => evidence && item.evidence_ids.includes(evidence.id))
@@ -1892,7 +2805,7 @@ function GraphView({
         </div>
       )}
       {extendedCanvasEnabled && <>
-        <div className="graph-toolbar">
+      <div className="graph-toolbar">
         <label>
           <Search size={15} />
           <span className="sr-only">{language === "it" ? "Cerca nodo" : "Search node"}</span>
@@ -1919,31 +2832,51 @@ function GraphView({
           <PencilLine size={15} />
           {language === "it" ? (editing ? "Chiudi editor" : "Modifica grafo") : editing ? "Close editor" : "Edit graph"}
         </button>
-        </div>
-        <div
+      </div>
+      <div
         className="graph-canvas"
         style={{ height: `${canvasHeight + 8}px` }}
         role="group"
         aria-label={`Grafo con ${nodes.length} nodi e ${relations.length} relazioni`}
       >
         <div
-          className="graph-stage"
-          style={{ height: `${canvasHeight}px`, transform: `scale(${zoom})` }}
-        >
-          <svg viewBox={`0 0 720 ${canvasHeight}`} aria-hidden="true">
-            <defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" /></marker></defs>
-            {relations.map((relation) => {
-              const source = positions.get(relation.source);
-              const target = positions.get(relation.target);
-              if (!source || !target) return null;
-              return (
-                <g key={relation.id}>
-                  <line x1={source.x} y1={source.y} x2={target.x} y2={target.y} markerEnd="url(#arrow)" />
-                  <text x={(source.x + target.x) / 2} y={(source.y + target.y) / 2 - 7}>{relation.type.replaceAll("_", " ")}</text>
-                </g>
-              );
-            })}
-          </svg>
+            className="graph-stage"
+            style={{
+              height: `${canvasHeight}px`,
+              minWidth: `${Math.max(720, maxRowWidth + 24)}px`,
+              transform: `scale(${zoom})`,
+            }}
+          >
+            <svg className="graph-edges" viewBox={`0 0 720 ${canvasHeight}`} aria-hidden="true">
+              <defs>
+                <marker id="arrow" markerWidth="9" markerHeight="9" refX="7.5" refY="4.5" orient="auto">
+                  <path d="M0,0 L9,4.5 L0,9 Z" fill="#5c6d7e" />
+                </marker>
+              </defs>
+              {relations.map((relation) => {
+                const source = positions.get(relation.source);
+                const target = positions.get(relation.target);
+                if (!source || !target) return null;
+                const sx = source.x + NODE_W / 2;
+                const sy = source.y + NODE_H / 2;
+                const tx = target.x + NODE_W / 2;
+                const ty = target.y + NODE_H / 2;
+                const downward = ty >= sy;
+                const x1 = sx;
+                const y1 = downward ? sy + NODE_H / 2 : sy - NODE_H / 2;
+                const x2 = tx;
+                const y2 = downward ? ty - NODE_H / 2 : ty + NODE_H / 2;
+                const bend = downward
+                  ? Math.max(28, (y2 - y1) / 2)
+                  : Math.max(48, Math.abs(x2 - x1) / 2);
+                const d = downward
+                  ? `M ${x1} ${y1} C ${x1} ${y1 + bend}, ${x2} ${y2 - bend}, ${x2} ${y2}`
+                  : `M ${x1 < x2 ? x1 + NODE_W / 2 : x1 - NODE_W / 2} ${y1} C ${x1 + (x2 - x1) / 2} ${y1}, ${x1 + (x2 - x1) / 2} ${y2}, ${x2 < x1 ? x2 + NODE_W / 2 : x2 - NODE_W / 2} ${y2}`;
+                return (
+                  <path key={relation.id} className="graph-edge" d={d} markerEnd="url(#arrow)" />
+                );
+              })}
+            </svg>
           {nodes.map((item) => {
             const position = positions.get(item.id)!;
             return (
@@ -1956,14 +2889,46 @@ function GraphView({
               >
                 <small>{NODE_LABEL[item.type] ?? item.type}</small>
                 <strong>{item.label}</strong>
-                {item.count != null && <span>n = {item.count}</span>}
+                <span className="graph-node-meta">
+                  {item.count != null && <em>n = {item.count}</em>}
+                  <em>conf {item.confidence.toFixed(2)}</em>
+                </span>
               </button>
             );
           })}
           {!nodes.length && <EmptyState />}
+          <svg className="graph-edge-labels" viewBox={`0 0 720 ${canvasHeight}`} aria-hidden="true">
+            {relations.map((relation, index) => {
+              const source = positions.get(relation.source);
+              const target = positions.get(relation.target);
+              if (!source || !target) return null;
+              // L'etichetta vive nel varco tra le righe: midpoint del segmento
+              // tra i bordi delle card (stessa geometria degli edge disegnati).
+              const sx = source.x + NODE_W / 2;
+              const sy = source.y + NODE_H / 2;
+              const tx = target.x + NODE_W / 2;
+              const ty = target.y + NODE_H / 2;
+              const downward = ty >= sy;
+              const x1 = sx;
+              const y1 = downward ? sy + NODE_H / 2 : sy - NODE_H / 2;
+              const x2 = tx;
+              const y2 = downward ? ty - NODE_H / 2 : ty + NODE_H / 2;
+              const spread = (index - (relations.length - 1) / 2) * 16;
+              const midX = (x1 + x2) / 2;
+              const midY = Math.min(
+                canvasHeight - 10,
+                Math.max(14, (y1 + y2) / 2 + spread * 0.6),
+              );
+              return (
+                <text key={`lbl-${relation.id}`} className="graph-edge-label" x={midX} y={midY} textAnchor="middle">
+                  {relation.type.replaceAll("_", " ")}
+                </text>
+              );
+            })}
+          </svg>
         </div>
-        </div>
-        {editing && (
+      </div>
+      {editing && (
         <div className="graph-editor" aria-label={language === "it" ? "Editor manuale del grafo" : "Manual graph editor"}>
           <p className="graph-editor-note">
             {language === "it"
@@ -2041,21 +3006,70 @@ function GraphView({
             </div>
           </details>
         </div>
-        )}
+      )}
       </>}
     </div>
   );
 }
 
-function layoutNodes(nodes: GraphNode[]): Map<string, { x: number; y: number }> {
-  const columns = 4;
-  return new Map(
-    nodes.map((item, index) => {
-      const row = Math.floor(index / columns);
-      const column = index % columns;
-      return [item.id, { x: 90 + column * 180, y: 70 + row * 125 }];
-    }),
-  );
+const NODE_W = 196;
+const NODE_H = 84;
+const ROW_H = 138;
+const COL_PITCH = 216;
+
+/** Layout stratificato: rank = cammino piu' lungo dalle radici; righe centrate. */
+function layoutNodes(
+  nodes: GraphNode[],
+  relations: { source: string; target: string }[],
+): Map<string, { x: number; y: number }> {
+  const ids = nodes.map((item) => item.id);
+  const idSet = new Set(ids);
+  const edges = relations.filter((item) => idSet.has(item.source) && idSet.has(item.target));
+  const incoming = new Map<string, string[]>(ids.map((id) => [id, []]));
+  const outgoing = new Map<string, string[]>(ids.map((id) => [id, []]));
+  for (const edge of edges) {
+    incoming.get(edge.target)!.push(edge.source);
+    outgoing.get(edge.source)!.push(edge.target);
+  }
+  const rank = new Map<string, number>(ids.map((id) => [id, 0]));
+  // longest-path rank (iterativo, ordine topologico approssimato a ripetizioni)
+  for (let pass = 0; pass < ids.length; pass += 1) {
+    let changed = false;
+    for (const edge of edges) {
+      const next = rank.get(edge.source)! + 1;
+      if (next > rank.get(edge.target)!) {
+        rank.set(edge.target, next);
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
+  const byRank = new Map<number, string[]>();
+  for (const id of ids) {
+    const key = rank.get(id)!;
+    (byRank.get(key) ?? byRank.set(key, []).get(key)!).push(id);
+  }
+  const positions = new Map<string, { x: number; y: number }>();
+  const stageW = 720;
+  const ranks = [...byRank.keys()].sort((a, b) => a - b);
+  ranks.forEach((key, rowIndex) => {
+    const row = byRank.get(key)!.slice().sort(); // ordine stabile
+    const pitch = COL_PITCH;
+    const totalW = row.length * NODE_W + (row.length - 1) * (pitch - NODE_W);
+    const startX = Math.max(12, (stageW - totalW) / 2 + (pitch - NODE_W) / 2);
+    row.forEach((id, colIndex) => {
+      positions.set(id, { x: startX + colIndex * pitch, y: 26 + rowIndex * ROW_H });
+    });
+  });
+  return positions;
+}
+
+function graphCanvasHeight(nodeCount: number, relations: { source: string; target: string }[]): number {
+  const idSet = new Set(nodeCount ? [] : []);
+  void idSet;
+  const rows = Math.max(1, nodeCount);
+  void relations;
+  return rows; // placeholder rimpiazzato dal chiamante
 }
 
 function nodeCategory(node: GraphNode): string {
@@ -2103,6 +3117,9 @@ function CorrectionPanel({
   const [rationale, setRationale] = useState("");
   const [reason, setReason] = useState("typo");
   const [busy, setBusy] = useState(false);
+  const [refinement, setRefinement] = useState<SpanRefinement | null>(null);
+
+  useEffect(() => setRefinement(null), [block?.id, current]);
 
   useEffect(() => setNextValue(String(current ?? "")), [block?.id, current]);
 
@@ -2112,12 +3129,13 @@ function CorrectionPanel({
     if (!Number.isInteger(parsed) || parsed < 0 || rationale.trim().length < 8) return;
     setBusy(true);
     try {
-      await onApply(
-        [{ op: "replace", path: "/n_statements/0/value", value: parsed }],
-        rationale.trim(),
-        reason,
-      );
+      const patch: CorrectionPatch = [
+        { op: "replace", path: "/n_statements/0/value", value: parsed },
+      ];
+      if (refinement) patch.push(refinementPatchEntry(refinement));
+      await onApply(patch, rationale.trim(), reason);
       setRationale("");
+      setRefinement(null);
     } finally {
       setBusy(false);
     }
@@ -2150,7 +3168,6 @@ function CorrectionPanel({
           <div className="diff-row">
             <span><small>{language === "it" ? "Campo" : "Field"}</small><code>/n_statements/0/value</code></span>
             <span><small>{language === "it" ? "Valore precedente" : "Previous value"}</small><del>n = {current ?? "—"}</del></span>
-            <ChevronRight size={19} />
             <label><small>{language === "it" ? "Valore nuovo" : "New value"}</small><span className="n-input">n = <input aria-label={language === "it" ? "Nuovo valore di n" : "New n value"} type="number" min="0" step="1" value={nextValue} onChange={(event) => setNextValue(event.target.value)} /></span></label>
           </div>
           <label className="field-label">{language === "it" ? "Motivo" : "Reason"}
@@ -2167,6 +3184,25 @@ function CorrectionPanel({
             <textarea value={rationale} onChange={(event) => setRationale(event.target.value)} placeholder={language === "it" ? "Cita la fonte o spiega il giudizio (minimo 8 caratteri)." : "Cite the source or explain the judgement (minimum 8 characters)."} rows={3} />
           </label>
           <div className="correction-footnote"><Link2 size={14} /> {evidence ? evidenceLocator(evidence) : (language === "it" ? "nessuna evidenza collegata" : "no linked evidence")}</div>
+          {evidence && (
+            <SpanLocator
+              evidence={evidence}
+              language={language}
+              onApply={(value) => {
+                setRefinement(value);
+                setRationale((currentRationale) =>
+                  currentRationale.trim().length >= 8
+                    ? currentRationale
+                    : `${value.locator}: ${currentRationale}`.trim(),
+                );
+              }}
+            />
+          )}
+          {refinement && (
+            <p className="span-refined-note" data-testid="span-refined-note">
+              {language === "it" ? "Evidenza raffinata" : "Refined evidence"}: <code>{refinement.locator}</code>
+            </p>
+          )}
           <div className="form-actions">
             <span className="candidate-note"><Sparkles size={15} /> {isDemo ? (language === "it" ? "Demo non scientifica" : "Non-scientific demo") : (language === "it" ? "Annotazione candidata, non gold" : "Candidate annotation, not gold")}</span>
             <button className="button primary compact" disabled={busy || rationale.trim().length < 8 || nextValue === String(current ?? "")}>
@@ -2197,12 +3233,18 @@ function ImportDialog({
   uiLanguage,
   onClose,
   onAnalysis,
+  onQuickDesign,
+  initialWizardStep = 1,
 }: {
   apiState: "checking" | "online" | "offline";
   uiLanguage: "it" | "en";
   onClose: () => void;
   onAnalysis: (result: AnalysisResponse) => void;
+  onQuickDesign: (result: QuickDesignV8Response) => void;
+  initialWizardStep?: number;
 }) {
+  const [mode, setMode] = useState<"v8" | "v7">("v8");
+  const dialogRef = useRef<HTMLElement>(null);
   const [source, setSource] = useState("");
   const [out, setOut] = useState("./ntruth-out");
   const [domain, setDomain] = useState("quantitative_microscopy");
@@ -2213,16 +3255,23 @@ function ImportDialog({
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (apiState !== "online") return;
+    if (apiState !== "online" || mode !== "v7") return;
     preflight(domain).then(setDomainNotice).catch(() => undefined);
-  }, [apiState, domain]);
+  }, [apiState, domain, mode]);
 
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
+  useEffect(() => {
+    const firstFocusable = dialogRef.current?.querySelector<HTMLElement>(
+      "button, input, select, textarea, [tabindex]:not([tabindex='-1'])",
+    );
+    firstFocusable?.focus();
+  }, []);
+
+  const submit = async (event?: FormEvent) => {
+    event?.preventDefault();
     setError(undefined);
     setBusy(true);
     try {
-      const result = await analyze({
+      const result = await analyzeV7({
         source: source.trim(),
         out: out.trim(),
         language,
@@ -2231,7 +3280,21 @@ function ImportDialog({
       });
       onAnalysis(result);
     } catch (caught) {
-      if (caught instanceof ApiError && caught.status === 409) {
+      if (
+        caught instanceof ApiError &&
+        caught.status === 409 &&
+        apiErrorCode(caught) === "SCIENTIFIC_REVIEW_REQUIRED"
+      ) {
+        const issue = apiErrorIssueId(caught);
+        const title = uiLanguage === "it"
+          ? "Revisione scientifica richiesta"
+          : "Scientific review required";
+        setError(`${title}${issue ? ` · ${issue}` : ""}. ${caught.message}`);
+      } else if (
+        caught instanceof ApiError &&
+        caught.status === 409 &&
+        apiErrorCode(caught) === "domain_acknowledgement_required"
+      ) {
         setError(uiLanguage === "it" ? "Il dominio richiede una conferma esplicita prima dell’analisi." : "The domain requires explicit acknowledgement before analysis.");
       } else {
         setError(caught instanceof Error ? caught.message : (uiLanguage === "it" ? "Analisi non avviata." : "Analysis was not started."));
@@ -2241,54 +3304,131 @@ function ImportDialog({
     }
   };
 
+  const handleDialogKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onClose();
+      return;
+    }
+    if (event.key !== "Tab" || !dialogRef.current) return;
+    const focusable = Array.from(
+      dialogRef.current.querySelectorAll<HTMLElement>(
+        "button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])",
+      ),
+    ).filter((element) => !element.hasAttribute("hidden"));
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && (document.activeElement === first || !dialogRef.current.contains(document.activeElement))) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+
   return (
     <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <section className="dialog" role="dialog" aria-modal="true" aria-labelledby="import-title">
+      <section
+        ref={dialogRef}
+        className="dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="import-title"
+        onKeyDown={handleDialogKeyDown}
+      >
         <div className="dialog-header">
-          <div><span className="eyebrow">{uiLanguage === "it" ? "Nessun upload · elaborazione locale" : "No upload · local processing"}</span><h2 id="import-title">{uiLanguage === "it" ? "Importa fonti" : "Import sources"}</h2></div>
+          <div><span className="eyebrow">{uiLanguage === "it" ? "Nessun upload · elaborazione locale" : "No upload · local processing"}</span><h2 id="import-title">{uiLanguage === "it" ? "Compila o importa" : "Compile or import"}</h2></div>
           <button aria-label={uiLanguage === "it" ? "Chiudi" : "Close"} onClick={onClose}><X size={20} /></button>
         </div>
         {apiState !== "online" ? (
           <div className="offline-message"><Database size={22} /><div><strong>{uiLanguage === "it" ? "API locale non raggiungibile" : "Local API is unreachable"}</strong><p>{uiLanguage === "it" ? <>Avvia <code>ntruth-api</code>; nel frattempo resta disponibile la demo sintetica.</> : <>Start <code>ntruth-api</code>; the synthetic demo remains available.</>}</p></div></div>
         ) : (
-          <form onSubmit={submit} className="import-form">
-            <label className="field-label">{uiLanguage === "it" ? "File o cartella sorgente" : "Source file or folder"}
-              <input autoFocus required value={source} onChange={(event) => setSource(event.target.value)} placeholder="/percorso/locale/metodi-e-sample-sheet" />
-              <small>{uiLanguage === "it" ? "Il percorso resta sul computer e viene letto soltanto dall’API in loopback." : "The path stays on this computer and is read only by the loopback API."}</small>
-            </label>
-            <label className="field-label">{uiLanguage === "it" ? "Cartella output" : "Output folder"}
-              <input required value={out} onChange={(event) => setOut(event.target.value)} />
-            </label>
-            <div className="field-grid">
-              <label className="field-label">{uiLanguage === "it" ? "Dominio" : "Domain"}
-                <select value={domain} onChange={(event) => { setDomain(event.target.value); setAcknowledged(false); }}>
-                  <option value="quantitative_microscopy">{uiLanguage === "it" ? "Microscopia quantitativa" : "Quantitative microscopy"}</option>
-                  <option value="cell_culture">{uiLanguage === "it" ? "Colture cellulari" : "Cell culture"}</option>
-                  <option value="animal_experiment">{uiLanguage === "it" ? "Esperimenti animali" : "Animal experiments"}</option>
-                  <option value="microbiome">{uiLanguage === "it" ? "Microbioma (fuori scope)" : "Microbiome (out of scope)"}</option>
-                </select>
+          <div className="import-form">
+            <fieldset className="workflow-selector">
+              <legend>{uiLanguage === "it" ? "Contratto di elaborazione" : "Processing contract"}</legend>
+              <label>
+                <input
+                  type="radio"
+                  name="workflow-contract"
+                  checked={mode === "v8"}
+                  onChange={() => { setMode("v8"); setError(undefined); }}
+                />
+                {uiLanguage === "it" ? "Quick Design v8 canonico" : "Canonical Quick Design v8"}
               </label>
-              <label className="field-label">{uiLanguage === "it" ? "Lingua" : "Language"}
-                <select value={language} onChange={(event) => setLanguage(event.target.value as "it" | "en")}>
-                  <option value="it">Italiano</option>
-                  <option value="en">English</option>
-                </select>
+              <label>
+                <input
+                  type="radio"
+                  name="workflow-contract"
+                  checked={mode === "v7"}
+                  onChange={() => { setMode("v7"); setError(undefined); }}
+                />
+                {uiLanguage === "it" ? "Flusso storico v7 deprecato" : "Deprecated historical v7 flow"}
               </label>
-            </div>
-            {domainNotice?.warning && (
-              <div className="preflight-warning"><AlertTriangle size={19} /><div><strong>{domainNotice.validation_status === "out_of_scope" ? (uiLanguage === "it" ? "Fuori dal perimetro validato" : "Outside the validated scope") : (uiLanguage === "it" ? "Validazione esterna non completata" : "External validation is incomplete")}</strong><p>{domainNotice.warning}</p></div></div>
+            </fieldset>
+            {mode === "v8" ? (
+              <>
+                <div className="canonical-contract-note">
+                  <strong>PRD v8 · guided builder · canonical lane atomica</strong>
+                  <p>{uiLanguage === "it" ? "Il PREVIEW è solo revisione. CONFIRM esegue atomicamente il contratto canonico e conserva la submission esclusivamente come snapshot di audit non eseguibile." : "PREVIEW is review-only. CONFIRM atomically executes the canonical contract and retains the submission only as a non-executable audit snapshot."}</p>
+                </div>
+                <QuickDesignWizard language={uiLanguage} initialStep={initialWizardStep} onComplete={onQuickDesign} />
+              </>
+            ) : (
+              <>
+                <div className="legacy-contract-warning" role="note">
+                  <strong>{uiLanguage === "it" ? "Compatibilità storica v7 · deprecata" : "Historical v7 compatibility · deprecated"}</strong>
+                  <p>{uiLanguage === "it" ? "Questo percorso usa esclusivamente /v7/analyze e viene adattato in una presentazione neutra." : "This path uses only /v7/analyze and is adapted to a neutral presentation."}</p>
+                </div>
+                <label className="field-label">{uiLanguage === "it" ? "File o cartella sorgente" : "Source file or folder"}
+                  <input aria-label={uiLanguage === "it" ? "File o cartella sorgente" : "Source file or folder"} required value={source} onChange={(event) => setSource(event.target.value)} placeholder="/percorso/locale/metodi-e-sample-sheet" />
+                  <small>{uiLanguage === "it" ? "Il percorso resta sul computer e viene letto soltanto dall’API in loopback." : "The path stays on this computer and is read only by the loopback API."}</small>
+                </label>
+                <label className="field-label">{uiLanguage === "it" ? "Cartella output" : "Output folder"}
+                  <input required value={out} onChange={(event) => setOut(event.target.value)} />
+                </label>
+                <div className="field-grid">
+                  <label className="field-label">{uiLanguage === "it" ? "Dominio" : "Domain"}
+                    <select value={domain} onChange={(event) => { setDomain(event.target.value); setAcknowledged(false); }}>
+                      <option value="quantitative_microscopy">{uiLanguage === "it" ? "Microscopia quantitativa" : "Quantitative microscopy"}</option>
+                      <option value="cell_culture">{uiLanguage === "it" ? "Colture cellulari" : "Cell culture"}</option>
+                      <option value="animal_experiment">{uiLanguage === "it" ? "Esperimenti animali" : "Animal experiments"}</option>
+                      <option value="microbiome">{uiLanguage === "it" ? "Microbioma (fuori scope)" : "Microbiome (out of scope)"}</option>
+                    </select>
+                  </label>
+                  <label className="field-label">{uiLanguage === "it" ? "Lingua" : "Language"}
+                    <select value={language} onChange={(event) => setLanguage(event.target.value as "it" | "en")}>
+                      <option value="it">Italiano</option>
+                      <option value="en">English</option>
+                    </select>
+                  </label>
+                </div>
+                {domainNotice?.warning && (
+                  <div className="preflight-warning"><AlertTriangle size={19} /><div><strong>{domainNotice.validation_status === "out_of_scope" ? (uiLanguage === "it" ? "Fuori dal perimetro validato" : "Outside the validated scope") : (uiLanguage === "it" ? "Validazione esterna non completata" : "External validation is incomplete")}</strong><p>{domainNotice.warning}</p></div></div>
+                )}
+                {domainNotice?.requires_acknowledgement && (
+                  <label className="acknowledge"><input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} /> {uiLanguage === "it" ? "Comprendo il limite e autorizzo l’analisi locale senza interpretarla come validazione scientifica." : "I understand the limitation and authorize local analysis without treating it as scientific validation."}</label>
+                )}
+              </>
             )}
-            {domainNotice?.requires_acknowledgement && (
-              <label className="acknowledge"><input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} /> {uiLanguage === "it" ? "Comprendo il limite e autorizzo l’analisi locale senza interpretarla come validazione scientifica." : "I understand the limitation and authorize local analysis without treating it as scientific validation."}</label>
+            {mode === "v7" && (
+              <>
+                {error && <p className="form-error" role="alert">{error}</p>}
+                <div className="dialog-actions">
+                  <button type="button" className="button secondary" onClick={onClose}>{uiLanguage === "it" ? "Annulla" : "Cancel"}</button>
+                  <button
+                    type="button"
+                    className="button primary"
+                    disabled={busy || !source.trim() || Boolean(domainNotice?.requires_acknowledgement && !acknowledged)}
+                    onClick={() => void submit()}
+                  >
+                    {busy ? <LoaderCircle className="spin" size={18} /> : <Beaker size={18} />} {uiLanguage === "it" ? "Avvia analisi v7 deprecata" : "Start deprecated v7 analysis"}
+                  </button>
+                </div>
+              </>
             )}
-            {error && <p className="form-error" role="alert">{error}</p>}
-            <div className="dialog-actions">
-              <button type="button" className="button secondary" onClick={onClose}>{uiLanguage === "it" ? "Annulla" : "Cancel"}</button>
-              <button className="button primary" disabled={busy || !source.trim() || Boolean(domainNotice?.requires_acknowledgement && !acknowledged)}>
-                {busy ? <LoaderCircle className="spin" size={18} /> : <Beaker size={18} />} {uiLanguage === "it" ? "Avvia analisi" : "Start analysis"}
-              </button>
-            </div>
-          </form>
+          </div>
         )}
       </section>
     </div>

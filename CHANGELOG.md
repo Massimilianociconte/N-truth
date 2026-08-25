@@ -6,6 +6,118 @@ ontologia; queste versioni possono avanzare indipendentemente.
 
 ## [Unreleased]
 
+### Added
+
+- Second hardening sprint: expected-positive/negative tests for the Appendix-A
+  PRD-example scanner (SRR-002/004/005/006/007), qualitative-only boundary
+  status sealed (SRR-016), and the ExternalReferenceFreeze contract giving the
+  reference custodian a fail-closed, checksum-carrying mechanism for the
+  SRR-021 snapshot freeze (rights closure stays external).
+- O_NOFOLLOW hardening on source hashing and manifest reads (TOCTOU).
+- Correction-ledger integrity and materialization memoized per immutable
+  instance (removes the O(n²) replay per correction session).
+- SBOM records the component version and an explicit deterministic
+  timestamp policy; CI adds the ML CLI contract smoke; a dated clean-checkout
+  verification record (3340 tests from a virgin clone) is archived under
+  docs/audits.
+
+### Changed (earlier in this release)
+
+- Executable SRR mechanization matrix: 17 positive/negative conformance tests
+  sealing the code-level mechanisms prescribed by the scientific-review
+  register (vocabulary pinning, legacy-key rejection, state-payload blockers,
+  UNKNOWN_WITH_REASON source classes and more). External scientific closure
+  remains explicitly out of scope.
+- Visual span locator for EvidenceSpan corrections: two-click selection with
+  absolute document coordinates, appended to the immutable correction patch as
+  an auditable `ntruth.evidence_span.refine` entry.
+- Opt-in durable session journal (`NTRUTH_SESSION_JOURNAL_DIR`) with explicit
+  replay via `POST /v1/sessions/{id}/resume`; corrupted lines quarantined,
+  default behaviour unchanged (ephemeral in-memory registry).
+- Optional OCR adapter contract (`ntruth.ocr`) with mandatory per-page
+  provenance and a fail-closed empty registry; no engine bundled.
+- Accessibility invariants for dialogs (Escape-to-close, initial focus) plus a
+  permanent test that every button exposes an accessible name.
+- CI: third-party actions pinned by commit SHA; `CITATION.cff` gains
+  `date-released`.
+
+### Changed
+
+- Engineering pin transition `reviewed-evaluator-registry` 0.1.0 -> 0.1.1 to
+  carry the EvidenceSpan offset-domain hardening onto the canonical line
+  without invalidating SRR-V8-024; transition recorded in
+  `docs/audits/prd-v8-full-migration/EVALUATOR_PIN_TRANSITIONS.md`.
+
+### Fixed
+
+- Graph core: the allocated/analysed count heuristic now requires an exclusion
+  process typed for the same unit type; untyped or foreign-type exclusions keep
+  the conservative contradiction path instead of fabricating an aggregate `n`.
+- Graph core: aggregate node provenance origin is selected via an explicit
+  priority order, never by set iteration (NFR-02 determinism).
+- Graph core: declared-n group matching is casefolded consistently; truncated
+  contrast pairs (>6 per factor) emit an explicit question instead of losing
+  scope silently; `derived_count` gains a cycle guard.
+- Rules: alert conflict linkage no longer depends on precondition text;
+  malformed predicate arity raises `UnknownPredicate` (fail-closed) instead of
+  `IndexError`.
+- Parsers: archive limits are enforced on actually decompressed bytes (zip-bomb
+  route via forged central-directory metadata closed); DOCX/JATS table cells are
+  formula-neutralized like CSV/XLSX; JATS ENTITY scan covers UTF-16/32 ASCII
+  representations; `.csv` delimiter pinned to comma; leading `+` numerics
+  neutralized for spreadsheet round-trips.
+- API: `/v7/report` and `/v8/report` read only paths inside run directories
+  registered in this API process; TrustedHost allowlist drops the test host.
+- Governance: constant-time hash comparisons in the authorization path.
+
+### Desktop
+
+- First-run welcome keeps the synthetic demo behind an explicit action.
+  Determinability, HOLD and HANDOFF_ONLY stay visible as limits, not approval.
+- Replaced the inert settings control with a status sheet. Visual system is a
+  single paper/ink palette; client PREVIEW is labeled non-canonical.
+
+### Added
+
+- PRD v9 engineering sidecar (not a rename of the v8 kernel): Canonical Schema
+  Registry 9.0.0, FactorRole/ContrastType EU eligibility, assignment-anchored
+  ExperimentalUnitClaim, ContrastSupport evaluation, MaterialLineage count
+  identity, SupportProfile writer, Safe Methods sentence contract, Quick Design
+  v9 (role before levels), and combined `gate_experimental_unit_claim`.
+  Strategy remains `HANDOFF_ONLY`. Scientific validation remains `NOT_STARTED`.
+
+### Security
+
+- Directory ingest no longer follows directory or file symlinks
+  (`discover_ingest_candidates`); escaped trees outside the source folder are
+  rejected instead of copied.
+
+### Documentation
+
+- Added the PRD v9 final system review of this v8 tree, including operational
+  dispositions for the four `MISSING` rows and the 48 `PARTIAL` rows. Scientific
+  validation remains `NOT_STARTED`; training and External Challenge remain `HOLD`.
+
+### PRD v8.0 migration
+
+- Migrated the repository to the PRD v8 semantic kernel: query-scoped
+  `DerivedClaimSet`, claim-specific determinability, independent design adequacy,
+  open-world `KnowledgeState`, structured coverage and canonical count registry.
+- Separated Derivation Theory, Rulebook, conformance fixtures and unavailable
+  external reference/gold assets; runtime derivation and adequacy implementations are
+  pinned and fail closed on unreviewed drift.
+- Added candidate-only parser boundaries, protected TEST/EXTERNAL views, Reality Gate
+  v8 custody contracts, neutral planned/executed reports and a `HANDOFF_ONLY`
+  statistical interface. Training and External Challenge use remain `HOLD`.
+- Added a guided, non-JSON Quick Design PREVIEW/CONFIRM workflow. Confirmation emits
+  the canonical result atomically, keeps its audit snapshot non-executable and exposes
+  question priority/evidence ordering as the explicit `SRR-V8-025` review gap.
+- Added packaged runtime-derived JSON Schema, verbatim expected-negative PRD examples,
+  machine-readable current-to-target architecture truth and explicit CI gates.
+- Qualified incompatible v7 behavior behind warning-emitting
+  `DEPRECATED_V7_ADAPTER` surfaces. Current engineering status is
+  `IMPLEMENTED_WITH_EXPLICIT_BLOCKERS`; no scientific validation is claimed.
+
 ### Documentation
 
 - Full documentation refresh (2026-08-02): verified status snapshot

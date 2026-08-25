@@ -1,0 +1,128 @@
+{
+  "generated_at": "2026-08-03T14:22:06Z",
+  "SourceData": {
+    "upstream_raw_counts": {
+      "ner": {
+        "train": 60266,
+        "validation": 8201,
+        "test": 6696
+      },
+      "roles_multi": {
+        "train": 60266,
+        "validation": 8201,
+        "test": 6696
+      }
+    },
+    "alignment_counts": {
+      "train": {
+        "matched": 60266,
+        "ner_only": 0,
+        "roles_only": 0,
+        "duplicate_keys": 0,
+        "token_mismatch": 0
+      },
+      "validation": {
+        "matched": 8201,
+        "ner_only": 0,
+        "roles_only": 0,
+        "duplicate_keys": 0,
+        "token_mismatch": 0
+      },
+      "test": {
+        "matched": 6696,
+        "ner_only": 0,
+        "roles_only": 0,
+        "duplicate_keys": 0,
+        "token_mismatch": 0
+      }
+    },
+    "derived_multitask_counts": {
+      "train": 60266,
+      "validation": 8201,
+      "test": 6696
+    },
+    "join_key": {
+      "panel_id_field_present": false,
+      "revision_bound": true,
+      "source_configuration": "token_classification/v_2.0.3",
+      "source_file_or_config": "ner/{split}.jsonl paired with roles_multi/{split}.jsonl",
+      "source_record_index": "0-based_physical_line_index_within_split_file",
+      "stable_across_revisions": false,
+      "upstream_split": "inherited_from_paired_file_path",
+      "words_sha256": "sha256(NUL-joined words); required equal at matching indices"
+    },
+    "note": "derived multitask counts are not upstream splits"
+  },
+  "PreClinIE": {
+    "split_authority": "NTRUTH_GROUP_STRATIFIED_DERIVATION",
+    "grouping_key": "publication_id",
+    "split_counts": {
+      "test": 144,
+      "train": 1160,
+      "validation": 146
+    },
+    "seed": "20260803",
+    "not_official": true
+  },
+  "MeasEval": {
+    "training_ready_status": "BLOCKED_BY_UPSTREAM_GROUP_OVERLAP",
+    "train_test_group_overlap": 45,
+    "trial_isolated": true,
+    "five_missing_tsv": {
+      "S0019103512003995-3420": {
+        "split": "train",
+        "annotation_status": "missing_annotation_file",
+        "training_eligible": false,
+        "evaluation_eligible": false,
+        "requires_review": true
+      },
+      "S0019103512004009-2930": {
+        "split": "train",
+        "annotation_status": "missing_annotation_file",
+        "training_eligible": false,
+        "evaluation_eligible": false,
+        "requires_review": true
+      },
+      "S0022000014000026-7850": {
+        "split": "train",
+        "annotation_status": "missing_annotation_file",
+        "training_eligible": false,
+        "evaluation_eligible": false,
+        "requires_review": true
+      },
+      "S0164121213002641-2930": {
+        "split": "train",
+        "annotation_status": "missing_annotation_file",
+        "training_eligible": false,
+        "evaluation_eligible": false,
+        "requires_review": true
+      },
+      "S0167739X12001525-5094": {
+        "split": "train",
+        "annotation_status": "missing_annotation_file",
+        "training_eligible": false,
+        "evaluation_eligible": false,
+        "requires_review": true
+      }
+    },
+    "future_overlap_policy": "PENDING_HUMAN_DECISION"
+  },
+  "CRAFT": {
+    "upstream_split": {
+      "development": 67,
+      "evaluation": 30
+    },
+    "ntruth_split": {
+      "train": 60,
+      "validation": 7,
+      "test": 30
+    },
+    "validation_derivation": {
+      "source": "upstream_development",
+      "authority": "NTRUTH_DETERMINISTIC_DERIVATION",
+      "algorithm": "official craft-ids-train\u2192train; craft-ids-dev\u2192validation; craft-ids-test\u2192test"
+    },
+    "not_official_three_way": true,
+    "pmcid_overlap": 0
+  }
+}

@@ -20,6 +20,7 @@ from enum import StrEnum
 from pathlib import Path
 
 from ntruth import SCHEMA_VERSION
+from ntruth.ingest.safety import discover_ingest_candidates
 from ntruth.ingest.safety import (
     MAX_FILES,
     SUPPORTED_EXTENSIONS,
@@ -335,27 +336,11 @@ class Project:
         """Registra un file o l'intero contenuto supportato di una cartella."""
         source = source.expanduser()
         result = IngestResult()
-        if source.is_dir():
-            candidates = sorted(
-                p
-                for p in source.rglob("*")
-                if p.is_file() and p.suffix.lower() in SUPPORTED_EXTENSIONS
-            )
-            skipped = sorted(
-                p
-                for p in source.rglob("*")
-                if p.is_file() and p.suffix.lower() not in SUPPORTED_EXTENSIONS
-            )
-            for path in skipped:
-                result.rejected.append(
-                    SafetyReport(
-                        path=path,
-                        accepted=False,
-                        reason=f"estensione non supportata ({path.suffix or 'assente'})",
-                    )
-                )
+        if source.is_dir() or source.is_symlink():
+            candidates, skipped = discover_ingest_candidates(source)
+            result.rejected.extend(skipped)
         else:
-            candidates = [source]
+            candidates = (source,)
 
         if len(candidates) > MAX_FILES:
             raise SafetyError(f"troppi file ({len(candidates)} > {MAX_FILES})")

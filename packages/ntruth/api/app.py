@@ -10,6 +10,15 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, ValidationError
 
 from ntruth import SCHEMA_VERSION, __version__
+from ntruth.api.session_journal import (
+    append_entry as journal_append_entry,
+)
+from ntruth.api.session_journal import (
+    journal_dir_from_env,
+)
+from ntruth.api.session_journal import (
+    read_entry as journal_read_entry,
+)
 from ntruth.api.sessions import (
     SessionArtifactNotFound,
     SessionBlockNotFound,
@@ -22,8 +31,10 @@ from ntruth.application import (
     DomainAcknowledgementRequired,
     NoUsableFilesError,
     RedactedDerivativeMaterial,
+    V8ApplicationInputReviewRequired,
     evaluate_distribution_readiness,
     execute_analysis,
+    execute_analysis_v7_adapter,
 )
 from ntruth.corrections import CorrectionEngineError, CorrectionLedger
 from ntruth.governance import (
@@ -50,6 +61,23 @@ from ntruth.prospective import (
     compile_prospective_d0,
 )
 from ntruth.reporting import read_json, report_to_dict
+from ntruth.quick_design import (
+    GuidedQuickDesignBuildRequest,
+    QuickDesignScientificReviewRequired,
+    QuickDesignV7Answers,
+    QuickDesignV8Submission,
+    build_guided_quick_design,
+    export_v7_for_biostatistician,
+    run_quick_design_v7_session,
+    run_quick_design_v8,
+    validate_raw_wizard_submission,
+)
+from ntruth.reporting import (
+    read_json,
+    read_report_bundle_json,
+    report_bundle_to_dict,
+    report_to_dict,
+)
 from ntruth.rules.loader import (
     DEFAULT_RULESET_ID,
     DEFAULT_RULESET_VERSION,
@@ -83,6 +111,24 @@ class AnalyzeRequest(BaseModel):
     ruleset_version: str = DEFAULT_RULESET_VERSION
     release_profile: ReleaseProfile = ReleaseProfile.D0_CORE
     acknowledge_unvalidated_domain: bool = False
+
+
+class LegacyQuickDesignRequest(BaseModel):
+    source_description: str = Field(min_length=1)
+    preparation_description: str = "unknown"
+    factor_id: str = "treatment"
+    levels: tuple[str, str] = ("control", "treated")
+    endpoint_id: str = "viability"
+    contrast_id: str = "control_vs_treated"
+    allocation_level: str = "unknown"
+    application_level: str = "unknown"
+    assignment_timing: str = "unknown"
+    assignment_method: str = "unknown"
+    independently_assigned: str = "UNKNOWN"
+    biological_source_independence: str = "UNKNOWN"
+    interference_status: str = "UNKNOWN"
+    planned_unit_type: str = "unknown"
+    planned_units_per_level: int | None = None
 
 
 class CorrectionDraft(BaseModel):
@@ -240,6 +286,8 @@ def create_app() -> Any:
             # ``call_next``; nessun secondo buffering legge lo stream originale.
             request._body = bytes(body)
         return await call_next(request)
+
+    session_journal_dir = journal_dir_from_env()
 
     @api.get("/health")
     @api.get("/v1/health")
@@ -590,18 +638,46 @@ def create_app() -> Any:
     @api.post("/analyze")
     @api.post("/v1/analyze")
     def analyze(payload: AnalyzeRequest) -> dict[str, Any]:
-        notice = assess_domain(payload.domain)
-        if notice.requires_acknowledgement and not payload.acknowledge_unvalidated_domain:
+        try:
+            execute_analysis(Path(payload.source), out=Path(payload.out))
+        except V8ApplicationInputReviewRequired as exc:
+            review = exc.review_requirement
             raise HTTPException(
                 status_code=409,
                 detail={
-                    "code": "domain_acknowledgement_required",
-                    "message": notice.warning,
-                    "domain_transparency": notice.model_dump(mode="json"),
+                    "code": review.status.value,
+                    "issue_id": review.issue_id,
+                    "message": review.rationale,
                 },
-            )
+            ) from exc
+
+        raise HTTPException(  # pragma: no cover - raw Path inputs are blocked by contract
+            status_code=409,
+            detail={"code": "SCIENTIFIC_REVIEW_REQUIRED", "issue_id": "SRR-V8-008"},
+        )
+
+    def _v7_response(execution: Any, session_id: str) -> dict[str, Any]:
+        return {
+            "report": report_to_dict(execution.result.report),
+            "ingest_summary": execution.ingest.summary(),
+            "artifacts": {name: str(path) for name, path in execution.written.items()},
+            "domain_transparency": execution.transparency.model_dump(mode="json"),
+            "session_id": session_id,
+            "run_id": execution.run_id,
+            "revision": execution.revision,
+            "output_dir": str(execution.run_dir),
+            "privacy_audit": execution.privacy_audit.model_dump(mode="json"),
+            "share_readiness": execution.share_readiness.model_dump(mode="json"),
+            "contract": {
+                "code": "DEPRECATED_V7_ADAPTER",
+                "version": "v7",
+            },
+        }
+
+    @api.post("/v7/analyze")
+    def analyze_v7(payload: AnalyzeRequest) -> dict[str, Any]:
         try:
-            execution = execute_analysis(
+            execution = execute_analysis_v7_adapter(
                 Path(payload.source),
                 out=Path(payload.out),
                 project_dir=Path(payload.project_dir) if payload.project_dir else None,
@@ -625,26 +701,241 @@ def create_app() -> Any:
         except (FileNotFoundError, NoUsableFilesError, SafetyError, RulesetNotFound) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         session = sessions.create(execution)
+        if session_journal_dir is not None:
+            journal_append_entry(
+                session_journal_dir,
+                session.id,
+                {
+                    "lane": "v7",
+                    "source": payload.source,
+                    "out": payload.out,
+                    "project_dir": payload.project_dir,
+                    "language": payload.language,
+                    "domain": payload.domain,
+                    "ruleset_id": payload.ruleset_id,
+                    "ruleset_version": payload.ruleset_version,
+                    "acknowledge_unvalidated_domain": payload.acknowledge_unvalidated_domain,
+                },
+            )
+        return _v7_response(execution, session.id)
+
+    @api.post("/v1/sessions/{session_id}/resume")
+    def resume_session(session_id: str) -> dict[str, Any]:
+        """Ricostruisce esplicitamente una sessione journallata dopo un restart.
+
+        Replay deterministico della richiesta registrata: nessuna resurrezione
+        silenziosa al boot, nessuna sovrascrittura di run precedenti (l'analisi
+        crea una nuova revisione append-only). Fail-closed sul checksum.
+        """
+
+        if session_journal_dir is None:
+            raise HTTPException(
+                status_code=404,
+                detail={"code": "session_journal_disabled"},
+            )
+        try:
+            live = sessions.get(session_id)
+        except SessionNotFound:
+            live = None
+        if live is not None:
+            return _v7_response(live.execution, session_id)
+
+        entry = journal_read_entry(session_journal_dir, session_id)
+        if entry is None:
+            raise HTTPException(
+                status_code=404,
+                detail={"code": "session_not_resumable", "session_id": session_id},
+            )
+        request = entry.request
+        if request.get("lane") != "v7":
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "session_lane_not_resumable", "lane": str(request.get("lane"))},
+            )
+        try:
+            execution = execute_analysis_v7_adapter(
+                Path(str(request["source"])),
+                out=Path(str(request["out"])),
+                project_dir=Path(str(request["project_dir"]))
+                if request.get("project_dir")
+                else None,
+                language=str(request.get("language", "it")),
+                domain=str(request.get("domain", "quantitative_microscopy")),
+                ruleset_id=str(request.get("ruleset_id", "")),
+                ruleset_version=str(request.get("ruleset_version", "")),
+                require_domain_acknowledgement=True,
+                acknowledged_unvalidated_domain=bool(request.get("acknowledge_unvalidated_domain")),
+            )
+        except DomainAcknowledgementRequired as exc:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "domain_acknowledgement_required",
+                    "message": str(exc),
+                    "domain_transparency": exc.transparency.model_dump(mode="json"),
+                },
+            ) from exc
+        except (FileNotFoundError, NoUsableFilesError, SafetyError, RulesetNotFound) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        session = sessions.create(execution, session_id=session_id)
+        return _v7_response(execution, session.id)
+
+    @api.post("/v8/quick-design")
+    def quick_design_v8(payload: QuickDesignV8Submission) -> dict[str, Any]:
+        """Raw author-asserted prospective flow; never a guided confirmation lane."""
+
+        from ntruth.derivation_theory.runtime import load_runtime_bundle
+
+        try:
+            validate_raw_wizard_submission(payload)
+            result = run_quick_design_v8(
+                payload,
+                conformance_bundle=load_runtime_bundle(),
+            )
+        except QuickDesignScientificReviewRequired as exc:
+            review = exc.review_requirement
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "SCIENTIFIC_REVIEW_REQUIRED",
+                    "issue_id": review.issue_id,
+                    "message": review.rationale,
+                },
+            ) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         return {
-            "report": report_to_dict(execution.result.report),
-            "ingest_summary": execution.ingest.summary(),
-            "artifacts": {name: str(path) for name, path in execution.written.items()},
-            "domain_transparency": execution.transparency.model_dump(mode="json"),
-            "session_id": session.id,
-            "run_id": execution.run_id,
-            "revision": execution.revision,
-            "output_dir": str(execution.run_dir),
-            "privacy_audit": execution.privacy_audit.model_dump(mode="json"),
-            "share_readiness": execution.share_readiness.model_dump(mode="json"),
+            "planned_design": result.planned_design.model_dump(mode="json"),
+            "report": report_bundle_to_dict(result.report_bundle),
+            "artifacts": tuple(artifact.model_dump(mode="json") for artifact in result.artifacts),
+            "contract": {
+                "code": "PRD_V8",
+                "version": "8.0.0",
+                "strategy_module_status": result.report_bundle.strategy_module_status.value,
+                "input_mode": "RAW_AUTHOR_ASSERTED",
+                "guided_confirmation": False,
+            },
         }
+
+    @api.post("/v8/quick-design/build-submission")
+    def build_quick_design_submission(
+        payload: GuidedQuickDesignBuildRequest,
+    ) -> dict[str, Any]:
+        """Preview, or atomically confirm and execute, reviewed guided fields."""
+
+        try:
+            response = build_guided_quick_design(payload)
+        except QuickDesignScientificReviewRequired as exc:
+            review = exc.review_requirement
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": review.status.value,
+                    "issue_id": review.issue_id,
+                    "message": review.rationale,
+                },
+            ) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return response.model_dump(mode="json")
+
+    @api.post("/v7/quick-design")
+    def quick_design_v7(payload: LegacyQuickDesignRequest) -> dict[str, Any]:
+        """Explicitly qualified historical adapter; never the canonical route."""
+
+        try:
+            result = run_quick_design_v7_session(
+                QuickDesignV7Answers(
+                    source_description=payload.source_description,
+                    preparation_description=payload.preparation_description,
+                    factor_id=payload.factor_id,
+                    levels=payload.levels,
+                    endpoint_id=payload.endpoint_id,
+                    contrast_id=payload.contrast_id,
+                    allocation_level=payload.allocation_level,
+                    application_level=payload.application_level,
+                    assignment_timing=payload.assignment_timing,
+                    assignment_method=payload.assignment_method,
+                    independently_assigned=payload.independently_assigned,
+                    biological_source_independence=payload.biological_source_independence,
+                    interference_status=payload.interference_status,
+                    planned_unit_type=payload.planned_unit_type,
+                    planned_units_per_level=payload.planned_units_per_level,
+                )
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return {
+            "result": export_v7_for_biostatistician(result),
+            "contract": {
+                "code": "DEPRECATED_V7_ADAPTER",
+                "version": "v7",
+            },
+        }
+
+    @api.get("/v8/report")
+    def report_v8(path: str) -> dict[str, Any]:
+        report_path = Path(path).expanduser().resolve()
+        # Containment: il report deve appartenere a un run attivo registrato
+        # in questo processo. Nessuna lettura arbitraria del filesystem.
+        allowed_roots = [
+            Path(session.execution.run_dir).resolve() for session in sessions.iter_sessions()
+        ]
+        if not any(
+            report_path == root or report_path.is_relative_to(root) for root in allowed_roots
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": "report_path_outside_active_runs",
+                    "message": (
+                        f"Percorso fuori dai run attivi di questa sessione API: {report_path}"
+                    ),
+                },
+            )
+        if not report_path.is_file():
+            raise HTTPException(status_code=404, detail=f"Report non trovato: {report_path}")
+        try:
+            loaded = read_report_bundle_json(report_path)
+        except (OSError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=f"Report non valido: {exc}") from exc
+        return report_bundle_to_dict(loaded)
+
+    @api.get("/v7/report")
+    def report_v7(path: str) -> dict[str, Any]:
+        """Explicitly qualified legacy report reader."""
+
+        report_path = Path(path).expanduser().resolve()
+        # Containment: il report deve appartenere a un run attivo registrato
+        # in questo processo. Nessuna lettura arbitraria del filesystem.
+        allowed_roots = [
+            Path(session.execution.run_dir).resolve() for session in sessions.iter_sessions()
+        ]
+        if not any(
+            report_path == root or report_path.is_relative_to(root) for root in allowed_roots
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": "report_path_outside_active_runs",
+                    "message": (
+                        f"Percorso fuori dai run attivi di questa sessione API: {report_path}"
+                    ),
+                },
+            )
+        if not report_path.is_file():
+            raise HTTPException(status_code=404, detail=f"Report non trovato: {report_path}")
+        try:
+            loaded = read_json(report_path)
+        except (OSError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=f"Report non valido: {exc}") from exc
+        return report_to_dict(loaded)
 
     @api.get("/report")
     @api.get("/v1/report")
     @api.get("/v1/reports")
     def report(path: str) -> dict[str, Any]:
         report_path = Path(path).expanduser().resolve()
-        # Containment: il report deve appartenere a un run attivo registrato
-        # in questo processo. Nessuna lettura arbitraria del filesystem.
         allowed_roots = [
             Path(session.execution.run_dir).resolve() for session in sessions.iter_sessions()
         ]

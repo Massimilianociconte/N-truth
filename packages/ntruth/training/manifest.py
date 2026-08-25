@@ -12,6 +12,7 @@ from ntruth.training.records import (
     PreparationConfig,
     PreparationReport,
     PreparedRecord,
+    _family_evidence,
 )
 
 
@@ -22,6 +23,10 @@ def build_manifest_records(records: tuple[PreparedRecord, ...]) -> tuple[Manifes
         ManifestRecord(
             record_id=prepared.record.record_id,
             record_checksum=content_checksum(prepared.model_dump(mode="json")),
+            input_checksum=_input_checksum(prepared.record.input_text),
+            candidate_target_checksum=content_checksum(
+                prepared.record.target.candidate_target.model_dump(mode="json")
+            ),
             exact_fingerprint=prepared.exact_fingerprint,
             near_fingerprint=prepared.near_fingerprint,
             split=prepared.split,
@@ -45,13 +50,47 @@ def build_manifest_records(records: tuple[PreparedRecord, ...]) -> tuple[Manifes
             training_eligible=prepared.record.training_eligible,
             evaluation_eligible=prepared.record.evaluation_eligible,
             release_eligible=prepared.record.release_eligible,
+            model_selection_eligible=prepared.record.model_selection_eligible,
             license_or_authorization_id=(prepared.record.provenance.license_or_authorization_id),
             reviewer_count=prepared.record.provenance.reviewer_count,
+            reviewer_ids=prepared.record.provenance.reviewer_ids,
+            reviewer_roles=prepared.record.provenance.reviewer_roles,
             adjudication_id=prepared.record.provenance.adjudication_id,
+            target_adjudication_id=prepared.record.target.adjudication_id,
+            submission_ids=tuple(
+                reference.submission_id
+                for reference in prepared.record.target.submission_references
+            ),
+            submission_checksums=tuple(
+                reference.submission_sha256
+                for reference in prepared.record.target.submission_references
+            ),
+            comparison_status=prepared.record.target.comparison_status,
+            material_differences_checksum=content_checksum(
+                [
+                    difference.model_dump(mode="json")
+                    for difference in prepared.record.target.material_differences
+                ]
+            ),
+            candidate_count_kinds=tuple(
+                count.kind for count in prepared.record.target.candidate_target.candidate_counts
+            ),
+            family_evidence=_family_evidence(prepared.record.provenance),
+            external_challenge_dependency=(
+                prepared.record.provenance.external_challenge_dependency
+            ),
             synthetic=prepared.record.provenance.synthetic,
         )
         for prepared in sorted(records, key=lambda item: item.record.record_id)
     )
+
+
+def _input_checksum(input_text: str) -> str:
+    try:
+        payload = json.loads(input_text)
+    except json.JSONDecodeError:
+        payload = input_text
+    return content_checksum(payload)
 
 
 def manifest_records_checksum(records: tuple[ManifestRecord, ...]) -> str:

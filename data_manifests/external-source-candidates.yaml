@@ -1,0 +1,88 @@
+registry_version: "0.2"
+updated_at: "2026-08-03"
+scope: public_safe_candidate_inventory
+prd_ref: "N-Truth PRD v7.0 §14.1–14.4"
+policy: >
+  Candidate external sources are not ingested by listing them here.
+  All model-use permissions fail closed until licence, access and partition
+  decisions are written and machine-readable. Cross-domain roles are
+  profile-relative and must be decided before complete label access.
+
+sources:
+  - source_id: lazic_in_vivo_pseudoreplication_data
+    status: OFFERED_IN_PRINCIPLE_DETAILS_PENDING
+    domain: in_vivo
+    cross_domain_role_status: ROLE_DECISION_PENDING
+    # Not an approved role. Do not treat as EXTERNAL_CHALLENGE by default (PRD v7 §14.4).
+    proposed_role: null
+    candidate_roles_not_approved:
+      - SCHEMA_ALIGNMENT_SUBSET
+      - CALIBRATION_SUBSET_IF_AUTHORISED
+      - HELD_OUT_IN_VIVO_CHALLENGE
+      - FUTURE_ANIMAL_PROFILE_GOLD
+      - CROSS_DOMAIN_RULE_STRESS_TEST
+    authority_level: PENDING_PROFILE_RELATIVE_DECISION
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    licence_status: UNKNOWN
+    access_status: NOT_RECEIVED
+    profile_notes:
+      - in_vivo_expert_adjudicated_data_may_be_real_gold_for_an_Animal_Profile
+      - not_direct_gold_for_bootstrap_in_vitro_profile
+      - cannot_validate_ntruth_v1_0_A_in_vitro
+      - train_dev_test_role_must_be_agreed_before_inspecting_complete_labels
+      - no_access_or_ingestion_has_occurred
+    candidate_uses_if_later_authorised:
+      - experimental_structure_validation
+      - experimental_unit_validation
+      - pseudoreplication_assessment
+      - insufficient_information_evaluation
+    safeguards:
+      - no_training_without_written_partition
+      - no_access_until_explicit_role_and_permission_policy
+      - no_generator_access
+      - role_decision_before_full_label_inspection
+      - ROLE_DECISION_PENDING_never_training_eligible
+    next_action:
+      - obtain_annotation_schema
+      - obtain_case_counts
+      - clarify_reference_dataset
+      - clarify_licence_and_citation_terms
+      - written_profile_relative_role_decision
+
+  - source_id: nc3rs_arrive_compliance_checker_dataset
+    status: ANNOUNCED_NOT_RELEASED
+    organization: NC3Rs
+    expected_availability: AFTER_CHECKER_LAUNCH_2026_EXACT_DATE_UNKNOWN
+    proposed_role: AUXILIARY_CANDIDATE
+    authority_level: AUXILIARY_CANDIDATE
+    training_eligible: false
+    development_eligible: false
+    evaluation_eligible: false
+    licence_status: UNKNOWN
+    access_status: NOT_RELEASED
+    candidate_uses:
+      - experimental_unit_mention_detection
+      - evidence_span_extraction
+      - reporting_completeness_classification
+      - manuscript_section_routing
+    forbidden_default_uses:
+      - experimental_unit_gold
+      - independent_n_gold
+      - allocation_gold
+      - biological_independence_gold
+      - pseudoreplication_verdict_gold
+      - interference_gold
+      - estimand_gold
+    public_note: >
+      Planned training dataset for an NLP checker assessing explicit reporting
+      of the experimental unit under ARRIVE Essential 10 item 1b. It is not
+      assumed to encode the underlying experimental structure. NC3Rs is not
+      claimed as a partner, approver or endorser of N-Truth. Default use is
+      reporting/evidence extraction only.
+    next_action:
+      - await_release
+      - inspect_annotation_schema
+      - inspect_licence
+      - evaluate_task_compatibility

@@ -1,0 +1,25 @@
+{
+  "algorithm": "sha256 over sorted 'relative_path:file_sha256' lines of included trees; root = sha256(newline-joined list)",
+  "included_roots": [
+    "raw",
+    "processed",
+    "training_ready",
+    "manifests/splits.json",
+    "manifests/datasets.json"
+  ],
+  "merkle_root": "5aec5f862168a0f38b29fcd71f29eb4d6d9dd072dda1a3c4c3786f4e7d8c7e40",
+  "second_resume_after_label_length_fix": {
+    "before": "6f5bcc4551365df0c6153e1545e8f9aa85f3eb7f13b3adcabdfec4afd85305d0",
+    "after_stabilize": "5aec5f862168a0f38b29fcd71f29eb4d6d9dd072dda1a3c4c3786f4e7d8c7e40",
+    "after_second": "5aec5f862168a0f38b29fcd71f29eb4d6d9dd072dda1a3c4c3786f4e7d8c7e40",
+    "idempotent": true,
+    "network_download_count": 0,
+    "reason": "training_ready alignment_report.json gained label_length_mismatches field; raw unchanged"
+  },
+  "sourcedata_alignment_train": {
+    "label_length_checked": true,
+    "label_length_mismatches": 0,
+    "matched_count": 60266
+  },
+  "idempotent": true
+}

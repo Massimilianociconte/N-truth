@@ -1,4 +1,4 @@
-"""Verifica hard, semantic e policy degli output scientifici del PRD v6."""
+"""Hard, semantic and policy verification of scientific outputs (PRD v6/v8/v9)."""
 
 from ntruth.verifier.hard import (
     HardVerificationResult,
@@ -31,6 +31,13 @@ from ntruth.verifier.validation_stack import (
     build_validation_stack_report,
     evidence_support_from_types,
 )
+from ntruth.verifier.v8 import (
+    V8VerificationCode,
+    V8VerificationIssue,
+    V8VerificationReport,
+    verify_v8_derived_claim_set,
+    verify_v8_pipeline_request,
+)
 
 __all__ = [
     "AUTHOR_ASSERTION_ALONE_CODE",
@@ -47,6 +54,9 @@ __all__ = [
     "SemanticVerificationResult",
     "ValidationLayer",
     "ValidationStackReport",
+    "V8VerificationCode",
+    "V8VerificationIssue",
+    "V8VerificationReport",
     "VerificationStatus",
     "apply_output_policy",
     "apply_rule_evaluation_output_policy",
@@ -56,4 +66,6 @@ __all__ = [
     "semantic_to_stage_checks",
     "verify_block",
     "verify_semantic",
+    "verify_v8_derived_claim_set",
+    "verify_v8_pipeline_request",
 ]

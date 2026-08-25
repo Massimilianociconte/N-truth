@@ -1,8 +1,12 @@
 # Desktop application
 
-La UI React/Vite è la superficie locale di N-Truth. La modalità primaria è ora il wizard
-prospettico D0 del PRD v6; il workspace retrospettivo rimane disponibile per import, revisione di
-`ExperimentBlock`, evidenza sincronizzata, correzioni append-only ed export della sessione.
+La UI React/Vite è servita dall'API FastAPI esclusivamente su loopback in `/app/` ed è la
+superficie locale di N-Truth. La modalità primaria è il wizard prospettico D0 del PRD v6;
+accanto convivono il Quick Design guidato PRD v8 (lane canonica con preview e conferma) e il
+workspace retrospettivo per import da percorso locale, revisione di `ExperimentBlock`, evidenza
+sincronizzata, elicitazione del target inferenziale, correzioni append-only con undo/redo,
+ricalcolo ed export della sessione. La conferma del target passa dalla stessa traccia di audit
+delle altre correzioni e non viene promossa automaticamente a gold.
 
 ## Avvio locale
 
@@ -14,13 +18,13 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-Vite ascolta esclusivamente su `http://127.0.0.1:5173/app/` e inoltra `/v1` e `/health` a
-`http://127.0.0.1:8765`. In assenza dell'API la UI resta utilizzabile con dati sintetici
-esplicitamente marcati come demo.
+Vite ascolta esclusivamente su `http://127.0.0.1:5173/app/` e inoltra le superfici versionate
+`/v1`, `/v7`, `/v8` e `/health` a `http://127.0.0.1:8765`. In assenza dell'API la UI resta
+utilizzabile con dati sintetici esplicitamente marcati come demo.
 
 ## Percorso prospettico D0
 
-La voce iniziale **Progettazione D0** applica il microdominio congelato della v0.1-D:
+La voce **Progettazione D0** applica il microdominio congelato della v0.1-D:
 
 1. colture cellulari su piastra;
 2. una domanda e un target inferenziale;
@@ -48,9 +52,20 @@ esempio `post-treatment | autore: AB | criterio: contaminazione`.
 Il contratto API accetta al massimo 10.000 righe, 8 MiB di body complessivo e 64 campi extra per
 riga. La sessione restituita e effimera nella memoria del processo; il riavvio dell'API la elimina.
 
-Il canvas grafico libero è classificato **esteso sperimentale · post-v0.1-D**. È disattivo per
-default e richiede un opt-in esplicito; il percorso D0 ufficiale usa wizard, tabelle, Core Profile
-e proof trace.
+## Quick Design v8, checkpoint e workspace retrospettivo
+
+La schermata iniziale accende due strade: il builder guidato PRD v8 (`QuickDesignWizard`) che
+compila un ReportBundle canonico con preview non vincolante e conferma atomica, e l'import da
+percorso locale per il flusso storico v7 deprecato, adattato a presentazione neutra tramite
+`/v7/analyze`. Lo stato scientifico resta dichiarato in apertura: `HANDOFF_ONLY`, `NOT_STARTED`,
+`HOLD`; nessun gate si apre dalla UI.
+
+Il progetto aperto è protetto da un checkpoint locale con autosave, rilevamento di chiusura
+improvvisa (crash) e ripristino automatico alla riapertura; il pannello **Stato e limiti**
+consente di chiudere il progetto ed eliminare il checkpoint della sessione. Nel workspace
+retrospettivo il canvas grafico libero è classificato **esteso sperimentale · post-v0.1-D**: è
+disattivo per default e richiede un opt-in esplicito, mentre il percorso D0 ufficiale usa wizard,
+tabelle, Core Profile e proof trace.
 
 ## Test e build
 
@@ -65,8 +80,9 @@ type-check del build è il controllo statico frontend disponibile.
 
 Per una verifica manuale minima:
 
-1. aprire `/app/` e confermare che **Progettazione D0** sia attiva;
-2. visitare i quattro passi, modificare un campo e controllare il riepilogo live;
+1. aprire `/app/` e confermare la welcome con i pin di stato;
+2. aprire **Progettazione D0**, visitare i quattro passi, modificare un campo e controllare il
+   riepilogo live;
 3. aprire **Verifica**, compilare con la API e controllare capability, hard verifier, checksum e
    stato canonico; seguire poi una premessa fino all'Evidence View;
 4. controllare che le fasi non osservate siano `NOT_REPORTED`;
@@ -75,7 +91,8 @@ Per una verifica manuale minima:
 
 ## Limiti della superficie desktop
 
-- I dati iniziali sono sintetici e non costituiscono un risultato scientifico.
+- I dati iniziali sono sintetici e non costituiscono un risultato scientifico; la demo storica non
+  è un ReportBundle v8 validato.
 - Senza l'API locale la compilazione fallisce in modo visibile e resta disponibile soltanto la
   preview client non autorevole; non esiste fallback silenzioso a un verdetto locale.
 - I dettagli tabellari della proof trace nella UI sono ancora una rappresentazione client; stato,

@@ -7,16 +7,8 @@ from pathlib import Path
 from typing import Any
 
 from ntruth.governance.lineage import CorpusSplit
-from ntruth.parser_ai.contract import ParserAIInput
-from ntruth.parser_ai.stages import (
-    CandidateGraphSet,
-    StageAuthority,
-    StageName,
-    StageProvenance,
-    StageStatus,
-    validate_candidate_graph_pair,
-)
-from ntruth.training.gold import GoldParserTarget
+from ntruth.mvt_a.stage_schema import assert_no_final_scientific_fields
+from ntruth.parser_ai.contract import ParserAIInput, ParserCandidateOutput
 from ntruth.training.manifest import dumps_dataset_manifest, dumps_preparation_report
 from ntruth.training.mlx_runtime import (
     SNAPSHOT_SCHEMA_VERSION,
@@ -26,54 +18,46 @@ from ntruth.training.mlx_runtime import (
     sha256_file,
     utc_now,
 )
-from ntruth.training.records import (
-    AnnotationStatus,
-    PreparedDataset,
-    PreparedRecord,
-    dumps_prepared_jsonl,
-)
+from ntruth.training.records import PreparedDataset, PreparedRecord
 
+PROMPT_TEMPLATE_VERSION = "ntruth-parser-candidate-v8-mlx-1.0.0"
 PARSER_CANDIDATE_GRAPH_TASK = "parser_candidate_graph_v6"
-PROMPT_TEMPLATE_VERSION = "ntruth-candidate-graph-v6-mlx-1.0.0"
 SYSTEM_PROMPT = """You are the local N-Truth candidate-fact parser.
 Read exactly one ParserAIInput v2.0.0 JSON object supplied by the user.
-Return exactly one JSON object matching CandidateGraphSet v1.0.0 with authority=model.
-Return candidate facts with evidence only: never emit a verdict, statistical test,
-power analysis, alert, accusation, Markdown, commentary, or facts not supported by
-the supplied source coordinates. Keep allocation and application levels distinct.
-If evidence is absent, represent alternatives and missing facts; do not guess.
-Provenance, input checksums, parent results, actor roles and timestamps are host-owned:
-their generated values are ignored and deterministically replaced before validation.
-Never emit determinability or a verdict. The deterministic N-Truth compiler, not
-this model, derives determinability and applies scientific rules."""
+Return exactly one JSON object matching ParserCandidateOutput v8.0.0.
+Return only evidence, candidate entities, candidate counts, candidate events,
+candidate relations and graphs, alternatives, missing predicates, confidence and
+coverage. Never emit final scientific claims, verdicts, tests, alerts, accusations,
+Markdown, commentary, or unsupported facts. Keep allocation and application
+candidates distinct. Preserve uncertainty and ask a clarification question rather
+than guessing. A separate deterministic compiler performs scientific derivation."""
 
 
 def _chat_record(prepared: PreparedRecord) -> dict[str, Any]:
     record = prepared.record
-    if record.task != PARSER_CANDIDATE_GRAPH_TASK:
+    if record.task != "parser_candidate_v8":
         raise MLXPipelineError(
-            f"record {record.record_id}: task atteso {PARSER_CANDIDATE_GRAPH_TASK}, "
-            f"ricevuto {record.task}"
+            f"record {record.record_id}: task atteso parser_candidate_v8, ricevuto {record.task}"
+        )
+    if prepared.split not in {CorpusSplit.TRAIN, CorpusSplit.VALIDATION}:
+        raise MLXPipelineError(
+            f"record {record.record_id}: split protetto non leggibile dal training view"
+        )
+    if not record.training_eligible:
+        raise MLXPipelineError(f"record {record.record_id}: non training-eligible")
+    if prepared.split is CorpusSplit.VALIDATION and not record.model_selection_eligible:
+        raise MLXPipelineError(
+            f"record {record.record_id}: VALIDATION richiede model-selection eligibility "
+            "per validation loss e selezione checkpoint"
         )
     try:
         parser_input = ParserAIInput.model_validate_json(record.input_text)
-        gold_target = GoldParserTarget.model_validate(record.target)
-        if gold_target.source_record_id != record.record_id:
-            raise ValueError("GoldParserTarget riferito a un record sorgente diverso")
-        if gold_target.guideline_version != record.provenance.guideline_version:
-            raise ValueError("versione guideline non coerente tra record e Parser Gold")
-        if record.annotation_status is not AnnotationStatus.ADJUDICATED:
-            raise ValueError("il Parser Gold per MLX richiede annotation_status=adjudicated")
-        if record.provenance.adjudication_id != gold_target.adjudication_id:
-            raise ValueError("adjudication_id non coerente tra record e Parser Gold")
-        candidate_graph = validate_candidate_graph_pair(
-            parser_input,
-            gold_target.model_candidate_graph(),
-        )
+        parser_output = record.target.candidate_target
     except (ValueError, TypeError) as exc:
         raise MLXPipelineError(
-            f"record {record.record_id}: contratto candidate/gold v6 non valido: {exc}"
+            f"record {record.record_id}: contratto Parser AI non valido: {exc}"
         ) from exc
+    assert_no_final_scientific_fields(parser_output.model_dump(mode="json"))
     user_content = json.dumps(
         parser_input.model_dump(mode="json"),
         ensure_ascii=False,
@@ -81,7 +65,7 @@ def _chat_record(prepared: PreparedRecord) -> dict[str, Any]:
         separators=(",", ":"),
     )
     assistant_content = json.dumps(
-        candidate_graph.model_dump(mode="json"),
+        parser_output.model_dump(mode="json"),
         ensure_ascii=False,
         sort_keys=True,
         separators=(",", ":"),
@@ -105,88 +89,66 @@ def _write_jsonl(path: Path, values: list[dict[str, Any]]) -> None:
     temporary.replace(path)
 
 
-def _runtime_smoke_chat_record(index: int) -> dict[str, Any]:
-    """Costruisce una riga smoke canonica, ricostruibile dal gate di integrità."""
+def _assert_validation_export_eligibility(dataset: PreparedDataset) -> None:
+    manifest_by_id = {record.record_id: record for record in dataset.manifest.records}
+    for prepared in dataset.records:
+        if prepared.split is not CorpusSplit.VALIDATION:
+            continue
+        if not prepared.record.training_eligible:
+            continue
+        if not prepared.record.model_selection_eligible:
+            raise MLXPipelineError(
+                f"record {prepared.record.record_id}: VALIDATION richiede "
+                "model-selection eligibility per validation loss e selezione checkpoint"
+            )
+        manifest_record = manifest_by_id.get(prepared.record.record_id)
+        if (
+            manifest_record is None
+            or manifest_record.split is not CorpusSplit.VALIDATION
+            or not manifest_record.training_eligible
+            or not manifest_record.model_selection_eligible
+        ):
+            raise MLXPipelineError(
+                f"record {prepared.record.record_id}: VALIDATION source manifest richiede "
+                "model-selection eligibility per validation loss e selezione checkpoint"
+            )
 
-    parser_input = ParserAIInput(
-        metadata={"runtime_smoke_index": index},
-        domain_hint="runtime_smoke_only",
-        language="en",
-    )
-    target = CandidateGraphSet(
-        result_id=f"runtime-smoke-result-{index:02d}",
-        stage=StageName.CANDIDATE_GRAPH_SET,
-        status=StageStatus.COMPLETE,
-        provenance=StageProvenance(
-            stage_run_id=f"runtime-smoke-stage-{index:02d}",
-            stage=StageName.CANDIDATE_GRAPH_SET,
-            authority=StageAuthority.MODEL,
-            producer="ntruth-runtime-smoke",
-            producer_version="1.0.0",
-        ),
-        graph_set_id=f"runtime-smoke-graph-{index:02d}",
-    )
-    target = validate_candidate_graph_pair(parser_input, target)
-    return {
-        "record_id": f"runtime-smoke-{index:02d}",
-        "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {
-                "role": "user",
-                "content": json.dumps(
-                    parser_input.model_dump(mode="json"),
-                    sort_keys=True,
-                    separators=(",", ":"),
-                ),
-            },
-            {
-                "role": "assistant",
-                "content": json.dumps(
-                    target.model_dump(mode="json"),
-                    sort_keys=True,
-                    separators=(",", ":"),
-                ),
-            },
-        ],
-    }
+
+def _revalidate_export_dataset(dataset: PreparedDataset) -> PreparedDataset:
+    try:
+        return PreparedDataset.model_validate(dataset.model_dump(mode="python"))
+    except (TypeError, ValueError) as exc:
+        raise MLXPipelineError(f"dataset MLX non valido al confine export: {exc}") from exc
 
 
 def export_mlx_dataset(dataset: PreparedDataset, output_dir: Path) -> dict[str, Any]:
-    """Scrive viste MLX autorizzate e conserva tutti i record nel manifest."""
+    """Scrive split MLX e manifest, senza duplicare le sorgenti raw."""
 
+    dataset = _revalidate_export_dataset(dataset)
     if output_dir.exists() and any(output_dir.iterdir()):
         raise MLXPipelineError(f"directory output non vuota: {output_dir}")
     output_dir.mkdir(parents=True, exist_ok=True)
-    by_split: dict[CorpusSplit, list[dict[str, Any]]] = {split: [] for split in CorpusSplit}
+    _assert_validation_export_eligibility(dataset)
+    by_split: dict[CorpusSplit, list[dict[str, Any]]] = {
+        CorpusSplit.TRAIN: [],
+        CorpusSplit.VALIDATION: [],
+    }
+    training_members: list[PreparedRecord] = []
     for prepared in dataset.records:
-        if prepared.split is CorpusSplit.TRAIN and prepared.record.training_eligible:
-            by_split[CorpusSplit.TRAIN].append(_chat_record(prepared))
-        elif (
-            prepared.split
-            in {
-                CorpusSplit.VALIDATION,
-                CorpusSplit.TEST,
-                CorpusSplit.EXTERNAL_CHALLENGE,
-            }
-            and prepared.record.evaluation_eligible
-        ):
+        if prepared.split in by_split and prepared.record.training_eligible:
             by_split[prepared.split].append(_chat_record(prepared))
+            training_members.append(prepared)
     for values in by_split.values():
         values.sort(key=lambda value: str(value["record_id"]))
 
     names = {
         CorpusSplit.TRAIN: "train.jsonl",
         CorpusSplit.VALIDATION: "valid.jsonl",
-        CorpusSplit.TEST: "test.jsonl",
-        CorpusSplit.EXTERNAL_CHALLENGE: "external.jsonl",
     }
     for split, filename in names.items():
         _write_jsonl(output_dir / filename, by_split[split])
     (output_dir / "dataset-manifest.source.json").write_text(
         dumps_dataset_manifest(dataset.manifest), encoding="utf-8"
-    )
-    (output_dir / "prepared-records.jsonl").write_text(
-        dumps_prepared_jsonl(dataset.records), encoding="utf-8"
     )
     (output_dir / "preparation-report.json").write_text(
         dumps_preparation_report(dataset.report), encoding="utf-8"
@@ -202,7 +164,6 @@ def export_mlx_dataset(dataset: PreparedDataset, output_dir: Path) -> dict[str, 
     for filename in (
         *names.values(),
         "dataset-manifest.source.json",
-        "prepared-records.jsonl",
         "preparation-report.json",
     ):
         path = output_dir / filename
@@ -211,18 +172,23 @@ def export_mlx_dataset(dataset: PreparedDataset, output_dir: Path) -> dict[str, 
         "schema_version": SNAPSHOT_SCHEMA_VERSION,
         "created_at": utc_now(),
         "dataset_id": dataset.manifest.dataset_id,
-        "parser_input_contract_version": "2.0.0",
-        "candidate_graph_contract_version": "1.0.0",
-        "gold_target_contract_version": "1.0.0",
+        "parser_contract_version": "8.0.0",
         "prompt_template_version": PROMPT_TEMPLATE_VERSION,
-        "training_approved": bool(by_split[CorpusSplit.TRAIN]),
+        "training_approved": bool(by_split[CorpusSplit.TRAIN])
+        and bool(by_split[CorpusSplit.VALIDATION])
+        and all(
+            prepared.split is not CorpusSplit.VALIDATION or prepared.record.model_selection_eligible
+            for prepared in training_members
+        ),
         "leakage_check_passed": bool(dataset.records) and leakage_free,
         "synthetic_only": bool(synthetic) and all(synthetic),
         "counts": {
             "train": len(by_split[CorpusSplit.TRAIN]),
             "valid": len(by_split[CorpusSplit.VALIDATION]),
-            "test": len(by_split[CorpusSplit.TEST]),
-            "external": len(by_split[CorpusSplit.EXTERNAL_CHALLENGE]),
+        },
+        "membership_counts": {
+            split.value: sum(prepared.split is split for prepared in dataset.records)
+            for split in CorpusSplit
         },
         "source_records_checksum": dataset.manifest.records_checksum,
         "source_manifest": {
@@ -231,7 +197,6 @@ def export_mlx_dataset(dataset: PreparedDataset, output_dir: Path) -> dict[str, 
             "dataset_id": dataset.manifest.dataset_id,
             "manifest_checksum": dataset.manifest.manifest_checksum(),
             "records_checksum": dataset.manifest.records_checksum,
-            "prepared_records_sha256": files["prepared-records.jsonl"]["sha256"],
             "preparation_report_sha256": files["preparation-report.json"]["sha256"],
         },
         "files": files,
@@ -247,8 +212,67 @@ def create_runtime_smoke_dataset(output_dir: Path) -> dict[str, Any]:
     if output_dir.exists() and any(output_dir.iterdir()):
         raise MLXPipelineError(f"directory smoke non vuota: {output_dir}")
     output_dir.mkdir(parents=True, exist_ok=True)
-    rows = [_runtime_smoke_chat_record(index) for index in range(8)]
-    split_rows = {"train": rows[:4], "valid": rows[4:6], "test": rows[6:]}
+    target = {
+        "contract_version": "8.0.0",
+        "experiment_blocks": [],
+        "evidence_spans": [],
+        "candidate_nodes": [],
+        "candidate_edges": [],
+        "factors": [],
+        "endpoints": [],
+        "contrasts": [],
+        "candidate_estimands": [],
+        "candidate_counts": [],
+        "candidate_events": [],
+        "candidate_graphs": [],
+        "alternatives": [],
+        "clarification_questions": [],
+        "missing_predicates": [],
+        "coverage": {
+            "status": "PARTIAL",
+            "covered_artifact_ids": [],
+            "missing_artifact_ids": ["runtime-smoke-no-source"],
+            "rationale": "Technical smoke only; no scientific source is supplied.",
+        },
+        "model_metadata": {
+            "adapter_name": "runtime-smoke-gold",
+            "model_name": "synthetic",
+            "model_version": "1",
+            "model_checksum": None,
+            "prompt_template_version": PROMPT_TEMPLATE_VERSION,
+            "contract_version": "8.0.0",
+            "local_execution": True,
+        },
+    }
+    ParserCandidateOutput.model_validate(target)
+    rows = []
+    for index in range(8):
+        parser_input = ParserAIInput(
+            metadata={"runtime_smoke_index": index},
+            domain_hint="runtime_smoke_only",
+            language="en",
+        )
+        rows.append(
+            {
+                "record_id": f"runtime-smoke-{index:02d}",
+                "messages": [
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {
+                        "role": "user",
+                        "content": json.dumps(
+                            parser_input.model_dump(mode="json"),
+                            sort_keys=True,
+                            separators=(",", ":"),
+                        ),
+                    },
+                    {
+                        "role": "assistant",
+                        "content": json.dumps(target, sort_keys=True, separators=(",", ":")),
+                    },
+                ],
+            }
+        )
+    split_rows = {"train": rows[:4], "valid": rows[4:]}
     files = {}
     for split, values in split_rows.items():
         path = output_dir / f"{split}.jsonl"
@@ -263,9 +287,6 @@ def create_runtime_smoke_dataset(output_dir: Path) -> dict[str, Any]:
         "synthetic_only": True,
         "runtime_smoke_only": True,
         "scientific_metrics_allowed": False,
-        "parser_input_contract_version": "2.0.0",
-        "candidate_graph_contract_version": "1.0.0",
-        "prompt_template_version": PROMPT_TEMPLATE_VERSION,
         "counts": {name: len(values) for name, values in split_rows.items()},
         "files": files,
     }

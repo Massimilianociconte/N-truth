@@ -32,12 +32,11 @@ class DeduplicationResult:
     issues: tuple[ValidationIssue, ...]
 
 
-def canonical_rank(record: NormalizedRecord) -> tuple[int, int, str]:
+def canonical_rank(record: NormalizedRecord) -> tuple[int, str]:
     """Preferisce la supervisione piu matura, poi un ID stabile."""
 
     return (
         -_STATUS_PRIORITY[record.record.annotation_status],
-        -int(record.record.training_eligible),
         record.record.record_id,
     )
 
@@ -263,9 +262,7 @@ def _conflicting_duplicate_split_issues(
     issues: list[ValidationIssue] = []
     for members in members_by_root.values():
         requested = {
-            member.record.requested_split
-            for member in members
-            if member.record.requested_split is not None
+            member.record.split for member in members if member.record.split.value != "UNASSIGNED"
         }
         if len(requested) <= 1:
             continue

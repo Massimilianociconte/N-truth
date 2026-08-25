@@ -1,0 +1,268 @@
+{
+  "schema_version": "8.0.0",
+  "theory_id": "ntruth-derivation-theory",
+  "theory_version": "0.1.0",
+  "profile_id": "simple_cell_culture",
+  "profile_version": "0.1.0",
+  "profile_closure_asset_id": "simple-cell-culture-profile-predicate-closure",
+  "profile_closure_asset_version": "0.1.0",
+  "profile_closure_checksum": "1080f48e37b719351554c406d85e8cce7c2106f9f01ee5b8168413f57a747698",
+  "reference_registry_id": "ntruth-reference-role-registry",
+  "reference_registry_version": "0.1.0",
+  "clauses": [
+    {
+      "clause_id": "DT-A-ASSIGNMENT-UNIT",
+      "letter": "A",
+      "clause_version": "0.1.0",
+      "title": "Assignment unit",
+      "normative_statement": "Assignment unit is derivable only with factor and levels, an assignment event or equivalent mechanism, a candidate unit, and separability support.",
+      "required_predicates": [
+        {
+          "predicate_id": "factor",
+          "rationale": "A factor relevant to the inferential query must be identified."
+        },
+        {
+          "predicate_id": "factor_levels",
+          "rationale": "At least two factor levels must be defined for the contrast."
+        },
+        {
+          "predicate_id": "assignment_event_or_equivalent_mechanism",
+          "rationale": "Assignment requires an event or an explicitly equivalent mechanism."
+        },
+        {
+          "predicate_id": "candidate_unit",
+          "rationale": "The unit receiving assignment must be identified."
+        },
+        {
+          "predicate_id": "assignment_separability_support",
+          "rationale": "Separability must be supported; keywords or a well label are insufficient."
+        }
+      ],
+      "output_claim_types": [
+        "ASSIGNMENT_UNIT",
+        "EXPERIMENTAL_UNIT_CANDIDATE"
+      ],
+      "forbidden_inferences": [
+        "Do not infer assignment independence from keywords, well identity, or biological-source independence."
+      ],
+      "review_requirements": []
+    },
+    {
+      "clause_id": "DT-B-EXPERIMENTAL-UNIT",
+      "letter": "B",
+      "clause_version": "0.1.0",
+      "title": "Experimental unit",
+      "normative_statement": "Experimental unit is derivable when the relevant treatment is assigned and realized separably at the candidate unit.",
+      "required_predicates": [
+        {
+          "predicate_id": "relevant_treatment_assignment",
+          "rationale": "The query-relevant treatment assignment must be identified."
+        },
+        {
+          "predicate_id": "realized_treatment_application_or_exposure",
+          "rationale": "The realized application or exposure must be represented."
+        },
+        {
+          "predicate_id": "candidate_unit",
+          "rationale": "The candidate unit must be identified independently of source lineage."
+        },
+        {
+          "predicate_id": "assignment_separability",
+          "rationale": "Assignment must be separable at the candidate unit."
+        },
+        {
+          "predicate_id": "realized_exposure_separability",
+          "rationale": "Realized exposure must preserve separability at the candidate unit."
+        }
+      ],
+      "output_claim_types": [
+        "EXPERIMENTAL_UNIT"
+      ],
+      "forbidden_inferences": [
+        "Do not use biological-source independence as assignment independence and do not change EU automatically for interference."
+      ],
+      "review_requirements": [
+        {
+          "issue_id": "SRR-V8-017",
+          "rationale": "No universal reviewed mapping from unknown interference topology to effective exposure unit exists."
+        }
+      ]
+    },
+    {
+      "clause_id": "DT-C-EXPERIMENTAL-UNIT-COUNT",
+      "letter": "C",
+      "clause_version": "0.1.0",
+      "title": "Experimental-unit count",
+      "normative_statement": "Experimental-unit count is the number of distinct experimental-unit instances in the query contrast and pertinent lifecycle scope, per group or paired set.",
+      "required_predicates": [
+        {
+          "predicate_id": "experimental_unit_instances",
+          "rationale": "Distinct experimental-unit instances must be identified."
+        },
+        {
+          "predicate_id": "inferential_query",
+          "rationale": "The count must be scoped to an InferentialQuery."
+        },
+        {
+          "predicate_id": "contrast_scope",
+          "rationale": "The factor contrast must be explicit."
+        },
+        {
+          "predicate_id": "lifecycle_phase",
+          "rationale": "The pertinent planned or executed lifecycle phase must be explicit."
+        },
+        {
+          "predicate_id": "group_or_paired_set",
+          "rationale": "The group or paired-set scope must be explicit."
+        }
+      ],
+      "output_claim_types": [
+        "EXPERIMENTAL_UNIT_COUNT"
+      ],
+      "forbidden_inferences": [
+        "Repeated measures, cells, fields, and analytical rows do not multiply experimental-unit count."
+      ],
+      "review_requirements": []
+    },
+    {
+      "clause_id": "DT-D-BIOLOGICAL-SOURCE-COUNT",
+      "letter": "D",
+      "clause_version": "0.1.0",
+      "title": "Biological-source count",
+      "normative_statement": "Biological-source count derives exclusively from confirmed provenance and remains distinct from experimental-unit count.",
+      "required_predicates": [
+        {
+          "predicate_id": "confirmed_biological_provenance",
+          "rationale": "Source lineage must be confirmed rather than inferred from an identifier."
+        },
+        {
+          "predicate_id": "biological_source_instances",
+          "rationale": "Distinct biological-source instances must be represented."
+        },
+        {
+          "predicate_id": "inferential_query",
+          "rationale": "The source count must be reported in query scope."
+        }
+      ],
+      "output_claim_types": [
+        "BIOLOGICAL_SOURCE_COUNT"
+      ],
+      "forbidden_inferences": [
+        "Biological-source count does not automatically modify experimental-unit count."
+      ],
+      "review_requirements": []
+    },
+    {
+      "clause_id": "DT-E-INTERFERENCE-ESTIMAND",
+      "letter": "E",
+      "clause_version": "0.1.0",
+      "title": "Interference and estimand support",
+      "normative_statement": "Interference status changes exposure, estimand, or scope consequences; no-known-path is not proof of absence and documented interference requires exposure mapping.",
+      "required_predicates": [
+        {
+          "predicate_id": "interference_status",
+          "rationale": "Interference must be represented as no-known-path, possible, documented, or unknown."
+        },
+        {
+          "predicate_id": "inferential_query",
+          "rationale": "The consequence must be scoped to the query."
+        },
+        {
+          "predicate_id": "claim_no_interference_dependency",
+          "rationale": "The rule must state whether the claim depends on a no-interference assumption."
+        }
+      ],
+      "output_claim_types": [
+        "INTERFERENCE_ESTIMAND_SUPPORT"
+      ],
+      "forbidden_inferences": [
+        "Do not treat no-known-path as absence and do not automatically change experimental unit for interference."
+      ],
+      "review_requirements": [
+        {
+          "issue_id": "SRR-V8-017",
+          "rationale": "Unsupported exposure topology cannot select an effective exposure unit or alter EU automatically."
+        }
+      ]
+    },
+    {
+      "clause_id": "DT-F-ANALYTICAL-DEPENDENCE",
+      "letter": "F",
+      "clause_version": "0.1.0",
+      "title": "Analytical dependence",
+      "normative_statement": "Analytical grouping, repeated measures, and measurement dependence generate analytical findings and statistical handoff without modifying EU or source count.",
+      "required_predicates": [
+        {
+          "predicate_id": "analytical_grouping",
+          "rationale": "Grouping or aggregation used for analysis must be represented."
+        },
+        {
+          "predicate_id": "repeated_measure_status",
+          "rationale": "Repeated or correlated measurement status must be represented."
+        },
+        {
+          "predicate_id": "measurement_process",
+          "rationale": "The measurement or analytical pipeline must be identified."
+        },
+        {
+          "predicate_id": "inferential_query",
+          "rationale": "The analytical consequence must be query scoped."
+        }
+      ],
+      "output_claim_types": [
+        "ANALYTICAL_UNIT",
+        "STATISTICAL_HANDOFF_REQUIREMENTS"
+      ],
+      "forbidden_inferences": [
+        "Analytical dependence cannot create or eliminate experimental units or biological sources."
+      ],
+      "review_requirements": []
+    },
+    {
+      "clause_id": "DT-G-INFERENCE-SCOPE",
+      "letter": "G",
+      "clause_version": "0.1.0",
+      "title": "Inference scope",
+      "normative_statement": "Inference scope derives from query, source diversity, protocol, external replication, exposure or interference, and profile coverage; not from numerosity alone.",
+      "required_predicates": [
+        {
+          "predicate_id": "inferential_query",
+          "rationale": "Factor, contrast, endpoint, timepoint, estimand, and population define scope."
+        },
+        {
+          "predicate_id": "source_diversity",
+          "rationale": "Confirmed source diversity qualifies source-level generalization."
+        },
+        {
+          "predicate_id": "protocol_scope",
+          "rationale": "Protocol and execution context bound inference."
+        },
+        {
+          "predicate_id": "external_replication",
+          "rationale": "External replication status must be explicit."
+        },
+        {
+          "predicate_id": "exposure_interference",
+          "rationale": "Exposure and interference consequences must be retained."
+        },
+        {
+          "predicate_id": "profile_coverage",
+          "rationale": "Profile predicate coverage and known gaps must be declared."
+        }
+      ],
+      "output_claim_types": [
+        "INFERENCE_SCOPE"
+      ],
+      "forbidden_inferences": [
+        "Do not infer generalization from experimental-unit count or raw numerosity alone."
+      ],
+      "review_requirements": [
+        {
+          "issue_id": "SRR-V8-021",
+          "rationale": "Reviewed theory references and real derivation gold are not yet available."
+        }
+      ]
+    }
+  ],
+  "declared_checksum": "aa37639893e2ba7732496f2eb6a121291e0aad2d3bae51501c8f1ea9e9b6464f"
+}

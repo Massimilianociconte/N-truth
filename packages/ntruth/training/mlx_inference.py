@@ -6,15 +6,20 @@ import json
 import math
 import re
 import shutil
+import tempfile
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
 from ntruth.governance.lineage import CorpusSplit
-from ntruth.parser_ai.contract import ParserAIInput
-from ntruth.parser_ai.stages import CandidateGraphSet, validate_candidate_graph_pair
+from ntruth.parser_ai.contract import (
+    ParserAIInput,
+    ParserCandidateOutput,
+    validate_candidate_contract_pair,
+)
+from ntruth.schemas.core import content_checksum
 from ntruth.training.calibration import ConfidenceObservation, calibration_report
-from ntruth.training.metrics_v6 import (
+from ntruth.training.metrics import (
     aggregate_scores,
     confidence_observations,
     parse_prediction_text,
@@ -22,36 +27,48 @@ from ntruth.training.metrics_v6 import (
     score_output,
 )
 from ntruth.training.mlx_runtime import (
+    TRAINING_RUN_LINEAGE_STATE_FIELDS,
     MLXPipelineError,
+    TrainingLineageReviewRequired,
+    TrainingRunLineagePins,
     _model_path,
     _write_json,
     iter_jsonl,
+    iter_verified_jsonl,
     load_profile,
+    load_training_design_lineage_pins,
+    resolve_training_lineage_inputs,
     sha256_file,
+    stage_verified_training_view,
     utc_now,
     validate_snapshot_integrity,
     verify_model,
+    verify_staged_training_view,
+)
+from ntruth.training.protected_evaluation import (
+    ProtectedEvaluationReviewRequired,
+    validate_protected_evaluation_snapshot,
+    validate_protected_source_manifest,
 )
 from ntruth.training.records import (
     DatasetManifest,
     ManifestRecord,
-    PreparedRecord,
     jaccard_similarity,
     normalize_text,
     token_shingles,
 )
 
-EVALUATION_LINEAGE_SCHEMA_VERSION = "1.0.0"
+EVALUATION_LINEAGE_SCHEMA_VERSION = "8.0.0"
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _EVALUATION_SPLIT_FILES = {
     "validation": "valid.jsonl",
     "test": "test.jsonl",
-    "external": "external.jsonl",
+    "external_challenge": "external-challenge.jsonl",
 }
 _SNAPSHOT_COUNT_NAMES = {
     "validation": "valid",
     "test": "test",
-    "external": "external",
+    "external_challenge": "external_challenge",
 }
 _EXPORTABLE_RUN_STATUSES = {"completed_maximum_phases", "early_stopped"}
 _EVALUABLE_RUN_STATUSES = {*_EXPORTABLE_RUN_STATUSES, "stopped_memory_ceiling"}
@@ -99,8 +116,8 @@ def _verify_best_run(
 
     state_path = run_dir / "run-state.json"
     state = _read_json_object(state_path, label="run-state")
-    if state.get("schema_version") != "2.0.0":
-        raise MLXPipelineError("run-state v2 obbligatorio per inferenza ed export")
+    if state.get("schema_version") != "8.0.0":
+        raise MLXPipelineError("run-state v8 obbligatorio per inferenza ed export")
     status = state.get("status")
     if status not in _EVALUABLE_RUN_STATUSES:
         raise MLXPipelineError(f"run non valutabile nello stato {status!r}")
@@ -177,6 +194,29 @@ def _verify_best_run(
         not isinstance(dataset_snapshot_path, str) or not dataset_snapshot_path.strip()
     ):
         raise MLXPipelineError("dataset_snapshot_path non valido nel run-state")
+    try:
+        recorded_training_lineage = TrainingRunLineagePins.model_validate(
+            {field: state.get(field) for field in TRAINING_RUN_LINEAGE_STATE_FIELDS}
+        )
+        current_training_lineage = resolve_training_lineage_inputs(
+            design_lineage_pins=load_training_design_lineage_pins(
+                Path(recorded_training_lineage.training_design_lineage_artifact_path)
+            ),
+            design_lineage_artifact_path=Path(
+                recorded_training_lineage.training_design_lineage_artifact_path
+            ),
+            protected_source_manifest_path=Path(
+                recorded_training_lineage.protected_source_manifest_path
+            ),
+        )
+    except (ValueError, TrainingLineageReviewRequired) as exc:
+        raise ProtectedEvaluationReviewRequired(
+            f"SCIENTIFIC_REVIEW_REQUIRED: sealed run lineage is incomplete or stale: {exc}"
+        ) from exc
+    if current_training_lineage != recorded_training_lineage:
+        raise ProtectedEvaluationReviewRequired(
+            "SCIENTIFIC_REVIEW_REQUIRED: sealed run design/source lineage changed"
+        )
 
     return {
         "schema_version": EVALUATION_LINEAGE_SCHEMA_VERSION,
@@ -197,6 +237,7 @@ def _verify_best_run(
         "adapter_path": str(expected_adapter_dir),
         "adapter_sha256": adapter_sha256,
         "adapter_config_sha256": adapter_config_sha256,
+        **recorded_training_lineage.state_payload(),
     }
 
 
@@ -239,20 +280,33 @@ def _manifest_record_tokens(record: ManifestRecord) -> frozenset[str]:
     )
 
 
-def _prepared_records(snapshot: Mapping[str, Any], *, label: str) -> tuple[PreparedRecord, ...]:
+def _snapshot_split_inputs(
+    snapshot: Mapping[str, Any],
+    *,
+    filename: str,
+    label: str,
+) -> tuple[tuple[str, str], ...]:
     root = snapshot.get("path")
     if not isinstance(root, str) or not root:
         raise MLXPipelineError(f"path dello snapshot {label} assente")
-    path = Path(root) / "prepared-records.jsonl"
-    records: list[PreparedRecord] = []
+    path = Path(root) / filename
+    inputs: list[tuple[str, str]] = []
     for row in iter_jsonl(path):
-        try:
-            records.append(PreparedRecord.model_validate(row))
-        except ValueError as exc:
-            raise MLXPipelineError(
-                f"prepared record dello snapshot {label} non valido: {exc}"
-            ) from exc
-    return tuple(records)
+        record_id = str(row.get("record_id") or "")
+        messages = row.get("messages")
+        if not isinstance(messages, list):
+            raise MLXPipelineError(f"riga senza messaggi in {path}")
+        user_contents = [
+            item.get("content")
+            for item in messages
+            if isinstance(item, dict) and item.get("role") == "user"
+        ]
+        raw = user_contents[-1] if user_contents else None
+        if not isinstance(raw, str):
+            raise MLXPipelineError(f"input utente assente in {path} per {record_id}")
+        parser_input = ParserAIInput.model_validate_json(raw)
+        inputs.append((record_id, normalize_text(parser_input.input_text)))
+    return tuple(inputs)
 
 
 def _assert_external_snapshot_disjoint(
@@ -289,34 +343,35 @@ def _assert_external_snapshot_disjoint(
             + "; ".join(token_collisions[:5])
         )
 
-    training_prepared = _prepared_records(training_snapshot, label="training")
+    training_inputs = _snapshot_split_inputs(
+        training_snapshot,
+        filename="train.jsonl",
+        label="training",
+    )
     external_ids = {record.record_id for record in external_records}
-    external_prepared = tuple(
-        record
-        for record in _prepared_records(external_snapshot, label="external")
-        if record.record.record_id in external_ids
+    external_inputs = tuple(
+        item
+        for item in _snapshot_split_inputs(
+            external_snapshot,
+            filename="external-challenge.jsonl",
+            label="external",
+        )
+        if item[0] in external_ids
     )
     training_shingles = {
-        prepared.record.record_id: token_shingles(
-            prepared.normalized_input,
-            _EXTERNAL_SHINGLE_SIZE,
-        )
-        for prepared in training_prepared
+        record_id: token_shingles(text, _EXTERNAL_SHINGLE_SIZE)
+        for record_id, text in training_inputs
     }
     near_collisions: list[str] = []
     comparisons = 0
-    for external_prepared_record in external_prepared:
-        external_shingles = token_shingles(
-            external_prepared_record.normalized_input,
-            _EXTERNAL_SHINGLE_SIZE,
-        )
+    for external_record_id, external_text in external_inputs:
+        external_shingles = token_shingles(external_text, _EXTERNAL_SHINGLE_SIZE)
         for training_record_id, shingles in training_shingles.items():
             comparisons += 1
             similarity = jaccard_similarity(external_shingles, shingles)
             if similarity >= _EXTERNAL_NEAR_DUPLICATE_THRESHOLD:
                 near_collisions.append(
-                    f"{external_prepared_record.record.record_id}<->{training_record_id}:"
-                    f"{similarity:.6f}"
+                    f"{external_record_id}<->{training_record_id}:{similarity:.6f}"
                 )
     if near_collisions:
         raise MLXPipelineError(
@@ -388,11 +443,60 @@ def _verify_evaluation_snapshot(
             f"mismatch split/file: {declared_split} richiede il file manifestato {filename}"
         )
 
+    if declared_split in {"test", "external_challenge"}:
+        required_design_pins = (
+            "planned_design_artifact_id",
+            "planned_design_artifact_sha256",
+            "executed_design_artifact_id",
+            "executed_design_artifact_sha256",
+        )
+        missing_design_pins = tuple(
+            key for key in required_design_pins if run_lineage.get(key) is None
+        )
+        if missing_design_pins:
+            raise ProtectedEvaluationReviewRequired(
+                "SCIENTIFIC_REVIEW_REQUIRED: protected evaluation requires authoritative "
+                "planned_design/executed_design run pins: " + repr(missing_design_pins)
+            )
+        source_manifest_value = run_lineage.get("protected_source_manifest_path")
+        if not isinstance(source_manifest_value, str) or not source_manifest_value.strip():
+            raise ProtectedEvaluationReviewRequired(
+                "SCIENTIFIC_REVIEW_REQUIRED: protected evaluation requires an "
+                "authoritative source DatasetManifest path"
+            )
+        source_manifest_path = Path(source_manifest_value).resolve()
+        manifest = validate_protected_evaluation_snapshot(
+            data_dir,
+            declared_split=declared_split,
+            source_manifest_path=source_manifest_path,
+        )
+        for key in required_design_pins:
+            expected = run_lineage.get(key)
+            if getattr(manifest.lineage, key) != expected:
+                raise MLXPipelineError(f"protected evaluation lineage mismatch: {key}")
+        for run_key, lineage_key in (
+            ("protected_source_manifest_id", "source_manifest_id"),
+            ("protected_source_manifest_sha256", "source_manifest_sha256"),
+        ):
+            if run_lineage.get(run_key) != getattr(manifest.lineage, lineage_key):
+                raise MLXPipelineError(f"protected evaluation lineage mismatch: {run_key}")
+        source_manifest = validate_protected_source_manifest(source_manifest_path, manifest)
+        return expected_path, {
+            "snapshot_id": manifest.snapshot_id,
+            "snapshot_sha256": manifest.snapshot_sha256,
+            "manifest_sha256": sha256_file(data_dir / "protected-evaluation-manifest.json"),
+            "counts": {declared_split: manifest.record_count},
+            "file_hashes": {manifest.payload_file: manifest.payload_sha256},
+            "runtime_smoke_only": False,
+            "protected_evaluation": manifest.model_dump(mode="json"),
+            "source_dataset_manifest": source_manifest.model_dump(mode="json"),
+        }
+
     smoke_test = run_lineage.get("smoke_test") is True
     snapshot = validate_snapshot_integrity(
         data_dir,
         smoke_test=smoke_test,
-        require_nonempty_training_splits=declared_split != "external",
+        require_nonempty_training_splits=declared_split != "external_challenge",
     )
     count_name = _SNAPSHOT_COUNT_NAMES[declared_split]
     if int(snapshot["counts"].get(count_name, 0)) < 1:
@@ -453,6 +557,83 @@ def _evaluation_lineage(
     return lineage
 
 
+def validate_protected_release_lineage(
+    *,
+    metrics_snapshot: Mapping[str, Any],
+    calibration_snapshot: Mapping[str, Any],
+    run_lineage: Mapping[str, Any],
+) -> dict[str, str]:
+    """Reconcile final TEST pins without conflating TEST with the training view."""
+
+    protected = metrics_snapshot.get("protected_evaluation")
+    source_raw = metrics_snapshot.get("source_dataset_manifest")
+    if not isinstance(protected, dict) or not isinstance(source_raw, dict):
+        raise MLXPipelineError("protected release lacks custodial/source manifest pins")
+    try:
+        source = DatasetManifest.model_validate(source_raw)
+    except ValueError as exc:
+        raise MLXPipelineError(f"protected release source manifest invalid: {exc}") from exc
+    if protected.get("split") != "TEST":
+        raise MLXPipelineError(
+            "SCIENTIFIC_REVIEW_REQUIRED: External Challenge release requires Task 7"
+        )
+    lineage = protected.get("lineage")
+    if not isinstance(lineage, dict):
+        raise MLXPipelineError("protected release lineage is absent")
+    for key in (
+        "planned_design_artifact_id",
+        "planned_design_artifact_sha256",
+        "executed_design_artifact_id",
+        "executed_design_artifact_sha256",
+    ):
+        _require_equal(lineage.get(key), run_lineage.get(key), label=f"protected release {key}")
+    _require_equal(
+        protected.get("snapshot_id"),
+        metrics_snapshot.get("snapshot_id"),
+        label="protected metrics snapshot id",
+    )
+    _require_equal(
+        protected.get("snapshot_sha256"),
+        metrics_snapshot.get("snapshot_sha256"),
+        label="protected metrics snapshot hash",
+    )
+    _require_equal(
+        lineage.get("source_manifest_id"),
+        source.dataset_id,
+        label="protected source manifest id",
+    )
+    test_members = tuple(record for record in source.records if record.split is CorpusSplit.TEST)
+    test_member_ids = sorted(record.record_id for record in test_members)
+    if protected.get("record_count") != len(test_member_ids) or protected.get(
+        "record_ids_checksum"
+    ) != content_checksum(test_member_ids):
+        raise MLXPipelineError(
+            "protected TEST membership/count checksum does not match source DatasetManifest"
+        )
+    if not test_members or any(not record.release_eligible for record in test_members):
+        raise MLXPipelineError("protected TEST source membership is not release-eligible")
+    training_hash = run_lineage.get("run_dataset_snapshot_sha256")
+    _require_equal(
+        calibration_snapshot.get("snapshot_sha256"),
+        training_hash,
+        label="calibration snapshot rispetto al training snapshot",
+    )
+    protected_hash = metrics_snapshot.get("snapshot_sha256")
+    if protected_hash == training_hash:
+        raise MLXPipelineError("protected TEST snapshot must remain distinct from training")
+    return {
+        "protected_snapshot_id": str(metrics_snapshot["snapshot_id"]),
+        "protected_snapshot_sha256": str(protected_hash),
+        "training_snapshot_sha256": str(training_hash),
+        "source_manifest_id": source.dataset_id,
+        "source_manifest_sha256": str(lineage["source_manifest_sha256"]),
+        "planned_design_artifact_id": str(lineage["planned_design_artifact_id"]),
+        "planned_design_artifact_sha256": str(lineage["planned_design_artifact_sha256"]),
+        "executed_design_artifact_id": str(lineage["executed_design_artifact_id"]),
+        "executed_design_artifact_sha256": str(lineage["executed_design_artifact_sha256"]),
+    }
+
+
 def _percentile(values: list[int], fraction: float) -> float:
     if not values:
         raise ValueError("percentile su insieme vuoto")
@@ -471,9 +652,39 @@ def tokenize_report(
     repo_root: Path,
     data_dir: Path,
     output_path: Path,
+    *,
+    smoke_test: bool = False,
 ) -> dict[str, Any]:
     """Misura le lunghezze reali senza produrre copie tokenizzate permanenti."""
 
+    verified = validate_snapshot_integrity(data_dir, smoke_test=smoke_test)
+    with tempfile.TemporaryDirectory(prefix="ntruth-tokenize-view-") as temporary:
+        staged = stage_verified_training_view(
+            data_dir,
+            Path(temporary) / "verified-training-view",
+            verified_snapshot=verified,
+            smoke_test=smoke_test,
+        )
+        return _tokenize_verified_report(
+            profile_path,
+            repo_root,
+            Path(str(staged["path"])),
+            output_path,
+            verified,
+        )
+
+
+def _tokenize_verified_report(
+    profile_path: Path,
+    repo_root: Path,
+    verified_data_dir: Path,
+    output_path: Path,
+    snapshot: Mapping[str, Any],
+) -> dict[str, Any]:
+    expected_hashes = {
+        name: snapshot["file_hashes"][name] for name in ("train.jsonl", "valid.jsonl")
+    }
+    verify_staged_training_view(verified_data_dir, expected_hashes)
     profile = load_profile(profile_path)
     model_path = _model_path(repo_root, profile)
     if not (model_path / "model.safetensors").is_file():
@@ -493,12 +704,19 @@ def tokenize_report(
         "created_at": utc_now(),
         "model_path": str(model_path),
         "maximum_sequence_length": maximum,
+        "dataset_snapshot_id": snapshot["snapshot_id"],
+        "dataset_snapshot_sha256": snapshot["snapshot_sha256"],
+        "dataset_manifest_sha256": snapshot["manifest_sha256"],
         "splits": {},
     }
     all_lengths: list[int] = []
-    for split in ("train", "valid", "test"):
+    for split in ("train", "valid"):
         lengths: list[int] = []
-        for record in iter_jsonl(data_dir / f"{split}.jsonl"):
+        filename = f"{split}.jsonl"
+        for record in iter_verified_jsonl(
+            verified_data_dir / filename,
+            expected_sha256=str(expected_hashes[filename]),
+        ):
             messages = record.get("messages")
             if not isinstance(messages, list):
                 raise MLXPipelineError(f"record {split} senza messages")
@@ -545,7 +763,7 @@ def _chat_prompt(tokenizer: Any, messages: list[dict[str, Any]]) -> str:
 
 def _gold_and_prompt(
     record: dict[str, Any],
-) -> tuple[str, list[dict[str, Any]], ParserAIInput, CandidateGraphSet]:
+) -> tuple[str, list[dict[str, Any]], ParserAIInput, ParserCandidateOutput]:
     record_id = str(record.get("record_id") or record.get("sample_id") or "")
     if not record_id:
         raise MLXPipelineError("record di evaluation senza record_id/sample_id")
@@ -564,7 +782,7 @@ def _gold_and_prompt(
         raise MLXPipelineError(f"record {record_id}: ParserAIInput user assente")
     try:
         parser_input = ParserAIInput.model_validate_json(user_messages[-1]["content"])
-        gold = validate_candidate_graph_pair(parser_input, parse_prediction_text(content))
+        gold = validate_candidate_contract_pair(parser_input, parse_prediction_text(content))
     except (ValueError, TypeError) as exc:
         raise MLXPipelineError(f"record {record_id}: coppia input/gold non valida: {exc}") from exc
     return record_id, prompt_messages, parser_input, gold
@@ -575,8 +793,8 @@ def _retry_validation_message(validation_error: str) -> dict[str, str]:
         "role": "user",
         "content": (
             "The previous response failed JSON/schema validation. Return exactly "
-            "one JSON object matching CandidateGraphSet v1.0.0 with "
-            "authority=model; never emit determinability or a verdict; do not "
+            "one JSON object matching ParserCandidateOutput v8.0.0; never emit a "
+            "final scientific claim or verdict; do not "
             "add facts, prose or Markdown. Validation error: " + str(validation_error)[:500]
         ),
     }
@@ -597,9 +815,9 @@ def _attempt_messages(
 def _prediction_payload(
     *,
     record_id: str,
-    gold: CandidateGraphSet,
+    gold: ParserCandidateOutput,
     raw_outputs: list[str],
-    predicted: CandidateGraphSet | None,
+    predicted: ParserCandidateOutput | None,
     validation_error: str | None,
 ) -> tuple[dict[str, Any], dict[str, Any], tuple[ConfidenceObservation, ...]]:
     if predicted is None:
@@ -767,7 +985,7 @@ def predict_and_score(
         )
         bundle_metrics: list[dict[str, Any]] = [first_metrics]
         raw_outputs_by_index: list[list[str]] = [[raw] for raw in first_raws]
-        predicted_by_index: list[CandidateGraphSet | None] = []
+        predicted_by_index: list[ParserCandidateOutput | None] = []
         error_by_index: list[str | None] = []
         retry_indices: list[int] = []
         retry_messages: list[list[dict[str, Any]]] = []
@@ -775,7 +993,7 @@ def predict_and_score(
             del record_id, gold
             raw = first_raws[index]
             try:
-                predicted = validate_candidate_graph_pair(
+                predicted = validate_candidate_contract_pair(
                     parser_input,
                     parse_prediction_text(raw),
                 )
@@ -810,7 +1028,7 @@ def predict_and_score(
                 raw_outputs_by_index[index].append(raw)
                 parser_input = prepared[index][2]
                 try:
-                    predicted_by_index[index] = validate_candidate_graph_pair(
+                    predicted_by_index[index] = validate_candidate_contract_pair(
                         parser_input,
                         parse_prediction_text(raw),
                     )
@@ -850,7 +1068,7 @@ def predict_and_score(
             for record_id, prompt_messages, parser_input, gold in prepared:
                 raw_outputs: list[str] = []
                 validation_error: str | None = None
-                stage_predicted: CandidateGraphSet | None = None
+                stage_predicted: ParserCandidateOutput | None = None
                 attempts = 2 if retry_invalid_once else 1
                 for attempt in range(attempts):
                     messages = _attempt_messages(
@@ -867,7 +1085,7 @@ def predict_and_score(
                     )
                     raw_outputs.append(raw)
                     try:
-                        stage_predicted = validate_candidate_graph_pair(
+                        stage_predicted = validate_candidate_contract_pair(
                             parser_input,
                             parse_prediction_text(raw),
                         )
@@ -941,8 +1159,8 @@ _PREDICTION_ROW_KEYS = frozenset(
 )
 
 
-def _parse_generated_output(parser_input: ParserAIInput, raw: str) -> CandidateGraphSet:
-    return validate_candidate_graph_pair(parser_input, parse_prediction_text(raw))
+def _parse_generated_output(parser_input: ParserAIInput, raw: str) -> ParserCandidateOutput:
+    return validate_candidate_contract_pair(parser_input, parse_prediction_text(raw))
 
 
 def _reconstruct_evaluation(
@@ -1004,7 +1222,7 @@ def _reconstruct_evaluation(
                 )
             try:
                 predicted_from_raw = _parse_generated_output(parser_input, raw_outputs[-1])
-                predicted = CandidateGraphSet.model_validate(prediction_row.get("prediction"))
+                predicted = ParserCandidateOutput.model_validate(prediction_row.get("prediction"))
             except (ValueError, TypeError) as exc:
                 raise MLXPipelineError(
                     f"record prediction {record_id}: prediction dichiarata valida non validabile"
@@ -1399,7 +1617,7 @@ def export_adapter_bundle(
     metrics_context = _verify_metrics_artifacts(metrics_path, require_real=True)
     calibration_context = _verify_calibration_artifact(calibration_path)
     metrics_split = metrics_context["metrics"]["declared_split"]
-    if metrics_split not in {"test", "external"}:
+    if metrics_split not in {"test", "external_challenge"}:
         raise MLXPipelineError("export richiede metrics finali da test oppure external")
     for context_label, context in (
         ("metrics", metrics_context),
@@ -1416,11 +1634,12 @@ def export_adapter_bundle(
         snapshot["snapshot_sha256"],
         label="snapshot calibrazione rispetto al training snapshot",
     )
-    if metrics_split == "test":
-        _require_equal(
-            metrics_context["snapshot"]["snapshot_sha256"],
-            snapshot["snapshot_sha256"],
-            label="snapshot test rispetto al training snapshot",
+    protected_release_pins: dict[str, str] | None = None
+    if metrics_split in {"test", "external_challenge"}:
+        protected_release_pins = validate_protected_release_lineage(
+            metrics_snapshot=metrics_context["snapshot"],
+            calibration_snapshot=calibration_context["source_metrics"]["snapshot"],
+            run_lineage=run_lineage,
         )
 
     best = run_dir.resolve() / "best"
@@ -1470,9 +1689,10 @@ def export_adapter_bundle(
             "calibration_source_metrics_sha256": calibration_context["source_metrics"]["sha256"],
             "external_disjointness": (
                 metrics_context["snapshot"].get("external_disjointness")
-                if metrics_split == "external"
+                if metrics_split in {"external", "external_challenge"}
                 else None
             ),
+            "protected_evaluation": protected_release_pins,
         },
         "files": files,
     }

@@ -7,29 +7,20 @@ from pathlib import Path
 import pytest
 
 from ntruth.governance.lineage import CorpusSplit
-from ntruth.parser_ai.contract import ParserAIInput
-from ntruth.parser_ai.stages import (
-    CandidateGraphSet,
-    StageAuthority,
-    StageName,
-    StageProvenance,
-    StageStatus,
+from ntruth.parser_ai.contract import (
+    GoldParserTarget,
+    ParserAIInput,
+    ParserCandidateOutput,
 )
 from ntruth.training import (
     AnnotationStatus,
     DatasetManifest,
-    GoldParserTarget,
     PreparationConfig,
-    SubmissionComparison,
     SupervisedRecord,
     SupervisionProvenance,
     prepare_dataset,
 )
-from ntruth.training.mlx_dataset import (
-    PARSER_CANDIDATE_GRAPH_TASK,
-    create_runtime_smoke_dataset,
-    export_mlx_dataset,
-)
+from ntruth.training.mlx_dataset import create_runtime_smoke_dataset, export_mlx_dataset
 from ntruth.training.mlx_runtime import (
     MLXPipelineError,
     validate_mlx_dataset,
@@ -41,40 +32,40 @@ def _sha(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()
 
 
-def _target(record_id: str) -> dict[str, object]:
-    graph = CandidateGraphSet(
-        result_id=f"adjudicated-result-{record_id}",
-        status=StageStatus.COMPLETE,
-        provenance=StageProvenance(
-            stage_run_id=f"adjudication-stage-{record_id}",
-            stage=StageName.CANDIDATE_GRAPH_SET,
-            authority=StageAuthority.ADJUDICATION,
-            producer="snapshot-integrity-adjudication",
-            producer_version="6.0",
-        ),
-        graph_set_id=f"adjudicated-graph-{record_id}",
-    )
-    return GoldParserTarget(
-        target_id=f"target-{record_id}",
-        source_record_id=record_id,
-        guideline_version="6.0",
-        adjudication_id=f"adjudication-{record_id}",
-        adjudication_rationale="Blind technical submissions reconciled.",
-        adjudicator_roles=("wet-lab", "biostatistician"),
-        source_submission_ids=(f"{record_id}-a", f"{record_id}-b"),
-        comparisons=(
-            SubmissionComparison(
-                submission_id=f"{record_id}-a",
-                reviewer_role="wet-lab",
-                summary="Empty technical graph accepted.",
-            ),
-            SubmissionComparison(
-                submission_id=f"{record_id}-b",
-                reviewer_role="biostatistician",
-                summary="Empty technical graph accepted.",
-            ),
-        ),
-        adjudicated_graph=graph,
+def _target() -> dict[str, object]:
+    return ParserCandidateOutput.model_validate(
+        {
+            "contract_version": "8.0.0",
+            "experiment_blocks": [],
+            "evidence_spans": [],
+            "candidate_nodes": [],
+            "candidate_edges": [],
+            "factors": [],
+            "endpoints": [],
+            "contrasts": [],
+            "candidate_estimands": [],
+            "candidate_counts": [],
+            "candidate_events": [],
+            "candidate_graphs": [],
+            "alternatives": [],
+            "clarification_questions": [],
+            "missing_predicates": [],
+            "coverage": {
+                "status": "PARTIAL",
+                "covered_artifact_ids": [],
+                "missing_artifact_ids": ["not-reported"],
+                "rationale": "Candidate-only snapshot fixture.",
+            },
+            "model_metadata": {
+                "adapter_name": "snapshot-integrity-gold",
+                "model_name": "annotation",
+                "model_version": "1",
+                "model_checksum": None,
+                "prompt_template_version": "snapshot-integrity-test",
+                "contract_version": "8.0.0",
+                "local_execution": True,
+            },
+        }
     ).model_dump(mode="json")
 
 
@@ -83,38 +74,60 @@ def _record(
     split: CorpusSplit,
     *,
     training_eligible: bool = True,
-    evaluation_eligible: bool = False,
 ) -> SupervisedRecord:
     parser_input = ParserAIInput(
         metadata={"record": record_id},
         domain_hint="snapshot_integrity_test",
         language="en",
     )
-    use_eligible = training_eligible or evaluation_eligible
     return SupervisedRecord(
         record_id=record_id,
-        task=PARSER_CANDIDATE_GRAPH_TASK,
+        task="parser_candidate_v8",
         language="en",
         domain="snapshot_integrity_test",
         input_text=parser_input.model_dump_json(),
-        target=_target(record_id),
+        target=GoldParserTarget(
+            candidate_target=ParserCandidateOutput.model_validate(_target()),
+            adjudication_id=f"adjudication-{record_id}",
+            reviewer_ids=("wet-lab", "biostatistician"),
+            adjudication_rationale="Candidate facts were reconciled.",
+            submission_references=(
+                {
+                    "submission_id": f"submission-wet-{record_id}",
+                    "submission_sha256": "a" * 64,
+                    "reviewer_id": "wet-lab",
+                    "reviewer_role": "wet-lab",
+                },
+                {
+                    "submission_id": f"submission-stat-{record_id}",
+                    "submission_sha256": "b" * 64,
+                    "reviewer_id": "biostatistician",
+                    "reviewer_role": "biostatistician",
+                },
+            ),
+            comparison_status="AGREED",
+            material_differences=(),
+        ),
         provenance=SupervisionProvenance(
             source_id=f"source-{record_id}",
             source_asset_id=f"asset-{record_id}",
             source_sha256=_sha(f"source:{record_id}"),
             governance_hash=_sha(f"governance:{record_id}"),
-            license_or_authorization_id=(f"license-{record_id}" if use_eligible else None),
-            guideline_version="6.0",
-            reviewer_count=2 if use_eligible else 0,
-            reviewer_roles=("wet-lab", "biostatistician") if use_eligible else (),
-            adjudication_id=f"adjudication-{record_id}" if use_eligible else None,
+            license_or_authorization_id=f"license-{record_id}",
+            guideline_version="snapshot-integrity-test",
+            reviewer_count=2 if training_eligible else 0,
+            reviewer_ids=("wet-lab", "biostatistician") if training_eligible else (),
+            reviewer_roles=("wet-lab", "biostatistician") if training_eligible else (),
+            adjudication_id=(f"adjudication-{record_id}" if training_eligible else None),
         ),
         annotation_status=(
-            AnnotationStatus.ADJUDICATED if use_eligible else AnnotationStatus.CANDIDATE
+            AnnotationStatus.ADJUDICATED if training_eligible else AnnotationStatus.CANDIDATE
         ),
-        training_eligible=training_eligible,
-        evaluation_eligible=evaluation_eligible,
-        requested_split=split,
+        training_eligible=training_eligible
+        and split in {CorpusSplit.TRAIN, CorpusSplit.VALIDATION},
+        evaluation_eligible=split is CorpusSplit.TEST,
+        model_selection_eligible=training_eligible and split is CorpusSplit.VALIDATION,
+        split=split,
     )
 
 
@@ -131,15 +144,9 @@ def _export_real_snapshot(
                 _record(
                     "valid",
                     CorpusSplit.VALIDATION,
-                    training_eligible=False,
-                    evaluation_eligible=training_eligible,
+                    training_eligible=training_eligible,
                 ),
-                _record(
-                    "test",
-                    CorpusSplit.TEST,
-                    training_eligible=False,
-                    evaluation_eligible=training_eligible,
-                ),
+                _record("test", CorpusSplit.TEST, training_eligible=False),
             )
         )
     dataset = prepare_dataset(
@@ -177,7 +184,8 @@ def test_real_snapshot_verifies_files_counts_and_source_identity(tmp_path: Path)
     result = validate_snapshot_integrity(output)
     training = validate_mlx_dataset(output)
 
-    assert result["counts"] == {"train": 1, "valid": 1, "test": 1, "external": 0}
+    assert result["counts"] == {"train": 1, "valid": 1}
+    assert result["manifest"]["membership_counts"]["TEST"] == 1
     assert result["snapshot_id"].startswith("mlx-dataset-")
     assert len(result["snapshot_sha256"]) == 64
     assert result["source_manifest"]["dataset_id"] == result["manifest"]["dataset_id"]
@@ -238,7 +246,12 @@ def test_updated_hash_cannot_certify_changed_messages_with_same_record_id(
     _export_real_snapshot(output)
     train_path = output / "train.jsonl"
     row = json.loads(train_path.read_text(encoding="utf-8"))
-    row["messages"][-1]["content"] = row["messages"][-1]["content"] + " "
+    changed_target = _target()
+    changed_target["coverage"] = {
+        **changed_target["coverage"],
+        "rationale": "Tampered candidate coverage.",
+    }
+    row["messages"][-1]["content"] = json.dumps(changed_target) + " "
     train_path.write_text(json.dumps(row, sort_keys=True) + "\n", encoding="utf-8")
 
     manifest_path = output / "snapshot-manifest.json"
@@ -250,7 +263,7 @@ def test_updated_hash_cannot_certify_changed_messages_with_same_record_id(
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
     _resign_snapshot(manifest_path)
 
-    with pytest.raises(MLXPipelineError, match=r"contenuto chat.*prepared records"):
+    with pytest.raises(MLXPipelineError, match=r"contenuto chat.*manifest sorgente"):
         validate_snapshot_integrity(output)
 
 
@@ -330,7 +343,7 @@ def test_integrity_can_inspect_empty_splits_but_training_remains_fail_closed(
         output,
         require_nonempty_training_splits=False,
     )
-    assert result["counts"] == {"train": 1, "valid": 0, "test": 0, "external": 0}
+    assert result["counts"] == {"train": 1, "valid": 0}
     with pytest.raises(MLXPipelineError, match="split MLX vuoto"):
         validate_mlx_dataset(output)
 
@@ -349,26 +362,3 @@ def test_runtime_smoke_has_separate_identity_and_requires_explicit_gate(tmp_path
     assert result["manifest"]["training_approved"] is False
     assert result["manifest"]["scientific_metrics_allowed"] is False
     assert training["smoke_test"] is True
-
-
-def test_resigned_smoke_cannot_replace_the_candidate_only_chat_fixture(tmp_path: Path) -> None:
-    output = tmp_path / "smoke"
-    create_runtime_smoke_dataset(output)
-    train_path = output / "train.jsonl"
-    rows = [json.loads(line) for line in train_path.read_text(encoding="utf-8").splitlines()]
-    rows[0]["messages"][-1]["content"] = "{}"
-    train_path.write_text(
-        "".join(json.dumps(row, sort_keys=True) + "\n" for row in rows),
-        encoding="utf-8",
-    )
-    manifest_path = output / "snapshot-manifest.json"
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    manifest["files"]["train.jsonl"] = {
-        "sha256": hashlib.sha256(train_path.read_bytes()).hexdigest(),
-        "size_bytes": train_path.stat().st_size,
-    }
-    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
-    _resign_snapshot(manifest_path)
-
-    with pytest.raises(MLXPipelineError, match="fixture canonica v6"):
-        validate_snapshot_integrity(output, smoke_test=True)

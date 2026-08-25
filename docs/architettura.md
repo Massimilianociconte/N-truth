@@ -1,67 +1,51 @@
-# Architettura v6
+# Architettura N-Truth — PRD v8.0
 
-## Due train coordinati
+Questo documento descrive l’architettura corrente del clean checkout. La mappa
+machine-readable con path, API, ownership, test, evidenze e blocker è
+[architecture/prd-v8-current-to-target.yaml](architecture/prd-v8-current-to-target.yaml).
 
-N-Truth separa il valore deterministico dal rischio di ricerca del parser AI.
+Stato complessivo: **`IMPLEMENTED_WITH_EXPLICIT_BLOCKERS`**. “Implementato” indica
+un contratto software verificabile; non implica validazione scientifica, gold reale o
+autorizzazione al training.
 
-| Train | Responsabilita | Stato conservativo |
+## Flusso canonico
+
+```mermaid
+flowchart LR
+    S["Fonti, draft guidato o QuickDesignV8Submission raw"] --> P["Parser candidate-only"]
+    P --> V["Verifier progressivo"]
+    V --> F["Fatti, eventi, KnowledgeState e count registry"]
+    F --> T["Derivation Theory versionata"]
+    T --> C["DerivedClaimSet query-scoped"]
+    C --> R["Rulebook conforme alla Theory"]
+    R --> B["ReportBundle v8 neutrale"]
+    B --> E["Evaluation / Reality Gate HOLD"]
+```
+
+L’ordine è un vincolo: il Rulebook non definisce la teoria e il parser non emette
+claim finali. La pipeline canonica richiede un `ConformanceBundle` checksum-verificato
+e riesegue la derivazione al boundary di verifica/report.
+
+## Strati e ownership
+
+| Strato | Responsabilità | Moduli principali |
 |---|---|---|
-| Train D | Ingest locale D0, schema, grafo, regole, determinabilita, hard verifier, correzioni e report | Implementazione software disponibile; revisione scientifica ed external validation non completate |
-| Train A | Parser a stadi, corpus, training, calibrazione e validazione esterna | Contratti e tooling preparatorio disponibili; nessun modello N-Truth addestrato/validato |
+| Core Semantic Kernel | Identità, stato epistemico, fonti/evidenze, query e schemi strict | `schemas/kernel.py`, `schemas/knowledge.py`, `schemas/support.py` |
+| Grafo/eventi | Unità, relazioni, assignment/application/exposure/timing e uguaglianza esatta | `schemas/graph_v8.py`, `schemas/events.py`, `graph/equality_v8.py` |
+| Count Registry | Count kind e scope completi, separazione EU/source/planned/observed | `schemas/count_registry.py`, `schemas/counts.py` |
+| Derivation Theory | Clausole scientifiche immutabili e closure dei predicati | `derivation_theory/`, `theories/` |
+| Rulebook/conformance | Implementazione clause-pinned e fixture positive/negative/counterfactual | `conformance/`, `rulesets/ntruth-v8-core-0.1.0.json` |
+| Runtime v8 | Orchestrazione sottile, proof verification, re-derivation | `pipeline_v8.py`, `verifier/v8.py` |
+| Prospective/report | Piano, esecuzione, reconciliation, query sections, handoff neutrale | `schemas/prospective.py`, `schemas/report_bundle.py`, `reporting/v8.py` |
+| Parser/training boundary | Candidate-only, Gold adjudicato, split protetti, byte sealing | `parser_ai/`, `mvt_a/`, `training/` |
+| Evaluation/governance | E2E, residual, cluster, contamination, custody e policy | `evaluation_v8/`, `governance/contamination.py` |
+| Reality Gate | Sei dimensioni, blocker completi, decisione fail-closed | `reality_gate/v8.py` |
+| Interface | CLI/API v8 canoniche, adapter v7 qualificati, desktop neutrale | `cli/main.py`, `api/app.py`, `apps/desktop/` |
 
-La visione completa richiede entrambi i train e revisione umana. Train A propone fatti
-candidati; non sostituisce il compilatore deterministico o il verificatore hard.
+## Moduli deterministici ereditati
 
-## Flusso Train D corrente
-
-```text
-file locali
-  -> safety gate e release profile
-  -> progetto: manifest + copie sorgente + blob SHA-256 + SQLite
-  -> Document IR con coordinate
-  -> segmentazione in ExperimentBlock
-  -> estrazione deterministica
-  -> candidate graph
-  -> preflight hard degli invarianti
-       -> se invalido: INVALID_GRAPH, stop regole, report dell'errore
-       -> se valido: resolver di unita + evidence floor + rules engine
-  -> compilatore del disegno + DeterminabilityState
-  -> output policy
-  -> hard verifier finale
-  -> report ed export versionati
-```
-
-Una correzione umana viene applicata come patch append-only a una revisione nota; il
-blocco corretto viene ricalcolato senza reinterpretare o modificare la fonte. Undo e
-redo cambiano la revisione attiva mantenendo intatta la storia.
-
-Nel runtime API corrente il registro di sessione e memory-bounded. Le revisioni di
-report e gli audit di correzione vengono pubblicati su file in modo atomico, ma non va
-dedotta da questo una sessione collaborativa persistente o ripristinabile dopo il
-riavvio del processo.
-
-Il `SampleSheetSpec` v6 ha generatore e validatore CLI dedicati. La validazione
-canonica va eseguita prima dell'analisi generale del CSV; non e ancora un gate
-automatico per ogni CSV importato.
-
-## Flusso contrattuale Train A
-
-```text
-DocumentRouteResult
-  -> EvidenceExtractionResult / EntityCountResult / ProceduralEventResult
-  -> CandidateGraphSet (senza verdict e determinability)
-  -> hard verifier sempre / semantic verifier solo se invocato
-  -> HumanRevisionPatch
-  -> grafo validato o scenario esplicitamente condizionale
-  -> RuleResult / QuestionRecord
-  -> ReportBundle
-```
-
-Questa e una separazione di responsabilita normativa. Gli schema staged esistono, ma
-non rappresentano ancora un parser AI addestrato ne un'orchestrazione scientificamente
-validata di tutte le fasi.
-
-## Moduli
+Il checkout contiene anche il core deterministico pre-v8, che resta la fondazione
+software dell’ingestione, della revisione umana e del reporting locale:
 
 | Package | Responsabilita |
 |---|---|
@@ -72,7 +56,7 @@ validata di tutte le fasi.
 | `ntruth.sample_sheet` | Schema v6, generazione, validazione e I/O CSV sicuro |
 | `ntruth.prospective` | Compiler D0 e contratti separati planned/executed con deviazioni tipizzate |
 | `ntruth.extract` | Segmentazione e baseline deterministica di candidate fact |
-| `ntruth.parser_ai` | Contratti staged v6, compatibilita v2 e validazione; nessun peso incluso |
+| `ntruth.parser_ai` | Contratti staged e superficie legacy; nessun peso incluso |
 | `ntruth.runtime_resources` | Profili benchmark-derived, scheduling sequenziale, chunking, cache, fallback e telemetria |
 | `ntruth.graph` | Costruzione, validazione, unita per scope e determinabilita |
 | `ntruth.verifier` | Verifica hard e matrice normativa degli output |
@@ -81,10 +65,103 @@ validata di tutte le fasi.
 | `ntruth.corrections` | JSON Patch validate, ledger, undo/redo, audit e ricalcolo |
 | `ntruth.reporting` | Output positivo, JSON/YAML/HTML, graph e metadati di export |
 | `ntruth.governance` | Autorizzazioni, privacy, lineage, snapshot e split anti-leakage |
-| `ntruth.training` | Gold target contract, preparazione e tooling MLX futuro |
+| `ntruth.training` | Gold target contract, preparazione e tooling MLX locale |
 | `ntruth.api` | API locale loopback e sessioni bounded |
 | `ntruth.cli` | Comandi locali e messaggi di errore espliciti |
-| `ntruth.pipeline` | Orchestrazione deterministica Train D |
+| `ntruth.pipeline` | Orchestrazione deterministica locale |
+
+Questi moduli verificano contratti software; non costituiscono validazione scientifica
+e non aggirano i blocker registrati.
+
+## Contratti scientifici fondamentali
+
+### Determinabilità, adequacy e risoluzione
+
+`DerivedClaim.determinability_state` è claim-specifico. Un claim `DETERMINATE` può
+coesistere con un’adequacy negativa, positiva, non valutata o sconosciuta. La
+`ReportResolutionOutcome` aggrega il report senza trasformarsi in un giudizio sul
+disegno. Dove la precedenza multi-query non è specificata, `SRR-V8-014` blocca una
+risoluzione inventata.
+
+### Cinque assi non sostituibili
+
+- assignment independence;
+- biological-source independence;
+- exposure/interference;
+- analytical independence;
+- measurement-process independence.
+
+Nessun asse è proxy di un altro. L’interference non cambia automaticamente EU;
+topologie non chiuse restano `NON_EXHAUSTIVE`/`SRR-V8-017`.
+
+### Open-world semantics
+
+I campi scientifici usano `KnowledgeValue` con sei stati: `PRESENT`,
+`ABSENT_EXPLICIT`, `NOT_REPORTED`, `UNKNOWN`, `NOT_APPLICABLE`, `CONFLICTING`.
+Presenza e assenza esplicita richiedono evidenza; N/A richiede rationale e scope;
+un conflitto conserva valori ed evidenze. Bare `null` o liste vuote non possono
+sostituire una decisione epistemica.
+
+### Query e count scope
+
+Claim, adequacy, domande e count sono legati a `InferentialQuery`. La Canonical Count
+Registry distingue almeno planned, observed, experimental-unit, biological-source,
+analytical e diagnostic counts. La riconciliazione è kind-aware e scope-aware.
+Conteggi, quantificatori, lifecycle ed esclusioni non vengono compressi in un solo
+`n`; l’unità sperimentale è derivata per fattore, contrasto ed endpoint, non per
+paper.
+
+### Piano ed esecuzione
+
+`PlannedDesignRecord` e `ExecutedDesignRecord` sono immutabili, content-addressed e
+mantengono ledger separati. La reconciliation descrive deviazioni senza sovrascrivere
+il piano. Le fonti PLANNED ed EXECUTED non vengono collassate a parità di ID.
+
+### Parser e correzioni
+
+Il parser produce solo candidate facts/graph. `n`, EU, determinabilità, adequacy e
+rule verdict appartengono al verificatore/teoria. Una correzione non può patchare
+`DerivedClaimSet`; usa fatti/conferme o un `RuleChallenge`, poi ricalcola.
+
+Ogni `CandidateExperimentBlock` ha esattamente un `CandidateBlockBoundary` con
+evidenza e rationale. Il record scientifico resta separato: `CONFIRMED` richiede un
+`ConfirmationEvent` con scope, valore ed evidenze identici; `CONFLICTING` conserva le
+alternative. Split e merge sono record append-only tipizzati, mai sovrascritture.
+Statistical code e author assertion non provano da soli allocazione o indipendenza;
+un’incertezza decisiva produce astensione, alternative o rami condizionali.
+
+## Artefatti scientifici distinti
+
+| Artefatto | Ruolo | Stato repository |
+|---|---|---|
+| Derivation Theory | Fonte scientifica eseguibile | Presente, versionata |
+| Rulebook | Implementazione della Theory | Presente e conformance-gated |
+| Implementation Conformance Fixtures | Closure ingegneristica delle clause | Presenti, sintetiche |
+| Theory Reference Set | Riferimento umano revisionato | Assente, `SRR-V8-021` |
+| Derivation Gold | Claim reali adjudicati | Assente, `SRR-V8-022` |
+
+Fixture sintetiche verdi non possono essere riclassificate come Reference Set o Gold.
+
+## Reporting e statistica
+
+Il `ReportBundle` include context/fonti, query sections, claim sets, adequacy,
+Scenario/Profile Coverage, count registry, conflitti, sensitività, conferme, domande,
+grafo, manifest e limiti. JSON, YAML e HTML rivalidano checksum e shape.
+
+Lo strategy module è sempre `HANDOFF_ONLY`: può trasmettere requisiti strutturali e
+domande, mai scegliere test, formula, soglia o modello.
+
+## Evaluation e Reality Gate
+
+Le interfacce v8 coprono denominatori report/query/claim/axis, proof/evidence,
+false-certainty, residual audit cieco, reference stability e precisione cluster-aware.
+Senza reference e protocolli esterni revisionati mantengono blocker e non autorizzano
+uso scientifico.
+
+Reality Gate v8 valuta sei dimensioni e pin completi. Il training riconcilia i pin
+prima di accedere a snapshot, record, modello, staging o subprocess. `TEST` e
+`EXTERNAL_CHALLENGE` non sono mai training/model-selection eligible. La decisione
+corrente resta HOLD.
 
 ## Persistenza locale
 
@@ -106,7 +183,7 @@ registra progetti, blob, collegamenti progetto-blob, revisioni, sessioni, run, e
 di audit e migrazioni. Usa foreign key, WAL, `synchronous=FULL`, transazioni e
 savepoint; trigger impediscono update/delete di revisioni ed eventi di audit.
 
-L'apertura di un workspace precedente esegue un backfill non distruttivo nel blob
+L’apertura di un workspace precedente esegue un backfill non distruttivo nel blob
 store soltanto quando la copia legacy corrisponde al checksum. Il comando
 `ntruth verify` ricontrolla copia sorgente e blob.
 
@@ -128,62 +205,44 @@ Il core non apre indiscriminatamente ogni file:
 Il profilo e persistito nel manifest. Un workspace non puo essere riaperto con un
 profilo differente senza creare un progetto separato.
 
-## Invarianti scientifici
-
-1. L'unita sperimentale e derivata per fattore, contrasto ed endpoint, non per paper.
-2. Allocazione, applicazione e indipendenza operativa sono concetti distinti.
-3. Un `independent_n` richiede indipendenza operativa confermata e uno scope valido.
-4. Conteggi, quantificatori, lifecycle ed esclusioni non vengono compressi in un solo
-   `n`.
-5. Un'incertezza decisiva produce astensione, alternative o rami condizionali.
-6. Replicazione del disegno, dipendenza analitica e portata inferenziale restano tre
-   classi separate.
-7. Statistical code e author assertion non provano da soli allocazione o
-   indipendenza.
-8. Solo la matrice di determinabilita autorizza un valore singolo di EU/n.
-
-## Invarianti di provenance e correzione
-
-1. Document IR conserva file, checksum e coordinate di testo/cella/codice.
-2. Candidate fact e relazioni puntano a evidenze esistenti.
-3. Alternative e conflitti non vengono risolti silenziosamente.
-4. Il rules engine non interpreta testo grezzo.
-5. Il renderer non introduce fatti assenti dagli artefatti strutturati.
-6. Correzioni, revisioni ed audit sono append-only e verificabili per checksum; ogni
-   evento registra ruolo dell'attore e timestamp con fuso, senza identita personale.
-7. Un artefatto resta `not_gold` fino a doppia annotazione/adjudication prevista dal
-   protocollo.
-8. Parser Gold e Derivation Gold restano separati.
-9. La Evidence View desktop e attualmente consultiva: il backend accetta patch agli
-   span solo se coordinate, testo, sezione e cella coincidono con il Document IR
-   immutabile; l'editor visuale dei locator appartiene al gate A1.
-
 ## Governance e rete
 
 Le autorizzazioni `analyze`, `annotate`, `train`, `share` e `redistribute` sono
 separate. Un record mancante, scaduto, revocato o incoerente con il checksum nega
-l'azione governata. Lo scanner privacy e assistivo e produce finding stand-off;
+l’azione governata. Lo scanner privacy e assistivo e produce finding stand-off;
 `distribution-check` valuta un gate e non trasferisce file.
 
 La API baseline e single-user, senza autenticazione e destinata al loopback. Non deve
 essere pubblicata su `0.0.0.0`, reverse proxy, LAN o Internet.
 
-## Limiti correnti
+## Boundary applicativi
 
-- Nessun modello AI N-Truth addestrato, calibrato o pubblicato e disponibile.
-- Segmentazione, estrazione e coreference rules-only non sono validate su un corpus
-  reale rappresentativo.
-- Il semantic verifier e un contratto opzionale, non un runtime scientificamente
-  validato.
-- Il Runtime Resource Manager e implementato come confine backend-agnostic ma non e
-  ancora collegato al runner MLX, e manca un artifact benchmark reale sul Mac target.
-- Il record prospettico planned/executed e validato in memoria ma non e ancora
-  persistito in SQLite ne esposto dal wizard/API.
-- Il profilo esteso abilita sperimentazione, non supporto stabile.
-- Nessun human ceiling, agreement, external challenge o studio utente completato e
-  dichiarato.
-- Fixture sintetiche e test software verificano implementazione e contratti, non la
-  validita scientifica delle conclusioni.
+- Il desktop usa `POST /v8/quick-design/build-submission`: PREVIEW è review-only e
+  CONFIRM produce il risultato canonico nella stessa richiesta, senza richiedere JSON
+  all'utente e senza restituire una capability di riesecuzione.
+- `ntruth quick-design run` e `/v8/quick-design` sono superfici v8 raw-author-asserted
+  esplicite per automazione e ispezione.
+- `ntruth analyze` e `/v1/analyze` falliscono chiuso per raw input non qualificato.
+- `analyze-v7`, `quick-design run-v7`, `/v7/analyze` e `/v7/quick-design` sono
+  adapter espliciti con marker `DEPRECATED_V7_ADAPTER`.
+- Il desktop costruisce il draft guidato, conserva la coda di revisione non ordinata
+  scientificamente (`SRR-V8-025`) e mostra il `ReportBundle v8` con assi separati,
+  `NON_EXHAUSTIVE`, blocker e `HANDOFF_ONLY` senza palette “green ready”.
+
+## Package e clean-checkout truth
+
+Wheel e sdist includono Theory, Rulebook, conformance fixtures, registry degli
+esempi e snapshot JSON Schema runtime-derived. Il gate
+`scripts/check_prd_v8_contracts.py` verifica map, link, esempi e schema; il gate
+`scripts/check_repository_policy.py` controlla NO_CORPUS/privacy/secret/large-file.
+Quest’ultimo è detection-only e non costituisce un’attestazione.
+
+## Blocchi aperti
+
+Le decisioni aperte sono in
+[audits/prd-v8-full-migration/SCIENTIFIC_REVIEW_REGISTER.md](audits/prd-v8-full-migration/SCIENTIFIC_REVIEW_REGISTER.md).
+La chiusura richiede decisione umana append-only, versioni coinvolte e re-derivazione;
+non basta aggiornare uno schema o rendere verde un test.
 
 Per i confini operativi vedere [Core Profile D0](core-profile-d0.md),
 [SampleSheetSpec v6](sample-sheet-v6.md) e

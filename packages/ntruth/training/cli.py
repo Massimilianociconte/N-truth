@@ -21,9 +21,11 @@ from ntruth.training.mlx_inference import (
     tokenize_report,
 )
 from ntruth.training.mlx_runtime import (
+    FileRealityGateV8Protocol,
     MLXPipelineError,
     doctor,
     download_model,
+    load_training_design_lineage_pins,
     run_training,
     verify_model,
 )
@@ -153,7 +155,7 @@ def make_smoke_data(
 
 @app.command()
 def tokenize(
-    data: Path = typer.Argument(..., help="Snapshot MLX con train/valid/test.jsonl."),
+    data: Path = typer.Argument(..., help="Training view MLX con train/valid.jsonl."),
     out: Path = typer.Option(..., "--out", help="Report JSON delle lunghezze."),
     profile: Path = typer.Option(DEFAULT_PROFILE, "--profile"),
     repo: Path = typer.Option(Path("."), "--repo"),
@@ -174,6 +176,21 @@ def train(
     data: Path = typer.Argument(..., help="Snapshot MLX approvato."),
     out: Path = typer.Option(..., "--out", help="Directory locale del run."),
     seed: int = typer.Option(13, "--seed"),
+    reality_gate_v8: Path = typer.Option(
+        ...,
+        "--reality-gate-v8",
+        help="Artefatto content-addressed Reality Gate v8 con purpose TRAIN.",
+    ),
+    design_lineage_v8: Path = typer.Option(
+        ...,
+        "--design-lineage-v8",
+        help="Artefatto typed Task 6 con soli pin planned/executed design.",
+    ),
+    protected_source_manifest: Path = typer.Option(
+        ...,
+        "--protected-source-manifest",
+        help="DatasetManifest sorgente indipendente per TEST protetto.",
+    ),
     resume: bool = typer.Option(False, "--resume"),
     runtime_smoke_only: bool = typer.Option(
         False,
@@ -192,6 +209,10 @@ def train(
             data.resolve(),
             out.resolve(),
             seed=seed,
+            reality_gate=FileRealityGateV8Protocol(reality_gate_v8.resolve()),
+            design_lineage_pins=load_training_design_lineage_pins(design_lineage_v8.resolve()),
+            design_lineage_artifact_path=design_lineage_v8.resolve(),
+            protected_source_manifest_path=protected_source_manifest.resolve(),
             smoke_test=runtime_smoke_only,
             resume=resume,
         )
@@ -286,7 +307,7 @@ def predict(
     evaluation: Path = typer.Argument(..., help="JSONL locale con messages e gold assistant."),
     adapter: Path = typer.Option(..., "--adapter", help="Directory adapter best."),
     out: Path = typer.Option(..., "--out"),
-    split: Literal["validation", "test", "external"] = typer.Option(..., "--split"),
+    split: Literal["validation", "test", "external_challenge"] = typer.Option(..., "--split"),
     retry_invalid_once: bool = typer.Option(True, "--retry-invalid-once/--no-retry"),
     resource_budget: Path | None = typer.Option(
         None,

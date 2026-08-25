@@ -8,19 +8,46 @@ vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
 vi.stubGlobal("scrollTo", vi.fn());
 Element.prototype.scrollIntoView = vi.fn();
 
+function enterSyntheticDemo(): void {
+  fireEvent.click(screen.getByRole("button", { name: "Apri demo sintetica" }));
+}
+
 describe("N-Truth workspace", () => {
+  it("starts on a live welcome path that does not show the synthetic demo as the project", () => {
+    render(<App />);
+    expect(screen.getByRole("heading", { name: /Chiarisci il disegno/ })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Blocchi sperimentali" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Demo storica · dati sintetici")).not.toBeInTheDocument();
+    expect(screen.getByText("HANDOFF_ONLY")).toBeInTheDocument();
+    expect(screen.getByText("NOT_STARTED")).toBeInTheDocument();
+    expect(screen.getByText("HOLD")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Stato e limiti" }));
+    expect(screen.getByRole("heading", { name: "Limiti e gate" })).toBeInTheDocument();
+    expect(screen.queryByText(/in arrivo/i)).not.toBeInTheDocument();
+  });
+
+  it("keeps the prospective D0 wizard available before any project is open", () => {
+    render(<App />);
+    const d0Nav = screen.getByRole("button", { name: "Progettazione D0" });
+    expect(d0Nav).toBeEnabled();
+    fireEvent.click(d0Nav);
+    expect(screen.getByRole("heading", { name: "Progettazione prospettica D0" })).toBeInTheDocument();
+  });
+
   it("labels synthetic demonstration data and exposes the three synchronized views", () => {
     render(<App />);
-    expect(screen.getByText("Dati sintetici dimostrativi")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Progettazione D0" })).toHaveAttribute("aria-current", "page");
+    enterSyntheticDemo();
+    expect(screen.getByText("Demo storica · dati sintetici")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Blocchi sperimentali" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Target inferenziale" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Grafo del disegno sperimentale" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Evidenza" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Progettazione prospettica D0" })).toBeInTheDocument();
   });
 
   it("keeps export gated until the unvalidated domain is acknowledged", () => {
     render(<App />);
+    enterSyntheticDemo();
     const exportButton = screen.getByRole("button", { name: "Esporta demo JSON" });
     expect(exportButton).toBeDisabled();
     fireEvent.click(screen.getByRole("checkbox", { name: "Ho verificato il limite e confermo" }));
@@ -29,6 +56,7 @@ describe("N-Truth workspace", () => {
 
   it("requires a rationale before applying a candidate correction", () => {
     render(<App />);
+    enterSyntheticDemo();
     const apply = screen.getByRole("button", { name: /Applica e ricalcola/ });
     expect(apply).toBeDisabled();
     fireEvent.change(screen.getByRole("spinbutton", { name: "Nuovo valore di n" }), { target: { value: "8" } });
@@ -38,6 +66,7 @@ describe("N-Truth workspace", () => {
 
   it("requires and records target plus minimum estimand before compilation", () => {
     render(<App />);
+    enterSyntheticDemo();
     fireEvent.click(screen.getByRole("button", { name: "Modifica target" }));
     const compile = screen.getByRole("button", { name: /Conferma target ed estimand/ });
     expect(compile).toBeDisabled();
@@ -49,8 +78,9 @@ describe("N-Truth workspace", () => {
     expect(screen.getByText(/Target inferenziale confermato nella demo/)).toBeInTheDocument();
   });
 
-  it("shows the non-certifying positive output and typed evidence", () => {
+  it("shows the non-certifying review output and typed evidence", () => {
     render(<App />);
+    enterSyntheticDemo();
     expect(screen.getByRole("heading", { name: "Methods e percorso di revisione" })).toBeInTheDocument();
     expect(screen.getByText(/Tipo AUTHOR_ASSERTION/)).toBeInTheDocument();
     fireEvent.click(screen.getByText(/DRIVER · mappatura informativa/));
@@ -59,6 +89,7 @@ describe("N-Truth workspace", () => {
 
   it("switches the interface language independently from the report payload", () => {
     render(<App />);
+    enterSyntheticDemo();
     fireEvent.click(screen.getByRole("button", { name: "Switch interface to English" }));
     expect(screen.getByRole("heading", { name: "Prospective D0 design" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Experiment blocks" })).toBeInTheDocument();
@@ -69,6 +100,7 @@ describe("N-Truth workspace", () => {
 
   it("edits graph nodes through an append-only candidate correction", () => {
     render(<App />);
+    enterSyntheticDemo();
     fireEvent.click(screen.getByRole("checkbox", { name: "Abilita canvas esteso sperimentale" }));
     fireEvent.click(screen.getByRole("button", { name: "Modifica grafo" }));
     fireEvent.change(screen.getByLabelText("Etichetta"), {
@@ -81,6 +113,7 @@ describe("N-Truth workspace", () => {
 
   it("indexes candidate exports by block instead of relabeling a stale payload", () => {
     render(<App />);
+    enterSyntheticDemo();
     const candidateExport = screen.getByRole("button", { name: "Esporta candidate" });
     expect(candidateExport).toBeDisabled();
     fireEvent.change(screen.getByRole("spinbutton", { name: "Nuovo valore di n" }), {
@@ -98,6 +131,7 @@ describe("N-Truth workspace", () => {
 
   it("offers only scientifically allocatable node types for factor levels", () => {
     render(<App />);
+    enterSyntheticDemo();
     fireEvent.click(screen.getByRole("checkbox", { name: "Abilita canvas esteso sperimentale" }));
     fireEvent.click(screen.getByRole("button", { name: "Modifica grafo" }));
     const allocation = screen.getByLabelText("Allocazione");
@@ -113,6 +147,7 @@ describe("N-Truth workspace", () => {
 
   it("keeps the post-v0.1 free canvas behind an explicit experimental gate", () => {
     render(<App />);
+    enterSyntheticDemo();
     expect(screen.getByText("Canvas esteso sperimentale · post-v0.1-D")).toBeInTheDocument();
     expect(screen.getByText("Canvas non attivo")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Modifica grafo" })).not.toBeInTheDocument();
@@ -203,7 +238,8 @@ describe("N-Truth workspace", () => {
         ? { status: "ok", version: "test" }
         : url.includes("/v1/preflight")
           ? domainTransparency
-          : {
+          : url === "/v7/analyze"
+            ? {
               report: { ...DEMO_REPORT, domain_transparency: domainTransparency },
               ingest_summary: "Analisi fixture completata.",
               artifacts: { ro_crate: "/tmp/ro-crate-metadata.json" },
@@ -232,7 +268,9 @@ describe("N-Truth workspace", () => {
                 reasons: ["privacy_findings_require_policy"],
                 requires_explicit_distribution_check: true,
               },
-            };
+              contract: { code: "DEPRECATED_V7_ADAPTER", version: "v7" },
+            }
+            : (() => { throw new Error(`unexpected request: ${url}`); })();
       return new Response(JSON.stringify(body), {
         status: 200,
         headers: { "Content-Type": "application/json" },
@@ -242,11 +280,14 @@ describe("N-Truth workspace", () => {
     render(<App />);
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     fireEvent.click(screen.getByRole("button", { name: "Importa fonti" }));
-    await screen.findByRole("button", { name: "Avvia analisi" });
+    fireEvent.click(
+      await screen.findByRole("radio", { name: "Flusso storico v7 deprecato" }),
+    );
+    await screen.findByRole("button", { name: "Avvia analisi v7 deprecata" });
     fireEvent.change(screen.getByPlaceholderText("/percorso/locale/metodi-e-sample-sheet"), {
       target: { value: "/tmp/methods.md" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Avvia analisi" }));
+    fireEvent.click(screen.getByRole("button", { name: "Avvia analisi v7 deprecata" }));
 
     expect(await screen.findByText("Revisione privacy richiesta")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Salva report" })).toBeDisabled();

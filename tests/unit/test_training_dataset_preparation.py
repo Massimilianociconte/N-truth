@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import hashlib
+import json
 
 import pytest
 from pydantic import ValidationError
 
 from ntruth.governance.lineage import CorpusSplit
+from ntruth.parser_ai.contract import GoldParserTarget, ParserCandidateOutput
 from ntruth.training import (
     AnnotationStatus,
     DatasetFormatError,
@@ -30,6 +32,45 @@ def _hash(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
+def _gold_target(marker: dict[str, object]) -> GoldParserTarget:
+    return GoldParserTarget(
+        candidate_target=ParserCandidateOutput.model_validate(
+            {
+                "coverage": {
+                    "status": "PARTIAL",
+                    "missing_artifact_ids": ["not-reported"],
+                    "rationale": json.dumps(marker, sort_keys=True),
+                },
+                "model_metadata": {
+                    "adapter_name": "dataset-preparation-fixture",
+                    "model_name": "adjudication",
+                    "model_version": "1",
+                    "prompt_template_version": "candidate-v8-test",
+                },
+            }
+        ),
+        adjudication_id="gold-fixture",
+        reviewer_ids=("biologist", "biostatistician"),
+        adjudication_rationale="Candidate facts were reconciled for this fixture.",
+        submission_references=(
+            {
+                "submission_id": "submission-biologist",
+                "submission_sha256": "a" * 64,
+                "reviewer_id": "biologist",
+                "reviewer_role": "biologist",
+            },
+            {
+                "submission_id": "submission-biostatistician",
+                "submission_sha256": "b" * 64,
+                "reviewer_id": "biostatistician",
+                "reviewer_role": "biostatistician",
+            },
+        ),
+        comparison_status="AGREED",
+        material_differences=(),
+    )
+
+
 def _provenance(
     source_id: str,
     *,
@@ -40,6 +81,7 @@ def _provenance(
     corresponding_author_id: str | None = None,
     synthetic: bool = False,
     adjudication_id: str | None = None,
+    external: bool = False,
 ) -> SupervisionProvenance:
     return SupervisionProvenance(
         source_id=source_id,
@@ -54,8 +96,29 @@ def _provenance(
         license_or_authorization_id=f"authorization-{source_id}",
         guideline_version="3.0",
         reviewer_count=2,
+        reviewer_ids=("biologist", "biostatistician"),
         reviewer_roles=("biologist", "biostatistician"),
-        adjudication_id=adjudication_id,
+        adjudication_id=adjudication_id or "gold-fixture",
+        study_family_id=f"study-{source_id}" if external else None,
+        document_lineage_id=f"document-{source_id}" if external else None,
+        external_challenge_dependency=(
+            {
+                "review_status": "SCIENTIFIC_REVIEW_REQUIRED",
+                "task7_contamination_attestation_reference": {
+                    "artifact_id": f"attestation-{source_id}",
+                    "sha256": "c" * 64,
+                },
+                "custody_reference": {
+                    "artifact_id": f"custody-{source_id}",
+                    "sha256": "d" * 64,
+                },
+                "family_evidence_references": [
+                    {"artifact_id": f"family-{source_id}", "sha256": "e" * 64}
+                ],
+            }
+            if external
+            else None
+        ),
         synthetic=synthetic,
     )
 
@@ -73,24 +136,22 @@ def _record(
     corresponding_author_id: str | None = None,
     status: AnnotationStatus = AnnotationStatus.DOUBLE_REVIEWED,
     eligible: bool = True,
-    evaluation_eligible: bool = False,
     requested_split: CorpusSplit | None = None,
     synthetic: bool = False,
 ) -> SupervisedRecord:
     source = source_id or record_id
     adjudication_id = (
-        f"adjudication-{record_id}" if status is AnnotationStatus.ADJUDICATED else None
+        "gold-fixture"
+        if status in {AnnotationStatus.DOUBLE_REVIEWED, AnnotationStatus.ADJUDICATED}
+        else None
     )
-    if requested_split in {CorpusSplit.TEST, CorpusSplit.EXTERNAL_CHALLENGE}:
-        eligible = False
-        evaluation_eligible = True
     return SupervisedRecord(
         record_id=record_id,
-        task="experimental_design",
+        task="parser_candidate_v8",
         language="it",
         domain="life_sciences",
         input_text=input_text or f"testo sperimentale univoco {record_id}",
-        target=target or {"label": record_id},
+        target=_gold_target(target if target is not None else {"label": record_id}),
         provenance=_provenance(
             source,
             publication_id=publication_id,
@@ -100,11 +161,14 @@ def _record(
             corresponding_author_id=corresponding_author_id,
             synthetic=synthetic,
             adjudication_id=adjudication_id,
+            external=requested_split is CorpusSplit.EXTERNAL_CHALLENGE,
         ),
         annotation_status=status,
-        training_eligible=eligible,
-        evaluation_eligible=evaluation_eligible,
-        requested_split=requested_split,
+        training_eligible=eligible
+        and requested_split not in {CorpusSplit.TEST, CorpusSplit.EXTERNAL_CHALLENGE},
+        evaluation_eligible=requested_split is CorpusSplit.TEST,
+        model_selection_eligible=eligible and requested_split in {None, CorpusSplit.VALIDATION},
+        split=requested_split or CorpusSplit.UNASSIGNED,
     )
 
 
@@ -113,10 +177,10 @@ def test_supervised_record_enforces_curation_and_authorization() -> None:
     with pytest.raises(ValidationError, match="candidate/single_reviewed"):
         SupervisedRecord(
             record_id="candidate",
-            task="design",
+            task="parser_candidate_v8",
             language="it",
             input_text="testo",
-            target={"label": "x"},
+            target=_gold_target({"label": "x"}),
             provenance=candidate_provenance,
             annotation_status=AnnotationStatus.CANDIDATE,
             training_eligible=True,
@@ -125,11 +189,11 @@ def test_supervised_record_enforces_curation_and_authorization() -> None:
     with pytest.raises(ValidationError, match="adjudication_id"):
         SupervisedRecord(
             record_id="adjudicated",
-            task="design",
+            task="parser_candidate_v8",
             language="it",
             input_text="testo",
-            target={"label": "x"},
-            provenance=_provenance("adjudicated"),
+            target=_gold_target({"label": "x"}),
+            provenance=_provenance("adjudicated").model_copy(update={"adjudication_id": None}),
             annotation_status=AnnotationStatus.ADJUDICATED,
             training_eligible=True,
         )
@@ -138,10 +202,10 @@ def test_supervised_record_enforces_curation_and_authorization() -> None:
     with pytest.raises(ValidationError, match="licenza o autorizzazione"):
         SupervisedRecord(
             record_id="unauthorized",
-            task="design",
+            task="parser_candidate_v8",
             language="it",
             input_text="testo",
-            target={"label": "x"},
+            target=_gold_target({"label": "x"}),
             provenance=unauthorized,
             annotation_status=AnnotationStatus.DOUBLE_REVIEWED,
             training_eligible=True,
@@ -259,14 +323,12 @@ def test_split_components_are_transitive_and_respect_fixed_and_synthetic_sets() 
         publication_id="publication-1",
         project_id="project-2",
         eligible=False,
-        evaluation_eligible=True,
     )
     project_link = _record(
         "c",
         publication_id="publication-2",
         project_id="project-2",
         eligible=False,
-        evaluation_eligible=True,
     )
     source_anchor = _record("d", source_id="shared-source")
     source_link = _record("e", source_id="shared-source")
@@ -318,16 +380,14 @@ def test_conflicting_fixed_splits_are_rejected_without_creating_leakage() -> Non
 
     with pytest.raises(DatasetValidationError) as captured:
         prepare_dataset((train, test))
-    assert {issue.code for issue in captured.value.issues} == {
-        "conflicting_requested_splits",
-        "training_eligible_group_in_evaluation_split",
-    }
+    assert {issue.code for issue in captured.value.issues} == {"conflicting_requested_splits"}
 
-    with pytest.raises(DatasetValidationError):
+    with pytest.raises(DatasetValidationError) as diagnostic:
         prepare_dataset(
             (train, test),
             config=PreparationConfig(fail_on_error=False),
         )
+    assert {issue.code for issue in diagnostic.value.issues} == {"conflicting_requested_splits"}
 
 
 def test_different_row_ids_from_the_same_source_asset_cannot_cross_splits() -> None:
@@ -367,9 +427,8 @@ def test_output_is_input_order_independent_and_manifest_is_content_addressed() -
     assert forward == reverse
     assert forward.manifest.dataset_id.startswith("dataset-")
     assert sum(forward.report.split_counts.values()) == 12
-    assert forward.report.split_counts["train"] == 12
-    assert forward.report.split_counts["validation"] == 0
-    assert forward.report.split_counts["test"] == 0
+    assert all(forward.report.split_counts[name] > 0 for name in ("TRAIN", "VALIDATION"))
+    assert forward.report.split_counts["TEST"] == 0
 
     tampered = forward.manifest.model_dump(mode="json")
     tampered["dataset_id"] = "dataset-00000000000000000000"
@@ -391,7 +450,7 @@ def test_manifest_carries_source_and_governance_hashes_and_serializers_are_stabl
     assert dumps_prepared_jsonl(dataset.records).endswith("\n")
 
 
-def test_ineligible_records_are_excluded_and_reported_by_default() -> None:
+def test_ineligible_records_are_preserved_but_excluded_from_training_view() -> None:
     eligible = _record("eligible")
     candidate = _record(
         "candidate",
@@ -402,10 +461,15 @@ def test_ineligible_records_are_excluded_and_reported_by_default() -> None:
     dataset = prepare_dataset((candidate, eligible))
 
     assert dataset.report.input_count == 2
-    assert dataset.report.eligible_count == 1
-    assert dataset.report.excluded_count == 1
-    assert [record.record.record_id for record in dataset.records] == ["eligible"]
-    assert {issue.code for issue in dataset.report.issues} == {"use_ineligible_excluded"}
+    assert dataset.report.eligible_count == 2
+    assert dataset.report.excluded_count == 0
+    assert {record.record.record_id for record in dataset.records} == {
+        "candidate",
+        "eligible",
+    }
+    assert {issue.code for issue in dataset.report.issues} == {
+        "training_ineligible_membership_preserved"
+    }
 
 
 def test_duplicate_record_ids_are_always_structural_errors() -> None:
@@ -420,20 +484,13 @@ def test_duplicate_record_ids_are_always_structural_errors() -> None:
     assert {issue.code for issue in captured.value.issues} == {"duplicate_record_id"}
 
 
-def test_empty_diagnostic_artifact_is_hashable_but_strict_mode_rejects_it() -> None:
+def test_nontraining_membership_is_hashable_and_preserved() -> None:
     candidate = _record(
         "candidate-only",
         status=AnnotationStatus.CANDIDATE,
         eligible=False,
     )
-    with pytest.raises(DatasetValidationError) as captured:
-        prepare_dataset((candidate,))
-    assert {issue.code for issue in captured.value.issues} == {"no_records_selected"}
-
-    diagnostic = prepare_dataset(
-        (candidate,),
-        config=PreparationConfig(fail_on_error=False),
-    )
-    assert diagnostic.records == ()
-    assert diagnostic.report.kept_count == 0
-    assert diagnostic.manifest.dataset_id.startswith("dataset-")
+    dataset = prepare_dataset((candidate,))
+    assert tuple(record.record.record_id for record in dataset.records) == ("candidate-only",)
+    assert dataset.report.kept_count == 1
+    assert dataset.manifest.dataset_id.startswith("dataset-")

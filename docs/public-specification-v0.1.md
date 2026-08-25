@@ -1,14 +1,32 @@
 # N-Truth Public Specification v0.1
 
-**Status:** normative software baseline, candidate scientific specification<br>
+
+> **Specification authority note (2026-08-09):** The binding product and scientific
+> requirements document is **N-Truth PRD v8.0**. This v0.1 text is retained as a
+> historical public description of the v3/v7-era surface; it is non-normative wherever
+> it differs from v8. The primary local workflow uses the guided
+> `/v8/quick-design/build-submission` PREVIEW/CONFIRM boundary; the strict raw
+> `/v8/quick-design` route remains an explicit author-asserted automation surface.
+> Both emit the query-scoped `ReportBundle`. Historical routes emit
+> `DEPRECATED_V7_ADAPTER`.
+> No scientific validation is claimed.
+
+Current v8 implementation truth is recorded in the
+[final requirement matrix](audits/prd-v8-full-migration/FINAL_IMPLEMENTATION_MATRIX.md),
+[Phase 1 clean-checkout baseline](audits/prd-v8-full-migration/REQUIREMENT_TRACEABILITY_MATRIX.md),
+[Scientific Review Register](audits/prd-v8-full-migration/SCIENTIFIC_REVIEW_REGISTER.md)
+and [current-to-target map](architecture/prd-v8-current-to-target.yaml). Repository
+status is `IMPLEMENTED_WITH_EXPLICIT_BLOCKERS`; data, training and External Challenge
+remain HOLD.
+
+**Status:** historical public baseline; superseded by PRD v8.0<br>
 **Version:** 0.1.0<br>
 **Date:** 1 August 2026<br>
 **Scope:** Train D deterministic v0.1-D and contracts required before Train A
 
-This document is the self-contained, redistributable specification for the public
-repository. `MUST`, `MUST NOT`, `SHOULD` and `MAY` are normative. Scientific rules,
-thresholds and taxonomies remain candidates until the external reviews listed in
-section 10 are complete.
+Within this historical document, `MUST`, `MUST NOT`, `SHOULD` and `MAY` describe the
+v0.1 baseline. They do not override the v8 schemas, theory assets, registered blockers
+or executable gates.
 
 The private PRD v6 used during reconciliation is retained locally and is not
 distributed by default. Implementations and contributions MUST rely on this public

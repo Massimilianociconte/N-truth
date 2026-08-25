@@ -1,0 +1,120 @@
+{
+  "$defs": {
+    "LicenseStatus": {
+      "enum": [
+        "VERIFIED",
+        "RESTRICTED",
+        "UNKNOWN"
+      ],
+      "title": "LicenseStatus",
+      "type": "string"
+    }
+  },
+  "description": "Machine-readable licence + granular use decision.\n\nCoarse flags (training_allowed, redistribution_allowed, derived_labels_allowed)\nremain for compatibility. Granular use_decision fields must not be inferred:\n``unknown`` fails closed for that capability.",
+  "properties": {
+    "adapter_build_allowed": {
+      "default": true,
+      "title": "Adapter Build Allowed",
+      "type": "boolean"
+    },
+    "benchmark_metrics_publication_allowed": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "const": "unknown",
+          "type": "string"
+        }
+      ],
+      "default": "unknown",
+      "title": "Benchmark Metrics Publication Allowed"
+    },
+    "decision_basis": {
+      "title": "Decision Basis",
+      "type": "string"
+    },
+    "derived_labels_allowed": {
+      "title": "Derived Labels Allowed",
+      "type": "boolean"
+    },
+    "derived_records_redistribution_allowed": {
+      "default": false,
+      "title": "Derived Records Redistribution Allowed",
+      "type": "boolean"
+    },
+    "development_allowed": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "const": "unknown",
+          "type": "string"
+        }
+      ],
+      "default": false,
+      "title": "Development Allowed"
+    },
+    "evaluation_allowed": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "const": "unknown",
+          "type": "string"
+        }
+      ],
+      "default": "unknown",
+      "title": "Evaluation Allowed"
+    },
+    "license_status": {
+      "$ref": "#/$defs/LicenseStatus"
+    },
+    "local_format_validation_allowed": {
+      "default": true,
+      "title": "Local Format Validation Allowed",
+      "type": "boolean"
+    },
+    "model_weights_redistribution_allowed": {
+      "default": false,
+      "title": "Model Weights Redistribution Allowed",
+      "type": "boolean"
+    },
+    "redistribution_allowed": {
+      "title": "Redistribution Allowed",
+      "type": "boolean"
+    },
+    "reviewed_at": {
+      "title": "Reviewed At",
+      "type": "string"
+    },
+    "spdx": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Spdx"
+    },
+    "training_allowed": {
+      "title": "Training Allowed",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "license_status",
+    "training_allowed",
+    "redistribution_allowed",
+    "derived_labels_allowed",
+    "decision_basis",
+    "reviewed_at"
+  ],
+  "title": "LicenseUseDecision",
+  "type": "object"
+}

@@ -1,0 +1,33 @@
+{
+  "sourcedata": {
+    "repository": "EMBO/SourceData",
+    "semantic_version": "2.0.3",
+    "revision": "b457c14041b61c56f671c6f966b4324f682855b7",
+    "files": [
+      {
+        "path": "token_classification/v_2.0.3/ner/train.jsonl",
+        "sha256": "8aba9b5cb222b4f726cde73ca8e4ff16be6717b064d11237b8dd197226c7b8de"
+      },
+      {
+        "path": "token_classification/v_2.0.3/ner/validation.jsonl",
+        "sha256": "3ba7685a4f31f47915702f4f67e444db19c1c9a815a5a59bcc6be731f7432bd2"
+      },
+      {
+        "path": "token_classification/v_2.0.3/ner/test.jsonl",
+        "sha256": "4f684c9fae6537583520c35a1b6ecfed92144aff3d15f57caf1839448188c591"
+      },
+      {
+        "path": "token_classification/v_2.0.3/roles_multi/train.jsonl",
+        "sha256": "c2ac812846265686502469208dae435a5dc5279d6149940409f3b4566764c925"
+      },
+      {
+        "path": "token_classification/v_2.0.3/roles_multi/validation.jsonl",
+        "sha256": "d2e98f0e71905e18cc4dbe208646113ddb4b869cf06d53af628156f6e1493715"
+      },
+      {
+        "path": "token_classification/v_2.0.3/roles_multi/test.jsonl",
+        "sha256": "f7fbee9acd7e7f52ed92944d3d719c83164ba75e18218841d3dc764956c21a75"
+      }
+    ]
+  }
+}

@@ -1,0 +1,83 @@
+registry_version: "0.2"
+updated_at: "2026-08-03"
+scope: public_safe_only
+prd_ref: "N-Truth PRD v7.0"
+notes: >
+  This file records scientific contacts and engagement status only.
+  It must not contain email addresses, phone numbers, private correspondence,
+  or language that implies formal partnership or endorsement unless a written
+  agreement exists. Private contact details and correspondence metadata live
+  outside Git under the local private registry path.
+
+status_vocabulary:
+  engagement_status:
+    - AWARE_OF_PROJECT
+    - RESPONSE_RECEIVED
+    - DISCUSSION_ACTIVE
+    - NO_RESPONSE
+  commitment_status:
+    - NO_FORMAL_COMMITMENT
+    - INDIRECT_SUPPORT_ONLY
+    - FORMAL_PARTNER  # use only with written agreement
+  relationship_class:
+    - CONTACT
+    - POTENTIAL_CONTRIBUTOR
+    - FORMAL_PARTNER
+
+contacts:
+  - contact_id: stan_lazic
+    name: Stan Lazic
+    relationship_class: POTENTIAL_CONTRIBUTOR
+    domain_role:
+      - experimental_design
+      - pseudoreplication
+      - biostatistics
+    engagement_status: RESPONSE_RECEIVED
+    commitment_status: NO_FORMAL_COMMITMENT
+    potential_contribution:
+      - in_vivo_validation_data
+      - scientific_feedback
+    public_note: >
+      Indicated that an existing in vivo dataset may be relevant to validation.
+      Dataset structure, access conditions and permitted uses remain to be clarified.
+      Under PRD v7, any dataset role is profile-relative and must be decided before
+      complete label access. No formal partnership. No access or ingestion has occurred.
+    related_source_id: lazic_in_vivo_pseudoreplication_data
+    related_source_role_status: ROLE_DECISION_PENDING
+    next_action: AWAIT_DATASET_DETAILS
+
+  - contact_id: marcus_munafo
+    name: Marcus Munafò
+    relationship_class: CONTACT
+    domain_role:
+      - metaresearch
+      - reproducibility
+      - research_strategy
+    engagement_status: AWARE_OF_PROJECT
+    commitment_status: NO_FORMAL_COMMITMENT
+    potential_contribution:
+      - strategic_feedback
+      - research_network_context
+    public_note: >
+      Included in the discussion. No data contribution or formal project role
+      has been agreed. Not a partner or endorser.
+    next_action: NO_IMMEDIATE_REQUEST
+
+  - contact_id: esther_pearl_nc3rs
+    name: Esther Pearl
+    organization: NC3Rs
+    relationship_class: CONTACT
+    domain_role:
+      - experimental_design
+      - arrive_guidelines
+    engagement_status: RESPONSE_RECEIVED
+    commitment_status: INDIRECT_SUPPORT_ONLY
+    potential_contribution:
+      - release_updates
+      - future_public_dataset_information
+    public_note: >
+      NC3Rs currently has no capacity for direct contribution, but offered to
+      provide updates about the ARRIVE compliance checker and its planned
+      training dataset. This is not a partnership, approval or endorsement of N-Truth.
+    related_source_id: nc3rs_arrive_compliance_checker_dataset
+    next_action: AWAIT_ARRIVE_RELEASE_UPDATES

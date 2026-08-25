@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import hashlib
+import json
 
 import pytest
 
 from ntruth.governance.lineage import CorpusSplit
+from ntruth.parser_ai.contract import GoldParserTarget, ParserCandidateOutput
 from ntruth.training import (
     AnnotationStatus,
     DatasetValidationError,
@@ -20,6 +22,45 @@ def _digest(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
+def _gold_target(marker: dict[str, str]) -> GoldParserTarget:
+    return GoldParserTarget(
+        candidate_target=ParserCandidateOutput.model_validate(
+            {
+                "coverage": {
+                    "status": "PARTIAL",
+                    "missing_artifact_ids": ["not-reported"],
+                    "rationale": json.dumps(marker, sort_keys=True),
+                },
+                "model_metadata": {
+                    "adapter_name": "dedup-fixture",
+                    "model_name": "adjudication",
+                    "model_version": "1",
+                    "prompt_template_version": "candidate-v8-test",
+                },
+            }
+        ),
+        adjudication_id="gold-fixture",
+        reviewer_ids=("wet-lab", "biostatistics"),
+        adjudication_rationale="Candidate facts were reconciled for this fixture.",
+        submission_references=(
+            {
+                "submission_id": "submission-wet-lab",
+                "submission_sha256": "a" * 64,
+                "reviewer_id": "wet-lab",
+                "reviewer_role": "wet-lab",
+            },
+            {
+                "submission_id": "submission-biostatistics",
+                "submission_sha256": "b" * 64,
+                "reviewer_id": "biostatistics",
+                "reviewer_role": "biostatistics",
+            },
+        ),
+        comparison_status="AGREED",
+        material_differences=(),
+    )
+
+
 def _record(
     record_id: str,
     text: str,
@@ -28,25 +69,16 @@ def _record(
     source_key: str | None = None,
     requested_split: CorpusSplit | None = None,
     laboratory_id: str | None = None,
-    training_eligible: bool | None = None,
-    evaluation_eligible: bool | None = None,
+    eligible: bool = True,
 ) -> SupervisedRecord:
     source = source_key or record_id
-    protected_split = requested_split in {
-        CorpusSplit.TEST,
-        CorpusSplit.EXTERNAL_CHALLENGE,
-    }
-    if training_eligible is None:
-        training_eligible = not protected_split
-    if evaluation_eligible is None:
-        evaluation_eligible = protected_split
     return SupervisedRecord(
         record_id=record_id,
-        task="parser_ai_v2",
+        task="parser_candidate_v8",
         language="en",
         domain="dedup-split-regression",
         input_text=text,
-        target=target or {"label": record_id},
+        target=_gold_target(target if target is not None else {"label": record_id}),
         provenance=SupervisionProvenance(
             source_id=f"source-{source}",
             source_asset_id=f"asset-{source}",
@@ -56,12 +88,40 @@ def _record(
             license_or_authorization_id=f"authorization-{source}",
             guideline_version="test-v1",
             reviewer_count=2,
+            reviewer_ids=("wet-lab", "biostatistics"),
             reviewer_roles=("wet-lab", "biostatistics"),
+            adjudication_id="gold-fixture",
+            study_family_id=(
+                f"study-{source}" if requested_split is CorpusSplit.EXTERNAL_CHALLENGE else None
+            ),
+            document_lineage_id=(
+                f"document-{source}" if requested_split is CorpusSplit.EXTERNAL_CHALLENGE else None
+            ),
+            external_challenge_dependency=(
+                {
+                    "review_status": "SCIENTIFIC_REVIEW_REQUIRED",
+                    "task7_contamination_attestation_reference": {
+                        "artifact_id": f"attestation-{source}",
+                        "sha256": "c" * 64,
+                    },
+                    "custody_reference": {
+                        "artifact_id": f"custody-{source}",
+                        "sha256": "d" * 64,
+                    },
+                    "family_evidence_references": [
+                        {"artifact_id": f"family-{source}", "sha256": "e" * 64}
+                    ],
+                }
+                if requested_split is CorpusSplit.EXTERNAL_CHALLENGE
+                else None
+            ),
         ),
-        annotation_status=AnnotationStatus.DOUBLE_REVIEWED,
-        training_eligible=training_eligible,
-        evaluation_eligible=evaluation_eligible,
-        requested_split=requested_split,
+        annotation_status=AnnotationStatus.ADJUDICATED,
+        training_eligible=eligible
+        and requested_split not in {CorpusSplit.TEST, CorpusSplit.EXTERNAL_CHALLENGE},
+        evaluation_eligible=requested_split is CorpusSplit.TEST,
+        model_selection_eligible=eligible and requested_split in {None, CorpusSplit.VALIDATION},
+        split=requested_split or CorpusSplit.UNASSIGNED,
     )
 
 
@@ -130,6 +190,7 @@ def test_near_duplicate_inputs_with_different_targets_reject_cross_split_constra
         "z-test-cage",
         "one two three four five six seven eight nine eleven",
         target={"independent_unit": "cage"},
+        eligible=False,
         requested_split=CorpusSplit.TEST,
     )
     config = PreparationConfig(shingle_size=1, near_duplicate_threshold=0.8)
@@ -159,8 +220,7 @@ def test_near_duplicate_inputs_with_different_targets_are_kept_in_one_leakage_gr
         "z-cage",
         "one two three four five six seven eight nine eleven",
         target={"independent_unit": "cage"},
-        training_eligible=False,
-        evaluation_eligible=True,
+        eligible=False,
     )
     config = PreparationConfig(shingle_size=1, near_duplicate_threshold=0.8)
 
@@ -204,8 +264,7 @@ def test_exact_duplicate_propagates_test_constraint_and_removed_source_identity(
             duplicate_text,
             target=duplicate_target,
             source_key="canonical-source",
-            training_eligible=False,
-            evaluation_eligible=True,
+            eligible=False,
         ),
         _record(
             "z-duplicate-test",
@@ -219,8 +278,7 @@ def test_exact_duplicate_propagates_test_constraint_and_removed_source_identity(
             "A second endpoint was measured on those same four cages.",
             target={"endpoint": "secondary"},
             source_key="restricted-source",
-            training_eligible=False,
-            evaluation_eligible=True,
+            eligible=False,
         ),
     )
 
@@ -242,8 +300,7 @@ def test_near_duplicate_propagates_external_constraint_through_laboratory_identi
             "one two three four five six seven eight nine ten",
             target=target,
             source_key="canonical-source",
-            training_eligible=False,
-            evaluation_eligible=True,
+            eligible=False,
         ),
         _record(
             "z-duplicate-external",
@@ -259,17 +316,13 @@ def test_near_duplicate_propagates_external_constraint_through_laboratory_identi
             target={"endpoint": "orthogonal-assay"},
             source_key="other-external-source",
             laboratory_id="laboratory-unseen-01",
-            training_eligible=False,
-            evaluation_eligible=True,
+            eligible=False,
         ),
     )
     config = PreparationConfig(shingle_size=2, near_duplicate_threshold=0.8)
 
-    dataset = prepare_dataset(records, config=config)
-    prepared = {item.record.record_id: item for item in dataset.records}
-
-    assert set(prepared) == {"a-canonical", "m-same-laboratory"}
-    assert {item.split for item in prepared.values()} == {CorpusSplit.EXTERNAL_CHALLENGE}
-    assert len({item.leakage_group_id for item in prepared.values()}) == 1
-    assert dataset.report.near_duplicate_count == 1
-    assert dataset.report.duplicate_decisions[0].duplicate_record_id == "z-duplicate-external"
+    with pytest.raises(
+        DatasetValidationError,
+        match="external_challenge_custody_dependency_missing",
+    ):
+        prepare_dataset(records, config=config)

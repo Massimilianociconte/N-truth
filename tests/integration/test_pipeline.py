@@ -11,18 +11,15 @@ import pytest
 from conftest import ProjectFactory
 
 import ntruth.pipeline as pipeline_module
-from ntruth.capabilities import CORE_PROFILE_REFERENCE
-from ntruth.corrections import CorrectionLedger, recalculate_corrected_block
-from ntruth.design import CompilationStatus
 from ntruth.extract.facts import ExtractionResult
 from ntruth.graph.builder import BuildResult
-from ntruth.pipeline import AnalysisResult, analyze_project, replace_block_analysis
+from ntruth.graph.validation import GraphValidationError
+from ntruth.pipeline import AnalysisResult
+from ntruth.pipeline import analyze_project_v7_adapter as analyze_project
 from ntruth.reporting import write_all
 from ntruth.reporting.html_report import render_html
-from ntruth.schemas.core import Determinability, Provenance, ProvenanceKind, Severity
-from ntruth.schemas.experiment import Alert, Correction, CorrectionReason, GraphStatus
+from ntruth.schemas.core import Provenance, ProvenanceKind
 from ntruth.schemas.graph import GraphRelation, RelationType
-from ntruth.schemas.report import PositivePathStatus
 
 METHODS = (
     "# Materials and Methods\n\n"
@@ -52,7 +49,6 @@ def test_report_records_versions_and_checksums(make_project: ProjectFactory) -> 
     assert report.versions.schema_version
     assert len(report.input_checksum) == 64
     assert len(report.ruleset_checksum) == 64
-    assert report.extras["scientific_profile"] == CORE_PROFILE_REFERENCE
 
 
 def test_html_contains_only_facts_present_in_the_json(
@@ -100,6 +96,120 @@ def test_limits_are_declared_in_the_report(make_project: ProjectFactory) -> None
     assert "ExperimentBlock" in joined
     assert "deterministica" in joined
 
+
+def test_analysis_does_not_open_network_connections(
+    make_project: ProjectFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """NFR-01 e FR-035: il core funziona senza rete."""
+
+    def _blocked(*args: object, **kwargs: object) -> None:  # pragma: no cover
+        raise AssertionError("il core non deve aprire connessioni di rete")
+
+    monkeypatch.setattr(socket.socket, "connect", _blocked)
+    monkeypatch.setattr(socket, "create_connection", _blocked)
+    result = analyze_project(make_project({"m.md": METHODS}))
+    assert result.block.alerts
+
+
+def test_project_reopens_offline_without_loss(make_project: ProjectFactory, tmp_path: Path) -> None:
+    """FR-001: riapertura offline senza perdita."""
+    from ntruth.ingest.project import Project
+
+    project = make_project({"m.md": METHODS}, name="riapertura")
+    checksum = project.manifest.checksum()
+    reopened = Project.open(project.root)
+    assert reopened.manifest.checksum() == checksum
+    assert not reopened.verify_integrity()
+    assert analyze_project(reopened).report.content_checksum()
+
+
+def test_rules_can_change_without_touching_the_code(
+    make_project: ProjectFactory, tmp_path: Path
+) -> None:
+    """FR-018: modificare il ruleset non richiede retraining ne una nuova build."""
+    from ntruth.rules.loader import load_ruleset_file
+
+    payload = {
+        "ruleset_id": "test-locale",
+        "version": "0.0.1",
+        "description": "ruleset minimo per il test",
+        "rules": [
+            {
+                "rule_id": "LOC-001",
+                "version": "1.0.0",
+                "domain": "general",
+                "title": "regola locale",
+                "preconditions": ["analysis_finer_than_assignment()"],
+                "inference": "local rule",
+                "message_it": "regola locale attiva su {experimental_unit}",
+                "message_en": "local rule active on {experimental_unit}",
+                "severity": "medium",
+            }
+        ],
+    }
+    path = tmp_path / "test-locale-0.0.1.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    ruleset = load_ruleset_file(path)
+
+    result = analyze_project(make_project({"m.md": METHODS}), ruleset=ruleset)
+    assert {a.rule_id for a in result.block.alerts} == {"LOC-001"}
+
+
+def test_language_layer_is_separate_from_the_scientific_layer(
+    make_project: ProjectFactory,
+) -> None:
+    """NFR-15: cambiare lingua cambia i messaggi, non unita, n o regole scattate."""
+    italian = analyze_project(make_project({"m.md": METHODS}, name="lang-it"), lang="it")
+    english = analyze_project(make_project({"m.md": METHODS}, name="lang-en"), lang="en")
+
+    def scientific_content(
+        result: AnalysisResult,
+    ) -> tuple[list[str], list[tuple[str, int | None, str]]]:
+        return (
+            sorted(a.rule_id for a in result.block.alerts),
+            [
+                (str(a.experimental_unit), a.n_independent, a.risk.value)
+                for a in result.block.unit_assessments
+            ],
+        )
+
+    assert scientific_content(italian) == scientific_content(english)
+    assert italian.block.alerts
+    assert {a.message for a in italian.block.alerts} != {a.message for a in english.block.alerts}
+
+
+def test_invalid_graph_is_rejected_before_unit_resolution(
+    make_project: ProjectFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = make_project({"m.md": METHODS}, name="invalid-graph")
+    original_build_graph = pipeline_module.build_graph
+    resolver_called = False
+
+    def invalid_build(block_id: str, extraction: ExtractionResult) -> BuildResult:
+        built = original_build_graph(block_id, extraction)
+        dangling = GraphRelation(
+            id="dangling-relation",
+            type=RelationType.NESTED_IN,
+            source="missing-child",
+            target="missing-parent",
+            provenance=Provenance(origin=ProvenanceKind.DERIVED),
+        )
+        hierarchy = built.hierarchy.model_copy(
+            update={"relations": (*built.hierarchy.relations, dangling)}
+        )
+        return replace(built, hierarchy=hierarchy)
+
+    def forbidden_resolver(*args: object, **kwargs: object) -> None:
+        nonlocal resolver_called
+        resolver_called = True
+        raise AssertionError("il resolver non deve leggere un grafo non valido")
+
+    monkeypatch.setattr(pipeline_module, "build_graph", invalid_build)
+    monkeypatch.setattr(pipeline_module, "resolve_units", forbidden_resolver)
+
+    with pytest.raises(GraphValidationError, match="dangling_relation_endpoint"):
+        pipeline_module.analyze_project_v7_adapter(project)
+    assert not resolver_called
 
 def test_repeated_measure_pipeline_is_gated_outside_core_profile(
     make_project: ProjectFactory,
@@ -230,162 +340,3 @@ def test_repeated_measure_pipeline_is_gated_outside_core_profile(
         serialized = written[artifact_name].read_text(encoding="utf-8")
         assert "LEAKED_METHODS_SENTINEL" not in serialized
         assert "99991" not in serialized
-
-
-def test_analysis_does_not_open_network_connections(
-    make_project: ProjectFactory, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """NFR-01 e FR-035: il core funziona senza rete."""
-
-    def _blocked(*args: object, **kwargs: object) -> None:  # pragma: no cover
-        raise AssertionError("il core non deve aprire connessioni di rete")
-
-    monkeypatch.setattr(socket.socket, "connect", _blocked)
-    monkeypatch.setattr(socket, "create_connection", _blocked)
-    result = analyze_project(make_project({"m.md": METHODS}))
-    assert result.block.alerts
-
-
-def test_project_reopens_offline_without_loss(make_project: ProjectFactory, tmp_path: Path) -> None:
-    """FR-001: riapertura offline senza perdita."""
-    from ntruth.ingest.project import Project
-
-    project = make_project({"m.md": METHODS}, name="riapertura")
-    checksum = project.manifest.checksum()
-    reopened = Project.open(project.root)
-    assert reopened.manifest.checksum() == checksum
-    assert not reopened.verify_integrity()
-    assert analyze_project(reopened).report.content_checksum()
-
-
-def test_rules_can_change_without_touching_the_code(
-    make_project: ProjectFactory, tmp_path: Path
-) -> None:
-    """FR-018: modificare il ruleset non richiede retraining ne una nuova build."""
-    from ntruth.rules.loader import load_ruleset_file
-
-    payload = {
-        "ruleset_id": "test-locale",
-        "version": "0.0.1",
-        "description": "ruleset minimo per il test",
-        "rules": [
-            {
-                "rule_id": "LOC-001",
-                "version": "1.0.0",
-                "domain": "general",
-                "title": "regola locale",
-                "preconditions": [],
-                "requires_evidence": False,
-                "inference": "local rule",
-                "message_it": "regola locale attiva su {experimental_unit}",
-                "message_en": "local rule active on {experimental_unit}",
-                "severity": "medium",
-            }
-        ],
-    }
-    path = tmp_path / "test-locale-0.0.1.json"
-    path.write_text(json.dumps(payload), encoding="utf-8")
-    ruleset = load_ruleset_file(path)
-
-    result = analyze_project(make_project({"m.md": METHODS}), ruleset=ruleset)
-    assert {a.rule_id for a in result.block.alerts} == {"LOC-001"}
-
-
-def test_language_layer_is_separate_from_the_scientific_layer(
-    make_project: ProjectFactory,
-) -> None:
-    """NFR-15: cambiare lingua cambia i messaggi, non unita, n o regole scattate."""
-    italian = analyze_project(make_project({"m.md": METHODS}, name="lang-it"), lang="it")
-    english = analyze_project(make_project({"m.md": METHODS}, name="lang-en"), lang="en")
-
-    def scientific_content(
-        result: AnalysisResult,
-    ) -> tuple[list[str], list[tuple[str, int | None, str]]]:
-        return (
-            sorted(a.rule_id for a in result.block.alerts),
-            [
-                (str(a.experimental_unit), a.n_independent, a.risk.value)
-                for a in result.block.unit_assessments
-            ],
-        )
-
-    assert scientific_content(italian) == scientific_content(english)
-    assert italian.block.alerts
-    assert {a.message for a in italian.block.alerts} != {a.message for a in english.block.alerts}
-
-
-def test_invalid_graph_is_rejected_before_unit_resolution(
-    make_project: ProjectFactory, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    project = make_project({"m.md": METHODS}, name="invalid-graph")
-    original_build_graph = pipeline_module.build_graph
-    resolver_called = False
-
-    def invalid_build(block_id: str, extraction: ExtractionResult) -> BuildResult:
-        built = original_build_graph(block_id, extraction)
-        dangling = GraphRelation(
-            id="dangling-relation",
-            type=RelationType.NESTED_IN,
-            source="missing-child",
-            target="missing-parent",
-            provenance=Provenance(origin=ProvenanceKind.DERIVED),
-        )
-        hierarchy = built.hierarchy.model_copy(
-            update={"relations": (*built.hierarchy.relations, dangling)}
-        )
-        return replace(built, hierarchy=hierarchy)
-
-    def forbidden_resolver(*args: object, **kwargs: object) -> None:
-        nonlocal resolver_called
-        resolver_called = True
-        raise AssertionError("il resolver non deve leggere un grafo non valido")
-
-    monkeypatch.setattr(pipeline_module, "build_graph", invalid_build)
-    monkeypatch.setattr(pipeline_module, "resolve_units", forbidden_resolver)
-
-    result = pipeline_module.analyze_project(project)
-    assert not resolver_called
-    assert result.report.status == "failed"
-    assert result.block.determinability.value == "INVALID_GRAPH"
-    assert result.report.verifier_results[result.block.id].status == "failed"
-    assert "dangling_relation_endpoint" in {item.code for item in result.report.graph_violations}
-    assert any("dangling_relation_endpoint" in limit for limit in result.report.limits)
-
-    dangling_index = next(
-        index
-        for index, relation in enumerate(result.block.hierarchy.relations)
-        if relation.id == "dangling-relation"
-    )
-    ledger = CorrectionLedger.start(result.block).apply(
-        Correction(
-            id="repair-dangling-relation",
-            sequence=0,
-            reason=CorrectionReason.DOMAIN_JUDGEMENT,
-            rationale="Rimozione umana della relazione senza endpoint presenti.",
-            reviewer_role="domain_reviewer",
-            patch=(
-                {
-                    "op": "test",
-                    "path": f"/hierarchy/relations/{dangling_index}/id",
-                    "value": "dangling-relation",
-                },
-                {"op": "remove", "path": f"/hierarchy/relations/{dangling_index}"},
-            ),
-        )
-    )
-    recalculated = recalculate_corrected_block(
-        result.block_analyses[0],
-        ledger,
-        pipeline_module.load_ruleset(),
-    )
-    repaired = replace_block_analysis(result, recalculated.analysis)
-
-    assert recalculated.analysis.verification.status.value != "failed"
-    assert recalculated.analysis.block.graph_status is GraphStatus.HUMAN_CONFIRMED
-    assert repaired.report.status == recalculated.analysis.verification.status.value
-    assert (
-        repaired.report.verifier_results[result.block.id].status
-        == recalculated.analysis.verification.status.value
-    )
-    assert not any("dangling_relation_endpoint" in limit for limit in repaired.report.limits)
-    assert ledger.integrity_errors() == ()

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import Field, model_validator
 
@@ -11,6 +12,16 @@ from ntruth.schemas.core import FrozenModel, content_checksum
 
 
 class CorpusSplit(StrEnum):
+    UNASSIGNED = "UNASSIGNED"
+    TRAIN = "TRAIN"
+    VALIDATION = "VALIDATION"
+    TEST = "TEST"
+    EXTERNAL_CHALLENGE = "EXTERNAL_CHALLENGE"
+
+
+class CorpusSplitV7(StrEnum):
+    """Historical serialized vocabulary; accepted only by named v7 models."""
+
     UNASSIGNED = "unassigned"
     TRAIN = "train"
     VALIDATION = "validation"
@@ -70,6 +81,17 @@ class CorpusAsset(FrozenModel):
     bundle_id: str
     bundle_checksum: str = Field(pattern=r"^[0-9a-f]{64}$")
     split: CorpusSplit
+    leakage_group_ids: tuple[str, ...] = Field(min_length=1)
+    synthetic: bool = False
+
+
+class CorpusAssetV7(FrozenModel):
+    asset_id: str
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    governance_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    bundle_id: str
+    bundle_checksum: str = Field(pattern=r"^[0-9a-f]{64}$")
+    split: CorpusSplitV7
     leakage_group_ids: tuple[str, ...] = Field(min_length=1)
     synthetic: bool = False
 
@@ -155,6 +177,72 @@ class CorpusSnapshotManifest(FrozenModel):
         return f"corpus-{self.snapshot_checksum()[:20]}"
 
 
+class CorpusSnapshotManifestV7(FrozenModel):
+    """Byte-compatible typed input model for audited v7 manifests."""
+
+    snapshot_id: str = ""
+    parent_snapshot_ids: tuple[str, ...] = ()
+    schema_version: str
+    parser_contract_version: str
+    guideline_version: str
+    ontology_version: str
+    assets: tuple[CorpusAssetV7, ...] = Field(min_length=1)
+    leakage_groups: tuple[LeakageGroup, ...] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _validate_snapshot(self) -> CorpusSnapshotManifestV7:
+        asset_ids = [asset.asset_id for asset in self.assets]
+        if len(asset_ids) != len(set(asset_ids)):
+            raise ValueError("asset_id duplicati nel corpus snapshot v7")
+        groups = {group.group_id: group for group in self.leakage_groups}
+        if len(groups) != len(self.leakage_groups):
+            raise ValueError("leakage group duplicati nel corpus snapshot v7")
+        by_id = {asset.asset_id: asset for asset in self.assets}
+        for asset in self.assets:
+            if set(asset.leakage_group_ids) - groups.keys():
+                raise ValueError("v7 asset refers missing leakage group")
+            if asset.synthetic and asset.split is not CorpusSplitV7.TRAIN:
+                raise ValueError("v7 synthetic assets are train-only")
+        for group in self.leakage_groups:
+            if set(group.asset_ids) - by_id.keys():
+                raise ValueError("v7 leakage group refers missing asset")
+            actual = {
+                asset.asset_id for asset in self.assets if group.group_id in asset.leakage_group_ids
+            }
+            if actual != set(group.asset_ids):
+                raise ValueError("v7 leakage membership is not symmetric")
+            if len({by_id[item].split for item in group.asset_ids}) > 1:
+                raise ValueError("v7 leakage group crosses splits")
+        expected = self.computed_snapshot_id()
+        if self.snapshot_id and self.snapshot_id != expected:
+            raise ValueError("v7 snapshot_id non coerente con il contenuto")
+        object.__setattr__(self, "snapshot_id", expected)
+        return self
+
+    def _identity_payload(self) -> dict[str, object]:
+        return {
+            "parents": sorted(self.parent_snapshot_ids),
+            "schema_version": self.schema_version,
+            "parser_contract_version": self.parser_contract_version,
+            "guideline_version": self.guideline_version,
+            "ontology_version": self.ontology_version,
+            "assets": sorted(
+                (asset.model_dump(mode="json") for asset in self.assets),
+                key=lambda item: str(item["asset_id"]),
+            ),
+            "leakage_groups": sorted(
+                (group.model_dump(mode="json") for group in self.leakage_groups),
+                key=lambda item: str(item["group_id"]),
+            ),
+        }
+
+    def snapshot_checksum(self) -> str:
+        return content_checksum(self._identity_payload())
+
+    def computed_snapshot_id(self) -> str:
+        return f"corpus-{self.snapshot_checksum()[:20]}"
+
+
 class RunPurpose(StrEnum):
     INFERENCE = "inference"
     EVALUATION = "evaluation"
@@ -181,6 +269,137 @@ class ModelRunLineage(FrozenModel):
 
     def lineage_checksum(self) -> str:
         return content_checksum(self.model_dump(mode="json"))
+
+
+class ModelRunLineageV7(FrozenModel):
+    run_id: str
+    purpose: RunPurpose
+    parser_contract_version: str
+    model_name: str
+    model_version: str
+    model_config_checksum: str = Field(pattern=r"^[0-9a-f]{64}$")
+    corpus_snapshot_id: str
+    corpus_snapshot_checksum: str = Field(pattern=r"^[0-9a-f]{64}$")
+    input_splits: tuple[CorpusSplitV7, ...] = ()
+    schema_version: str
+    guideline_version: str
+    ontology_version: str
+    code_lock_checksum: str = Field(pattern=r"^[0-9a-f]{64}$")
+    seed: int | None = None
+
+    def lineage_checksum(self) -> str:
+        return content_checksum(self.model_dump(mode="json"))
+
+
+class LineageMigrationDiagnostic(FrozenModel):
+    code: str
+    detail: str
+
+
+class CorpusSnapshotMigrationV7ToV8(FrozenModel):
+    source_checksum: str = Field(pattern=r"^[0-9a-f]{64}$")
+    target: CorpusSnapshotManifest
+    diagnostics: tuple[LineageMigrationDiagnostic, ...] = Field(min_length=1)
+
+
+class ModelRunMigrationV7ToV8(FrozenModel):
+    source_checksum: str = Field(pattern=r"^[0-9a-f]{64}$")
+    target: ModelRunLineage
+    diagnostics: tuple[LineageMigrationDiagnostic, ...] = Field(min_length=1)
+
+
+class LineageMigrationReviewRequired(FrozenModel):
+    """Typed fail-closed result for scientifically ambiguous legacy membership."""
+
+    status: Literal["SCIENTIFIC_REVIEW_REQUIRED"] = "SCIENTIFIC_REVIEW_REQUIRED"
+    source_checksum: str = Field(pattern=r"^[0-9a-f]{64}$")
+    blocked_splits: tuple[Literal["EXTERNAL"], ...] = Field(min_length=1)
+    diagnostics: tuple[LineageMigrationDiagnostic, ...] = Field(min_length=1)
+
+
+_V7_SPLIT_TO_V8 = {
+    CorpusSplitV7.TRAIN: CorpusSplit.TRAIN,
+    CorpusSplitV7.VALIDATION: CorpusSplit.VALIDATION,
+    CorpusSplitV7.TEST: CorpusSplit.TEST,
+}
+
+
+def migrate_corpus_snapshot_manifest_v7_to_v8(
+    source: CorpusSnapshotManifestV7,
+) -> CorpusSnapshotMigrationV7ToV8 | LineageMigrationReviewRequired:
+    if any(asset.split is CorpusSplitV7.EXTERNAL for asset in source.assets):
+        return LineageMigrationReviewRequired(
+            source_checksum=source.snapshot_checksum(),
+            blocked_splits=("EXTERNAL",),
+            diagnostics=(
+                LineageMigrationDiagnostic(
+                    code="SCIENTIFIC_REVIEW_REQUIRED",
+                    detail=(
+                        "Historical EXTERNAL membership does not establish the v8 "
+                        "External Challenge contamination and custody contract."
+                    ),
+                ),
+            ),
+        )
+    target = CorpusSnapshotManifest(
+        parent_snapshot_ids=source.parent_snapshot_ids,
+        schema_version="8.0.0",
+        parser_contract_version=source.parser_contract_version,
+        guideline_version=source.guideline_version,
+        ontology_version=source.ontology_version,
+        assets=tuple(
+            CorpusAsset(
+                **asset.model_dump(mode="json", exclude={"split"}),
+                split=_V7_SPLIT_TO_V8[asset.split],
+            )
+            for asset in source.assets
+        ),
+        leakage_groups=source.leakage_groups,
+    )
+    return CorpusSnapshotMigrationV7ToV8(
+        source_checksum=source.snapshot_checksum(),
+        target=target,
+        diagnostics=(
+            LineageMigrationDiagnostic(
+                code="LEGACY_V7_EXPLICIT_MIGRATION",
+                detail="Historical lowercase split vocabulary migrated one-way to v8.",
+            ),
+        ),
+    )
+
+
+def migrate_model_run_lineage_v7_to_v8(
+    source: ModelRunLineageV7,
+) -> ModelRunMigrationV7ToV8 | LineageMigrationReviewRequired:
+    if CorpusSplitV7.EXTERNAL in source.input_splits:
+        return LineageMigrationReviewRequired(
+            source_checksum=source.lineage_checksum(),
+            blocked_splits=("EXTERNAL",),
+            diagnostics=(
+                LineageMigrationDiagnostic(
+                    code="SCIENTIFIC_REVIEW_REQUIRED",
+                    detail=(
+                        "Historical EXTERNAL run input cannot be promoted to the v8 "
+                        "External Challenge without Task 7 review."
+                    ),
+                ),
+            ),
+        )
+    target = ModelRunLineage(
+        **source.model_dump(mode="json", exclude={"input_splits", "schema_version"}),
+        input_splits=tuple(_V7_SPLIT_TO_V8[split] for split in source.input_splits),
+        schema_version="8.0.0",
+    )
+    return ModelRunMigrationV7ToV8(
+        source_checksum=source.lineage_checksum(),
+        target=target,
+        diagnostics=(
+            LineageMigrationDiagnostic(
+                code="LEGACY_V7_EXPLICIT_MIGRATION",
+                detail="Historical ModelRunLineage migrated through the named v7 adapter.",
+            ),
+        ),
+    )
 
 
 def validate_snapshot_dag(snapshots: Iterable[CorpusSnapshotManifest]) -> None:

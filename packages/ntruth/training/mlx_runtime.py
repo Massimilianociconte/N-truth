@@ -13,29 +13,47 @@ import os
 import platform
 import re
 import shutil
+import stat
 import subprocess
 import sys
+import tempfile
 import time
 from collections import Counter
 from collections.abc import Iterator, Mapping
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
-from typing import Any
+from typing import Any, Literal, Protocol, runtime_checkable
+
+from pydantic import Field, model_validator
 
 from ntruth.governance.lineage import CorpusSplit
-from ntruth.schemas.core import content_checksum
+from ntruth.reality_gate.v8 import (
+    DetachedGateSignatureV8,
+    GateBlockerRegistryV8,
+    GateTrustRegistryV8,
+    RealityGateAssessmentV8,
+    RealityGateEvidenceLedgerV8,
+    RealityGateTrainingPinTupleV8,
+    RealityGateTrainingTargetV8,
+    StageGateDecisionRecordV8,
+    evaluate_training_authorization_v8,
+    reconcile_training_authorization_pins_v8,
+)
+from ntruth.schemas.core import FrozenModel, content_checksum
+from ntruth.training.mlx_fd_entrypoint import FD_ENV, FD_SENTINEL
 from ntruth.training.records import (
     DatasetManifest,
     PreparationReport,
-    PreparedDataset,
     PreparedRecord,
+    _iter_jsonl_physical_lines,
 )
 
 PROFILE_SCHEMA_VERSION = "1.0.0"
 PROVENANCE_SCHEMA_VERSION = "1.0.0"
-RUN_SCHEMA_VERSION = "2.0.0"
-SNAPSHOT_SCHEMA_VERSION = "2.0.0"
+RUN_SCHEMA_VERSION = "8.0.0"
+SNAPSHOT_SCHEMA_VERSION = "8.0.0"
 _TEST_LOSS = re.compile(r"Test loss\s+([0-9]+(?:\.[0-9]+)?)")
 _PEAK_MEMORY = re.compile(r"Peak mem(?:ory)?\s+([0-9]+(?:\.[0-9]+)?)\s*GB", re.I)
 _SHA256 = re.compile(r"[0-9a-f]{64}")
@@ -43,31 +61,427 @@ _REAL_SNAPSHOT_FILES = frozenset(
     {
         "train.jsonl",
         "valid.jsonl",
-        "test.jsonl",
-        "external.jsonl",
         "dataset-manifest.source.json",
-        "prepared-records.jsonl",
         "preparation-report.json",
     }
 )
-_SMOKE_SNAPSHOT_FILES = frozenset({"train.jsonl", "valid.jsonl", "test.jsonl"})
+_SMOKE_SNAPSHOT_FILES = frozenset({"train.jsonl", "valid.jsonl"})
 _SPLIT_FILES = {
     "train": "train.jsonl",
     "valid": "valid.jsonl",
-    "test": "test.jsonl",
-    "external": "external.jsonl",
 }
 _SOURCE_SPLIT_NAMES = {
+    "TRAIN": "train",
+    "VALIDATION": "valid",
     "train": "train",
     "validation": "valid",
-    "test": "test",
-    "external_challenge": "external",
-    "external": "external",
 }
 
 
 class MLXPipelineError(RuntimeError):
     """Errore operativo previsto della corsia ML locale."""
+
+
+class TrainingLineageReviewRequired(MLXPipelineError):
+    """Task 6 design/source lineage is absent or not independently verifiable."""
+
+
+class TrainingDesignLineagePins(FrozenModel):
+    """Opaque Task 6 output pins; this boundary assigns no design meaning."""
+
+    schema_version: Literal["8.0.0"] = "8.0.0"
+    artifact_type: Literal["TASK6_TRAINING_DESIGN_LINEAGE_PINS"] = (
+        "TASK6_TRAINING_DESIGN_LINEAGE_PINS"
+    )
+    artifact_id: str = ""
+    artifact_sha256: str = ""
+    planned_design_artifact_id: str
+    planned_design_artifact_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    executed_design_artifact_id: str
+    executed_design_artifact_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @model_validator(mode="after")
+    def _content_addressed(self) -> TrainingDesignLineagePins:
+        if not self.planned_design_artifact_id.strip() or not (
+            self.executed_design_artifact_id.strip()
+        ):
+            raise ValueError("planned/executed design artifact IDs must not be blank")
+        identity = self.model_dump(mode="json", exclude={"artifact_id", "artifact_sha256"})
+        checksum = content_checksum(identity)
+        artifact_id = f"training-design-lineage-{checksum[:20]}"
+        if self.artifact_sha256 and self.artifact_sha256 != checksum:
+            raise ValueError("training design lineage checksum mismatch")
+        if self.artifact_id and self.artifact_id != artifact_id:
+            raise ValueError("training design lineage artifact id mismatch")
+        object.__setattr__(self, "artifact_sha256", checksum)
+        object.__setattr__(self, "artifact_id", artifact_id)
+        return self
+
+
+class TrainingRunLineagePins(FrozenModel):
+    training_design_lineage_artifact_id: str
+    training_design_lineage_artifact_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    training_design_lineage_file_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    training_design_lineage_artifact_path: str
+    planned_design_artifact_id: str
+    planned_design_artifact_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    executed_design_artifact_id: str
+    executed_design_artifact_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    protected_source_manifest_id: str
+    protected_source_manifest_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    protected_source_manifest_path: str
+    protected_source_records_checksum: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @model_validator(mode="after")
+    def _references_are_explicit(self) -> TrainingRunLineagePins:
+        identifiers = (
+            self.training_design_lineage_artifact_id,
+            self.training_design_lineage_artifact_path,
+            self.planned_design_artifact_id,
+            self.executed_design_artifact_id,
+            self.protected_source_manifest_id,
+            self.protected_source_manifest_path,
+        )
+        if any(not value.strip() for value in identifiers):
+            raise ValueError("training run lineage references must not be blank")
+        return self
+
+    def state_payload(self) -> dict[str, Any]:
+        return self.model_dump(mode="json")
+
+
+TRAINING_RUN_LINEAGE_STATE_FIELDS = tuple(TrainingRunLineagePins.model_fields)
+
+
+def load_training_design_lineage_pins(path: Path) -> TrainingDesignLineagePins:
+    path = path.resolve()
+    if path.is_symlink() or not path.is_file():
+        raise TrainingLineageReviewRequired(
+            "SCIENTIFIC_REVIEW_REQUIRED: Task 6 design-lineage artifact is absent or symlinked"
+        )
+    try:
+        return TrainingDesignLineagePins.model_validate_json(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise TrainingLineageReviewRequired(
+            f"SCIENTIFIC_REVIEW_REQUIRED: Task 6 design-lineage artifact invalid: {exc}"
+        ) from exc
+
+
+def resolve_training_lineage_inputs(
+    *,
+    design_lineage_pins: TrainingDesignLineagePins | None,
+    design_lineage_artifact_path: Path | None,
+    protected_source_manifest_path: Path | None,
+) -> TrainingRunLineagePins:
+    if (
+        design_lineage_pins is None
+        or design_lineage_artifact_path is None
+        or protected_source_manifest_path is None
+    ):
+        raise TrainingLineageReviewRequired(
+            "SCIENTIFIC_REVIEW_REQUIRED: Task 6 design pins and protected source "
+            "DatasetManifest are mandatory"
+        )
+    design_path = design_lineage_artifact_path.resolve()
+    loaded_design = load_training_design_lineage_pins(design_path)
+    if loaded_design != design_lineage_pins:
+        raise TrainingLineageReviewRequired(
+            "SCIENTIFIC_REVIEW_REQUIRED: in-memory design pins do not match Task 6 artifact"
+        )
+    source_path = protected_source_manifest_path.resolve()
+    if source_path.is_symlink() or not source_path.is_file():
+        raise TrainingLineageReviewRequired(
+            "SCIENTIFIC_REVIEW_REQUIRED: protected source DatasetManifest is absent or symlinked"
+        )
+    try:
+        source = DatasetManifest.model_validate_json(source_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise TrainingLineageReviewRequired(
+            f"SCIENTIFIC_REVIEW_REQUIRED: protected source DatasetManifest invalid: {exc}"
+        ) from exc
+    return TrainingRunLineagePins(
+        training_design_lineage_artifact_id=loaded_design.artifact_id,
+        training_design_lineage_artifact_sha256=loaded_design.artifact_sha256,
+        training_design_lineage_file_sha256=sha256_file(design_path),
+        training_design_lineage_artifact_path=str(design_path),
+        planned_design_artifact_id=loaded_design.planned_design_artifact_id,
+        planned_design_artifact_sha256=loaded_design.planned_design_artifact_sha256,
+        executed_design_artifact_id=loaded_design.executed_design_artifact_id,
+        executed_design_artifact_sha256=loaded_design.executed_design_artifact_sha256,
+        protected_source_manifest_id=source.dataset_id,
+        protected_source_manifest_sha256=sha256_file(source_path),
+        protected_source_manifest_path=str(source_path),
+        protected_source_records_checksum=source.records_checksum,
+    )
+
+
+def reconcile_training_lineage_pins(
+    recorded: Mapping[str, Any], expected: TrainingRunLineagePins
+) -> None:
+    for field_name, expected_value in expected.state_payload().items():
+        if recorded.get(field_name) != expected_value:
+            raise MLXPipelineError(f"training lineage {field_name} changed: cannot resume the run")
+
+
+class TrainingRealityGateV8Request(FrozenModel):
+    gate_version: Literal["8.0.0"] = "8.0.0"
+    purpose: Literal["TRAIN"] = "TRAIN"
+    snapshot_id: str
+    snapshot_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class TrainingRealityGateV8Artifact(FrozenModel):
+    """Untrusted Task-5 proposal; never an authorization capability.
+
+    Task 7 owns the authoritative decision contract.  Keeping this DTO allows
+    old callers and tests to serialize their proposal without letting Task 5
+    mint a grant that production would accept.
+    """
+
+    gate_version: Literal["8.0.0"] = "8.0.0"
+    purpose: Literal["TRAIN"] = "TRAIN"
+    snapshot_id: str
+    snapshot_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    privacy_attestation_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    no_corpus_attestation_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    authorized: bool
+    issued_by: str
+    artifact_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    artifact_id: str
+    trust_state: Literal["UNTRUSTED_TASK5_PROPOSAL"] = "UNTRUSTED_TASK5_PROPOSAL"
+
+    def identity_payload(self) -> dict[str, object]:
+        return self.model_dump(
+            mode="json",
+            exclude={"artifact_sha256", "artifact_id"},
+        )
+
+    @model_validator(mode="after")
+    def _content_addressed(self) -> TrainingRealityGateV8Artifact:
+        if not self.snapshot_id.strip() or not self.issued_by.strip():
+            raise ValueError("Reality Gate v8 snapshot_id/issued_by must not be blank")
+        expected = content_checksum(self.identity_payload())
+        if self.artifact_sha256 != expected:
+            raise ValueError("Reality Gate v8 artifact checksum mismatch")
+        if self.artifact_id != f"reality-gate-v8-{expected[:20]}":
+            raise ValueError("Reality Gate v8 artifact_id mismatch")
+        return self
+
+
+@runtime_checkable
+class RealityGateV8Protocol(Protocol):
+    def authorize_training(
+        self, request: TrainingRealityGateV8Request
+    ) -> TrainingRealityGateV8Artifact | Mapping[str, Any]: ...
+
+
+@dataclass(frozen=True)
+class CanonicalRealityGateAuthorizationResolutionV8:
+    """Externally resolved Task 7 components plus a separately declared pin tuple.
+
+    The runtime revalidates every component, recomputes the authorization
+    evaluation and derives the pin tuple itself.  This transport object is not
+    an authorization capability.
+    """
+
+    target: RealityGateTrainingTargetV8
+    evidence_ledger: RealityGateEvidenceLedgerV8
+    blocker_registry: GateBlockerRegistryV8
+    assessment: RealityGateAssessmentV8
+    decision: StageGateDecisionRecordV8
+    trust_registry: GateTrustRegistryV8
+    detached_signature: DetachedGateSignatureV8
+    declared_pins: RealityGateTrainingPinTupleV8
+
+
+@runtime_checkable
+class CanonicalRealityGateV8Protocol(Protocol):
+    def resolve_training_authorization(
+        self, request: TrainingRealityGateV8Request
+    ) -> CanonicalRealityGateAuthorizationResolutionV8: ...
+
+
+@dataclass(frozen=True)
+class FileRealityGateV8Protocol:
+    artifact_path: Path
+
+    def authorize_training(self, _request: TrainingRealityGateV8Request) -> Mapping[str, Any]:
+        try:
+            payload = json.loads(self.artifact_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ValueError(f"Reality Gate v8 artifact is not readable: {exc}") from exc
+        if not isinstance(payload, dict):
+            raise ValueError("Reality Gate v8 artifact must be a JSON object")
+        return payload
+
+
+def build_training_reality_gate_v8_artifact(
+    *,
+    snapshot_id: str,
+    snapshot_sha256: str,
+    privacy_attestation_sha256: str,
+    no_corpus_attestation_sha256: str,
+    authorized: bool,
+    issued_by: str,
+) -> TrainingRealityGateV8Artifact:
+    """Encode an explicitly untrusted Task-5 proposal.
+
+    The returned object is useful for compatibility and negative tests.  The
+    production verifier deliberately rejects it until Task 7 supplies the
+    independently reviewed authoritative decision interface.
+    """
+
+    payload: dict[str, object] = {
+        "gate_version": "8.0.0",
+        "purpose": "TRAIN",
+        "snapshot_id": snapshot_id,
+        "snapshot_sha256": snapshot_sha256,
+        "privacy_attestation_sha256": privacy_attestation_sha256,
+        "no_corpus_attestation_sha256": no_corpus_attestation_sha256,
+        "authorized": authorized,
+        "issued_by": issued_by,
+        "trust_state": "UNTRUSTED_TASK5_PROPOSAL",
+    }
+    checksum = content_checksum(payload)
+    return TrainingRealityGateV8Artifact.model_validate(
+        {
+            **payload,
+            "artifact_sha256": checksum,
+            "artifact_id": f"reality-gate-v8-{checksum[:20]}",
+        }
+    )
+
+
+def verify_training_reality_gate_v8(
+    gate: RealityGateV8Protocol | CanonicalRealityGateV8Protocol,
+    request: TrainingRealityGateV8Request,
+) -> RealityGateTrainingPinTupleV8:
+    """Fail closed on absent, unparseable, stale, blocked or mismatched decisions."""
+
+    if isinstance(gate, CanonicalRealityGateV8Protocol):
+        try:
+            raw = gate.resolve_training_authorization(request)
+            if not isinstance(raw, CanonicalRealityGateAuthorizationResolutionV8):
+                raise TypeError("canonical resolver returned an untyped transport")
+            target = RealityGateTrainingTargetV8.model_validate(
+                raw.target.model_dump(mode="python")
+            )
+            evidence_ledger = RealityGateEvidenceLedgerV8.model_validate(
+                raw.evidence_ledger.model_dump(mode="python")
+            )
+            blocker_registry = GateBlockerRegistryV8.model_validate(
+                raw.blocker_registry.model_dump(mode="python")
+            )
+            assessment = RealityGateAssessmentV8.model_validate(
+                raw.assessment.model_dump(mode="python")
+            )
+            decision = StageGateDecisionRecordV8.model_validate(
+                raw.decision.model_dump(mode="python")
+            )
+            trust_registry = GateTrustRegistryV8.model_validate(
+                raw.trust_registry.model_dump(mode="python")
+            )
+            detached_signature = DetachedGateSignatureV8.model_validate(
+                raw.detached_signature.model_dump(mode="python")
+            )
+            declared_pins = RealityGateTrainingPinTupleV8.model_validate(
+                raw.declared_pins.model_dump(mode="python")
+            )
+            authorization = evaluate_training_authorization_v8(
+                target=target,
+                evidence_ledger=evidence_ledger,
+                blocker_registry=blocker_registry,
+                assessment=assessment,
+                decision=decision,
+                trust_registry=trust_registry,
+                detached_signature=detached_signature,
+            )
+            derived_pins = RealityGateTrainingPinTupleV8.from_components(
+                authorization=authorization,
+                target=target,
+                evidence_ledger=evidence_ledger,
+                blocker_registry=blocker_registry,
+                assessment=assessment,
+                decision=decision,
+                trust_registry=trust_registry,
+                detached_signature=detached_signature,
+            )
+            declared_state: dict[str, object] = dict(declared_pins.state_payload())
+            reconcile_training_authorization_pins_v8(declared_state, derived_pins)
+        except (AttributeError, TypeError, ValueError) as exc:
+            raise MLXPipelineError(
+                f"canonical Reality Gate v8 resolution or pin mismatch: {exc}"
+            ) from exc
+        if target.snapshot.artifact_id != request.snapshot_id:
+            raise MLXPipelineError("canonical Reality Gate v8 target is stale for this snapshot")
+        if target.snapshot.sha256 != request.snapshot_sha256:
+            raise MLXPipelineError("canonical Reality Gate v8 snapshot hash mismatch")
+        raise MLXPipelineError(
+            "Reality Gate v8 production trust remains HOLD; SCIENTIFIC_REVIEW_REQUIRED: "
+            + "; ".join(authorization.blockers)
+        )
+
+    if not isinstance(gate, RealityGateV8Protocol):
+        raise MLXPipelineError("Reality Gate v8 protocol missing or invalid")
+    try:
+        artifact = TrainingRealityGateV8Artifact.model_validate(gate.authorize_training(request))
+    except (TypeError, ValueError) as exc:
+        raise MLXPipelineError(f"Reality Gate v8 artifact invalid: {exc}") from exc
+    if artifact.purpose != "TRAIN":
+        raise MLXPipelineError("Reality Gate v8 purpose must be TRAIN")
+    if artifact.snapshot_id != request.snapshot_id:
+        raise MLXPipelineError("Reality Gate v8 artifact is stale for this snapshot")
+    if artifact.snapshot_sha256 != request.snapshot_sha256:
+        raise MLXPipelineError("Reality Gate v8 snapshot hash mismatch")
+    if not artifact.authorized:
+        raise MLXPipelineError("Reality Gate v8 blocked purpose TRAIN")
+    raise MLXPipelineError(
+        "Reality Gate v8 Task 7 authoritative decision unavailable; SCIENTIFIC_REVIEW_REQUIRED"
+    )
+
+
+class RealityGatePinTuple(FrozenModel):
+    """Complete audit tuple that a future authoritative gate must reconcile."""
+
+    artifact_id: str
+    artifact_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    privacy_attestation_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    no_corpus_attestation_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @classmethod
+    def from_artifact(cls, artifact: TrainingRealityGateV8Artifact) -> RealityGatePinTuple:
+        return cls(
+            artifact_id=artifact.artifact_id,
+            artifact_sha256=artifact.artifact_sha256,
+            privacy_attestation_sha256=artifact.privacy_attestation_sha256,
+            no_corpus_attestation_sha256=artifact.no_corpus_attestation_sha256,
+        )
+
+
+def reconcile_reality_gate_pins(
+    recorded: Mapping[str, Any],
+    expected: RealityGatePinTuple,
+) -> None:
+    """Reject a resume state when any independently recorded gate pin drifts."""
+
+    canonical_state_names = {
+        "artifact_id": "reality_gate_artifact_id",
+        "artifact_sha256": "reality_gate_artifact_sha256",
+        "privacy_attestation_sha256": "reality_gate_privacy_attestation_sha256",
+        "no_corpus_attestation_sha256": "reality_gate_no_corpus_attestation_sha256",
+    }
+    present_aliases = sorted(set(canonical_state_names) & set(recorded))
+    if present_aliases:
+        raise MLXPipelineError(
+            f"non-canonical Reality Gate v8 aliases/duplicate pins present: {present_aliases}"
+        )
+    missing = sorted(set(canonical_state_names.values()) - set(recorded))
+    if missing:
+        raise MLXPipelineError(f"canonical Reality Gate v8 pins missing: {missing}")
+    for field_name, state_name in canonical_state_names.items():
+        actual = recorded[state_name]
+        if actual != getattr(expected, field_name):
+            raise MLXPipelineError(f"Reality Gate v8 {field_name} changed: cannot resume the run")
 
 
 @dataclass(frozen=True)
@@ -453,6 +867,7 @@ def _stream_command(
     cwd: Path,
     log_path: Path,
     environment: Mapping[str, str] | None = None,
+    pass_fds: tuple[int, ...] = (),
 ) -> CommandResult:
     env = os.environ.copy()
     env.update(environment or {})
@@ -470,6 +885,7 @@ def _stream_command(
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
+            pass_fds=pass_fds,
         )
         assert process.stdout is not None
         for line in process.stdout:
@@ -495,22 +911,45 @@ def _stream_command(
 
 
 def _jsonl_profile(path: Path) -> dict[str, Any]:
+    from ntruth.parser_ai.contract import ParserAIInput, ParserCandidateOutput
+
     record_ids: list[str] = []
     records: list[dict[str, Any]] = []
-    with path.open(encoding="utf-8") as handle:
+    with path.open("rb") as handle:
         for line_number, line in enumerate(handle, start=1):
             if not line.strip():
                 continue
             try:
                 value = json.loads(line)
-            except json.JSONDecodeError as exc:
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
                 raise MLXPipelineError(f"JSONL non valido {path}:{line_number}: {exc}") from exc
             messages = value.get("messages") if isinstance(value, dict) else None
-            if not isinstance(messages, list) or not messages:
+            if (
+                not isinstance(messages, list)
+                or not messages
+                or any(not isinstance(message, dict) for message in messages)
+            ):
                 raise MLXPipelineError(f"record senza messages in {path}:{line_number}")
             record_id = value.get("record_id") if isinstance(value, dict) else None
             if not isinstance(record_id, str) or not record_id.strip():
                 raise MLXPipelineError(f"record_id assente in {path}:{line_number}")
+            user_messages = [message for message in messages if message.get("role") == "user"]
+            final = messages[-1]
+            if (
+                not user_messages
+                or not isinstance(user_messages[-1].get("content"), str)
+                or not isinstance(final, dict)
+                or final.get("role") != "assistant"
+                or not isinstance(final.get("content"), str)
+            ):
+                raise MLXPipelineError(f"record candidate incompleto in {path}:{line_number}")
+            try:
+                ParserAIInput.model_validate_json(user_messages[-1]["content"])
+                ParserCandidateOutput.model_validate_json(final["content"])
+            except ValueError as exc:
+                raise MLXPipelineError(
+                    f"record candidate v8 non valido in {path}:{line_number}: {exc}"
+                ) from exc
             record_ids.append(record_id)
             records.append(value)
     duplicates = sorted(record_id for record_id, count in Counter(record_ids).items() if count > 1)
@@ -557,11 +996,34 @@ def _verify_snapshot_files(
     entries = manifest.get("files")
     if not isinstance(entries, dict):
         raise MLXPipelineError("files deve essere un mapping nel manifest snapshot")
-    missing = sorted(required_files - entries.keys())
-    if missing:
-        raise MLXPipelineError(f"file obbligatori assenti dal manifest snapshot: {missing}")
+    manifest_names = set(entries)
+    missing = sorted(required_files - manifest_names)
+    unexpected = sorted(manifest_names - required_files)
+    if missing or unexpected:
+        raise MLXPipelineError(
+            f"snapshot schema file set mismatch: missing={missing}, unexpected={unexpected}"
+        )
     if "snapshot-manifest.json" in entries:
         raise MLXPipelineError("snapshot-manifest.json non puo auto-includersi in files")
+
+    allowed_physical = set(required_files) | {"snapshot-manifest.json"}
+    try:
+        physical_entries = tuple(data_dir.iterdir())
+    except OSError as exc:
+        raise MLXPipelineError(f"directory snapshot non leggibile: {exc}") from exc
+    physical_names = {entry.name for entry in physical_entries}
+    extras = sorted(physical_names - allowed_physical)
+    missing_physical = sorted(allowed_physical - physical_names)
+    if extras or missing_physical:
+        raise MLXPipelineError(
+            "snapshot physical allowlist mismatch: "
+            f"unmanifested={extras}, missing={missing_physical}"
+        )
+    for physical in physical_entries:
+        if physical.is_symlink() or not physical.is_file():
+            raise MLXPipelineError(
+                f"snapshot entry must be a regular non-symlink file: {physical.name}"
+            )
 
     root = data_dir.resolve()
     hashes: dict[str, str] = {}
@@ -607,6 +1069,41 @@ def _verify_snapshot_files(
     return hashes, sizes
 
 
+def read_training_snapshot_envelope(
+    data_dir: Path,
+    *,
+    smoke_test: bool = False,
+) -> dict[str, Any]:
+    """Read only the content-addressed manifest needed before a gate decision.
+
+    This function intentionally never opens train/valid or source payloads.
+    """
+
+    root = data_dir.resolve()
+    manifest_path = root / "snapshot-manifest.json"
+    if manifest_path.is_symlink() or not manifest_path.is_file():
+        raise MLXPipelineError("snapshot-manifest.json absent or symlink not allowed")
+    manifest = _load_json_object(manifest_path, label="snapshot manifest envelope")
+    if manifest.get("schema_version") != SNAPSHOT_SCHEMA_VERSION:
+        raise MLXPipelineError("training snapshot envelope schema mismatch")
+    runtime_smoke_only = manifest.get("runtime_smoke_only") is True
+    if runtime_smoke_only != smoke_test:
+        raise MLXPipelineError("training snapshot envelope smoke purpose mismatch")
+    expected_hash, expected_id = _snapshot_identity(manifest)
+    if manifest.get("snapshot_sha256") != expected_hash:
+        raise MLXPipelineError("training snapshot envelope hash mismatch")
+    if manifest.get("snapshot_id") != expected_id:
+        raise MLXPipelineError("training snapshot envelope id mismatch")
+    return {
+        "path": str(root),
+        "manifest_path": str(manifest_path),
+        "manifest_sha256": sha256_file(manifest_path),
+        "snapshot_id": expected_id,
+        "snapshot_sha256": expected_hash,
+        "runtime_smoke_only": runtime_smoke_only,
+    }
+
+
 def _verify_snapshot_counts(
     data_dir: Path,
     manifest: Mapping[str, Any],
@@ -618,7 +1115,7 @@ def _verify_snapshot_counts(
     dict[str, tuple[str, ...]],
     dict[str, tuple[dict[str, Any], ...]],
 ]:
-    expected_split_names = ("train", "valid", "test") if smoke_test else tuple(_SPLIT_FILES)
+    expected_split_names = tuple(_SPLIT_FILES)
     manifest_counts = manifest.get("counts")
     if not isinstance(manifest_counts, dict) or set(manifest_counts) != set(expected_split_names):
         raise MLXPipelineError(
@@ -640,11 +1137,7 @@ def _verify_snapshot_counts(
                 f"conteggio snapshot non coerente per {split}: "
                 f"atteso {declared_count}, trovato {actual_count}"
             )
-        if (
-            require_nonempty_training_splits
-            and split in {"train", "valid", "test"}
-            and actual_count < 1
-        ):
+        if require_nonempty_training_splits and split in {"train", "valid"} and actual_count < 1:
             raise MLXPipelineError(f"split MLX vuoto: {path}")
         ids = tuple(str(value) for value in profile["record_ids"])
         for record_id in ids:
@@ -656,28 +1149,25 @@ def _verify_snapshot_counts(
         counts[split] = actual_count
         record_ids[split] = ids
         split_records[split] = tuple(profile["records"])
-    if smoke_test:
-        counts["external"] = 0
-        record_ids["external"] = ()
-        split_records["external"] = ()
     return counts, record_ids, split_records
 
 
 def _load_prepared_records(path: Path) -> tuple[PreparedRecord, ...]:
     records: list[PreparedRecord] = []
     try:
-        lines = path.read_text(encoding="utf-8").splitlines()
+        handle = path.open("rb")
     except OSError as exc:
         raise MLXPipelineError(f"prepared records non leggibili: {path}: {exc}") from exc
-    for line_number, line in enumerate(lines, start=1):
-        if not line.strip():
-            continue
-        try:
-            records.append(PreparedRecord.model_validate_json(line))
-        except ValueError as exc:
-            raise MLXPipelineError(
-                f"prepared record non valido {path}:{line_number}: {exc}"
-            ) from exc
+    with handle:
+        for line_number, line in enumerate(handle, start=1):
+            if not line.strip():
+                continue
+            try:
+                records.append(PreparedRecord.model_validate_json(line))
+            except ValueError as exc:
+                raise MLXPipelineError(
+                    f"prepared record non valido {path}:{line_number}: {exc}"
+                ) from exc
     identifiers = [record.record.record_id for record in records]
     duplicates = sorted(record_id for record_id, count in Counter(identifiers).items() if count > 1)
     if duplicates:
@@ -688,18 +1178,12 @@ def _load_prepared_records(path: Path) -> tuple[PreparedRecord, ...]:
 def _source_manifest_split_ids(source: DatasetManifest) -> dict[str, tuple[str, ...]]:
     grouped: dict[str, list[str]] = {name: [] for name in _SPLIT_FILES}
     for record in source.records:
-        if record.split is CorpusSplit.TRAIN and record.training_eligible:
-            grouped["train"].append(record.record_id)
-        elif (
-            record.split
-            in {
-                CorpusSplit.VALIDATION,
-                CorpusSplit.TEST,
-                CorpusSplit.EXTERNAL_CHALLENGE,
-            }
-            and record.evaluation_eligible
+        split_name = _SOURCE_SPLIT_NAMES.get(record.split.value)
+        if (
+            split_name is not None
+            and record.training_eligible
+            and (record.split is not CorpusSplit.VALIDATION or record.model_selection_eligible)
         ):
-            split_name = _SOURCE_SPLIT_NAMES[record.split.value]
             grouped[split_name].append(record.record_id)
     return {name: tuple(sorted(values)) for name, values in grouped.items()}
 
@@ -733,7 +1217,6 @@ def _validate_real_snapshot_source(
         "dataset_id": source.dataset_id,
         "manifest_checksum": source.manifest_checksum(),
         "records_checksum": source.records_checksum,
-        "prepared_records_sha256": file_hashes["prepared-records.jsonl"],
         "preparation_report_sha256": file_hashes["preparation-report.json"],
     }
     for key, actual in checks.items():
@@ -745,6 +1228,7 @@ def _validate_real_snapshot_source(
         raise MLXPipelineError("source_records_checksum non coincide col manifest sorgente")
 
     source_ids = _source_manifest_split_ids(source)
+    source_by_id = {record.record_id: record for record in source.records}
     for split in _SPLIT_FILES:
         actual_ids = tuple(sorted(split_record_ids[split]))
         if actual_ids != source_ids[split]:
@@ -753,6 +1237,32 @@ def _validate_real_snapshot_source(
             )
         if counts[split] != len(source_ids[split]):
             raise MLXPipelineError(f"conteggio {split} non coincide col manifest sorgente")
+        for row in split_records[split]:
+            record_id = str(row["record_id"])
+            source_record = source_by_id[record_id]
+            messages = row["messages"]
+            user_messages = [message for message in messages if message.get("role") == "user"]
+            try:
+                from ntruth.parser_ai.contract import ParserAIInput, ParserCandidateOutput
+
+                parser_input = ParserAIInput.model_validate_json(user_messages[-1]["content"])
+                candidate_target = ParserCandidateOutput.model_validate_json(
+                    messages[-1]["content"]
+                )
+            except (IndexError, KeyError, TypeError, ValueError) as exc:
+                raise MLXPipelineError(f"contenuto chat non valido per {record_id}: {exc}") from exc
+            if content_checksum(parser_input.model_dump(mode="json")) != (
+                source_record.input_checksum
+            ):
+                raise MLXPipelineError(
+                    f"contenuto chat input non coincide col manifest sorgente: {record_id}"
+                )
+            if content_checksum(candidate_target.model_dump(mode="json")) != (
+                source_record.candidate_target_checksum
+            ):
+                raise MLXPipelineError(
+                    f"contenuto chat target non coincide col manifest sorgente: {record_id}"
+                )
 
     report_path = data_dir / "preparation-report.json"
     report_raw = _load_json_object(report_path, label="report preparazione")
@@ -788,56 +1298,30 @@ def _validate_real_snapshot_source(
     if report.split_counts != expected_report_counts:
         raise MLXPipelineError("split_counts del report non coincidono coi file snapshot")
 
-    prepared_records = _load_prepared_records(data_dir / "prepared-records.jsonl")
-    try:
-        PreparedDataset(records=prepared_records, manifest=source, report=report)
-    except ValueError as exc:
-        raise MLXPipelineError(
-            f"prepared records non coerenti col manifest sorgente: {exc}"
-        ) from exc
-    source_by_id = {record.record_id: record for record in source.records}
-    for prepared in prepared_records:
-        record_id = prepared.record.record_id
-        if (
-            content_checksum(prepared.model_dump(mode="json"))
-            != source_by_id[record_id].record_checksum
-        ):
-            raise MLXPipelineError(
-                f"record_checksum del prepared record {record_id} non coincide col manifest sorgente"
-            )
-
-    # Import locale per evitare il ciclo mlx_dataset -> mlx_runtime al module load.
-    from ntruth.training.mlx_dataset import _chat_record
-
-    expected_chat: dict[str, list[dict[str, Any]]] = {name: [] for name in _SPLIT_FILES}
-    for prepared in prepared_records:
-        if prepared.split is CorpusSplit.TRAIN and prepared.record.training_eligible:
-            expected_chat["train"].append(_chat_record(prepared))
-        elif (
-            prepared.split
-            in {
-                CorpusSplit.VALIDATION,
-                CorpusSplit.TEST,
-                CorpusSplit.EXTERNAL_CHALLENGE,
-            }
-            and prepared.record.evaluation_eligible
-        ):
-            split_name = _SOURCE_SPLIT_NAMES[prepared.split.value]
-            expected_chat[split_name].append(_chat_record(prepared))
-    for split in _SPLIT_FILES:
-        expected_rows = sorted(expected_chat[split], key=lambda row: str(row["record_id"]))
-        actual_rows = sorted(split_records[split], key=lambda row: str(row["record_id"]))
-        if actual_rows != expected_rows:
-            raise MLXPipelineError(
-                f"contenuto chat dello split {split} non coincide coi prepared records"
-            )
-
-    derived_approved = bool(source_ids["train"])
+    membership_counts = manifest.get("membership_counts")
+    if membership_counts != expected_report_counts:
+        raise MLXPipelineError("membership_counts snapshot non coincide col manifest sorgente")
+    training_members = tuple(
+        record
+        for record in source.records
+        if record.split in {CorpusSplit.TRAIN, CorpusSplit.VALIDATION} and record.training_eligible
+    )
+    derived_approved = (
+        bool(source_ids["train"])
+        and bool(source_ids["valid"])
+        and all(
+            record.training_eligible
+            and (record.split is not CorpusSplit.VALIDATION or record.model_selection_eligible)
+            for record in training_members
+        )
+    )
     if manifest.get("training_approved") is not derived_approved:
         raise MLXPipelineError(
             "training_approved non coincide con le evidenze del manifest sorgente"
         )
-    derived_synthetic = bool(source.records) and all(record.synthetic for record in source.records)
+    derived_synthetic = bool(training_members) and all(
+        record.synthetic for record in training_members
+    )
     if manifest.get("synthetic_only") is not derived_synthetic:
         raise MLXPipelineError("synthetic_only non coincide col manifest sorgente")
     if manifest.get("leakage_check_passed") is not True:
@@ -848,13 +1332,7 @@ def _validate_real_snapshot_source(
 def _validate_runtime_smoke_manifest(
     manifest: Mapping[str, Any],
     split_record_ids: Mapping[str, tuple[str, ...]],
-    split_records: Mapping[str, tuple[dict[str, Any], ...]],
 ) -> None:
-    from ntruth.training.mlx_dataset import (
-        PROMPT_TEMPLATE_VERSION,
-        _runtime_smoke_chat_record,
-    )
-
     exact_flags = {
         "dataset_id": "runtime-smoke-only",
         "training_approved": False,
@@ -862,9 +1340,6 @@ def _validate_runtime_smoke_manifest(
         "synthetic_only": True,
         "runtime_smoke_only": True,
         "scientific_metrics_allowed": False,
-        "parser_input_contract_version": "2.0.0",
-        "candidate_graph_contract_version": "1.0.0",
-        "prompt_template_version": PROMPT_TEMPLATE_VERSION,
     }
     for key, expected in exact_flags.items():
         if manifest.get(key) != expected or type(manifest.get(key)) is not type(expected):
@@ -873,20 +1348,10 @@ def _validate_runtime_smoke_manifest(
         raise MLXPipelineError("lo smoke runtime non puo dichiarare un manifest sorgente reale")
     expected_ids = {
         "train": tuple(f"runtime-smoke-{index:02d}" for index in range(4)),
-        "valid": tuple(f"runtime-smoke-{index:02d}" for index in range(4, 6)),
-        "test": tuple(f"runtime-smoke-{index:02d}" for index in range(6, 8)),
-        "external": (),
+        "valid": tuple(f"runtime-smoke-{index:02d}" for index in range(4, 8)),
     }
     if dict(split_record_ids) != expected_ids:
         raise MLXPipelineError("record_id smoke non coincidono con la fixture runtime isolata")
-    expected_records = {
-        "train": tuple(_runtime_smoke_chat_record(index) for index in range(4)),
-        "valid": tuple(_runtime_smoke_chat_record(index) for index in range(4, 6)),
-        "test": tuple(_runtime_smoke_chat_record(index) for index in range(6, 8)),
-        "external": (),
-    }
-    if dict(split_records) != expected_records:
-        raise MLXPipelineError("contenuto chat smoke non coincide con la fixture canonica v6")
 
 
 def validate_snapshot_integrity(
@@ -944,7 +1409,7 @@ def validate_snapshot_integrity(
     source_path: Path | None = None
     source_hash: str | None = None
     if smoke_test:
-        _validate_runtime_smoke_manifest(manifest, split_record_ids, split_records)
+        _validate_runtime_smoke_manifest(manifest, split_record_ids)
     else:
         source, source_path, source_hash = _validate_real_snapshot_source(
             root,
@@ -978,7 +1443,19 @@ def validate_mlx_dataset(data_dir: Path, *, smoke_test: bool = False) -> dict[st
 
     integrity = validate_snapshot_integrity(data_dir, smoke_test=smoke_test)
     manifest = integrity["manifest"]
-    approved = manifest["training_approved"] is True
+    source_approved = True
+    if not smoke_test:
+        try:
+            source = DatasetManifest.model_validate(integrity["source_manifest"])
+        except (TypeError, ValueError) as exc:
+            raise MLXPipelineError(f"manifest sorgente runtime non valido: {exc}") from exc
+        source_ids = _source_manifest_split_ids(source)
+        if tuple(integrity["split_record_ids"]["valid"]) != source_ids["valid"]:
+            raise MLXPipelineError(
+                "record_id valid non coincidono con VALIDATION training/model-selection eligible"
+            )
+        source_approved = bool(source_ids["train"]) and bool(source_ids["valid"])
+    approved = manifest["training_approved"] is True and source_approved
     leakage_free = manifest["leakage_check_passed"] is True
     if not smoke_test and (not approved or not leakage_free):
         raise MLXPipelineError(
@@ -986,7 +1463,7 @@ def validate_mlx_dataset(data_dir: Path, *, smoke_test: bool = False) -> dict[st
         )
     return {
         "path": integrity["path"],
-        "counts": {split: integrity["counts"][split] for split in ("train", "valid", "test")},
+        "counts": {split: integrity["counts"][split] for split in ("train", "valid")},
         "manifest": integrity["manifest_path"],
         "manifest_data": manifest,
         "manifest_sha256": integrity["manifest_sha256"],
@@ -1000,13 +1477,399 @@ def validate_mlx_dataset(data_dir: Path, *, smoke_test: bool = False) -> dict[st
     }
 
 
-def _copy_validation_as_test(data_dir: Path, target: Path) -> None:
+def stage_verified_training_view(
+    data_dir: Path,
+    target_dir: Path,
+    *,
+    verified_snapshot: Mapping[str, Any],
+    smoke_test: bool = False,
+) -> dict[str, Any]:
+    """Copy only pinned train/valid bytes into a run-owned immutable view."""
+
+    try:
+        current = validate_snapshot_integrity(data_dir, smoke_test=smoke_test)
+    except MLXPipelineError as exc:
+        raise MLXPipelineError(f"training snapshot changed after validation: {exc}") from exc
+    for key in ("snapshot_id", "snapshot_sha256", "manifest_sha256"):
+        if current.get(key) != verified_snapshot.get(key):
+            raise MLXPipelineError(f"training snapshot changed after validation ({key})")
+    expected_hashes = current["file_hashes"]
+    if target_dir.exists() and any(target_dir.iterdir()):
+        entries = tuple(target_dir.iterdir())
+        if {entry.name for entry in entries} != {"train.jsonl", "valid.jsonl"}:
+            raise MLXPipelineError("run-owned training view allowlist mismatch")
+        for entry in entries:
+            if entry.is_symlink() or not entry.is_file():
+                raise MLXPipelineError("run-owned training view contains non-regular content")
+            if sha256_file(entry) != expected_hashes[entry.name]:
+                raise MLXPipelineError(f"staged training checksum changed: {entry.name}")
+        target_dir.chmod(0o555)
+        return {
+            "path": str(target_dir.resolve()),
+            "snapshot_id": current["snapshot_id"],
+            "snapshot_sha256": current["snapshot_sha256"],
+            "manifest_sha256": current["manifest_sha256"],
+            "file_hashes": {
+                entry.name: sha256_file(entry)
+                for entry in sorted(entries, key=lambda item: item.name)
+            },
+        }
+    target_dir.mkdir(parents=True, exist_ok=True)
+    staged_hashes: dict[str, str] = {}
+    for filename in ("train.jsonl", "valid.jsonl"):
+        source = data_dir.resolve() / filename
+        target = target_dir / filename
+        if source.is_symlink() or not source.is_file():
+            raise MLXPipelineError(f"training source replacement detected: {filename}")
+        before = sha256_file(source)
+        if before != expected_hashes[filename]:
+            raise MLXPipelineError(f"training source checksum changed: {filename}")
+        shutil.copyfile(source, target)
+        after = sha256_file(source)
+        staged = sha256_file(target)
+        if after != before or staged != before:
+            raise MLXPipelineError(f"training source changed while staging: {filename}")
+        target.chmod(0o444)
+        staged_hashes[filename] = staged
+    if {path.name for path in target_dir.iterdir()} != {"train.jsonl", "valid.jsonl"}:
+        raise MLXPipelineError("run-owned training view allowlist mismatch")
+    target_dir.chmod(0o555)
+    return {
+        "path": str(target_dir.resolve()),
+        "snapshot_id": current["snapshot_id"],
+        "snapshot_sha256": current["snapshot_sha256"],
+        "manifest_sha256": current["manifest_sha256"],
+        "file_hashes": staged_hashes,
+    }
+
+
+def verify_staged_training_view(
+    target_dir: Path,
+    expected_hashes: Mapping[str, Any],
+) -> dict[str, str]:
+    """Re-verify the schema-owned view immediately at a local consumer boundary."""
+
+    required = {"train.jsonl", "valid.jsonl"}
+    if set(expected_hashes) != required:
+        raise MLXPipelineError("staged training expected-hash schema mismatch")
+    root = target_dir.resolve()
+    try:
+        entries = tuple(root.iterdir())
+    except OSError as exc:
+        raise MLXPipelineError(f"staged training view unreadable: {exc}") from exc
+    if {entry.name for entry in entries} != required:
+        raise MLXPipelineError("staged training view allowlist changed")
+    verified: dict[str, str] = {}
+    for entry in entries:
+        if entry.is_symlink() or not entry.is_file():
+            raise MLXPipelineError(f"staged training replacement detected: {entry.name}")
+        expected = expected_hashes.get(entry.name)
+        if not isinstance(expected, str) or _SHA256.fullmatch(expected) is None:
+            raise MLXPipelineError(f"staged training expected checksum invalid: {entry.name}")
+        actual = sha256_file(entry)
+        if actual != expected:
+            raise MLXPipelineError(f"staged training checksum changed: {entry.name}")
+        verified[entry.name] = actual
+    return verified
+
+
+def iter_verified_jsonl(path: Path, *, expected_sha256: str) -> Iterator[dict[str, Any]]:
+    """Open, hash and parse one pinned JSONL file through the same file descriptor."""
+
+    if _SHA256.fullmatch(expected_sha256) is None:
+        raise MLXPipelineError("verified JSONL expected checksum is invalid")
+    flags = os.O_RDONLY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        raise MLXPipelineError(f"verified JSONL open failed: {path.name}: {exc}") from exc
+    try:
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise MLXPipelineError(f"verified JSONL is not regular: {path.name}")
+        with os.fdopen(descriptor, "rb", closefd=False) as handle:
+            payload = handle.read()
+    finally:
+        os.close(descriptor)
+    if hashlib.sha256(payload).hexdigest() != expected_sha256:
+        raise MLXPipelineError(f"verified JSONL checksum changed: {path.name}")
+    for line_number, line in _iter_jsonl_physical_lines(payload):
+        if not line.strip():
+            continue
+        try:
+            value = json.loads(line)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise MLXPipelineError(
+                f"verified JSONL invalid at {path.name}:{line_number}: {exc}"
+            ) from exc
+        if not isinstance(value, dict):
+            raise MLXPipelineError(
+                f"verified JSONL row is not an object: {path.name}:{line_number}"
+            )
+        yield value
+
+
+class ValidationConsumerViewManifest(FrozenModel):
+    schema_version: Literal["8.0.0"] = "8.0.0"
+    purpose: Literal["MODEL_SELECTION_VALIDATION"] = "MODEL_SELECTION_VALIDATION"
+    view_id: str = ""
+    view_sha256: str = ""
+    payload_file: Literal["test.jsonl"] = "test.jsonl"
+    payload_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    payload_size_bytes: int = Field(ge=0)
+    source_training_snapshot_id: str
+    source_training_snapshot_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_valid_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @model_validator(mode="after")
+    def _content_addressed(self) -> ValidationConsumerViewManifest:
+        identity = self.model_dump(mode="json", exclude={"view_id", "view_sha256"})
+        checksum = content_checksum(identity)
+        view_id = f"validation-consumer-{checksum[:20]}"
+        if self.view_sha256 and self.view_sha256 != checksum:
+            raise ValueError("validation consumer view checksum mismatch")
+        if self.view_id and self.view_id != view_id:
+            raise ValueError("validation consumer view id mismatch")
+        object.__setattr__(self, "view_sha256", checksum)
+        object.__setattr__(self, "view_id", view_id)
+        return self
+
+
+def _validated_validation_consumer_view(target: Path) -> dict[str, Any]:
+    root = target.resolve()
+    expected_names = {"test.jsonl", "consumer-view-manifest.json"}
+    try:
+        entries = tuple(root.iterdir())
+    except OSError as exc:
+        raise MLXPipelineError(f"validation consumer view unreadable: {exc}") from exc
+    if {entry.name for entry in entries} != expected_names:
+        raise MLXPipelineError("validation consumer view allowlist changed")
+    if any(entry.is_symlink() or not entry.is_file() for entry in entries):
+        raise MLXPipelineError("validation consumer view contains symlink/non-regular content")
+    manifest_path = root / "consumer-view-manifest.json"
+    try:
+        manifest = ValidationConsumerViewManifest.model_validate_json(
+            manifest_path.read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError) as exc:
+        raise MLXPipelineError(f"validation consumer manifest invalid: {exc}") from exc
+    payload = root / manifest.payload_file
+    if payload.stat().st_size != manifest.payload_size_bytes:
+        raise MLXPipelineError("validation consumer payload size changed")
+    if sha256_file(payload) != manifest.payload_sha256:
+        raise MLXPipelineError("validation consumer payload checksum changed")
+    return {
+        "path": str(root),
+        "view_id": manifest.view_id,
+        "view_sha256": manifest.view_sha256,
+        "file_hashes": {
+            "test.jsonl": manifest.payload_sha256,
+            "consumer-view-manifest.json": sha256_file(manifest_path),
+        },
+    }
+
+
+def stage_validation_consumer_view(
+    data_dir: Path,
+    target: Path,
+    *,
+    training_view: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Create the exact content-addressed validation-as-test consumer view."""
+
+    expected_training_hashes = training_view.get("file_hashes")
+    if not isinstance(expected_training_hashes, Mapping):
+        raise MLXPipelineError("training view hashes absent for validation staging")
+    verify_staged_training_view(data_dir, expected_training_hashes)
+    if target.exists() and any(target.iterdir()):
+        existing = _validated_validation_consumer_view(target)
+        manifest = ValidationConsumerViewManifest.model_validate_json(
+            (target / "consumer-view-manifest.json").read_text(encoding="utf-8")
+        )
+        if (
+            manifest.source_training_snapshot_id != training_view.get("snapshot_id")
+            or manifest.source_training_snapshot_sha256 != training_view.get("snapshot_sha256")
+            or manifest.source_valid_sha256 != expected_training_hashes.get("valid.jsonl")
+        ):
+            raise MLXPipelineError("validation consumer view source lineage changed")
+        target.chmod(0o555)
+        return existing
     target.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(data_dir / "valid.jsonl", target / "test.jsonl")
+    source = data_dir.resolve() / "valid.jsonl"
+    payload = target / "test.jsonl"
+    if source.is_symlink() or not source.is_file():
+        raise MLXPipelineError("validation source replacement detected")
+    before = sha256_file(source)
+    if before != expected_training_hashes.get("valid.jsonl"):
+        raise MLXPipelineError("validation source checksum changed")
+    shutil.copyfile(source, payload)
+    if sha256_file(source) != before or sha256_file(payload) != before:
+        raise MLXPipelineError("validation source changed while staging")
+    manifest = ValidationConsumerViewManifest(
+        payload_sha256=before,
+        payload_size_bytes=payload.stat().st_size,
+        source_training_snapshot_id=str(training_view.get("snapshot_id")),
+        source_training_snapshot_sha256=str(training_view.get("snapshot_sha256")),
+        source_valid_sha256=before,
+    )
+    manifest_path = target / "consumer-view-manifest.json"
+    _write_json(manifest_path, manifest.model_dump(mode="json"))
+    payload.chmod(0o444)
+    manifest_path.chmod(0o444)
+    target.chmod(0o555)
+    return _validated_validation_consumer_view(target)
+
+
+def _required_anonymous_splits(config: Mapping[str, Any]) -> tuple[str, ...]:
+    train = config.get("train") is True
+    test = config.get("test") is True
+    if train == test:
+        raise MLXPipelineError("sealed MLX consumer requires exactly one train/test mode")
+    return ("train", "valid") if train else ("test",)
+
+
+@contextmanager
+def _open_verified_anonymous_files(
+    view: Mapping[str, Any],
+    *,
+    required_splits: tuple[str, ...],
+) -> Iterator[dict[str, Any]]:
+    root_value = view.get("path")
+    expected_hashes = view.get("file_hashes")
+    if not isinstance(root_value, str) or not isinstance(expected_hashes, Mapping):
+        raise MLXPipelineError("sealed consumer view metadata is incomplete")
+    required_filenames = tuple(f"{split}.jsonl" for split in required_splits)
+    expected_names = (
+        {"train.jsonl", "valid.jsonl"}
+        if required_splits == ("train", "valid")
+        else {"test.jsonl", "consumer-view-manifest.json"}
+        if required_splits == ("test",)
+        else set()
+    )
+    if not expected_names or set(expected_hashes) != expected_names:
+        raise MLXPipelineError("sealed consumer expected-hash schema mismatch")
+    for filename, expected_hash in expected_hashes.items():
+        if not isinstance(filename, str) or not isinstance(expected_hash, str):
+            raise MLXPipelineError("sealed consumer hash manifest invalid")
+        if _SHA256.fullmatch(expected_hash) is None:
+            raise MLXPipelineError(f"sealed consumer checksum invalid: {filename}")
+
+    root = Path(root_value).absolute()
+    flags = os.O_RDONLY
+    if hasattr(os, "O_DIRECTORY"):
+        flags |= os.O_DIRECTORY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        directory_fd = os.open(root, flags)
+    except OSError as exc:
+        raise MLXPipelineError(f"sealed consumer directory open failed: {exc}") from exc
+    with ExitStack() as anonymous_stack:
+        anonymous_by_split: dict[str, Any] = {}
+        try:
+            directory_metadata = os.fstat(directory_fd)
+            if not stat.S_ISDIR(directory_metadata.st_mode):
+                raise MLXPipelineError("sealed consumer root is not a directory")
+            names = set(os.listdir(directory_fd))
+            if names != expected_names:
+                raise MLXPipelineError("sealed consumer view allowlist changed")
+            for name in sorted(expected_names):
+                expected_hash = str(expected_hashes[name])
+                split = name.removesuffix(".jsonl") if name in required_filenames else None
+                anonymous_file = None
+                if split is not None:
+                    anonymous_file = anonymous_stack.enter_context(
+                        tempfile.TemporaryFile(mode="w+b")
+                    )
+                    anonymous_by_split[split] = anonymous_file
+
+                digest = hashlib.sha256()
+                byte_count = 0
+                file_flags = os.O_RDONLY
+                if hasattr(os, "O_NOFOLLOW"):
+                    file_flags |= os.O_NOFOLLOW
+                try:
+                    file_fd = os.open(name, file_flags, dir_fd=directory_fd)
+                except OSError as exc:
+                    raise MLXPipelineError(
+                        f"sealed consumer file symlink/replacement blocked: {name}: {exc}"
+                    ) from exc
+                try:
+                    metadata = os.fstat(file_fd)
+                    if not stat.S_ISREG(metadata.st_mode) or metadata.st_mode & 0o222:
+                        raise MLXPipelineError(f"sealed consumer file mode changed: {name}")
+                    while chunk := os.read(file_fd, 1024 * 1024):
+                        digest.update(chunk)
+                        byte_count += len(chunk)
+                        if anonymous_file is not None:
+                            anonymous_file.write(chunk)
+                    if byte_count != metadata.st_size:
+                        raise MLXPipelineError(f"sealed consumer file size changed: {name}")
+                finally:
+                    os.close(file_fd)
+                if digest.hexdigest() != expected_hash:
+                    raise MLXPipelineError(f"sealed consumer checksum changed: {name}")
+                if anonymous_file is not None:
+                    anonymous_file.flush()
+                    anonymous_file.seek(0)
+                    anonymous_metadata = os.fstat(anonymous_file.fileno())
+                    if (
+                        not stat.S_ISREG(anonymous_metadata.st_mode)
+                        or anonymous_metadata.st_nlink != 0
+                        or anonymous_metadata.st_size != byte_count
+                    ):
+                        raise MLXPipelineError(f"anonymous consumer file invariant failed: {name}")
+        finally:
+            os.close(directory_fd)
+
+        if tuple(anonymous_by_split) != required_splits:
+            raise MLXPipelineError("anonymous consumer split mapping is not exact")
+        yield anonymous_by_split
+
+
+def stream_mlx_with_sealed_view(
+    config: Mapping[str, Any],
+    *,
+    view: Mapping[str, Any],
+    config_path: Path,
+    cwd: Path,
+    log_path: Path,
+    environment: Mapping[str, str] | None = None,
+) -> CommandResult:
+    """Copy verified bytes into anonymous files inherited by the MLX child."""
+
+    required_splits = _required_anonymous_splits(config)
+    if environment is not None and FD_ENV in environment:
+        raise MLXPipelineError("caller cannot override the inherited-FD mapping")
+    with _open_verified_anonymous_files(
+        view,
+        required_splits=required_splits,
+    ) as anonymous_by_split:
+        payload = dict(config)
+        payload["data"] = FD_SENTINEL
+        _write_json(config_path, payload)
+        fd_mapping = {split: anonymous_by_split[split].fileno() for split in required_splits}
+        child_environment = dict(environment or {})
+        child_environment[FD_ENV] = json.dumps(fd_mapping, separators=(",", ":"))
+        return _stream_command(
+            _mlx_command(config_path),
+            cwd=cwd,
+            log_path=log_path,
+            environment=child_environment,
+            pass_fds=tuple(fd_mapping.values()),
+        )
 
 
 def _mlx_command(config_path: Path) -> list[str]:
-    return [sys.executable, "-m", "mlx_lm", "lora", "--config", str(config_path)]
+    return [
+        sys.executable,
+        "-m",
+        "ntruth.training.mlx_fd_entrypoint",
+        "--config",
+        str(config_path),
+    ]
 
 
 TRAINING_PROGRAM_REGISTRY_RELPATH = Path("models") / "registry" / "training_program.json"
@@ -1069,6 +1932,10 @@ def run_training(
     run_dir: Path,
     *,
     seed: int,
+    reality_gate: RealityGateV8Protocol | CanonicalRealityGateV8Protocol,
+    design_lineage_pins: TrainingDesignLineagePins | None,
+    design_lineage_artifact_path: Path | None,
+    protected_source_manifest_path: Path | None,
     smoke_test: bool = False,
     resume: bool = False,
 ) -> dict[str, Any]:
@@ -1079,16 +1946,86 @@ def run_training(
     il controller interrompe dopo ``patience`` fasi senza miglioramento.
     """
 
+    state_path = run_dir / "run-state.json"
+    if run_dir.exists() and any(run_dir.iterdir()) and not resume:
+        raise MLXPipelineError("run directory non vuota; usare --resume o una nuova directory")
+
+    state: dict[str, Any]
+    training_lineage: TrainingRunLineagePins | None = None
+    if resume:
+        try:
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise MLXPipelineError(f"stato run non riprendibile: {exc}") from exc
+        if state.get("schema_version") != RUN_SCHEMA_VERSION:
+            raise MLXPipelineError("schema run cambiato: impossibile riprendere il run")
+    else:
+        state = {}
+        training_lineage = resolve_training_lineage_inputs(
+            design_lineage_pins=design_lineage_pins,
+            design_lineage_artifact_path=design_lineage_artifact_path,
+            protected_source_manifest_path=protected_source_manifest_path,
+        )
+
+    if resume:
+        recorded_snapshot_id = state.get("dataset_snapshot_id")
+        recorded_snapshot_sha256 = state.get("dataset_snapshot_sha256")
+        if not isinstance(recorded_snapshot_id, str) or not recorded_snapshot_id.strip():
+            raise MLXPipelineError("resume dataset snapshot ID pin missing or invalid")
+        if (
+            not isinstance(recorded_snapshot_sha256, str)
+            or _SHA256.fullmatch(recorded_snapshot_sha256) is None
+        ):
+            raise MLXPipelineError("resume dataset snapshot checksum pin missing or invalid")
+        gate_pins = verify_training_reality_gate_v8(
+            reality_gate,
+            TrainingRealityGateV8Request(
+                snapshot_id=recorded_snapshot_id,
+                snapshot_sha256=recorded_snapshot_sha256,
+            ),
+        )
+        try:
+            reconcile_training_authorization_pins_v8(state, gate_pins)
+        except ValueError as exc:
+            raise MLXPipelineError(str(exc)) from exc
+        envelope = read_training_snapshot_envelope(data_dir, smoke_test=smoke_test)
+        if envelope["snapshot_id"] != recorded_snapshot_id:
+            raise MLXPipelineError("identita snapshot cambiata: impossibile riprendere il run")
+        if envelope["snapshot_sha256"] != recorded_snapshot_sha256:
+            raise MLXPipelineError("snapshot dati cambiato: impossibile riprendere il run")
+        if envelope["manifest_sha256"] != state.get("dataset_manifest_sha256"):
+            raise MLXPipelineError("manifest snapshot cambiato: impossibile riprendere il run")
+        training_lineage = resolve_training_lineage_inputs(
+            design_lineage_pins=design_lineage_pins,
+            design_lineage_artifact_path=design_lineage_artifact_path,
+            protected_source_manifest_path=protected_source_manifest_path,
+        )
+    else:
+        envelope = read_training_snapshot_envelope(data_dir, smoke_test=smoke_test)
+        gate_pins = verify_training_reality_gate_v8(
+            reality_gate,
+            TrainingRealityGateV8Request(
+                snapshot_id=str(envelope["snapshot_id"]),
+                snapshot_sha256=str(envelope["snapshot_sha256"]),
+            ),
+        )
+    if training_lineage is None:
+        raise TrainingLineageReviewRequired(
+            "SCIENTIFIC_REVIEW_REQUIRED: Task 6 training lineage resolution failed"
+        )
+
     training_program = assert_substantive_training_allowed(
         repo_root,
         smoke_test=smoke_test,
     )
+    dataset = validate_mlx_dataset(data_dir, smoke_test=smoke_test)
+    if dataset["manifest_sha256"] != envelope["manifest_sha256"]:
+        raise MLXPipelineError("training snapshot manifest changed after gate decision")
     profile = load_profile(profile_path)
     machine = doctor(profile_path, repo_root)
     if not machine["ready_to_train"]:
         raise MLXPipelineError(f"training bloccato dal doctor: {machine['checks']}")
     model_check = verify_model(profile_path, repo_root)
-    dataset = validate_mlx_dataset(data_dir, smoke_test=smoke_test)
     dataset_snapshot_path = str(Path(str(dataset["path"])).resolve())
     environment_record = runtime_environment(repo_root)
     model_path = _model_path(repo_root, profile)
@@ -1096,12 +2033,21 @@ def run_training(
     allowed_seeds = tuple(int(item) for item in training["seeds"])
     if seed not in allowed_seeds and not smoke_test:
         raise MLXPipelineError(f"seed non preregistrato: {seed}; ammessi {allowed_seeds}")
-    state_path = run_dir / "run-state.json"
-    if run_dir.exists() and any(run_dir.iterdir()) and not resume:
-        raise MLXPipelineError("run directory non vuota; usare --resume o una nuova directory")
     run_dir.mkdir(parents=True, exist_ok=True)
+    training_view = stage_verified_training_view(
+        data_dir,
+        run_dir / "_verified-training-view",
+        verified_snapshot=dataset,
+        smoke_test=smoke_test,
+    )
+    training_view_dir = Path(str(training_view["path"]))
+    verify_staged_training_view(training_view_dir, training_view["file_hashes"])
     validation_dir = run_dir / "_validation-as-test"
-    _copy_validation_as_test(data_dir, validation_dir)
+    validation_view = stage_validation_consumer_view(
+        training_view_dir,
+        validation_dir,
+        training_view=training_view,
+    )
 
     maximum_phases = 1 if smoke_test else int(training["maximum_phases"])
     iterations_per_phase = (
@@ -1112,12 +2058,6 @@ def run_training(
     patience = int(training["early_stopping_patience"])
     min_delta = float(training["early_stopping_min_delta"])
     if resume:
-        try:
-            state = json.loads(state_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            raise MLXPipelineError(f"stato run non riprendibile: {exc}") from exc
-        if state.get("schema_version") != RUN_SCHEMA_VERSION:
-            raise MLXPipelineError("schema run cambiato: impossibile riprendere il run")
         if state.get("profile_sha256") != sha256_file(profile_path):
             raise MLXPipelineError("profilo cambiato: impossibile riprendere il run")
         if state.get("dataset_snapshot_sha256") != dataset["snapshot_sha256"]:
@@ -1134,9 +2074,8 @@ def run_training(
             raise MLXPipelineError(
                 "path dello snapshot dati cambiato: impossibile riprendere il run"
             )
-        # I run v2 creati prima del gate external possono essere ripresi soltanto
-        # dopo che il path verificato e stato ancorato allo stato locale.
         state["dataset_snapshot_path"] = dataset_snapshot_path
+        reconcile_training_lineage_pins(state, training_lineage)
         previous_environment = state.get("environment")
         if not isinstance(previous_environment, dict):
             raise MLXPipelineError("record ambiente assente: impossibile riprendere il run")
@@ -1156,6 +2095,8 @@ def run_training(
             "dataset_snapshot_id": dataset["snapshot_id"],
             "dataset_manifest_sha256": dataset["manifest_sha256"],
             "dataset_snapshot_path": dataset_snapshot_path,
+            **gate_pins.state_payload(),
+            **training_lineage.state_payload(),
             "model_provenance_sha256": model_check["provenance_sha256"],
             "environment": environment_record,
             "seed": seed,
@@ -1196,7 +2137,7 @@ def run_training(
             "test": False,
             "fine_tune_type": training["fine_tune_type"],
             "optimizer": training["optimizer"],
-            "data": str(data_dir.resolve()),
+            "data": str(training_view_dir),
             "seed": seed + phase - 1,
             "num_layers": int(training["num_layers"]),
             "batch_size": int(training["batch_size"]),
@@ -1218,9 +2159,10 @@ def run_training(
             "lora_parameters": training["lora_parameters"],
         }
         config_path = run_dir / "configs" / f"phase-{phase:04d}.json"
-        _write_json(config_path, phase_config)
-        train_result = _stream_command(
-            _mlx_command(config_path),
+        train_result = stream_mlx_with_sealed_view(
+            phase_config,
+            view=training_view,
+            config_path=config_path,
             cwd=repo_root,
             log_path=run_dir / "train.log",
             environment=offline_environment,
@@ -1240,9 +2182,10 @@ def run_training(
             "max_seq_length": int(profile["data"]["max_sequence_length"]),
         }
         eval_path = run_dir / "configs" / f"phase-{phase:04d}-eval.json"
-        _write_json(eval_path, eval_config)
-        eval_result = _stream_command(
-            _mlx_command(eval_path),
+        eval_result = stream_mlx_with_sealed_view(
+            eval_config,
+            view=validation_view,
+            config_path=eval_path,
             cwd=repo_root,
             log_path=run_dir / "validation.log",
             environment=offline_environment,
@@ -1309,13 +2252,13 @@ def run_training(
 
 
 def iter_jsonl(path: Path) -> Iterator[dict[str, Any]]:
-    with path.open(encoding="utf-8") as handle:
+    with path.open("rb") as handle:
         for line_number, line in enumerate(handle, start=1):
             if not line.strip():
                 continue
             try:
                 value = json.loads(line)
-            except json.JSONDecodeError as exc:
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
                 raise MLXPipelineError(f"JSONL non valido {path}:{line_number}: {exc}") from exc
             if not isinstance(value, dict):
                 raise MLXPipelineError(f"record non-oggetto in {path}:{line_number}")

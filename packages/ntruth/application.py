@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import hashlib
+import warnings
+
+from ntruth.ingest.safety import SafetyError
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,6 +14,7 @@ from typing import Literal
 from pydantic import Field, model_validator
 
 from ntruth.artifacts import remap_artifact_paths, staged_directory, unique_run_path
+from ntruth.derivation_theory.contracts import ConformanceBundle
 from ntruth.governance import (
     AuthorizationGrant,
     GovernanceAction,
@@ -25,8 +29,8 @@ from ntruth.governance import (
     scan_text,
 )
 from ntruth.ingest.project import IngestResult, Project
-from ntruth.ingest.safety import SafetyError
-from ntruth.pipeline import AnalysisResult, analyze_project
+from ntruth.pipeline import AnalysisResult, analyze_project_v7_adapter
+from ntruth.pipeline_v8 import V8PipelineRequest, V8PipelineResult, run_v8_pipeline
 from ntruth.reporting import PrivacyAudit, ShareReadiness, write_all
 from ntruth.reporting.privacy import build_privacy_audit, build_share_readiness
 from ntruth.rules.loader import (
@@ -37,6 +41,7 @@ from ntruth.rules.loader import (
 from ntruth.schemas.core import NTruthModel
 from ntruth.schemas.manifest import LicenseManifest, ReleaseProfile
 from ntruth.schemas.report import DomainTransparency
+from ntruth.schemas.support import ScientificReviewRequirement
 from ntruth.transparency import assess_domain
 
 
@@ -54,6 +59,23 @@ class DomainAcknowledgementRequired(RuntimeError):
     def __init__(self, transparency: DomainTransparency) -> None:
         self.transparency = transparency
         super().__init__(transparency.warning)
+
+
+class V8ApplicationInputReviewRequired(RuntimeError):
+    """A raw Project cannot be promoted to verified v8 facts by an implicit adapter."""
+
+    def __init__(self) -> None:
+        self.review_requirement = ScientificReviewRequirement(
+            issue_id="SRR-V8-008",
+            rationale=(
+                "Project/parser output is candidate evidence and cannot establish the reviewed "
+                "profile predicate closure required by the v8 deterministic lane."
+            ),
+        )
+        super().__init__(
+            "SCIENTIFIC_REVIEW_REQUIRED: supply a verified V8PipelineRequest and complete "
+            "ConformanceBundle; use execute_analysis_v7_adapter only for legacy input"
+        )
 
 
 @dataclass(frozen=True)
@@ -265,7 +287,7 @@ def evaluate_distribution_readiness(
     )
 
 
-def execute_analysis(
+def execute_analysis_v7_adapter(
     source: Path,
     *,
     out: Path,
@@ -274,36 +296,41 @@ def execute_analysis(
     domain: str = "quantitative_microscopy",
     ruleset_id: str = DEFAULT_RULESET_ID,
     ruleset_version: str = DEFAULT_RULESET_VERSION,
-    release_profile: ReleaseProfile = ReleaseProfile.D0_CORE,
     on_preflight: Callable[[DomainTransparency], None] | None = None,
     require_domain_acknowledgement: bool = False,
     acknowledged_unvalidated_domain: bool = False,
+    release_profile: ReleaseProfile = ReleaseProfile.D0_CORE,
 ) -> AnalysisExecution:
-    """Esegue una singola analisi locale e tutti gli export previsti.
+    """Execute the deprecated v7 project/report lane explicitly.
 
     Il callback viene invocato prima di ingestione/inferenza, cosi CLI e altri
     client possono rendere visibile lo stato non validato prima dell'uso.
     """
 
+    warnings.warn(
+        "execute_analysis_v7_adapter is a deprecated v7 scientific contract",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     source = source.expanduser()
     if not source.exists():
         raise FileNotFoundError(f"Percorso inesistente: {source}")
 
     output_root = out.expanduser().resolve()
-    explicit_workspace = project_dir.expanduser().resolve() if project_dir is not None else None
+    source = source.expanduser()
     if source.is_dir():
         source_root = source.resolve()
         nested_targets = [output_root]
-        if explicit_workspace is not None:
-            nested_targets.append(explicit_workspace)
+        if project_dir is not None:
+            nested_targets.append(project_dir.expanduser().resolve())
         for target in nested_targets:
             if target == source_root or source_root in target.parents:
                 raise SafetyError(
                     "la directory di output/workspace non puo essere interna alla "
                     "directory sorgente: spostarla fuori dal perimetro di ingestione"
                 )
-
     run_id, run_dir = unique_run_path(output_root)
+    explicit_workspace = project_dir.expanduser().resolve() if project_dir is not None else None
 
     with staged_directory(run_dir) as staging:
         # Senza --project ogni run possiede manifest e fonti propri. Un workspace
@@ -333,7 +360,7 @@ def execute_analysis(
             raise NoUsableFilesError(ingest)
 
         ruleset = load_ruleset(ruleset_id, ruleset_version)
-        result = analyze_project(project, ruleset=ruleset, lang=language)
+        result = analyze_project_v7_adapter(project, ruleset=ruleset, lang=language)
         privacy_audit = build_privacy_audit(result.document, result.report)
         share_readiness = build_share_readiness(
             privacy_audit,
@@ -362,3 +389,17 @@ def execute_analysis(
         privacy_audit=privacy_audit,
         share_readiness=share_readiness,
     )
+
+
+def execute_analysis(
+    request: V8PipelineRequest | Path,
+    *,
+    conformance_bundle: ConformanceBundle | None = None,
+    **legacy_options: object,
+) -> V8PipelineResult:
+    """Canonical v8 application boundary; raw Project inputs fail closed."""
+
+    del legacy_options
+    if isinstance(request, Path) or conformance_bundle is None:
+        raise V8ApplicationInputReviewRequired()
+    return run_v8_pipeline(request, conformance_bundle=conformance_bundle)

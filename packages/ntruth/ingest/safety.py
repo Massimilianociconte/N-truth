@@ -13,6 +13,7 @@ import re
 import zipfile
 import zlib
 from dataclasses import dataclass, field
+import os
 from pathlib import Path
 
 from ntruth.schemas.manifest import ReleaseProfile
@@ -487,3 +488,73 @@ def detect_injection(text: str) -> list[str]:
             snippet = match.group(0)[:80].replace("\n", " ")
             hits.append(f'possibile prompt injection nel documento: "{snippet}"')
     return hits
+
+
+def discover_ingest_candidates(
+    source: Path,
+) -> tuple[tuple[Path, ...], tuple[SafetyReport, ...]]:
+    """Elenca i file da ingerire senza seguire symlink di file o di cartella.
+
+    ``Path.rglob`` attraversa le directory symlink e puo copiare file esterni
+    al workspace. Questo enumeratore usa ``os.walk(followlinks=False)`` e
+    rifiuta ogni symlink prima che ``check_file`` ne legga il contenuto.
+    """
+
+    root = source.expanduser()
+    if root.is_symlink():
+        return (
+            (),
+            (
+                SafetyReport(
+                    path=root,
+                    accepted=False,
+                    reason="symlink di directory non ammesso"
+                    if root.is_dir()
+                    else "symlink non ammesso",
+                ),
+            ),
+        )
+    if not root.is_dir():
+        return (root,), ()
+
+    accepted: list[Path] = []
+    rejected: list[SafetyReport] = []
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=False, topdown=True):
+        current = Path(dirpath)
+        keep: list[str] = []
+        for name in dirnames:
+            child = current / name
+            if child.is_symlink():
+                rejected.append(
+                    SafetyReport(
+                        path=child,
+                        accepted=False,
+                        reason="symlink di directory non ammesso",
+                    )
+                )
+                continue
+            keep.append(name)
+        dirnames[:] = keep
+        for name in filenames:
+            path = current / name
+            if path.is_symlink():
+                rejected.append(
+                    SafetyReport(path=path, accepted=False, reason="symlink non ammesso")
+                )
+                continue
+            if not path.is_file():
+                rejected.append(
+                    SafetyReport(path=path, accepted=False, reason="non e un file regolare")
+                )
+                continue
+            if path.suffix.lower() not in SUPPORTED_EXTENSIONS:
+                rejected.append(
+                    SafetyReport(
+                        path=path,
+                        accepted=False,
+                        reason=f"estensione non supportata ({path.suffix or 'assente'})",
+                    )
+                )
+                continue
+            accepted.append(path)
+    return tuple(sorted(accepted)), tuple(rejected)

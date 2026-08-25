@@ -1,4 +1,11 @@
-# Validation Protocol - preregistration draft v6
+# Validation Protocol — preregistration draft (rev. v6)
+
+> **HISTORICAL_NON_NORMATIVE.** Questo documento è la revisione v6 di una bozza
+> nata dal PRD v3; non è il protocollo v8 e le sue numerosità non sono correnti,
+> preregistrate o approvate. Il repository v8 non ha avviato validazione scientifica.
+> Vedere
+> [prd-v8-data-training-evaluation-boundary.md](prd-v8-data-training-evaluation-boundary.md)
+> e il [Scientific Review Register](audits/prd-v8-full-migration/SCIENTIFIC_REVIEW_REGISTER.md).
 
 **Stato:** bozza non preregistrata, non approvata e non eseguita. Deve essere
 completata, firmata e congelata da biostatistico, wet-lab lead, annotation lead ed
@@ -64,14 +71,14 @@ non riceve uno split definitivo.
 
 ## 4. Fasi e numerosita
 
-| Fase | Casi reali v6 | Uso | Modifiche consentite |
+| Fase | Casi reali previsti | Uso | Modifiche consentite |
 |---|---:|---|---|
 | Schema bootstrap | 10-20 | verificare micro-dominio, campi e carico | schema/guideline/rulebook modificabili |
 | Calibration pilot | 30-50 | IAA, tempo, determinability, guideline e budget | correzioni consentite; non e test finale |
 | Feasibility pilot | 100-150 | baseline B0-B5, learning curve, real dev/test e unit economics | protocollo congelato; deviazioni registrate |
 | Restricted-domain expansion | 150-500 | eventuale fine-tuning e external validation guidati da learning curve | solo dopo tutti i gate |
 | Research corpus | 800-2.000 | programma finanziato/consortile | fuori dal bootstrap |
-| External challenge | da predefinire | release gate v1.0-A, esclusivamente reale e unseen | nessuna modifica dopo apertura |
+| External challenge | da predefinire prima dell'apertura | release gate v1.0-A, esclusivamente reale e unseen | nessuna modifica dopo apertura |
 
 ### 4.1 Erratum operativo
 
@@ -79,7 +86,18 @@ Le sezioni 14.3, 17.4, 18.3, 28.5 e 32.4 del PRD v6 indicano 100-150 casi per la
 feasibility; l'Appendice D.2 indica 150-250. Fino a correzione formale si adotta
 **100-150**, per coerenza con il corpo, la roadmap e la DoD. La cifra deve comunque
 essere riesaminata con learning curve, prevalence, precisione degli intervalli e
-budget: non e una power calculation.
+budget: non e una power calculation. Nessuna di queste cifre e un impegno
+preregistrato.
+
+Il pilot e 100% doppiamente annotato e tutti i disaccordi sono adjudicati. L'IAA viene
+misurata prima dell'adjudication. La dimensione dell'external set, i domini, la
+prevalenza e il criterio di successo devono essere congelati prima della valutazione;
+non sono inventati in questa bozza.
+
+Train, validation, test ed external sono separati per articolo, preprint/versione,
+laboratorio/corresponding author quando possibile, dataset/supplementi collegati e
+template sintetico. Synthetic e ammesso soltanto nel train/stress test. Il custode del
+test non partecipa alla model selection.
 
 ## 5. Separazione Parser Gold / Derivation Gold
 
@@ -180,11 +198,14 @@ revisionato. Non e una label impressionistica scelta liberamente.
 |---|---|
 | Fixture | pass rate per positivo, negativo, ambiguous/exception e counterfactual |
 | Derivation Gold | accuratezza EU/n per fattore/contrasto e per stato ammesso |
-| Determinability | confusion matrix sui sette stati e false-certainty rate |
+| Determinabilità | confusion matrix sui sette stati e false-certainty rate |
 | Count invariants | lifecycle, scope, quantificatore, exclusion ed effective_n diagnostic-only |
 | Rule coverage | covered, determinate, conditional/multiple, reporting gap, out-of-scope |
 | Proof trace | completezza e correttezza di precondizioni/evidence/rule ID |
 | Classi | separazione tra design replication, analytical dependence e inference scope |
+
+La severity non sostituisce la classe scientifica. Una valutazione di dipendenza
+analitica non viene conteggiata come errore di replicazione del disegno.
 
 Il 100% sulle fixture approvate e necessario ma non sufficiente. Se oltre il 50% dei
 casi reali e OUT_OF_SCOPE o indeterminato per pattern non coperti, restringere il
@@ -239,10 +260,13 @@ Congelare prima del test:
 - B5 cascata ibrida;
 - B6 fine-tuned/distilled, soltanto dopo i gate.
 
-Stesse fonti, split, metriche, seed, config, snapshot e budget per ogni confronto. B6
-diventa default solo se supera B5 su allocation/application, decisive-edge F1,
-astensione, calibrazione o riduce significativamente il tempo di revisione. Exact graph
-match non puo compensare errori sui campi decisivi.
+Stesse fonti, split, metriche, seed, config, snapshot, lockfile e budget per ogni
+confronto. B6 diventa default solo se supera B5 su allocation/application,
+decisive-edge F1, astensione, calibrazione o riduce significativamente il tempo di
+revisione. Exact graph match non puo compensare errori sui campi decisivi.
+
+Il codice statistico e silver evidence del clustering dichiarato; una sua formula non
+puo essere valutata come gold dell'allocazione.
 
 ## 12. Question usefulness
 
@@ -279,7 +303,7 @@ Riportare TSTR, hybrid uplift, synthetic-to-real gap, shortcut sensitivity,
 calibrazione, human-review time, long-tail coverage e rejection rate. Almeno 50
 realizzazioni stratificate per ciclo devono ricevere audit umano. Nessuna percentuale
 di synthetic e fissata a priori e nessun self-training ricorsivo non auditato e
-ammesso.
+ammesso. Nessuna valutazione principale sul sintetico.
 
 ## 14. Resource e storage accounting
 
@@ -303,21 +327,23 @@ Da ratificare prima dell'apertura:
 - allocation agreement <0,60 -> parser limitato a candidate facts ed elicitation;
 - B6 non supera B5 -> B6 non diventa default;
 - synthetic peggiora real development o calibrazione -> ridurre/sospendere synthetic;
-- external degradation oltre soglia predefinita -> restringere dominio e claim;
+- external degradation oltre soglia prestabilita -> restringere dominio e claim;
 - ruleset coverage insufficiente -> ampliare il Rulebook o restringere il profilo;
 - assenza di LOI/budget/STOP authority -> non avviare feasibility estesa;
 - leakage, gold senza provenance o TEST training-eligible -> invalidare snapshot/run;
 - false certainty o EU/n fuori dalla tabella normativa -> release blocker.
 
-Questi valori sono criteri candidati del PRD, non risultati. Le soglie finali, gli
+Questi valori sono criteri candidati, non risultati ottenuti. Le soglie finali, gli
 intervalli e la gestione della molteplicita devono essere approvati dal biostatistico.
+Qualsiasi modifica successiva all'apertura del test deve essere registrata come
+deviazione, non riscritta retroattivamente.
 
 ## 16. Freeze, custodia e reporting
 
 Prima della feasibility:
 
 - [ ] schema, Core Profile, guideline, Rulebook e stage contracts congelati;
-- [ ] protocollo, endpoint, CI e missingness congelati;
+- [ ] protocollo, endpoint, CI, redirect e missingness congelati;
 - [ ] snapshot, split, leakage groups e checksum congelati;
 - [ ] baseline, seed, config e policy B5/B6 congelati;
 - [ ] custode e access policy di test/external nominati;
@@ -326,8 +352,8 @@ Prima della feasibility:
 
 Il report finale include risultati negativi, error taxonomy, disagreement taxonomy,
 subgroup per dominio/lingua/formato/determinabilita, risorse, deviazioni e limiti.
-Nessun claim DRIVER/NC3Rs, nessuna scorecard nominativa e nessuna conclusione principale
-su synthetic.
+Nessuna dichiarazione DRIVER/NC3Rs di conformita o endorsement, nessuna scorecard
+nominativa e nessuna conclusione principale su synthetic.
 
 ## 17. Approvazioni richieste
 

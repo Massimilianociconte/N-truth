@@ -1,98 +1,120 @@
-# N-Truth — verified project status snapshot
+# N-Truth clean-checkout status — PRD v8.0
 
-**Document role:** human-readable mirror of machine-readable gates.  
-**Does not override** `models/registry/default.json` or `models/registry/training_program.json`.  
-**Verified against those files on:** 2026-08-02 (documentation refresh).  
-**Scientific validation has not started.** Software is experimental and not intended for scientific decision-making without human review.
+**Verified scope:** repository engineering contracts, 2026-08-13.
+**Binding specification:** **N-Truth PRD v8.0**.
+**Repository implementation status:** **`IMPLEMENTED_WITH_EXPLICIT_BLOCKERS`**.
+**Scientific validation:** **`NOT_STARTED`**.
+**Training and External Challenge:** **`HOLD`**.
 
-## Capability ladder (do not collapse)
+This is a clean-checkout status document. It does not convert code, synthetic fixtures,
+an AI review, a repository scan or green CI into scientific evidence.
+The complete requirement-by-requirement disposition is the
+[final PRD v8 implementation matrix](audits/prd-v8-full-migration/FINAL_IMPLEMENTATION_MATRIX.md);
+the Phase 1 matrix is retained separately as immutable pre-implementation evidence.
 
-| Level | Meaning for N-Truth today |
-|-------|---------------------------|
-| Designed | PRD / ADRs / protocols describe the target |
-| Implemented | Code paths exist in the repository |
-| Tested | Automated software tests exist and (when run) exercise contracts |
-| Runtime-verified | Artifact-bound host qualification for a **registered fingerprint** |
-| Evaluated on development | Frozen B4_CONSTRAINED_DEV (39 cases) — not final test, not train |
-| Validated on real gold | Independent real annotated gold — **not available** |
-| Scientifically validated | External challenge / approved protocols — **`NOT_STARTED`** |
-| Production-ready | **Not claimed** |
+## Capability ladder
 
-## Machine-readable gates (verified)
+| Level | Current evidence |
+|---|---|
+| Designed | PRD v8, ADR-0013 and explicit schemas/contracts |
+| Implemented | v8 kernel, theory/runtime, parser boundary, reporting, evaluation and Gate code |
+| Engineering-tested | Focused unit/integration/E2E/package tests and desktop build |
+| Runtime-verified | Deterministic package/conformance assets only |
+| Evaluated on independent real reference | **Not available** |
+| Validated on real gold | **Not available** |
+| Scientifically validated | **`NOT_STARTED`** |
+| Production-ready scientific product | **Not claimed** |
 
-| Gate | Value | Source of truth |
-|------|-------|-----------------|
-| `migration_status` | `ARCHITECTURE_MIGRATED` | `models/registry/default.json` → `qualification` |
-| `runtime_qualification_status` | `PARTIALLY_VERIFIED` | same (artifact-bound MLX community 4-bit only) |
-| `scientific_validation_status` | `NOT_STARTED` | same |
-| `training_program_status` | `P0_LORA_APPROVED` | `models/registry/training_program.json` |
-| `training_execution_gate` | `HOLD_PENDING_REAL_ANCHOR` | same |
-| `engineering_smoke_training_allowed` | `true` | same |
-| `substantive_p0_training_allowed` | `false` | same |
-| `current_synthetic_snapshot_status` | `SYN_G1_UNANCHORED` | same + `data/training/p0-alpha/manifest.json` |
-| `annotation_protocol_status` | `REALITY_CHECK_PROTOCOL_DRAFT` | training program |
-| `real_anchor_status` | `NOT_STARTED` | training program |
-| First public trial status | `HUMAN_SECOND_REVIEW_PACKET_READY` | `first_public_source_protocol_trial` |
+## Reality Gate v8
 
-### Qualified runtime artifact (when PARTIALLY_VERIFIED)
+The canonical gate is `packages/ntruth/reality_gate/v8.py`; the historical v7 gate is
+available only through explicitly named `DEPRECATED_V7_ADAPTER` interfaces.
 
-- MLX repository: `mlx-community/granite-4.1-3b-4bit` (**community conversion, not official IBM**)
-- Canonical model: `ibm-granite/granite-4.1-3b`
-- Weights SHA-256 (registered): `cff9d052cc3c68ea66b3d364788eb96fca2be82868d9ad92bd968e73b125194d`
-- MLX model revision: `b1b476b5a17c46b7d6cd663b4a8ed44b66720aef`
-- Backend: `mlx-lm` (lock/registry: 0.31.3)
+| Dimension | Status | Why |
+|---|---|---|
+| Kernel/schema conformance | Engineering evidence present | Runtime-derived schemas and strict validation exist |
+| Theory/Rulebook conformance | Engineering evidence present | Versioned clause/rule/fixture/code pins are checked |
+| Reference stability | **BLOCKED** | No reviewed Theory Reference Set or real stability result (`SRR-V8-021`, `SRR-V8-022`) |
+| End-to-end evaluation | **BLOCKED** | Contracts exist; independent real ReportBundle evaluation does not |
+| Contamination/custody | **BLOCKED** | Contracts exist; no qualifying external attestation is supplied |
+| Data/training authorization | **HOLD** | TEST/EXTERNAL are protected and no authoritative GO decision exists |
 
-`PARTIALLY_VERIFIED` is **not** `VERIFIED`, **not** scientific validation, and does **not** transfer to adapters, GGUF, BF16 Transformers, other revisions, tokenizers, or chat templates.
+The CLI command `uv run ntruth quick-design reality-gate` reports the canonical v8
+HOLD. `reality-gate-v7` is historical and visibly deprecated.
 
-## Neuro-symbolic architecture (normative description)
+## Engineering components
 
-```text
-experimental documents
-  → AI parser (candidate facts only)
-  → candidate evidence / entities / relations / graphs
-  → human review or confirmation when required
-  → Experiment Graph
-  → deterministic rules engine
-  → conditional derivations + rule/premise trace
+The machine-readable source of component truth is
+[architecture/prd-v8-current-to-target.yaml](architecture/prd-v8-current-to-target.yaml).
+
+| Component | Engineering status | Scientific note |
+|---|---|---|
+| Core Semantic Kernel / KnowledgeState | Implemented | Published schema ambiguities remain registered |
+| Derivation Theory / Rulebook closure | Implemented with external blockers | Theory Reference Set and Derivation Gold absent |
+| Query-scoped claims / count registry | Implemented with explicit blockers | Count/profile/payload mappings are not guessed |
+| Parser candidate-only boundary | Implemented | Model output is never scientific authority |
+| Planned/executed ReportBundle | Implemented | Mixed aggregation remains review-gated |
+| Statistical module | `HANDOFF_ONLY` | No strategy recommendation or threshold |
+| Evaluation/residual/cluster interfaces | Implemented as HOLD contracts | No fabricated benchmark result or gold |
+| Contamination/custody | Implemented as fail-closed contracts | No self-issued challenge authorization |
+| Reality Gate v8 | Implemented | Current decision remains HOLD |
+| Desktop guided v8 builder and ReportBundle consumer | Implemented and engineering-tested | Synthetic fixture only; question ordering remains unreviewed |
+
+## Current blockers
+
+The append-only
+[Scientific Review Register](audits/prd-v8-full-migration/SCIENTIFIC_REVIEW_REGISTER.md)
+is authoritative. It records internal PRD conflicts, missing external evidence and
+scientific choices that the implementation must not invent.
+
+Important consequences:
+
+- Appendices A, AF and AG are preserved as expected-negative fixtures.
+- Profile predicate closure (`SRR-V8-008`) cannot be asserted from a scalar example.
+- partial graph scoring (`SRR-V8-012`) and a universal few-cluster floor
+  (`SRR-V8-013`) are unavailable.
+- heterogeneous report-resolution precedence (`SRR-V8-014`) is fail-closed.
+- unknown interference topology never rewrites EU (`SRR-V8-017`).
+- Real Anchor, Derivation Gold, reference stability and residual evidence are absent
+  (`SRR-V8-021`, `SRR-V8-022`).
+- Quick Design preserves the full question queue, but no packaged Theory asset can
+  yet claim a reviewed primary-question/evidence ordering (`SRR-V8-025`).
+
+## Compatibility
+
+PRD v7 contracts are historical. Compatibility is explicit and never the canonical
+default:
+
+- CLI: `analyze-v7`, `quick-design run-v7`, `reality-gate-v7`;
+- API: `/v7/analyze`, `/v7/quick-design`;
+- response marker: `DEPRECATED_V7_ADAPTER`.
+
+Historical audits under [audits/prd-v7-root-alignment/](audits/prd-v7-root-alignment/)
+are immutable records, not current implementation evidence.
+
+## Reproducible truth gates
+
+```bash
+uv run python scripts/check_prd_v8_contracts.py
+uv run python scripts/check_repository_policy.py
+uv run ruff check .
+uv run ruff format --check .
+uv run mypy packages
+uv run pytest --disable-warnings
+pnpm --dir apps/desktop test
+pnpm --dir apps/desktop build
+uv build
+uv run python scripts/check_distribution.py
+uv run python scripts/smoke_release.py
 ```
 
-The model **must not** be described as authorized to emit final:
+`check_repository_policy.py` reports findings over the tracked tree. A clean result is
+`NO_FINDING_DETECTED_NOT_AN_ATTESTATION`; it is not proof of privacy, licensing or
+absence of contamination.
 
-- independent `n`;
-- scientific verdicts;
-- pseudoreplication verdicts as product truth;
-- definitive statistical test choice;
-- `RuleResult` as free-form model text;
-- definitive inferential conclusions.
+## Final interpretation
 
-## Train A evaluation notes (development only)
-
-- B4: **39** cases, `split_role=DEVELOPMENT`, `benchmark_role=B4_CONSTRAINED_DEV`, **not** training-eligible, **not** final test, **not** external challenge.
-- Condition C (zero-shot + constrained decoding): schema/JSON validity high; semantic primary F1 all-case mean ≈ **0.17** (scorer 1.0.0; bootstrap CIs in `benchmarks/fewshot_p0/constrained/`).
-- Decision recorded: `GO_LORA_P0` as **protocol design**, while `training_execution_gate` remains **HOLD**.
-- P0-alpha: synthetic graph-first **2000** train / **300** validation, `SYN_G1_UNANCHORED`.
-- Engineering smoke LoRA: label **`ENGINEERING_SMOKE_ONLY`** — not distributable, not promotable, not a scientific pre/post result.
-
-## Annotation / real data
-
-| Item | Status |
-|------|--------|
-| Protocol | `REALITY_CHECK_PROTOCOL_DRAFT` (guideline v0.1) |
-| Dry-runs `reb-20260802-001/002` | `PROTOCOL_DRY_RUN` (not real gold) |
-| First public trial `reb-20260802-003` | `REAL_SOURCE_PROTOCOL_TRIAL`; CC BY source registered |
-| Primary freeze | yes |
-| AI path-restricted second | yes (diagnostic only; **not** human IAA) |
-| Human second review | **packet ready**, not started / not frozen |
-| gold / training_eligible / evaluation_eligible / real_anchor_eligible | **false** |
-
-Do not document: dry-run as real data; AI agreement as human IAA; packet-ready as review complete; single real trial as real anchor or gold.
-
-## What this snapshot does **not** claim
-
-- Production readiness  
-- Scientific validation  
-- That constrained decoding guarantees semantic correctness  
-- That synthetic P0-alpha is human gold  
-- That substantive LoRA has run or improved the model scientifically  
-
-For operational HOLD rationale see [DECISION-hold-pending-real-anchor.md](training/DECISION-hold-pending-real-anchor.md).
+The repository can claim an implemented PRD v8 engineering boundary with explicit
+fail-closed blockers. It cannot claim completed scientific conformity, validated
+performance, an authorized training run, a safe External Challenge release or
+production readiness.

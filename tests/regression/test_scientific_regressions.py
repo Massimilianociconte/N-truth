@@ -3,6 +3,7 @@
 Questi test descrivono errori realmente osservati durante lo sviluppo. Non
 vanno rilassati: se uno di essi fallisce, il sistema ha ripreso a leggere male
 il disegno sperimentale.
+La pipeline completa usa qui l'esplicito contratto DEPRECATED_V7_ADAPTER.
 """
 
 from __future__ import annotations
@@ -12,7 +13,7 @@ from conftest import ProjectFactory
 
 from ntruth.extract import extract
 from ntruth.parsers.registry import build_document_ir
-from ntruth.pipeline import analyze_project
+from ntruth.pipeline import analyze_project_v7_adapter
 from ntruth.schemas.core import Confidence, ProvenanceKind
 from ntruth.schemas.experiment import Inferability
 from ntruth.schemas.graph import NodeType, RelationType
@@ -76,7 +77,7 @@ def test_allocated_and_analysed_are_not_a_contradiction(make_project: ProjectFac
             )
         }
     )
-    result = analyze_project(project)
+    result = analyze_project_v7_adapter(project)
     block = result.block
     assert not [c for c in block.contradictions if c.status == "unresolved"]
     node = next(n for n in block.hierarchy.nodes if n.type is NodeType.ANIMAL)
@@ -97,7 +98,7 @@ def test_declared_independence_is_never_assumed_for_biological_sources(
             )
         }
     )
-    result = analyze_project(project)
+    result = analyze_project_v7_adapter(project)
     default_edges = [
         r for r in result.block.hierarchy.relations if r.attributes.get("default_containment")
     ]
@@ -122,7 +123,7 @@ def test_conflicting_sources_never_produce_an_independent_n(make_project: Projec
             "s.csv": "sample_id,donor,treatment\nS1,D1,drug\nS2,D2,drug\nS3,D3,vehicle\n",
         }
     )
-    result = analyze_project(project)
+    result = analyze_project_v7_adapter(project)
     assert [c for c in result.block.contradictions if c.status == "unresolved"]
     for assessment in result.block.unit_assessments:
         assert assessment.n_independent is None
@@ -151,7 +152,7 @@ def test_author_independent_experiments_assertion_does_not_prove_independence(
         name="author-independence-assertion",
     )
 
-    result = analyze_project(project)
+    result = analyze_project_v7_adapter(project)
     culture = next(
         node for node in result.block.hierarchy.nodes if node.type is NodeType.CELL_CULTURE
     )
@@ -188,7 +189,7 @@ def test_unscoped_n_is_not_cartesian_joined_to_multiple_endpoints(
         name="ambiguous-endpoint-scope",
     )
 
-    result = analyze_project(project)
+    result = analyze_project_v7_adapter(project)
     block = result.block
 
     assert len(block.endpoints) == 2
