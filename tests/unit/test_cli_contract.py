@@ -66,7 +66,7 @@ def test_analyze_v7_rejects_unsupported_language_before_running(tmp_path: Path) 
 
 
 def test_analyze_help_exposes_conservative_default_and_experimental_opt_in() -> None:
-    result = CliRunner().invoke(app, ["analyze", "--help"])
+    result = CliRunner().invoke(app, ["analyze-v7", "--help"])
 
     assert result.exit_code == 0, result.output
     assert "--release-profile" in result.output

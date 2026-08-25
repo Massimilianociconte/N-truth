@@ -13,6 +13,7 @@ import pytest
 
 from ntruth.ingest.project import Project
 from ntruth.pipeline import analyze_project_v7_adapter
+from ntruth.pipeline import analyze_project_v7_adapter as analyze_project
 from ntruth.reporting import render_html, write_all
 from ntruth.reporting.positive import build_positive_output
 from ntruth.schemas.core import Determinability, EvidenceType

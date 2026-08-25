@@ -20,6 +20,13 @@ from ntruth.verifier.semantic import (
     semantic_to_stage_checks,
     verify_semantic,
 )
+from ntruth.verifier.v8 import (
+    V8VerificationCode,
+    V8VerificationIssue,
+    V8VerificationReport,
+    verify_v8_derived_claim_set,
+    verify_v8_pipeline_request,
+)
 from ntruth.verifier.validation_stack import (
     AUTHOR_ASSERTION_ALONE_CODE,
     EVIDENCE_SUPPORT_EMPTY_CODE,
@@ -30,13 +37,6 @@ from ntruth.verifier.validation_stack import (
     ValidationStackReport,
     build_validation_stack_report,
     evidence_support_from_types,
-)
-from ntruth.verifier.v8 import (
-    V8VerificationCode,
-    V8VerificationIssue,
-    V8VerificationReport,
-    verify_v8_derived_claim_set,
-    verify_v8_pipeline_request,
 )
 
 __all__ = [
@@ -52,11 +52,11 @@ __all__ = [
     "SemanticCheckSeverity",
     "SemanticStatus",
     "SemanticVerificationResult",
-    "ValidationLayer",
-    "ValidationStackReport",
     "V8VerificationCode",
     "V8VerificationIssue",
     "V8VerificationReport",
+    "ValidationLayer",
+    "ValidationStackReport",
     "VerificationStatus",
     "apply_output_policy",
     "apply_rule_evaluation_output_policy",

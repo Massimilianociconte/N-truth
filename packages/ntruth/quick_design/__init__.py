@@ -42,6 +42,12 @@ from ntruth.quick_design.session import (
     run_quick_design_session as run_quick_design_v7_session,
 )
 from ntruth.quick_design.templates import (
+    SAMPLE_SHEET_COLUMNS,
+    build_id_convention,
+    build_methods_draft,
+    build_sample_sheet,
+)
+from ntruth.quick_design.templates import (
     build_id_convention as build_v7_id_convention,
 )
 from ntruth.quick_design.templates import (
@@ -58,20 +64,10 @@ from ntruth.quick_design.v8 import (
     validate_raw_wizard_submission,
 )
 
-from ntruth.quick_design.templates import (  # noqa: E402
-    SAMPLE_SHEET_COLUMNS,
-    build_id_convention,
-    build_methods_draft,
-    build_sample_sheet,
-)
-
 __all__ = [
-    "SAMPLE_SHEET_COLUMNS",
-    "build_id_convention",
-    "build_methods_draft",
-    "build_sample_sheet",
     "GUIDED_QUESTION_PRIORITY_REVIEW_ISSUE_ID",
     "GUIDED_SAMPLE_SHEET_MAX_ROWS",
+    "SAMPLE_SHEET_COLUMNS",
     "GuidedAnswerStatus",
     "GuidedBuildAction",
     "GuidedBuildState",
@@ -95,6 +91,9 @@ __all__ = [
     "QuickDesignV8Result",
     "QuickDesignV8Submission",
     "build_guided_quick_design",
+    "build_id_convention",
+    "build_methods_draft",
+    "build_sample_sheet",
     "build_v7_id_convention",
     "build_v7_methods_draft",
     "build_v7_sample_sheet",

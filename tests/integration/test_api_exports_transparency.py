@@ -12,9 +12,12 @@ import pytest
 
 from ntruth.api.sessions import AnalysisSession, SessionRegistry
 from ntruth.application import DomainAcknowledgementRequired, execute_analysis_v7_adapter
+from ntruth.application import execute_analysis_v7_adapter as execute_analysis
 from ntruth.corrections import CorrectionLedger
 from ntruth.ingest.project import Project
+from ntruth.ingest.safety import SafetyError
 from ntruth.pipeline import analyze_project_v7_adapter
+from ntruth.pipeline import analyze_project_v7_adapter as analyze_project
 from ntruth.reporting import read_json, report_to_dict, write_all
 from ntruth.schemas.core import stable_id
 from ntruth.schemas.experiment import Correction, CorrectionReason
@@ -57,7 +60,7 @@ def test_report_records_ontology_and_domain_transparency(
     make_project: ProjectFactory,
 ) -> None:
     result = analyze_project_v7_adapter(make_project({"m.md": METHODS}))
-    assert result.report.versions.ontology_version == "0.1.0"
+    assert result.report.versions.ontology_version == "0.2.0"
     assert result.report.domain_transparency.declared_domain == "quantitative_microscopy"
     assert result.report.domain_transparency.warning in result.report.limits
 
@@ -77,7 +80,7 @@ def test_ro_crate_is_json_ld_and_references_every_export(
     expected = {path.name for name, path in written.items() if name != "ro_crate"}
     assert referenced == expected
     assert root["ntruth:rulesetVersion"] == result.report.versions.ruleset_version
-    assert root["ntruth:ontologyVersion"] == "0.1.0"
+    assert root["ntruth:ontologyVersion"] == "0.2.0"
     assert root["ntruth:domainValidationStatus"] == "unvalidated"
     for file_id in referenced:
         assert len(entities[file_id]["sha256"]) == 64
@@ -89,7 +92,9 @@ def test_exported_report_can_be_reopened_with_checksum_validation(
     result = analyze_project_v7_adapter(make_project({"m.md": METHODS}))
     written = write_all(result.report, tmp_path / "out")
     reopened = read_json(written["json"])
-    assert report_to_dict(reopened) == report_to_dict(result.report)
+    exported_payload = json.loads(written["json"].read_text(encoding="utf-8"))
+    assert report_to_dict(reopened) == exported_payload
+    assert reopened.report_id == result.report.report_id
 
 
 def test_shared_application_is_the_cli_contract(
@@ -444,7 +449,11 @@ def test_fastapi_health_acknowledgement_report_and_parity(tmp_path: Path) -> Non
     assert confirmed_block["estimands"][0]["effect_measure"] == "mean difference"
     assert source_question_ids <= {item["id"] for item in confirmed_block["questions"]}
     compilation = confirmed_body["report"]["design_compilations"][block_id]
-    assert compilation["status"] == "ready"
+    assert compilation["status"] == "abstained"
+    assert compilation["abstained"] is True
+    assert "determinability-insufficient_information" in {
+        item["code"] for item in compilation["analysis_handoff"]["unresolved_assumptions"]
+    }
     assert compilation["analysis_handoff"]["prohibited_outputs"] == [
         "statistical_test_selection",
         "model_formula",
@@ -508,6 +517,7 @@ def test_fastapi_health_acknowledgement_report_and_parity(tmp_path: Path) -> Non
     assert loaded.status_code == 200
     assert loaded.json()["report_id"] == body["report"]["report_id"]
 
+
 def test_directory_analysis_rejects_output_or_workspace_inside_the_source(
     tmp_path: Path,
 ) -> None:
@@ -526,6 +536,7 @@ def test_directory_analysis_rejects_output_or_workspace_inside_the_source(
             project_dir=source / "ntruth-project",
         )
     assert not (source / "ntruth-project").exists()
+
 
 def test_repeated_directory_runs_do_not_retain_removed_sources(tmp_path: Path) -> None:
     source = tmp_path / "changing-source"
@@ -547,6 +558,7 @@ def test_repeated_directory_runs_do_not_retain_removed_sources(tmp_path: Path) -
         (second.run_dir / "project" / "manifest.json").read_text(encoding="utf-8")
     )
     assert [item["filename"] for item in second_manifest["files"]] == ["b.md"]
+
 
 def test_report_integrity_covers_identity_checksum_presence_and_disclaimer(
     make_project: ProjectFactory, tmp_path: Path
@@ -582,6 +594,7 @@ def test_report_integrity_covers_identity_checksum_presence_and_disclaimer(
     with pytest.raises(ValueError, match="disclaimer del report non canonico"):
         report_to_dict(noncanonical)
 
+
 def test_report_rejects_cross_block_positive_output_and_compilation_swaps(
     make_project: ProjectFactory,
 ) -> None:
@@ -610,6 +623,7 @@ def test_report_rejects_cross_block_positive_output_and_compilation_swaps(
     )
     with pytest.raises(ValueError, match=r"design compilation.*altro block"):
         report_to_dict(swapped_compilation)
+
 
 def test_session_undo_regenerates_builder_questions_from_the_immutable_baseline(
     tmp_path: Path,

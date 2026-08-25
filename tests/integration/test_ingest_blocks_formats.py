@@ -8,6 +8,7 @@ synthetic RawDocument objects.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -16,17 +17,28 @@ from openpyxl import Workbook
 from pypdf import PdfWriter
 from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
+from ntruth.corrections import CorrectionLedger, recalculate_corrected_block
 from ntruth.graph.index import GraphIndex
 from ntruth.ingest.project import Project
 from ntruth.ingest.safety import SafetyError
 from ntruth.parsers.registry import build_document_ir
-from ntruth.pipeline import analyze_project_v7_adapter
+from ntruth.pipeline import analyze_project_v7_adapter, replace_block_analysis
+from ntruth.pipeline import analyze_project_v7_adapter as analyze_project
+from ntruth.rules.loader import load_ruleset
 from ntruth.schemas.document import ParserStatus, SectionRole
+from ntruth.schemas.experiment import Correction, CorrectionReason, GraphStatus
 from ntruth.schemas.graph import NodeType, RelationType
+from ntruth.schemas.manifest import ReleaseProfile
 
 
 def _ingest(source: Path, workspace: Path, *, domain: str = "quantitative_microscopy") -> Project:
-    project = Project.create(workspace, name=source.stem, domain=domain, language="en")
+    project = Project.create(
+        workspace,
+        name=source.stem,
+        domain=domain,
+        language="en",
+        release_profile=ReleaseProfile.EXTENDED_EXPERIMENTAL,
+    )
     result = project.add(source)
     assert result.accepted, result.summary()
     return project
@@ -372,6 +384,7 @@ def test_sample_sheet_missing_ids_challenge_is_visible(tmp_path: Path) -> None:
 
     assert any("valori mancanti" in limit.lower() for limit in result.report.limits)
 
+
 def test_block_specific_limits_do_not_leak_into_other_positive_outputs(
     tmp_path: Path,
 ) -> None:
@@ -411,6 +424,7 @@ Five cultures received drug or vehicle; n = 5 cultures.
     assert marker in first_limits
     assert marker not in second_limits
     assert any(marker in limit and first.block.id in limit for limit in updated.report.limits)
+
 
 def test_first_row_missing_cell_does_not_poison_unrelated_correction(tmp_path: Path) -> None:
     source = tmp_path / "samples.csv"

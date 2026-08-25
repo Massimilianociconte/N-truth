@@ -305,7 +305,10 @@ def _snapshot_split_inputs(
         if not isinstance(raw, str):
             raise MLXPipelineError(f"input utente assente in {path} per {record_id}")
         parser_input = ParserAIInput.model_validate_json(raw)
-        inputs.append((record_id, normalize_text(parser_input.input_text)))
+        texts = [document.text for document in parser_input.documents if document.text]
+        if not texts:
+            raise MLXPipelineError(f"testo input assente in {path} per {record_id}")
+        inputs.append((record_id, normalize_text("\n\n".join(texts))))
     return tuple(inputs)
 
 

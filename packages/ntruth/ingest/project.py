@@ -18,15 +18,16 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
+from typing import BinaryIO
 
 from ntruth import SCHEMA_VERSION
-from ntruth.ingest.safety import discover_ingest_candidates
 from ntruth.ingest.safety import (
     MAX_FILES,
     SUPPORTED_EXTENSIONS,
     SafetyError,
     SafetyReport,
     check_file,
+    discover_ingest_candidates,
     resolve_inside,
 )
 from ntruth.schemas.core import stable_id
@@ -155,9 +156,20 @@ class IngestResult:
         return "\n".join(lines)
 
 
+def _open_nofollow(path: Path) -> BinaryIO:
+    """Apre in lettura rifiutando i symlink sul componente finale (TOCTOU)."""
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        return os.fdopen(os.open(path, flags), "rb")
+    except OSError as exc:
+        if exc.errno == getattr(os, "ELOOP", None) or "symlink" in str(exc).casefold():
+            raise SafetyError(f"symlink non seguito durante l'apertura: {path}") from exc
+        raise
+
+
 def sha256_of(path: Path, chunk: int = 1 << 20) -> str:
     digest = hashlib.sha256()
-    with path.open("rb") as fh:
+    with _open_nofollow(path) as fh:
         while block := fh.read(chunk):
             digest.update(block)
     return digest.hexdigest()

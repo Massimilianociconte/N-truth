@@ -16,6 +16,7 @@ from ntruth.facsimile import FacsimileScientificProjection
 from ntruth.governance.lineage import CorpusSplit
 from ntruth.graph.builder import materialize_inferential_graph
 from ntruth.graph.determinability import derive_determinability
+from ntruth.parser_ai.contract import ParserCandidateOutput
 from ntruth.schemas.core import (
     Determinability,
     EvidenceSpan,
@@ -41,6 +42,7 @@ from ntruth.schemas.experiment import (
 from ntruth.schemas.graph import GraphNode, NodeType
 from ntruth.training import AnnotationStatus, DatasetManifest, SupervisedRecord
 from ntruth.training.records import ManifestRecord, SupervisionProvenance
+from ntruth.training.splits import migrate_corpus_split_v7
 
 pytestmark = pytest.mark.invariant
 
@@ -66,6 +68,53 @@ def _apply_patch(payload: dict[str, Any], patch: dict[str, Any]) -> dict[str, An
     return result
 
 
+def _canonical_fixture_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    result = copy.deepcopy(payload)
+    result["split"] = migrate_corpus_split_v7(str(result["split"])).value
+    return result
+
+
+def _gold_target(record_id: str) -> dict[str, object]:
+    candidate = ParserCandidateOutput.model_validate(
+        {
+            "coverage": {
+                "status": "PARTIAL",
+                "missing_artifact_ids": ["not-reported"],
+                "rationale": f"Adjudicated candidate fixture for {record_id}.",
+            },
+            "model_metadata": {
+                "adapter_name": "v6-invariant-fixture",
+                "model_name": "fixture",
+                "model_version": "1",
+                "prompt_template_version": "candidate-v8",
+            },
+        }
+    )
+    return {
+        "schema_version": "8.0.0",
+        "candidate_target": candidate.model_dump(mode="json"),
+        "adjudication_id": f"adjudication-{record_id}",
+        "reviewer_ids": ["wet-lab", "biostatistician"],
+        "adjudication_rationale": "Blind technical submissions reconciled.",
+        "submission_references": (
+            {
+                "submission_id": f"{record_id}-a",
+                "submission_sha256": "a" * 64,
+                "reviewer_id": "wet-lab",
+                "reviewer_role": "wet-lab",
+            },
+            {
+                "submission_id": f"{record_id}-b",
+                "submission_sha256": "b" * 64,
+                "reviewer_id": "biostatistician",
+                "reviewer_role": "biostatistician",
+            },
+        ),
+        "comparison_status": "AGREED",
+        "material_differences": [],
+    }
+
+
 def _supervised_record(
     record_id: str,
     *,
@@ -75,10 +124,10 @@ def _supervised_record(
 ) -> SupervisedRecord:
     return SupervisedRecord(
         record_id=record_id,
-        task="v6-invariant",
+        task="parser_candidate_v8",
         language="en",
         input_text="Three cultures were independently allocated before treatment.",
-        target={"candidate_graph": "fixture"},
+        target=_gold_target(record_id),
         provenance=SupervisionProvenance(
             source_id=f"source-{record_id}",
             source_asset_id=f"asset-{record_id}",
@@ -87,21 +136,25 @@ def _supervised_record(
             license_or_authorization_id="fixture-license",
             guideline_version="6.0",
             reviewer_count=2,
+            reviewer_ids=("wet-lab", "biostatistician"),
             reviewer_roles=("wet-lab", "biostatistician"),
+            adjudication_id=f"adjudication-{record_id}",
         ),
-        annotation_status=AnnotationStatus.DOUBLE_REVIEWED,
+        annotation_status=AnnotationStatus.ADJUDICATED,
         training_eligible=training_eligible,
         evaluation_eligible=evaluation_eligible,
-        requested_split=split,
+        split=split,
     )
 
 
 def _manifest_record(payload: dict[str, str], index: int) -> ManifestRecord:
-    split = CorpusSplit(payload["split"])
+    split = migrate_corpus_split_v7(payload["split"])
     training_eligible = split is CorpusSplit.TRAIN
     return ManifestRecord(
         record_id=payload["record_id"],
         record_checksum=_sha(f"record-{index}-{payload['record_id']}"),
+        input_checksum=_sha(f"input-{index}"),
+        candidate_target_checksum=_sha(f"target-{index}"),
         exact_fingerprint=_sha(f"exact-{index}-{payload['record_id']}"),
         near_fingerprint=_sha(f"near-{index}-{payload['record_id']}"),
         split=split,
@@ -115,6 +168,14 @@ def _manifest_record(payload: dict[str, str], index: int) -> ManifestRecord:
         evaluation_eligible=not training_eligible,
         license_or_authorization_id="fixture-license",
         reviewer_count=2,
+        reviewer_ids=("wet-lab", "biostatistician"),
+        reviewer_roles=("wet-lab", "biostatistician"),
+        adjudication_id="adjudication-fixture",
+        target_adjudication_id="adjudication-fixture",
+        submission_ids=(f"{index}-submission-a", f"{index}-submission-b"),
+        submission_checksums=(_sha(f"{index}-a"), _sha(f"{index}-b")),
+        comparison_status="AGREED",
+        material_differences_checksum=_sha(f"differences-{index}"),
     )
 
 
@@ -171,16 +232,21 @@ def test_split_eligibility_negative_contracts(
 
 
 def test_counterfactual_projection_preserves_distinct_semantics() -> None:
-    base = FacsimileScientificProjection.model_validate(FIXTURE["base_projection"])
+    base = FacsimileScientificProjection.model_validate(
+        _canonical_fixture_payload(FIXTURE["base_projection"])
+    )
     equal_counts_case = next(
         item
         for item in FIXTURE["projection_counterfactuals"]
         if item["case_id"] == "equal_numeric_counts_keep_distinct_semantics"
     )
     counterfactual = FacsimileScientificProjection.model_validate(
-        _apply_patch(FIXTURE["base_projection"], equal_counts_case["patch"])
+        _canonical_fixture_payload(
+            _apply_patch(FIXTURE["base_projection"], equal_counts_case["patch"])
+        )
     )
 
+    assert base.model_dump(mode="json")["split"] == "TRAIN"
     assert base.experimental_unit_count.value == 3
     assert base.biological_source_count.value == 1
     assert counterfactual.experimental_unit_count.value == 3
@@ -206,7 +272,7 @@ INVALID_PROJECTION_CASES = tuple(
 def test_counterfactual_projection_rejects_semantic_conflation(
     case: dict[str, Any],
 ) -> None:
-    payload = _apply_patch(FIXTURE["base_projection"], case["patch"])
+    payload = _canonical_fixture_payload(_apply_patch(FIXTURE["base_projection"], case["patch"]))
     with pytest.raises(ValidationError, match=case["error"]):
         FacsimileScientificProjection.model_validate(payload)
 

@@ -335,6 +335,24 @@ def _exact_dataclass_items(
     return tuple(items)
 
 
+def _registered_unhashable_values(enum_type: type[Enum], name: str) -> object:
+    """Registered values for ``name`` across the supported stdlib enum layouts.
+
+    Python >= 3.13 records unhashable member values per name in
+    ``_unhashable_values_map_``; Python 3.12 keeps a flat class-level
+    ``_unhashable_values_`` list. Both layouts prove the same invariant: the
+    value was registered by the enum class itself, never forged afterwards.
+    """
+
+    unhashable_map = enum_type.__dict__.get("_unhashable_values_map_")
+    if type(unhashable_map) is dict:
+        return dict.get(unhashable_map, name)
+    unhashable_values = enum_type.__dict__.get("_unhashable_values_")
+    if type(unhashable_values) is list:
+        return unhashable_values
+    return None
+
+
 def _assert_exact_enum_state(value: Enum, *, path: str) -> None:
     state = object.__getattribute__(value, "__dict__")
     if type(state) is not dict:
@@ -347,10 +365,7 @@ def _assert_exact_enum_state(value: Enum, *, path: str) -> None:
     try:
         registered_member = dict.get(value_map, value.value)
     except TypeError:
-        unhashable_map = enum_type.__dict__.get("_unhashable_values_map_")
-        registered_values = (
-            None if type(unhashable_map) is not dict else dict.get(unhashable_map, value.name)
-        )
+        registered_values = _registered_unhashable_values(enum_type, value.name)
         registered_member = (
             value
             if type(registered_values) is list
@@ -388,13 +403,10 @@ def _assert_exact_enum_state(value: Enum, *, path: str) -> None:
     raw_value = state["_value_"]
     expected_values = [candidate for candidate, member in dict.items(value_map) if member is value]
     if not expected_values:
-        unhashable_map = enum_type.__dict__.get("_unhashable_values_map_")
-        unhashable_values = (
-            None if type(unhashable_map) is not dict else dict.get(unhashable_map, name)
-        )
-        if type(unhashable_values) is not list:
+        registered_values = _registered_unhashable_values(enum_type, name)
+        if type(registered_values) is not list:
             raise ExactRuntimeTreeError(path=path, reason="non-canonical enum state")
-        expected_values = unhashable_values
+        expected_values = registered_values
     if not any(
         type(raw_value) is type(expected) and raw_value == expected for expected in expected_values
     ):

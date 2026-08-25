@@ -9,11 +9,11 @@ from __future__ import annotations
 
 import csv
 import io
+import os
 import re
 import zipfile
 import zlib
 from dataclasses import dataclass, field
-import os
 from pathlib import Path
 
 from ntruth.schemas.manifest import ReleaseProfile

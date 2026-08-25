@@ -32,7 +32,7 @@ class CorpusSplitV7(StrEnum):
     EXTERNAL = "external_challenge"
 
     @classmethod
-    def _missing_(cls, value: object) -> CorpusSplit | None:
+    def _missing_(cls, value: object) -> "CorpusSplitV7 | None":
         """Accetta il vecchio valore serializzato senza riemetterlo."""
 
         if value == "external":

@@ -11,15 +11,18 @@ import pytest
 from conftest import ProjectFactory
 
 import ntruth.pipeline as pipeline_module
+from ntruth.capabilities import CORE_PROFILE_REFERENCE
+from ntruth.design import CompilationStatus
 from ntruth.extract.facts import ExtractionResult
 from ntruth.graph.builder import BuildResult
-from ntruth.graph.validation import GraphValidationError
 from ntruth.pipeline import AnalysisResult
 from ntruth.pipeline import analyze_project_v7_adapter as analyze_project
 from ntruth.reporting import write_all
 from ntruth.reporting.html_report import render_html
-from ntruth.schemas.core import Provenance, ProvenanceKind
+from ntruth.schemas.core import Determinability, Provenance, ProvenanceKind, Severity
+from ntruth.schemas.experiment import Alert, GraphStatus
 from ntruth.schemas.graph import GraphRelation, RelationType
+from ntruth.schemas.report import PositivePathStatus
 
 METHODS = (
     "# Materials and Methods\n\n"
@@ -139,7 +142,8 @@ def test_rules_can_change_without_touching_the_code(
                 "version": "1.0.0",
                 "domain": "general",
                 "title": "regola locale",
-                "preconditions": ["analysis_finer_than_assignment()"],
+                "preconditions": [],
+                "requires_evidence": False,
                 "inference": "local rule",
                 "message_it": "regola locale attiva su {experimental_unit}",
                 "message_en": "local rule active on {experimental_unit}",
@@ -207,9 +211,25 @@ def test_invalid_graph_is_rejected_before_unit_resolution(
     monkeypatch.setattr(pipeline_module, "build_graph", invalid_build)
     monkeypatch.setattr(pipeline_module, "resolve_units", forbidden_resolver)
 
-    with pytest.raises(GraphValidationError, match="dangling_relation_endpoint"):
-        pipeline_module.analyze_project_v7_adapter(project)
+    # Il confine della pipeline non propaga l'eccezione del validatore: proietta
+    # il blocco in stato fail-closed INVALID e registra la causa hard nel
+    # verificatore pubblico, senza mai lasciare che resolver o regole leggano
+    # un grafo non valido.
+    result = pipeline_module.analyze_project_v7_adapter(project)
+
     assert not resolver_called
+    block = result.block
+    assert block.graph_status is GraphStatus.INVALID
+    assert block.determinability is Determinability.INVALID_GRAPH
+    assert result.block_analyses[0].evaluations == ()
+    assert result.block_analyses[0].rule_warnings == (
+        "Regole non eseguite: il verificatore hard ha rifiutato il grafo.",
+    )
+    verification = result.report.verifier_results[block.id]
+    assert "dangling_relation_endpoint" in verification.violation_codes
+    assert any(item.code == "dangling_relation_endpoint" for item in result.report.graph_violations)
+    assert not block.unit_assessments
+
 
 def test_repeated_measure_pipeline_is_gated_outside_core_profile(
     make_project: ProjectFactory,

@@ -100,7 +100,7 @@ _REVIEWED_REPOSITORY_ASSET_SHA256 = {
         "9aadfee7de4877bafbba62bcc6c79dd2df7060f906e5d9ba93bc12f38e1de026"
     ),
     "docs/dataset-assessment.md": (
-        "02a90ba8681aa0134de4c1be0e644af98351ccd4f67e5748443a0f17979e23d3"
+        "b8f665cf97476e4266d1604157ee7833e91d5c7801ba3787df9e61df0151cacc"
     ),
     "docs/plans/modernbert-task-corpora-v1.md": (
         "5f6fe0c7c86fc7cdc958d836d33af0008e0228034711fb1598e8953e94feb035"

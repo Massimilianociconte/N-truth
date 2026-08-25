@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import warnings
-
-from ntruth.ingest.safety import SafetyError
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -29,6 +27,7 @@ from ntruth.governance import (
     scan_text,
 )
 from ntruth.ingest.project import IngestResult, Project
+from ntruth.ingest.safety import SafetyError
 from ntruth.pipeline import AnalysisResult, analyze_project_v7_adapter
 from ntruth.pipeline_v8 import V8PipelineRequest, V8PipelineResult, run_v8_pipeline
 from ntruth.reporting import PrivacyAudit, ShareReadiness, write_all

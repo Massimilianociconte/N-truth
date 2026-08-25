@@ -76,3 +76,4 @@ models/registry/qualification_evidence/
 N-Truth-Private/
 **/collaboration-registry.private.yaml
 **/collaboration-registry.private.yml
+.cache/

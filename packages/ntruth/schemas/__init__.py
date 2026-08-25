@@ -1,5 +1,10 @@
 """Contratti dati di N-Truth. Tutto il resto del sistema dipende solo da qui."""
 
+from __future__ import annotations
+
+from importlib import import_module
+from typing import Any
+
 from ntruth.schemas.adequacy import DesignAdequacyEvaluation, DesignAdequacyFinding
 from ntruth.schemas.block_boundary import (
     BlockBoundaryChangeKind,
@@ -17,7 +22,11 @@ from ntruth.schemas.block_boundary import (
     verify_experiment_block_boundaries,
     verify_experiment_block_boundary_change_ledger,
 )
-from ntruth.schemas.causal_context import QueryCausalContext, QueryCausalEventAggregate
+from ntruth.schemas.causal_context import (
+    QueryCausalContext,
+    QueryCausalEventAggregate,
+    TriState,
+)
 from ntruth.schemas.claims import (
     DerivedClaim,
     DerivedClaimSet,
@@ -100,18 +109,27 @@ from ntruth.schemas.experiment import (
     Contrast,
     Correction,
     CorrectionReason,
+    CountKind,
+    CountRecord,
     DataSufficiency,
     Endpoint,
     Estimand,
+    ExclusionPhase,
+    ExclusionRecord,
     ExperimentBlock,
     Factor,
+    GraphAlternativeConsequence,
+    GraphStatus,
     Hierarchy,
     Inferability,
     InferenceTarget,
     InferenceTargetStatus,
+    LifecycleStatus,
     NKind,
     NScope,
     NStatement,
+    PlausibleGraphAlternative,
+    PlausibleGraphSet,
     ProcessFact,
     Question,
     RiskLabel,
@@ -183,36 +201,6 @@ from ntruth.schemas.prospective import (
     reconcile_plan_execution,
 )
 from ntruth.schemas.query import InferentialQuery
-from ntruth.schemas.report import (
-    BlockSummary,
-    DomainTransparency,
-    DomainValidationStatus,
-    Report,
-)
-from ntruth.schemas.report_bundle import (
-    EXECUTED_EPISTEMIC_BOUNDARY,
-    PLANNED_EPISTEMIC_BOUNDARY,
-    RECONCILED_EPISTEMIC_BOUNDARY,
-    RETROSPECTIVE_EPISTEMIC_BOUNDARY,
-    ConflictRecord,
-    HandoffItem,
-    HandoffItemCategory,
-    HandoffItemOrigin,
-    QueryReportSection,
-    ReportBundle,
-    ReportDesignContext,
-    ReportDesignRecordContext,
-    ReportQuestion,
-    StatisticalHandoff,
-    StrategyModuleStatus,
-    VerifiedPipelineContext,
-    build_handoff_item,
-    build_report_bundle,
-    build_verified_pipeline_context,
-    epistemic_boundary_for_context,
-    explicit_absence,
-    resolve_report_claim_sets,
-)
 from ntruth.schemas.report_resolution import (
     ReportResolutionOutcome,
     ReportResolutionPolicy,
@@ -257,30 +245,63 @@ from ntruth.schemas.support import (
     SupportGrade,
 )
 
-from ntruth.schemas.causal_context import TriState  # noqa: E402
-from ntruth.schemas.experiment import (  # noqa: E402
-    CountKind,
-    CountRecord,
-    ExclusionPhase,
-    ExclusionRecord,
-    GraphAlternativeConsequence,
-    GraphStatus,
-    LifecycleStatus,
-    PlausibleGraphAlternative,
-    PlausibleGraphSet,
-)
+_LAZY_MODULE_EXPORTS: dict[str, str] = {
+    name: "ntruth.schemas.report"
+    for name in (
+        "BlockSummary",
+        "DomainTransparency",
+        "DomainValidationStatus",
+        "Report",
+    )
+} | {
+    name: "ntruth.schemas.report_bundle"
+    for name in (
+        "EXECUTED_EPISTEMIC_BOUNDARY",
+        "PLANNED_EPISTEMIC_BOUNDARY",
+        "RECONCILED_EPISTEMIC_BOUNDARY",
+        "RETROSPECTIVE_EPISTEMIC_BOUNDARY",
+        "ConflictRecord",
+        "HandoffItem",
+        "HandoffItemCategory",
+        "HandoffItemOrigin",
+        "QueryReportSection",
+        "ReportBundle",
+        "ReportDesignContext",
+        "ReportDesignRecordContext",
+        "ReportQuestion",
+        "StatisticalHandoff",
+        "StrategyModuleStatus",
+        "VerifiedPipelineContext",
+        "build_handoff_item",
+        "build_report_bundle",
+        "build_verified_pipeline_context",
+        "epistemic_boundary_for_context",
+        "explicit_absence",
+        "resolve_report_claim_sets",
+    )
+}
+
+
+def __getattr__(name: str) -> Any:
+    """Carica i contratti di report/report_bundle senza creare cicli di import.
+
+    Importare un sottomodulo (per esempio ``ntruth.schemas.core``) esegue prima
+    questo package. ``report`` dipende dal compilatore di design, che a sua
+    volta usa i contratti core, e ``report_bundle`` raggiunge il runtime del
+    parser AI e la pipeline v8: un import eager renderebbe quindi non
+    importabili in un processo pulito sia ``ntruth.reporting`` sia
+    ``ntruth.graph``/``ntruth.rules`` senza il runtime AI.
+    """
+
+    module_name = _LAZY_MODULE_EXPORTS.get(name)
+    if module_name is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    value = getattr(import_module(module_name), name)
+    globals()[name] = value
+    return value
+
 
 __all__ = [
-    "CountKind",
-    "CountRecord",
-    "ExclusionPhase",
-    "ExclusionRecord",
-    "GraphAlternativeConsequence",
-    "GraphStatus",
-    "LifecycleStatus",
-    "PlausibleGraphAlternative",
-    "PlausibleGraphSet",
-    "TriState",
     "BIOLOGICAL_SOURCE_TYPES",
     "CANONICAL_COUNT_REGISTRY_VERSION",
     "CLUSTER_TYPES",
@@ -325,9 +346,11 @@ __all__ = [
     "CorrectionReason",
     "CountCompatibility",
     "CountInterval",
+    "CountKind",
     "CountLifecyclePhase",
     "CountOrigin",
     "CountQuantifier",
+    "CountRecord",
     "CountScope",
     "CountScopeIdentity",
     "DataSufficiency",
@@ -355,6 +378,8 @@ __all__ = [
     "EvidenceTier",
     "EvidenceType",
     "EvidenceTypeV8",
+    "ExclusionPhase",
+    "ExclusionRecord",
     "ExecutedDesignRecord",
     "ExecutedInputLedger",
     "ExperimentBlock",
@@ -366,8 +391,10 @@ __all__ = [
     "Factor",
     "FileToSampleMapping",
     "FrozenModel",
+    "GraphAlternativeConsequence",
     "GraphNode",
     "GraphRelation",
+    "GraphStatus",
     "GraphViolation",
     "HandoffItem",
     "HandoffItemCategory",
@@ -387,6 +414,7 @@ __all__ = [
     "KnowledgeValue",
     "LicenseManifest",
     "LicenseTier",
+    "LifecycleStatus",
     "NKind",
     "NScope",
     "NStatement",
@@ -397,6 +425,8 @@ __all__ = [
     "ParserStatus",
     "PlanExecutionReconciliation",
     "PlannedDesignRecord",
+    "PlausibleGraphAlternative",
+    "PlausibleGraphSet",
     "PoolEvent",
     "PredicateProofReference",
     "ProcessFact",
@@ -462,6 +492,7 @@ __all__ = [
     "SupportGrade",
     "Table",
     "TemporalRelation",
+    "TriState",
     "TrivialExplicitReportResolutionPolicy",
     "UnitAssessment",
     "V8ExecutionManifest",
