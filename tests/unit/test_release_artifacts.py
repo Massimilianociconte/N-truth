@@ -94,7 +94,7 @@ def _write_sdist(
         "ntruth-0.1.0/packages/ntruth/schemas/assets/prd-v8-kernel-schemas-8.0.0.json",
     ]
     if include_evaluator_registry:
-        required.append("ntruth-0.1.0/theories/reviewed-evaluator-registry-0.1.1.json")
+        required.append("ntruth-0.1.0/theories/reviewed-evaluator-registry-0.1.2.json")
     if extra_name:
         required.append(f"ntruth-0.1.0/{extra_name}")
     with tarfile.open(path, "w:gz") as archive:

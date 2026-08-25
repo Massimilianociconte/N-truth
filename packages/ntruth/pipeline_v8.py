@@ -59,7 +59,7 @@ class V8PipelineResult(KernelModel):
         if self.profile_coverage.contract_review.issue_id == PROFILE_COVERAGE_REVIEW_ISSUE_ID:
             return False
         return bool(self.scenario_coverages) and all(
-            item.status is ScenarioCoverageStatus.EXHAUSTIVE_WITHIN_PROFILE
+            item.status is ScenarioCoverageStatus.COMPLETE_UNDER_DECLARED_ASSUMPTION_SET
             for item in self.scenario_coverages
         )
 

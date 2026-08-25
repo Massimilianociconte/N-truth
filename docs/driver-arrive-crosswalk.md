@@ -1,9 +1,10 @@
-# DRIVER / ARRIVE / EDA crosswalk v0.1-draft
+# DRIVER / ARRIVE / EDA crosswalk v0.2-snapshot
 
-Stato: **crosswalk informativo non approvato**. N-Truth è un progetto indipendente:
-non è un prodotto NC3Rs, non certifica conformità DRIVER/ARRIVE, non riproduce le
-risorse e non implica endorsement. Il crosswalk deve essere revisionato dal
-Methodology lead prima di qualunque claim pubblico di mapping.
+Stato: **snapshot strutturato non approvato, content hash non ancora pinnato**.
+N-Truth è un progetto indipendente: non è un prodotto NC3Rs, non certifica
+conformità DRIVER/ARRIVE, non riproduce le risorse e non implica alcun
+endorsement, implicito o esplicito, da parte di NC3Rs. Il crosswalk deve essere
+revisionato dal Methodology lead prima di qualunque claim pubblico di mapping.
 
 ## 1. Relazioni ammesse
 
@@ -51,29 +52,68 @@ evidence e determinability. Non dichiara compatibilità completa senza una suite
 conformance. I mapping futuri devono essere versionati e testati separatamente dal
 grafo interno.
 
-## 5. Registry operativo
+## 5. Snapshot versionato DRIVER (PRD v9 §3.5)
 
-Template per ogni item:
+Lo snapshot sostituisce il vecchio template `pending_review`. Il content hash è
+un segnaposto **esplicito e non finto**: finché il custodian non pinna l'hash
+reale del materiale mappato, nessuna voce può essere promossa a `implements` e
+nessun claim pubblico di mapping è ammesso.
 
 ```yaml
-crosswalk_id: CW-0001
-standard: DRIVER
-standard_version: pending_review
-official_url: pending_review
-accessed_at: null
-item: pending_review
-relation: requires_user_judgement
-ntruth_artifact: null
-ntruth_version: null
-adaptation_note: null
-test_ids: []
-scientific_owner_role: null
-last_reviewed_at: null
-status: DRAFT
+crosswalk_snapshot:
+  crosswalk_id: CW-DRIVER-SNAPSHOT-001
+  standard: DRIVER
+  standard_version: LAUNCH-2026-07-23
+  official_url: https://nc3rs.org.uk/driver-recommendations
+  snapshot_date: 2026-08-25
+  content_hash: PENDING_FIRST_PIN__REQUIRES_CUSTODIAN
+  relation_types_allowed:
+    - implements
+    - supports
+    - requires_user_judgement
+    - out_of_scope
+  endorsement_declared: false
+  last_reviewed_by: project owner
+  review_task_on_upstream_change: true
+  mapped_items:
+    - item: experimental unit
+      relation: supports
+      note: Derivation Theory assignment-anchored, fattore e count scope-aware.
+    - item: randomisation/allocation
+      relation: supports
+      note: AssignmentEvent e allocation nel grafo; nessun audit randomizzazione completo.
+    - item: replicates e reporting di n
+      relation: supports
+      note: CountRecord, replica hierarchy e n indipendente per claim.
+    - item: exclusions/attrition
+      relation: supports
+      note: ExclusionRecord endpoint-specifico e attrition nei gruppi.
+    - item: blinding come metadata di rigor, non derivazione di EU
+      relation: requires_user_judgement
+      note: Metadata dichiarato; la decisione di rigore resta umana.
+    - item: sample-size justification
+      relation: requires_user_judgement
+      note: Precision planning supporta; la giustificazione finale è umana.
+    - item: biological source e provenance
+      relation: supports
+      note: MaterialLineage su identità, origine e preparazione/passaggio.
+    - item: data availability
+      relation: supports
+      note: Export locale, lineage e distribution gate; non conformità FAIR completa.
+    - item: image/sample metadata minimi
+      relation: supports
+      note: Provenance dell'analisi delle immagini nel profilo dichiarato.
+    - item: limiti di inferenza
+      relation: supports
+      note: Determinability claim-specific, abstention e SupportGrade espliciti.
+    - item: distinzione fra record completeness e design adequacy
+      relation: supports
+      note: DesignDiagnosticFinding separato da AdequacyAssessment criterion-bound.
 ```
 
-I valori `pending_review` impediscono di scambiare il template per un mapping
-approvato. URL, versione e condizioni di riuso devono essere verificati dalla fonte
-ufficiale al momento della review; i riferimenti correnti sono elencati nel
-[registry scientifico](scientific-references.md).
+Il mapping esteso (ARRIVE/EDA item-per-item, REMBI, ISA, OME) resta post-Core e
+richiede uno snapshot separato con hash pinnato dal custodian. Una modifica
+upstream a DRIVER non aggiorna automaticamente il Rulebook: genera una review
+task (`review_task_on_upstream_change: true`). I riferimenti correnti sono
+elencati nel [registry scientifico](scientific-references.md).
 

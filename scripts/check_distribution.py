@@ -95,7 +95,7 @@ def check_wheel(path: Path) -> None:
             "ntruth/_bundled/models/granite-4.1-3b-mlx-qlora.json",
             "ntruth/_bundled/theories/ntruth-derivation-theory-0.1.0.json",
             "ntruth/_bundled/theories/simple-cell-culture-profile-closure-0.1.0.json",
-            "ntruth/_bundled/theories/reviewed-evaluator-registry-0.1.1.json",
+            "ntruth/_bundled/theories/reviewed-evaluator-registry-0.1.2.json",
             "ntruth/_bundled/rulesets/ntruth-v8-core-0.1.0.json",
             "ntruth/conformance/assets/reference-role-registry-0.1.0.json",
             (
@@ -133,7 +133,7 @@ def check_sdist(path: Path) -> None:
             f"{root}/pyproject.toml",
             f"{root}/theories/ntruth-derivation-theory-0.1.0.json",
             f"{root}/theories/simple-cell-culture-profile-closure-0.1.0.json",
-            f"{root}/theories/reviewed-evaluator-registry-0.1.1.json",
+            f"{root}/theories/reviewed-evaluator-registry-0.1.2.json",
             f"{root}/rulesets/ntruth-v8-core-0.1.0.json",
             (f"{root}/packages/ntruth/conformance/assets/reference-role-registry-0.1.0.json"),
             (

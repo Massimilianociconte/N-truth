@@ -1,5 +1,5 @@
 {
-  "declared_checksum": "38f6ba41f582a1c131fce98566d57ad07634af8e466cbfb4c404612549452a24",
+  "declared_checksum": "f668c99da157c9fbb3d548a11695e9cec575146de1122bfaefbfa0757ece7898",
   "generated_from": "ntruth.schemas.kernel.kernel_json_schemas",
   "schema_version": "8.0.0",
   "schemas": {
@@ -15596,6 +15596,15 @@
           "title": "CountScope",
           "type": "object"
         },
+        "CounterexampleSearchStatus": {
+          "enum": [
+            "NOT_PERFORMED",
+            "BOUNDED_SEARCH_COMPLETED_NO_COUNTEREXAMPLE",
+            "COUNTEREXAMPLE_FOUND"
+          ],
+          "title": "CounterexampleSearchStatus",
+          "type": "string"
+        },
         "DerivedClaim": {
           "additionalProperties": false,
           "description": "One query-scoped scientific consequence with explicit epistemic state.",
@@ -17816,8 +17825,57 @@
         "ScenarioCoverage": {
           "additionalProperties": false,
           "properties": {
+            "assumption_set_finalized": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Assumption Set Finalized"
+            },
+            "assumption_set_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Assumption Set Id"
+            },
+            "assumption_set_version": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Assumption Set Version"
+            },
             "caveat": {
               "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+            },
+            "counterexample_search_status": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/CounterexampleSearchStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
             },
             "emitting_clause_ids": {
               "items": {
@@ -17863,10 +17921,13 @@
           "type": "object"
         },
         "ScenarioCoverageStatus": {
+          "description": "Writable PRD v8/v9 scenario-completeness states.",
           "enum": [
-            "EXHAUSTIVE_WITHIN_PROFILE",
             "NON_EXHAUSTIVE",
-            "UNKNOWN"
+            "UNKNOWN",
+            "COMPLETE_UNDER_DECLARED_ASSUMPTION_SET",
+            "INCOMPLETE_KNOWN",
+            "UNKNOWN_COMPLETENESS"
           ],
           "title": "ScenarioCoverageStatus",
           "type": "string"
@@ -19654,6 +19715,15 @@
           ],
           "title": "CountScope",
           "type": "object"
+        },
+        "CounterexampleSearchStatus": {
+          "enum": [
+            "NOT_PERFORMED",
+            "BOUNDED_SEARCH_COMPLETED_NO_COUNTEREXAMPLE",
+            "COUNTEREXAMPLE_FOUND"
+          ],
+          "title": "CounterexampleSearchStatus",
+          "type": "string"
         },
         "DerivedClaim": {
           "additionalProperties": false,
@@ -23840,8 +23910,57 @@
         "ScenarioCoverage": {
           "additionalProperties": false,
           "properties": {
+            "assumption_set_finalized": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Assumption Set Finalized"
+            },
+            "assumption_set_id": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Assumption Set Id"
+            },
+            "assumption_set_version": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Assumption Set Version"
+            },
             "caveat": {
               "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+            },
+            "counterexample_search_status": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/CounterexampleSearchStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
             },
             "emitting_clause_ids": {
               "items": {
@@ -23887,10 +24006,13 @@
           "type": "object"
         },
         "ScenarioCoverageStatus": {
+          "description": "Writable PRD v8/v9 scenario-completeness states.",
           "enum": [
-            "EXHAUSTIVE_WITHIN_PROFILE",
             "NON_EXHAUSTIVE",
-            "UNKNOWN"
+            "UNKNOWN",
+            "COMPLETE_UNDER_DECLARED_ASSUMPTION_SET",
+            "INCOMPLETE_KNOWN",
+            "UNKNOWN_COMPLETENESS"
           ],
           "title": "ScenarioCoverageStatus",
           "type": "string"
@@ -25230,6 +25352,15 @@
     },
     "scenario_coverage": {
       "$defs": {
+        "CounterexampleSearchStatus": {
+          "enum": [
+            "NOT_PERFORMED",
+            "BOUNDED_SEARCH_COMPLETED_NO_COUNTEREXAMPLE",
+            "COUNTEREXAMPLE_FOUND"
+          ],
+          "title": "CounterexampleSearchStatus",
+          "type": "string"
+        },
         "KnowledgeState": {
           "enum": [
             "PRESENT",
@@ -25445,10 +25576,13 @@
           "type": "object"
         },
         "ScenarioCoverageStatus": {
+          "description": "Writable PRD v8/v9 scenario-completeness states.",
           "enum": [
-            "EXHAUSTIVE_WITHIN_PROFILE",
             "NON_EXHAUSTIVE",
-            "UNKNOWN"
+            "UNKNOWN",
+            "COMPLETE_UNDER_DECLARED_ASSUMPTION_SET",
+            "INCOMPLETE_KNOWN",
+            "UNKNOWN_COMPLETENESS"
           ],
           "title": "ScenarioCoverageStatus",
           "type": "string"
@@ -25456,8 +25590,57 @@
       },
       "additionalProperties": false,
       "properties": {
+        "assumption_set_finalized": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Assumption Set Finalized"
+        },
+        "assumption_set_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Assumption Set Id"
+        },
+        "assumption_set_version": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Assumption Set Version"
+        },
         "caveat": {
           "$ref": "#/$defs/KnowledgeValue_Annotated_str__StringConstraints__"
+        },
+        "counterexample_search_status": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CounterexampleSearchStatus"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "emitting_clause_ids": {
           "items": {
@@ -27299,5 +27482,5 @@
       "type": "object"
     }
   },
-  "snapshot_id": "KERNEL-SCHEMAS-38f6ba41f582a1c131fc"
+  "snapshot_id": "KERNEL-SCHEMAS-f668c99da157c9fbb3d5"
 }

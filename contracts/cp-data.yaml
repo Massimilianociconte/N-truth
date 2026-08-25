@@ -1,0 +1,44 @@
+# CP-DATA — Contract Package PRD v9 §0.6/§20.2. Sintassi YAML subset deterministica
+# validata da scripts/check_contract_packages.py (nessuna dipendenza esterna).
+id: CP-DATA
+title: Data & Annotation
+version: 0.1.0-alpha
+status: DRAFT
+owner: annotation-data-lead
+gate: prima di corpus/training
+reviewers_minimi:
+  - wet-lab-reviewer
+  - security-data-steward
+modules:
+  - annotation_guideline
+  - parser_gold
+  - derivation_gold
+  - theory_reference_set
+  - splits
+  - licenses
+  - data_use_lineage
+  - synthetic_policy
+dependencies:
+  - CP-EPI
+current_evidence:
+  annotation_guideline:
+    - docs/annotation-guideline-v0.1.md
+  parser_gold:
+    - MISSING_EXPLICIT
+  derivation_gold:
+    - docs/derivation-gold-protocol.md
+    - packages/ntruth/training/gold.py
+  theory_reference_set:
+    - packages/ntruth/conformance/assets/reference-role-registry-0.1.0.json
+  splits:
+    - packages/ntruth/training/splits.py
+  licenses:
+    - LICENSE
+  data_use_lineage:
+    - docs/data-governance-v3.md
+    - docs/data-card-v0.1.md
+  synthetic_policy:
+    - docs/synthetic-data-generation-specification.md
+known_gaps:
+  - "Parser Gold assente: nessun dataset gold dedicato alla valutazione parser"
+  - "train/dev/test lineage non congelato: split ancora provvisori (PRD Reality Gate v9)"

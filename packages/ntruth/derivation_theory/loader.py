@@ -26,7 +26,7 @@ PROFILE_CLOSURE_FILENAME = "simple-cell-culture-profile-closure-0.1.0.json"
 RULEBOOK_FILENAME = "ntruth-v8-core-0.1.0.json"
 REFERENCE_REGISTRY_FILENAME = "reference-role-registry-0.1.0.json"
 FIXTURE_SET_FILENAME = "implementation-conformance-fixtures-simple-cell-culture-0.1.0.json"
-EVALUATOR_REGISTRY_FILENAME = "reviewed-evaluator-registry-0.1.1.json"
+EVALUATOR_REGISTRY_FILENAME = "reviewed-evaluator-registry-0.1.2.json"
 
 
 class AssetChecksumError(ValueError):

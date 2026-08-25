@@ -8,6 +8,25 @@ ontologia; queste versioni possono avanzare indipendentemente.
 
 ### Added
 
+- PRD v9 P2: Contract Packages canonici (`contracts/cp-sci|epi|data|eval|run.yaml`
+  con owner di ruolo, version, status, gate, dipendenze acicliche ed evidenze
+  verificate) più `scripts/check_contract_packages.py` fail-closed;
+  `scripts/check_normative_examples.py` per l'estrazione e la validazione dei
+  fenced block normativi in prd/ e docs/ (PRD v9 §0.4/§26.5/AI.2), tollerante
+  a zero blocchi; step CI dedicato senza rimozioni.
+
+### Changed
+
+- Engineering pin transition `reviewed-evaluator-registry` 0.1.1 -> 0.1.2 per
+  la semantica v9 di ScenarioCompleteness: `EXHAUSTIVE_WITHIN_PROFILE` non è
+  più scrivibile (lettura legacy via adapter fail-closed); nuova terna
+  `COMPLETE_UNDER_DECLARED_ASSUMPTION_SET` / `INCOMPLETE_KNOWN` /
+  `UNKNOWN_COMPLETENESS` con assumption set versionato+finalizzato e
+  counterexample search obbligatori. Transizione registrata in
+  `docs/audits/prd-v8-full-migration/EVALUATOR_PIN_TRANSITIONS.md`.
+
+### Added
+
 - Second hardening sprint: expected-positive/negative tests for the Appendix-A
   PRD-example scanner (SRR-002/004/005/006/007), qualitative-only boundary
   status sealed (SRR-016), and the ExternalReferenceFreeze contract giving the

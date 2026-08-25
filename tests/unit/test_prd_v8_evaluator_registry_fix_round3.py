@@ -11,7 +11,7 @@ import test_prd_v8_derivation_runtime as base
 
 from ntruth.derivation_theory.loader import canonical_checksum
 
-REGISTRY_FILENAME = "reviewed-evaluator-registry-0.1.1.json"
+REGISTRY_FILENAME = "reviewed-evaluator-registry-0.1.2.json"
 
 
 def _assert_review_required(error: Exception) -> None:

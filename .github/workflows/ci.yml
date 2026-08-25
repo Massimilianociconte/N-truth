@@ -42,6 +42,8 @@ jobs:
         run: uv run mypy packages
       - name: PRD v8 examples, schema and architecture truth
         run: uv run python scripts/check_prd_v8_contracts.py
+      - name: Normative examples registry check (PRD v9 §26.5)
+        run: uv run python scripts/check_normative_examples.py
       - name: V6 split and facsimile invariant gate
         run: uv run pytest -m invariant --disable-warnings
       - name: Tests
@@ -76,6 +78,8 @@ jobs:
       - run: uv sync --extra dev --extra api --locked
       - name: PRD v8 examples, schema and architecture truth
         run: uv run python scripts/check_prd_v8_contracts.py
+      - name: Normative examples registry check (PRD v9 §26.5)
+        run: uv run python scripts/check_normative_examples.py
       - name: V6 split and facsimile invariant gate
         run: uv run pytest -m invariant --disable-warnings
       - run: uv run pytest -m "not performance"

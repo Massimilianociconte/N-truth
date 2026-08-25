@@ -11,6 +11,11 @@ from pathlib import Path
 from typing import Any
 
 from ntruth.model_backends.base import ModelProvider
+from ntruth.model_backends.qualification import (
+    ContaminationRisk,
+    ModelQualificationRecord,
+    QualificationStage,
+)
 
 REGISTRY_SCHEMA_VERSION = "1.3.0"
 
@@ -756,6 +761,72 @@ def append_qualification_transition(
     return record.as_dict()
 
 
+def evaluate_model_qualification_record(
+    record: ModelQualificationRecord | None,
+    *,
+    current_artifact: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Valutazione additiva di un ModelQualificationRecord opzionale (PRD v9 §25.10).
+
+    Non cambia firme/semantica esistenti del registry: esito standalone fail-closed
+    (record assente o artefatto corrente non confrontabile ⇒ mai deployable).
+    """
+
+    if record is None:
+        return {
+            "provided": False,
+            "stage": None,
+            "deployable": False,
+            "stale": True,
+            "stale_reasons": ["MODEL_QUALIFICATION_RECORD_ABSENT"],
+            "binding": {},
+            "matches_current_artifact": False,
+        }
+    binding = artifact_fingerprint(
+        {
+            "model_id": record.model_id,
+            "model_revision": record.model_revision or None,
+            "weights_sha256": record.artifact_sha256,
+            "tokenizer_revision": record.tokenizer_sha256,
+            "chat_template_hash": record.chat_template_sha256,
+            "quantization": record.quantization,
+            "backend": record.backend,
+            "task_profile": record.task_profile,
+        }
+    )
+    stale_reasons: list[str] = []
+    matches = False
+    if current_artifact is None:
+        stale_reasons.append("CURRENT_ARTIFACT_UNAVAILABLE")
+    else:
+        current = artifact_fingerprint(current_artifact)
+        matches = fingerprints_equal(binding, current)
+        if not matches:
+            for key in ARTIFACT_FINGERPRINT_KEYS:
+                if binding.get(key) != current.get(key):
+                    stale_reasons.append(
+                        f"{key}: qualified={binding.get(key)!r} current={current.get(key)!r}"
+                    )
+    deployable = (
+        record.stage is QualificationStage.PROFILE_DEPLOYMENT_QUALIFIED
+        and matches
+        and not stale_reasons
+        and record.contamination_risk not in {ContaminationRisk.HIGH, ContaminationRisk.UNKNOWN}
+    )
+    return {
+        "provided": True,
+        "stage": record.stage.value,
+        "deployable": deployable,
+        "stale": bool(stale_reasons),
+        "stale_reasons": stale_reasons,
+        "binding": binding,
+        "matches_current_artifact": matches,
+        "contamination_risk": record.contamination_risk.value,
+        "calibration_id": record.calibration_id,
+        "task_profile": record.task_profile,
+    }
+
+
 def active_entry(registry: dict[str, Any] | None = None) -> dict[str, Any]:
     data = registry if registry is not None else load_registry()
     default_id = data.get("default_model_id") or DEFAULT_MODEL_ID
@@ -828,6 +899,7 @@ __all__ = [
     "claim_gates",
     "default_profile_path",
     "evaluate_claim_gate",
+    "evaluate_model_qualification_record",
     "evaluate_qualification_against_artifact",
     "fingerprints_equal",
     "is_scientifically_releasable",

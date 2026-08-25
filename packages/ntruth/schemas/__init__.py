@@ -69,6 +69,8 @@ from ntruth.schemas.count_registry import (
     independent_n_presentation_alias,
 )
 from ntruth.schemas.coverage import (
+    LEGACY_EXHAUSTIVE_WITHIN_PROFILE_STATUS,
+    CounterexampleSearchStatus,
     ProfileCoverageStatement,
     ScenarioCoverage,
     ScenarioCoverageStatus,
@@ -309,6 +311,7 @@ __all__ = [
     "DESIGN_RELEVANT_SECTIONS",
     "EXECUTED_EPISTEMIC_BOUNDARY",
     "KERNEL_SCHEMA_VERSION",
+    "LEGACY_EXHAUSTIVE_WITHIN_PROFILE_STATUS",
     "PLANNED_EPISTEMIC_BOUNDARY",
     "RECONCILED_EPISTEMIC_BOUNDARY",
     "RETROSPECTIVE_EPISTEMIC_BOUNDARY",
@@ -353,6 +356,7 @@ __all__ = [
     "CountRecord",
     "CountScope",
     "CountScopeIdentity",
+    "CounterexampleSearchStatus",
     "DataSufficiency",
     "DerivedClaim",
     "DerivedClaimSet",

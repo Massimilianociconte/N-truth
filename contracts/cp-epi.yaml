@@ -1,0 +1,39 @@
+# CP-EPI — Contract Package PRD v9 §0.6/§20.2. Sintassi YAML subset deterministica
+# validata da scripts/check_contract_packages.py (nessuna dipendenza esterna).
+id: CP-EPI
+title: Evidence & Human Authority
+version: 0.1.0-alpha
+status: DRAFT
+owner: wet-lab-reviewer
+gate: prima di annotazione/review
+reviewers_minimi:
+  - annotation-data-lead
+  - ux-review-lead
+modules:
+  - source_classes
+  - knowledge_state
+  - support_profile
+  - conflict
+  - confirmation
+  - sensitivity
+  - rule_challenge
+dependencies:
+  - CP-SCI
+current_evidence:
+  source_classes:
+    - packages/ntruth/schemas/support.py
+  knowledge_state:
+    - packages/ntruth/schemas/knowledge.py
+  support_profile:
+    - packages/ntruth/schemas/support_profile.py
+  conflict:
+    - packages/ntruth/schemas/report_bundle.py
+  confirmation:
+    - packages/ntruth/schemas/support.py
+  sensitivity:
+    - packages/ntruth/schemas/support.py
+  rule_challenge:
+    - packages/ntruth/schemas/support.py
+known_gaps:
+  - "SRR-V8-001: vocabolario SupportGrade non rivisto; SupportProfile resta authority parziale"
+  - "SRR-V8-015: source class boundary non confermato da review indipendente"

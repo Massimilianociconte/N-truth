@@ -106,7 +106,7 @@ CANONICAL_COMPONENT_DESCRIPTOR_SHA256: Final[Mapping[str, str]] = MappingProxyTy
             "e51279ea806af239d70d8d883b1d6ee479e5f660fda9363a4558d0f54fc5db14"
         ),
         "rulebook-conformance": (
-            "4567fa882809f23a786c1ca1baae421dfc02d63d0070fdf05cb9a31efa637fb3"
+            "e4094c1dabbfe27633ee92c6cc7800dba8411826b9bc0951465135ad076054a3"
         ),
         "statistical-handoff": ("cd05e8bbf4642a587971caa6838067c0b6de523a7b4ead4de59f1d8c24edea3e"),
         "v7-compatibility": ("069bf653a8b5e9267b59a58ffc5d78e429deb0a2a5cf812e77f8c87e162e7d64"),

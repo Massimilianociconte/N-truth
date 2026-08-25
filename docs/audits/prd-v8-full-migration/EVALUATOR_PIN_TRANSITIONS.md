@@ -28,3 +28,43 @@ regole restano identici salvo indicazione esplicita.
   stessa procedura audited: cambio di identita dei percorsi, non di semantica.
 - **Non coperto:** alcuna pretesa di approvazione scientifica; i blocker
   SRR restano aperti verso i reviewer esterni.
+
+## 2026-08-25 — registry 0.1.1 → 0.1.2 (ScenarioCompleteness v9)
+
+- **Trigger:** implementazione della violazione v9 `ScenarioCompleteness`
+  (PRD §0.3/§AI.3): rimozione di `EXHAUSTIVE_WITHIN_PROFILE` dal vocabolario
+  scrivibile in `packages/ntruth/schemas/coverage.py` e introduzione della terna
+  `COMPLETE_UNDER_DECLARED_ASSUMPTION_SET` / `INCOMPLETE_KNOWN` /
+  `UNKNOWN_COMPLETENESS` con assumption set versionato e finalizzato più
+  `counterexample_search_status` obbligatori per il claim di completezza.
+  `coverage.py` appartiene alla closure di dipendenza dell'evaluator pinnato
+  (`contract_sources`/`contract_schemas`), quindi il cambio invalida tutti i pin
+  derivati.
+- **Scope:** solo contratti di copertura; nessuna modifica a Theory, Rulebook
+  (regole), semantica delle regole o fixture. L'ADEQUACY pin
+  (`rules/v8_engine.py`) resta invariato byte-per-byte.
+- **Artefatti:** `theories/reviewed-evaluator-registry-0.1.2.json` (nuovo;
+  0.1.1 rimosso dall'albero, preservato nella storia git);
+  `rulesets/ntruth-v8-core-0.1.0.json` (solo cross-reference
+  `evaluator_registry_version/checksum` + `declared_checksum` ricalcolato);
+  costanti `_REVIEWED_*` in `derivation_theory/runtime.py`; snapshot schemi
+  kernel rigenerato; descrittore `rulebook-conformance` ri-ancorato nella mappa
+  corrente-target con la stessa procedura audited.
+- **Digest:** closure checksum `c7078797e06dbed3fd97d39aaddce73cf1af00d12c257618302e0b21b8fffcc3`;
+  registry declared `124b404e4d42eeb9ff48f52bbf8c39ecc5538fdc9955f379405f41206c22dcac`
+  → `ffc5216118c460cd66cef1c0c68e735d9b0b50faa5c6f9e5f5ba8f3efdd31dc8`;
+  rulebook declared `8a25918b3c1ce07bcf85e445b0690fe5d1c6ec9a1cafb944b35ad123c6ae3d18`
+  → `21e1da7294ec392646ef29aa3cb3602f50f363b046cf6ab3de29f1cf44e28d68`;
+  theory declared invariato (`aa376398…`); i sette pin DERIVATION cambiano
+  implementation digest (DT-A `87940ff2…` → `29aef89d…`, DT-B `8f1c9afc…` →
+  `d6ecc46d…`, DT-C `cddcb968…` → `6969aa95…`, DT-D `de7537f7…` → `d8266580…`,
+  DT-E `5de518e5…` → `69a86ef7…`, DT-F `38e3e98f…` → `406deda5…`, DT-G
+  `82c2c3e6…` → `5fc4c940…`), l'ADEQUACY pin è invariato (`287691ed…`).
+- **Compatibilità di lettura:** i payload legacy `EXHAUSTIVE_WITHIN_PROFILE`
+  restano deserializzabili tramite adapter fail-closed: mappati a
+  `COMPLETE_UNDER_DECLARED_ASSUMPTION_SET` solo se l'assumption set completo è
+  dichiarato, altrimenti a `INCOMPLETE_KNOWN`. I writer v9 non emettono mai il
+  token legacy (rimosso dall'enum).
+- **Esito:** `verify_runtime_bundle` PASS; suite completa verde.
+- **Non coperto:** alcuna pretesa di approvazione scientifica; i blocker SRR
+  (incluso SRR-V8-008) restano aperti verso i reviewer esterni.

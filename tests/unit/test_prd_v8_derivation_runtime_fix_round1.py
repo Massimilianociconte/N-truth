@@ -12,6 +12,7 @@ from pydantic import ValidationError
 
 from ntruth.derivation_theory.loader import load_canonical_bundle
 from ntruth.schemas.claims import IrrelevantPredicate
+from ntruth.schemas.coverage import CounterexampleSearchStatus
 from ntruth.schemas.graph_v8 import (
     V8ExperimentGraph,
     V8GraphNode,
@@ -151,11 +152,13 @@ def test_profile_coverage_must_cover_every_theory_required_predicate() -> None:
 
 
 def test_scenario_coverage_status_has_open_world_invariants() -> None:
+    """v9: a completeness claim is fail-closed without a finalized assumption set."""
+
     runtime, _ = base._request()
 
     with pytest.raises(ValidationError):
         runtime.ScenarioCoverage(
-            status=runtime.ScenarioCoverageStatus.EXHAUSTIVE_WITHIN_PROFILE,
+            status=runtime.ScenarioCoverageStatus.COMPLETE_UNDER_DECLARED_ASSUMPTION_SET,
             profile_id=base.PROFILE_ID,
             theory_version="0.1.0",
             emitting_clause_ids=("DT-B-EXPERIMENTAL-UNIT",),
@@ -165,9 +168,11 @@ def test_scenario_coverage_status_has_open_world_invariants() -> None:
 
 
 def test_srr_008_never_allows_scenario_space_complete() -> None:
+    """v9: even a declared-complete scenario space cannot override SRR-V8-008."""
+
     runtime = __import__("ntruth.pipeline_v8", fromlist=["ScenarioCoverage"])
     coverage = runtime.ScenarioCoverage(
-        status=runtime.ScenarioCoverageStatus.EXHAUSTIVE_WITHIN_PROFILE,
+        status=runtime.ScenarioCoverageStatus.COMPLETE_UNDER_DECLARED_ASSUMPTION_SET,
         profile_id=base.PROFILE_ID,
         theory_version="0.1.0",
         emitting_clause_ids=("DT-B-EXPERIMENTAL-UNIT",),
@@ -180,6 +185,12 @@ def test_srr_008_never_allows_scenario_space_complete() -> None:
             knowledge_state=KnowledgeState.NOT_APPLICABLE,
             rationale="no caveat after bounded review",
             query_scope_id=base.QUERY_ID,
+        ),
+        assumption_set_id="AS-PROFILE-SIMPLE-CELL-CULTURE",
+        assumption_set_version="0.1.0",
+        assumption_set_finalized=True,
+        counterexample_search_status=(
+            CounterexampleSearchStatus.BOUNDED_SEARCH_COMPLETED_NO_COUNTEREXAMPLE
         ),
     )
     runtime, request = base._request(scenario_coverages=(coverage,))

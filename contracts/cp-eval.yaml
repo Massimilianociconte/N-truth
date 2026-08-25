@@ -1,0 +1,38 @@
+# CP-EVAL — Contract Package PRD v9 §0.6/§20.2. Sintassi YAML subset deterministica
+# validata da scripts/check_contract_packages.py (nessuna dipendenza esterna).
+id: CP-EVAL
+title: Evaluation & Release
+version: 0.1.0-alpha
+status: DRAFT
+owner: ml-engineering-lead
+gate: prima di claim AI
+reviewers_minimi:
+  - biostatistician-methodologist
+  - external-stop-reviewer
+modules:
+  - team_evaluation
+  - stage_end_to_end_metrics
+  - critical_errors
+  - calibration
+  - residual_audit
+  - external_challenge_lifecycle
+dependencies:
+  - CP-SCI
+  - CP-DATA
+current_evidence:
+  team_evaluation:
+    - packages/ntruth/team_evaluation/models.py
+  stage_end_to_end_metrics:
+    - packages/ntruth/evaluation_v8/scoring.py
+    - packages/ntruth/evaluation_v8/models.py
+  critical_errors:
+    - MISSING_EXPLICIT
+  calibration:
+    - packages/ntruth/training/calibration.py
+  residual_audit:
+    - packages/ntruth/evaluation_v8/cluster.py
+  external_challenge_lifecycle:
+    - docs/external-challenge-protocol-draft.md
+known_gaps:
+  - "docs/team-evaluation-protocol-v0.1.md MISSING_EXPLICIT: protocollo umano-only/AI-only/H+A non documentato come deliverable versionato"
+  - "regione di critical error e contratto end-to-end non congelati (PRD Reality Gate v9)"

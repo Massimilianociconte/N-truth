@@ -1,0 +1,38 @@
+# CP-RUN — Contract Package PRD v9 §0.6/§20.2. Sintassi YAML subset deterministica
+# validata da scripts/check_contract_packages.py (nessuna dipendenza esterna).
+id: CP-RUN
+title: Runtime, Security & Operations
+version: 0.1.0-alpha
+status: DRAFT
+owner: security-data-steward
+gate: prima di runtime pubblico
+reviewers_minimi:
+  - ml-engineering-lead
+  - product-owner
+modules:
+  - architecture
+  - ingestion_threat_model
+  - resource_budgets
+  - traceability
+  - migrations
+  - deployment_rollback
+dependencies:
+  - CP-SCI
+current_evidence:
+  architecture:
+    - docs/architecture/prd-v8-current-to-target.yaml
+    - docs/architettura.md
+  ingestion_threat_model:
+    - packages/ntruth/ingest/safety.py
+  resource_budgets:
+    - packages/ntruth/runtime_resources/budget_io.py
+    - docs/runtime-resource-budget-v6.1.md
+  traceability:
+    - scripts/check_prd_v8_contracts.py
+    - sbom.cdx.json
+  migrations:
+    - packages/ntruth/migrations/v7_to_v8.py
+  deployment_rollback:
+    - docs/releasing.md
+known_gaps:
+  - "threat model ingest senza adversarial test completi su PDF/Office malformati (PRD §26.6)"
