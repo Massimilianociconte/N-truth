@@ -1,4 +1,8 @@
-"""Canonical PRD v8 Reality Gate; historical behavior lives in ``.v7``."""
+"""Canonical PRD v8/v9 Reality Gate; historical behavior lives in ``.v7``.
+
+The pinned v8 contracts are re-exported unchanged; the PRD v9 §0.8 extension
+in ``.v9`` composes on top of them without relaxing any v8 predicate.
+"""
 
 from ntruth.reality_gate.v8 import (
     SUBSTANTIVE_TRAINING_PREDICATES,
@@ -31,35 +35,59 @@ from ntruth.reality_gate.v8 import (
     evaluate_training_authorization_v8,
     reconcile_training_authorization_pins_v8,
 )
+from ntruth.reality_gate.v9 import (
+    SHARED_PREDICATE_NAMES_V9,
+    SUBSTANTIVE_TRAINING_PREDICATES_V9,
+    GateStateV9,
+    RealityGateCompositionV9,
+    RealityGateEvidenceLedgerV9,
+    RealityGatePredicateAssessmentV9,
+    RealityGatePredicateNameV9,
+    build_default_evidence_ledger_v9,
+    build_reality_gate_evidence_ledger_v9,
+    compose_reality_gate_v9,
+    resolve_ledger_predicates_v9,
+)
 
 __all__ = [
+    "SHARED_PREDICATE_NAMES_V9",
     "SUBSTANTIVE_TRAINING_PREDICATES",
+    "SUBSTANTIVE_TRAINING_PREDICATES_V9",
     "DetachedGateSignatureV8",
     "GateBlockerRegistryV8",
     "GateDecisionV8",
     "GateEvidenceArtifactKindV8",
     "GateEvidenceArtifactV8",
+    "GateStateV9",
     "GateTrustRegistryV8",
     "GateTrustUsageV8",
     "ReadinessDimensionAssessmentV8",
     "ReadinessDimensionV8",
     "ReadinessStatusV8",
     "RealityGateAssessmentV8",
+    "RealityGateCompositionV9",
     "RealityGateEvidenceLedgerV8",
+    "RealityGateEvidenceLedgerV9",
     "RealityGatePredicateAssessmentV8",
+    "RealityGatePredicateAssessmentV9",
     "RealityGatePredicateNameV8",
+    "RealityGatePredicateNameV9",
     "RealityGateTrainingPinTupleV8",
     "RealityGateTrainingTargetV8",
     "StageGateDecisionRecordV8",
     "TrainingAuthorizationEvaluationV8",
     "TrustedGateSignerV8",
+    "build_default_evidence_ledger_v9",
     "build_gate_blocker_registry_v8",
     "build_gate_evidence_artifact_v8",
     "build_gate_trust_registry_v8",
     "build_reality_gate_assessment_v8",
     "build_reality_gate_evidence_ledger_v8",
+    "build_reality_gate_evidence_ledger_v9",
     "build_reality_gate_training_target_v8",
     "build_stage_gate_decision_v8",
+    "compose_reality_gate_v9",
     "evaluate_training_authorization_v8",
     "reconcile_training_authorization_pins_v8",
+    "resolve_ledger_predicates_v9",
 ]

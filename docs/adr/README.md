@@ -22,6 +22,12 @@ scientifiche senza il protocollo comparativo e i gate umani previsti.
 | [0010](0010-granite-4.1-3b-migration.md) | Migrazione a Granite 4.1 3B Instruct | architetturale done; runtime artifact-bound `PARTIALLY_VERIFIED`; science `NOT_STARTED` |
 | [0011](0011-constrained-decoding-outlines-mlx.md) | Constrained decoding Outlines + MLX-LM | accepted (forma ≠ semantica scientifica) |
 | [0012](0012-p0-lora-approved.md) | Approvazione protocollo LoRA P0 | accepted + HOLD esecuzione sostanziale |
+| [0013](0013-prd-v8-scientific-contract-migration.md) | Migrazione PRD v8 scientific-contract | accepted for implementation |
+| [0014](0014-package-split-modular-monolith.md) | Package split: modular monolith confermato, split fisico post-v1.0-D | accepted (2026-08-25) |
+| [0015](0015-cloud-policy-local-first.md) | Cloud policy: local-first hard, solo funded/university con grant | accepted (2026-08-25) |
+| [0016](0016-calibration-policy-task-specific.md) | Calibrazione task-specific o `UNQUALIFIED`, threshold solo development | accepted (2026-08-25) |
+| [0017](0017-challenge-feedback-lifecycle.md) | Challenge feedback: no item-level ACTIVE, aggregato solo RETIRED_DIAGNOSTIC, rotation | accepted (2026-08-25) |
+| [0018](0018-ui-defaults-wizard-first.md) | UI defaults: wizard D0 primario, expert opt-in, semantiche neutre, max 3 domande PROVISIONAL | accepted (2026-08-25) |
 
 ## Template minimo
 

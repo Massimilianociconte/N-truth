@@ -3,6 +3,11 @@
 Sentence-level Methods drafts preserve unknowns, planned/executed mode, and
 claim/evidence refs. Semantic strengthening is a release blocker (NFR-42, AN.4).
 This increment does not rewrite the v8 report kernel.
+
+Appendice AN: le quattro mode normative (TEMPLATE_FROM_CONFIRMED_PLAN,
+DESCRIPTIVE_RECORD_ONLY, CONDITIONAL_DRAFT, USER_EDITED_WITH_DIFF) coesistono
+con le mode storiche PLANNED/EXECUTED/CONDITIONAL/UNKNOWN_PLACEHOLDER, che
+restano valide come alias di compatibilita.
 """
 
 from __future__ import annotations
@@ -30,6 +35,30 @@ _ASSERTIVE_ASSIGNMENT: Final = re.compile(
     r"\b(?:were|was|are|is)\s+(?:independently\s+)?assigned\b",
     re.IGNORECASE,
 )
+# AN.3 / §6.2: il draft non inventa esclusioni, blinding o randomizzazione.
+_INVENTED_CLAIM_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
+    (
+        "exclusion",
+        re.compile(r"\b(?:was|were|is|are)\s+(?:then\s+)?excluded\b", re.IGNORECASE),
+    ),
+    (
+        "blinding",
+        re.compile(
+            r"\bblind(?:ed)?\s+(?:assessment|analysis|scoring)|"
+            r"\b(?:was|were)\s+blind(?:ed)?\b|"
+            r"\bperform(?:ed)?\s+(?:under\s+)?blinding\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "randomization",
+        re.compile(
+            r"\b(?:was|were)\s+random(?:ized|ised)\b|"
+            r"\brandomi[sz]ation\s+(?:was|were)\s+(?:performed|applied|used)\b",
+            re.IGNORECASE,
+        ),
+    ),
+)
 _PRAISE: Final = re.compile(
     r"\b(good|great|valid(?:ated)?|quality|excellent|approved|certified|sound|robust)\b",
     re.IGNORECASE,
@@ -38,6 +67,14 @@ _COUNT_REF_SEGMENT: Final = re.compile(r"(?:^|[:/_-])(?:count|n)(?:$|[:/_-])", r
 
 
 class SafeMethodsMode(StrEnum):
+    """Mode del contratto Appendice AN piu alias di compatibilita storici."""
+
+    TEMPLATE_FROM_CONFIRMED_PLAN = "TEMPLATE_FROM_CONFIRMED_PLAN"
+    DESCRIPTIVE_RECORD_ONLY = "DESCRIPTIVE_RECORD_ONLY"
+    CONDITIONAL_DRAFT = "CONDITIONAL_DRAFT"
+    USER_EDITED_WITH_DIFF = "USER_EDITED_WITH_DIFF"
+
+    # Alias di compatibilita (contratto pre-AN). Non usare nei nuovi export.
     PLANNED = "PLANNED"
     EXECUTED = "EXECUTED"
     CONDITIONAL = "CONDITIONAL"
@@ -52,13 +89,21 @@ class SafeMethodsKnowledgeState(StrEnum):
 
 
 class SafeMethodsSentence(FrozenModel):
-    """One generated Methods sentence with mode, refs, and knowledge state."""
+    """One generated Methods sentence with mode, refs, and knowledge state.
+
+    Contratto AN.2: ogni frase conserva flag esplicito di preservation
+    dell'incertezza e, quando una frase e stata modificata da utente, il diff
+    dell'edit con l'approvatore (nuovo evento di asserzione/conferma, AN.4).
+    """
 
     sentence_id: str = Field(min_length=1)
     mode: SafeMethodsMode
     text: str = Field(min_length=1)
     claim_or_evidence_refs: tuple[str, ...] = ()
     knowledge_state: SafeMethodsKnowledgeState
+    uncertainty_preserved: bool = True
+    approver: str | None = None
+    user_edit_diff: str | None = None
 
     @field_validator("sentence_id", "text")
     @classmethod
@@ -120,6 +165,13 @@ def validate_no_strengthening(original: SafeMethodsSentence, edited_text: str) -
         raise ValueError("removed placeholder brackets")
     if "]" in original.text and "]" not in edited_text:
         raise ValueError("removed placeholder brackets")
+    original_without_placeholders = _strip_visible_placeholders(original.text)
+    edited_without_placeholders = _strip_visible_placeholders(edited_text)
+    for label, pattern in _INVENTED_CLAIM_PATTERNS:
+        invented = pattern.search(edited_without_placeholders) is not None
+        already_there = pattern.search(original_without_placeholders) is not None
+        if invented and not already_there:
+            raise ValueError(f"invented {label}: the confirmed record does not state it")
 
 
 def draft_from_facts(
@@ -213,6 +265,25 @@ def _assert_sentence_contract(sentence: SafeMethodsSentence) -> None:
         SafeMethodsMode.UNKNOWN_PLACEHOLDER
     ):
         raise ValueError("claim_or_evidence_refs may be empty only for UNKNOWN_PLACEHOLDER")
+    unknown_or_unreported = sentence.knowledge_state in {
+        SafeMethodsKnowledgeState.UNKNOWN,
+        SafeMethodsKnowledgeState.NOT_REPORTED,
+    }
+    if unknown_or_unreported and not sentence.uncertainty_preserved:
+        raise ValueError("UNKNOWN/NOT_REPORTED sentences must preserve the uncertainty flag")
+    if not sentence.uncertainty_preserved and (
+        unknown_or_unreported or sentence.mode is SafeMethodsMode.UNKNOWN_PLACEHOLDER
+    ):
+        raise ValueError("uncertainty_preserved=False requires a PRESENT, non-placeholder sentence")
+    if sentence.mode is SafeMethodsMode.USER_EDITED_WITH_DIFF:
+        if not sentence.user_edit_diff:
+            raise ValueError("USER_EDITED_WITH_DIFF requires an explicit user_edit_diff")
+        if not sentence.approver:
+            raise ValueError("USER_EDITED_WITH_DIFF requires an approver for the edit event")
+    elif sentence.user_edit_diff is not None:
+        raise ValueError("user_edit_diff is allowed only on USER_EDITED_WITH_DIFF sentences")
+    if (sentence.user_edit_diff is not None) != (sentence.approver is not None):
+        raise ValueError("approver and user_edit_diff must be provided together")
     if _uses_determinate_as_praise(sentence.text):
         raise ValueError("cannot use DETERMINATE as quality praise")
     lowered = sentence.text.casefold()
@@ -224,10 +295,6 @@ def _assert_sentence_contract(sentence: SafeMethodsSentence) -> None:
         sentence.claim_or_evidence_refs
     ):
         raise ValueError("forbidden phrase: n =")
-    unknown_or_unreported = sentence.knowledge_state in {
-        SafeMethodsKnowledgeState.UNKNOWN,
-        SafeMethodsKnowledgeState.NOT_REPORTED,
-    }
     if unknown_or_unreported and sentence.mode is SafeMethodsMode.EXECUTED:
         raise ValueError("cannot turn UNKNOWN/NOT_REPORTED into assertive executed prose")
     if unknown_or_unreported and _is_assertive_executed_prose(sentence.text):
@@ -248,6 +315,12 @@ def _is_assertive_executed_prose(text: str) -> bool:
     if "independently assigned" in text.casefold():
         return True
     return _ASSERTIVE_ASSIGNMENT.search(text) is not None
+
+
+def _strip_visible_placeholders(text: str) -> str:
+    """Remove visible placeholders so declared unknowns never count as claims."""
+
+    return _VISIBLE_PLACEHOLDER.sub(" ", text)
 
 
 def _uses_determinate_as_praise(text: str) -> bool:

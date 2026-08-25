@@ -6,14 +6,65 @@ ontologia; queste versioni possono avanzare indipendentemente.
 
 ## [Unreleased]
 
+### 2026-08-25 — baseline unificata PRD v9 (`integration/prd-v9-unified`)
+
+Merge di unificazione della linea v8-hardening con i contratti sidecar v8/v9 e
+consolidamento del programma corrente su PRD v9.
+
+#### Added
+
+- Contract Packages canonici: `contracts/cp-sci|epi|data|eval|run.yaml`
+  (owner di ruolo, version, status, gate, dipendenze acicliche, evidenze
+  verificate) con `scripts/check_contract_packages.py` fail-closed.
+- ScenarioCompleteness v9 (§10.8): assumption-set-bounded; rimozione della
+  scrittura `EXHAUSTIVE_WITHIN_PROFILE`.
+- Team protocol preregistrato H/A/H+A: `packages/ntruth/team_evaluation/`
+  (PRD §18.9/§24/Appendice AM) e `docs/team-evaluation-protocol-v0.1.md`.
+- Confidence/OOD/MQR: `ConfidenceRecord` con metriche di calibrazione,
+  risk–coverage e stati OOD (`packages/ntruth/confidence/`);
+  `ModelQualificationRecord` con ledger a catena di stati
+  (`model_backends/qualification.py`, `model_backends/registry.py`).
+- Challenge lifecycle e DataUseGrant: `governance/challenge_lifecycle.py`
+  (FROZEN → ACTIVE → RETIRED_DIAGNOSTIC → PUBLIC_ARCHIVE, item-level feedback
+  `PROHIBITED_WHILE_ACTIVE`) e `governance/data_use.py`.
+- Tier di complessità canonici C0–C4 con mapping legacy
+  (`complexity/tiers.py`).
+- RTM: requirement traceability mantenuta in
+  `docs/audits/prd-v8-full-migration/REQUIREMENT_TRACEABILITY_MATRIX.md`
+  (alla baseline committata non è ancora meccanizzata da uno script dedicato).
+- Reality Gate: sei dimensioni di readiness e blocker tipati confermati sulla
+  baseline unificata; decisione corrente resta HOLD (nessun flag v9 nel gate
+  committato alla baseline).
+- Safe Methods AN: `reporting/safe_methods.py` (frasi con provenanza
+  sentence/claim-level, round-trip non-strengthening).
+- Sample sheet v9: `sample_sheet/v9_schema.py` (in working tree, commit pending
+  su questa linea).
+- Quick Design v9: sessione FactorRole/ContrastType-first
+  (`quick_design/v9.py`).
+- Clean-checkout verifier: `scripts/verify_clean_checkout.sh` (worktree
+  detached effimero di HEAD, sync locked, unit selection, ruff, mypy, lock e
+  SBOM check) con primo report datato
+  `docs/clean-checkout-report-2026-08-25.md`: verdetto onesto
+  CONDITIONAL_FAIL — BLOCKER residuo di portabilità interprete (pin evaluator
+  derivati da bytecode; `uv` risolve Python 3.14 in ambienti freschi);
+  rivalutazione registrata in
+  `docs/documentation-clean-checkout-verification.md`.
+- ADR-0014 package split (modular monolith confermato), ADR-0015 cloud policy
+  local-first hard, ADR-0016 calibration task-specific o UNQUALIFIED, ADR-0017
+  challenge feedback lifecycle, ADR-0018 UI defaults wizard-first.
+
+#### Changed
+
+- README radice e `docs/status-snapshot.md` riallineati alla baseline unificata
+  PRD v9 con stato onesto: scientific validation NOT_STARTED, training
+  HOLD_PENDING_REAL_ANCHOR, gold data non annotati, External Challenge senza
+  custodia reale, crosswalk hash pending first pin.
+
 ### Added
 
-- PRD v9 P2: Contract Packages canonici (`contracts/cp-sci|epi|data|eval|run.yaml`
-  con owner di ruolo, version, status, gate, dipendenze acicliche ed evidenze
-  verificate) più `scripts/check_contract_packages.py` fail-closed;
-  `scripts/check_normative_examples.py` per l'estrazione e la validazione dei
-  fenced block normativi in prd/ e docs/ (PRD v9 §0.4/§26.5/AI.2), tollerante
-  a zero blocchi; step CI dedicato senza rimozioni.
+- PRD v9 P2: estrazione e validazione dei fenced block normativi in prd/ e
+  docs/ via `scripts/check_normative_examples.py` (PRD v9 §0.4/§26.5/AI.2),
+  tollerante a zero blocchi; step CI dedicato senza rimozioni.
 
 ### Changed
 

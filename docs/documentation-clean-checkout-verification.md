@@ -5,7 +5,43 @@
 **Worktree path (ephemeral):** `/tmp/ntruth-clean-docs-verify-ef39fb4`  
 **Purpose:** decide whether GitHub-facing docs describe the **publishable repository** or a **local unreproducible state**.
 
-## Gate checklist
+## Rivalutazione 2026-08-25
+
+Dopo il merge di unificazione (`integration/prd-v9-unified`, HEAD `cb270e3`) la
+verifica è stata rieseguita in modo automatizzato e ripetibile dal nuovo
+verificatore `scripts/verify_clean_checkout.sh`, che lavora su un worktree
+detached effimero di HEAD (lo stato del working tree è irrilevante per
+costruzione). Risultato completo e onesto nel
+[report 2026-08-25](clean-checkout-report-2026-08-25.md).
+
+| Check | Esito 2026-08-25 |
+|---|---|
+| worktree detached di HEAD | PASS |
+| `uv sync --frozen --extra dev --extra api` | PASS |
+| `uv lock --check` | PASS |
+| `pytest tests/unit -m "not performance" -x` | **FAIL — BLOCKER residuo** |
+| `ruff check packages` | PASS |
+| `mypy packages` | PASS |
+| SBOM rigenerabile (`generate_sbom.py --check`) | PASS |
+
+Cosa è cambiato rispetto al verdetto 2026-08-02: i documenti pubblicati ora
+descrivono davvero il contenuto committato (i cluster "dirty-only" elencati
+sotto sono stati versionati nelle successive milestone v8/v9), e la verifica è
+meccanizzata invece che manuale. Il fallimento residuo NON è documentaristico ma
+di portabilità: in un ambiente fresco `uv` risolve Python 3.14 (il progetto
+dichiara solo `requires-python = ">=3.12"`) e i pin dell'evaluator derivati da
+bytecode CPython non possono combaciare tra interpreti diversi; confermato
+sperimentalmente (stesso commit, stesso file di test: 16/16 pass con Python
+3.12 pinnato). I gate scientifici restano immutati e non toccati da questa
+rivalutazione.
+
+```yaml
+CLEAN_CHECKOUT_ENGINEERING_TRUTH: CONDITIONAL_FAIL   # interpreter-version-bound evaluator pins
+DOCUMENTATION_CONSISTENCY: SUBSTANTIALLY_IMPROVED    # docs descrivono il tree committato
+MERGE_TO_MAIN: HOLD_UNTIL_INTERPRETER_PIN_FIXED      # blocker tecnico, non scientifico
+```
+
+## Gate checklist (2026-08-02, storico)
 
 | Gate | Result |
 |------|--------|
