@@ -81,3 +81,17 @@ BLOCKER_RESIDUO: interpreter-version-bound evaluator pins (Python 3.14 default r
 PUSH_TO_REMOTE: unchanged policy — conditional, blocker must be recorded
 NEXT_ACTION: fix interprete/pin + re-run scripts/verify_clean_checkout.sh fino a PASS
 ```
+
+## Aggiornamento finale (stesso giorno, post-fix)
+
+Con il pin dell'interprete (`requires-python = ">=3.12,<3.14"` + `.python-version`),
+l'SBOM rigenerato e committato, e il record Task9 preservato, il verifier eseguito
+su HEAD `76ba85c+` riporta:
+
+```
+PASS worktree_add / uv_sync / lock_up_to_date / pytest_unit / ruff_check_packages / mypy_packages / sbom_reproducible
+overall: PASS
+```
+
+Il blocker interprete e il blocker SBOM sono quindi chiusi; resta valido quanto sopra
+come diagnosi.
