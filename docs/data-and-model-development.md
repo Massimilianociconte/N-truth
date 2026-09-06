@@ -45,6 +45,25 @@ local-data/
 └── quarantine/            # licenza, privacy o integrità non risolte
 ```
 
+### 2026-08-27 — Payload sintetici fuori dal tracciamento Git (conformità policy)
+
+Nota di collocazione (non guida operativa): per conformità a
+`scripts/check_repository_policy.py` i payload con semantica corpus non sono più
+tracciati in Git. Restano presenti solo nel worktree locale e sono ricostruibili:
+
+- `benchmarks/fewshot_p0/cases.jsonl` — byte-stabile dalla fabbrica
+  (`scripts/regenerate_relocated_payloads.py --suite fewshot --verify`).
+- `benchmarks/fewshot_p0/constrained/predictions-C-frozen.jsonl` — artefatto di
+  run dev; ricostruibile rieseguendo il run dei modelli, non byte-stabile.
+- `data/training/p0-alpha/*.jsonl`, `DATASET_CARD.md`,
+  `engineering-smoke-subset/*.jsonl` — snapshot sintetico congelato
+  SYN_G1_UNANCHORED; una rigenerazione crea un NUOVO snapshot (checksum freschi)
+  e non sostituisce i byte congelati senza rilascio esplicito.
+
+I puntatori `benchmarks/runtime/latest.*` sono file JSON puntatore (non symlink).
+Tutto ciò resta sintetico: nessun payload è gold corpus né validazione
+scientifica.
+
 Modelli, adapter e run restano rispettivamente in `models/local/`, `models/runs/` e
 `models/exports/`, anch'esse ignorate. Gli split contengono riferimenti e manifest; le
 sorgenti raw non vanno duplicate fisicamente.

@@ -77,3 +77,16 @@ N-Truth-Private/
 **/collaboration-registry.private.yaml
 **/collaboration-registry.private.yml
 .cache/
+
+# Stato locale di tool/agenti (hook-state, cache di sessione): mai nel repository.
+.mimosa/
+
+# Payload sintetici con semantica corpus spostati fuori dal tracciamento Git
+# (conformità scripts/check_repository_policy.py). Restano nel worktree locale,
+# dove i consumatori li leggono ai percorsi canonici; vedere
+# scripts/regenerate_relocated_payloads.py per la ricostruzione.
+data/training/p0-alpha/*.jsonl
+data/training/p0-alpha/engineering-smoke-subset/*.jsonl
+data/training/p0-alpha/DATASET_CARD.md
+benchmarks/fewshot_p0/cases.jsonl
+benchmarks/fewshot_p0/constrained/predictions-C-frozen.jsonl
