@@ -1,1 +1,6 @@
-m5-pro-24g-20260802T001851Z-8b5f4917f7.budget.json
+{
+  "kind": "latest-pointer",
+  "note": "JSON pointer replacing the former symlink; resolves locally to the newest timestamped artifact listed below.",
+  "points_to": "m5-pro-24g-20260802T001851Z-8b5f4917f7.budget.json",
+  "sha256": "509c899508a6b8b89c2509078004ea2435e43f08a4028adb89de50dde13687a6"
+}

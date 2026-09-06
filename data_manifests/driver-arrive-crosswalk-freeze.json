@@ -1,0 +1,45 @@
+{
+  "manifest_kind": "external_reference_freeze",
+  "manifest_version": "1.0.0",
+  "freeze_record_id": "driver-arrive-crosswalk-freeze",
+  "custody": {
+    "reference_id": "CW-DRIVER-SNAPSHOT-001",
+    "target_path": "docs/driver-arrive-crosswalk.md",
+    "pinned_at": "2026-08-27",
+    "pinned_by_role": "repository-maintainer",
+    "rights_closure_external": true,
+    "algorithm": "sha256",
+    "canonicalization": "crosswalk snapshot block (docs/driver-arrive-crosswalk.md §5) parsed to a JSON-compatible mapping; ISO-8601 dates kept as strings; key 'content_hash' removed; sha256 over json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(',',':')) utf-8; identical recipe to ntruth.derivation_theory.loader.canonical_checksum",
+    "canonical_sha256": "4afcfb5b0e47ab5eee7523850685d4e35697f7aaa8f4099378a0b2419e939eb6",
+    "verification_blocked_until": [
+      "methodology-lead review of the crosswalk snapshot",
+      "external rights closure and independent scientific review (SRR-V8-021)",
+      "claim-grade mapping suites per PRD v9 §3.5"
+    ]
+  },
+  "hashed_canonical_json": "{\"crosswalk_id\":\"CW-DRIVER-SNAPSHOT-001\",\"endorsement_declared\":false,\"last_reviewed_by\":\"project owner\",\"mapped_items\":[{\"item\":\"experimental unit\",\"note\":\"Derivation Theory assignment-anchored, fattore e count scope-aware.\",\"relation\":\"supports\"},{\"item\":\"randomisation/allocation\",\"note\":\"AssignmentEvent e allocation nel grafo; nessun audit randomizzazione completo.\",\"relation\":\"supports\"},{\"item\":\"replicates e reporting di n\",\"note\":\"CountRecord, replica hierarchy e n indipendente per claim.\",\"relation\":\"supports\"},{\"item\":\"exclusions/attrition\",\"note\":\"ExclusionRecord endpoint-specifico e attrition nei gruppi.\",\"relation\":\"supports\"},{\"item\":\"blinding come metadata di rigor, non derivazione di EU\",\"note\":\"Metadata dichiarato; la decisione di rigore resta umana.\",\"relation\":\"requires_user_judgement\"},{\"item\":\"sample-size justification\",\"note\":\"Precision planning supporta; la giustificazione finale è umana.\",\"relation\":\"requires_user_judgement\"},{\"item\":\"biological source e provenance\",\"note\":\"MaterialLineage su identità, origine e preparazione/passaggio.\",\"relation\":\"supports\"},{\"item\":\"data availability\",\"note\":\"Export locale, lineage e distribution gate; non conformità FAIR completa.\",\"relation\":\"supports\"},{\"item\":\"image/sample metadata minimi\",\"note\":\"Provenance dell'analisi delle immagini nel profilo dichiarato.\",\"relation\":\"supports\"},{\"item\":\"limiti di inferenza\",\"note\":\"Determinability claim-specific, abstention e SupportGrade espliciti.\",\"relation\":\"supports\"},{\"item\":\"distinzione fra record completeness e design adequacy\",\"note\":\"DesignDiagnosticFinding separato da AdequacyAssessment criterion-bound.\",\"relation\":\"supports\"}],\"official_url\":\"https://nc3rs.org.uk/driver-recommendations\",\"relation_types_allowed\":[\"implements\",\"supports\",\"requires_user_judgement\",\"out_of_scope\"],\"review_task_on_upstream_change\":true,\"snapshot_date\":\"2026-08-25\",\"standard\":\"DRIVER\",\"standard_version\":\"LAUNCH-2026-07-23\"}",
+  "freeze_record": {
+    "schema_version": "8.0.0",
+    "freeze_id": "driver-arrive-crosswalk-freeze",
+    "freeze_version": "1.0.0",
+    "resources": [
+      {
+        "schema_version": "8.0.0",
+        "resource_id": "cw-driver-snapshot-001-content",
+        "title": "DRIVER / ARRIVE / EDA crosswalk v0.2-snapshot (strutturato, non approvato)",
+        "canonical_url": "docs/driver-arrive-crosswalk.md",
+        "retrieval_sha256": "4afcfb5b0e47ab5eee7523850685d4e35697f7aaa8f4099378a0b2419e939eb6",
+        "retrieved_at": "2026-08-27",
+        "license_note": "internal N-Truth governance snapshot; no NC3Rs material reproduced; rights closure remains external per SRR-V8-021",
+        "mapped_clause_ids": []
+      }
+    ],
+    "review_requirement": {
+      "schema_version": "8.0.0",
+      "status": "SCIENTIFIC_REVIEW_REQUIRED",
+      "issue_id": "SRR-V8-021",
+      "rationale": "rights closure and independent review are external"
+    },
+    "declared_checksum": "995894e671fc3bdd99fe2339ecfa761a6e703bc1e5c712a922186a338f957f61"
+  }
+}

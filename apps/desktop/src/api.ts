@@ -79,6 +79,50 @@ export async function health(): Promise<{ status: string; version: string }> {
   return request("/v1/health");
 }
 
+export interface RealityGateV9Flag {
+  name: string;
+  value: { knowledge_state: string };
+}
+
+export interface RealityGateV9Composition {
+  composition_id: string;
+  content_checksum: string;
+  effective_state: string;
+  authorizes_substantive_training: boolean;
+  predicates_satisfied: boolean;
+  v9_evidence_ledger: { predicate_assessments: RealityGateV9Flag[] };
+}
+
+function isRealityGateV9Composition(body: unknown): body is RealityGateV9Composition {
+  if (typeof body !== "object" || body === null) return false;
+  const candidate = body as Record<string, unknown>;
+  const ledger = candidate.v9_evidence_ledger;
+  if (typeof ledger !== "object" || ledger === null) return false;
+  const flags = (ledger as Record<string, unknown>).predicate_assessments;
+  return (
+    typeof candidate.composition_id === "string" &&
+    typeof candidate.content_checksum === "string" &&
+    candidate.content_checksum.length === 64 &&
+    typeof candidate.effective_state === "string" &&
+    typeof candidate.authorizes_substantive_training === "boolean" &&
+    Array.isArray(flags) &&
+    flags.every(
+      (flag) =>
+        typeof flag === "object" &&
+        flag !== null &&
+        typeof (flag as Record<string, unknown>).name === "string",
+    )
+  );
+}
+
+export async function realityGateV9(): Promise<RealityGateV9Composition> {
+  const body: unknown = await request("/v9/reality-gate");
+  if (!isRealityGateV9Composition(body)) {
+    throw new Error("malformed PRD v9 reality gate composition");
+  }
+  return body;
+}
+
 export async function preflight(domain: string): Promise<DomainTransparency> {
   return request("/v1/preflight", {
     method: "POST",

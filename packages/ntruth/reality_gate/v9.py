@@ -16,15 +16,27 @@ from typing import Any, Self
 from pydantic import Field, field_validator, model_validator
 
 from ntruth.reality_gate.v8 import (
+    SUBSTANTIVE_TRAINING_PREDICATES,
+    GateEvidenceArtifactKindV8,
     GateEvidenceArtifactV8,
     PredicateScalar,
+    ReadinessDimensionV8,
+    ReadinessStatusV8,
     RealityGateAssessmentV8,
+    RealityGatePredicateAssessmentV8,
     RealityGatePredicateNameV8,
     Sha256,
+    build_gate_blocker_registry_v8,
+    build_gate_evidence_artifact_v8,
+    build_reality_gate_assessment_v8,
+    build_reality_gate_evidence_ledger_v8,
+    build_reality_gate_training_target_v8,
 )
 from ntruth.schemas.core import content_checksum
 from ntruth.schemas.kernel import KernelModel, NonBlankStr
 from ntruth.schemas.knowledge import KnowledgeState, KnowledgeValue
+from ntruth.schemas.support import ScientificReviewRequirement
+from ntruth.training.custody import ArtifactReference
 
 LEDGER_PREDICATE_COUNT_V9 = 23
 
@@ -349,6 +361,120 @@ def compose_reality_gate_v9(
     )
 
 
+def _pending_artifact(
+    kind: GateEvidenceArtifactKindV8,
+    issuer_role: str,
+    payload_extra: dict[str, Any] | None = None,
+) -> GateEvidenceArtifactV8:
+    return build_gate_evidence_artifact_v8(
+        kind=kind,
+        issuer_role=issuer_role,
+        reviewer_ids=("pending-canonical-custodian",),
+        payload={"assertion": kind.value, "result": "pending", **(payload_extra or {})},
+    )
+
+
+def build_default_hold_assessment_v8() -> RealityGateAssessmentV8:
+    """Assessment v8 pinnato e deterministico con ogni readiness non risolta.
+
+    Il target referenzia artifact segnaposto auto-consistenti (i checksum
+    combaciano con il ledger per costruzione): sono identita di contratto che
+    dimostrano la forma del gate, non evidenze reali. La decisione resta HOLD
+    finche il flusso di governance non registra evidenze autentiche.
+    """
+
+    snapshot = ArtifactReference(artifact_id="pending-snapshot-manifest", sha256="0" * 64)
+    design_lineage = ArtifactReference(artifact_id="pending-design-lineage", sha256="0" * 64)
+    snapshot_review = _pending_artifact(
+        GateEvidenceArtifactKindV8.SNAPSHOT_MANIFEST,
+        "DATA_CUSTODIAN",
+        {"subject_artifact_id": snapshot.artifact_id, "subject_sha256": snapshot.sha256},
+    )
+    design_review = _pending_artifact(
+        GateEvidenceArtifactKindV8.DESIGN_LINEAGE,
+        "DESIGN_REVIEWER",
+        {
+            "subject_artifact_id": design_lineage.artifact_id,
+            "subject_sha256": design_lineage.sha256,
+        },
+    )
+    privacy = _pending_artifact(GateEvidenceArtifactKindV8.PRIVACY_ATTESTATION, "DATA_CUSTODIAN")
+    no_corpus = _pending_artifact(
+        GateEvidenceArtifactKindV8.NO_CORPUS_ATTESTATION, "DATA_CUSTODIAN"
+    )
+    policy = _pending_artifact(GateEvidenceArtifactKindV8.POLICY_RECORD, "GOVERNANCE_REVIEWER")
+
+    def reference(artifact: GateEvidenceArtifactV8) -> ArtifactReference:
+        return ArtifactReference(artifact_id=artifact.artifact_id, sha256=artifact.content_checksum)
+
+    target = build_reality_gate_training_target_v8(
+        snapshot=snapshot,
+        snapshot_review=reference(snapshot_review),
+        design_lineage=design_lineage,
+        design_lineage_review=reference(design_review),
+        privacy_attestation=reference(privacy),
+        no_corpus_attestation=reference(no_corpus),
+        policy=reference(policy),
+    )
+    assessments = tuple(
+        RealityGatePredicateAssessmentV8(
+            name=name,
+            value=KnowledgeValue[bool | int](
+                knowledge_state=KnowledgeState.UNKNOWN,
+                rationale="awaiting registered evidence",
+                claim_scope_id=f"REALITY-GATE:{name.value}",
+            ),
+            expected_value=0 if name is RealityGatePredicateNameV8.BLOCKING_SCHEMA_GAPS else True,
+            # Il ref punta al policy record pending: e la decisione di
+            # governance registrata che mantiene il predicato non risolto.
+            reviewer_decision_refs=(policy.artifact_id,),
+        )
+        for name in SUBSTANTIVE_TRAINING_PREDICATES
+    )
+    ledger = build_reality_gate_evidence_ledger_v8(
+        predicate_assessments=assessments,
+        evidence_artifacts=(snapshot_review, design_review, privacy, no_corpus, policy),
+    )
+    blockers = build_gate_blocker_registry_v8(
+        policy=reference(policy),
+        unresolved_blockers=KnowledgeValue[tuple[ScientificReviewRequirement, ...]](
+            knowledge_state=KnowledgeState.UNKNOWN,
+            rationale="scientific review register contains open blockers",
+            claim_scope_id="REALITY-GATE:unresolved-blockers",
+        ),
+    )
+    dimensions = tuple(
+        (
+            dimension,
+            KnowledgeValue[ReadinessStatusV8](
+                knowledge_state=KnowledgeState.UNKNOWN,
+                rationale="awaiting registered evidence",
+                claim_scope_id=f"REALITY-GATE:{dimension.value}",
+            ),
+        )
+        for dimension in ReadinessDimensionV8
+    )
+    return build_reality_gate_assessment_v8(
+        target=target,
+        evidence_ledger=ledger,
+        blocker_registry=blockers,
+        dimensions=dimensions,
+    )
+
+
+def compose_default_hold_gate_v9() -> RealityGateCompositionV9:
+    """Composizione HOLD canonica: assessment v8 deterministico + ledger v9 di default.
+
+    Esposta a CLI/API come stato ispezionabile e content-addressed; non e una
+    autorizzazione e non modifica alcun gate esistente.
+    """
+
+    return compose_reality_gate_v9(
+        v8_assessment=build_default_hold_assessment_v8(),
+        v9_evidence_ledger=build_default_evidence_ledger_v9(),
+    )
+
+
 __all__ = [
     "LEDGER_PREDICATE_COUNT_V9",
     "SHARED_PREDICATE_NAMES_V9",
@@ -359,7 +485,9 @@ __all__ = [
     "RealityGatePredicateAssessmentV9",
     "RealityGatePredicateNameV9",
     "build_default_evidence_ledger_v9",
+    "build_default_hold_assessment_v8",
     "build_reality_gate_evidence_ledger_v9",
+    "compose_default_hold_gate_v9",
     "compose_reality_gate_v9",
     "resolve_ledger_predicates_v9",
 ]

@@ -1,4 +1,4 @@
-"""Journal durevole opt-in per le sessioni di analisi e resume esplicito."""
+"""Journal durevole per le sessioni di analisi e resume esplicito."""
 
 from __future__ import annotations
 
@@ -10,15 +10,24 @@ import pytest
 from ntruth.api.session_journal import (
     JournalCorruptError,
     append_entry,
+    default_session_journal_dir,
     journal_dir_from_env,
     read_entry,
 )
 
 
-def test_env_flag_is_opt_in() -> None:
-    assert journal_dir_from_env({}) is None
+def test_env_flag_opt_out_and_relocation() -> None:
+    # Default-on: senza configurazione il chiamante (ntruth-api) applica la
+    # directory locale di default; ``off`` e l'unico modo esplicito per
+    # disattivare il journal.
+    assert journal_dir_from_env({"NTRUTH_SESSION_JOURNAL_DIR": "off"}) is None
+    assert journal_dir_from_env({"NTRUTH_SESSION_JOURNAL_DIR": "OFF"}) is None
     assert journal_dir_from_env({"NTRUTH_SESSION_JOURNAL_DIR": ""}) is None
     assert journal_dir_from_env({"NTRUTH_SESSION_JOURNAL_DIR": "/tmp/j"}) == Path("/tmp/j")
+    assert default_session_journal_dir({"NTRUTH_DATA_HOME": "/data"}) == Path(
+        "/data/local-data/runtime/session-journal"
+    )
+    assert default_session_journal_dir({}).name == "session-journal"
 
 
 def test_roundtrip_and_latest_entry_wins(tmp_path: Path) -> None:
@@ -103,12 +112,54 @@ def test_resume_after_restart_replays_the_journaled_request(
     assert body["session_id"] == session_id
     assert body["report"]["report_id"]
 
-    # Il resume esplicito su journal disabilitato resta fail-closed.
-    monkeypatch.delenv("NTRUTH_SESSION_JOURNAL_DIR")
+    # Il resume esplicito su journal disattivato resta fail-closed: con il
+    # default-on la disattivazione e esplicita (NTRUTH_SESSION_JOURNAL_DIR=off).
+    monkeypatch.setenv("NTRUTH_SESSION_JOURNAL_DIR", "off")
     client3 = TestClient(create_app(), base_url="http://127.0.0.1")
     disabled = client3.post(f"/v1/sessions/{session_id}/resume")
     assert disabled.status_code == 404
     assert disabled.json()["detail"]["code"] == "session_journal_disabled"
+
+
+def test_default_on_journal_enables_resume_after_restart(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Senza env il journal e attivo sulla directory locale di default."""
+
+    pytest.importorskip("fastapi")
+    pytest.importorskip("httpx2")
+    from fastapi.testclient import TestClient
+
+    from ntruth.api.app import create_app
+
+    monkeypatch.delenv("NTRUTH_SESSION_JOURNAL_DIR", raising=False)
+    monkeypatch.setenv("NTRUTH_DATA_HOME", str(tmp_path / "data-home"))
+    monkeypatch.chdir(tmp_path)
+
+    source = tmp_path / "methods.md"
+    source.write_text(
+        "# Methods\n\nsample_id=SUBJ-009 received drug or vehicle. n = 12 cultures per group.\n",
+        encoding="utf-8",
+    )
+    client = TestClient(create_app(), base_url="http://127.0.0.1")
+    created = client.post(
+        "/v7/analyze",
+        json={
+            "source": str(source),
+            "out": str(tmp_path / "out-default"),
+            "language": "en",
+            "acknowledge_unvalidated_domain": True,
+        },
+    )
+    assert created.status_code == 200, created.text
+    session_id = created.json()["session_id"]
+
+    # Restart: il journal di default permette il resume esplicito.
+    client2 = TestClient(create_app(), base_url="http://127.0.0.1")
+    resumed = client2.post(f"/v1/sessions/{session_id}/resume")
+    assert resumed.status_code == 200, resumed.text
+    assert resumed.json()["session_id"] == session_id
 
 
 def test_resume_unknown_session_is_404(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

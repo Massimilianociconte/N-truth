@@ -22,6 +22,19 @@ Output tipici:
 - `m5-pro-24g-<timestamp>-<digest>.budget.json` — `RuntimeResourceBudget` fail-closed
 - `m5-pro-24g-<timestamp>-<digest>.protocol.json` — osservazioni grezze, load meta, note
 
+## Puntatori "latest" (2026-08-27)
+
+I file `latest.budget.json` e `latest.protocol.json` sono piccoli file JSON
+puntatore (non symlink tracciati: la policy scanner apre i percorsi tracciati
+senza seguire i link). Ogni puntatore contiene:
+
+- `points_to` — il nome dell'artefatto timestampato locale attuale
+- `sha256` — checksum del contenuto puntato (verifica integrità a lettura)
+
+Dopo un nuovo benchmark reale aggiornare i due JSON con l'artefatto più
+recente; in assenza di artefatti locali corrispondenti, rigenerarli o rimuovere
+il puntatore obsoleto invece di dereferenziare ciecamente.
+
 Il fingerprint deve coincidere con `probe_runtime_environment("mlx-lm", <version>)`
 (es. `Mac17,9`, `25769803776` byte, `macOS 26.x`, `mlx-lm 0.31.x`).
 

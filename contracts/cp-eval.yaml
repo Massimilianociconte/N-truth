@@ -22,11 +22,15 @@ dependencies:
 current_evidence:
   team_evaluation:
     - packages/ntruth/team_evaluation/models.py
+    - docs/team-evaluation-protocol-v0.1.md
+    - scripts/team_evaluation_freeze_gate.py
   stage_end_to_end_metrics:
     - packages/ntruth/evaluation_v8/scoring.py
     - packages/ntruth/evaluation_v8/models.py
   critical_errors:
-    - MISSING_EXPLICIT
+    - packages/ntruth/team_evaluation/models.py
+    - packages/ntruth/evaluation_v8/scoring.py
+    - packages/ntruth/evaluation_v8/models.py
   calibration:
     - packages/ntruth/training/calibration.py
   residual_audit:
@@ -34,5 +38,6 @@ current_evidence:
   external_challenge_lifecycle:
     - docs/external-challenge-protocol-draft.md
 known_gaps:
-  - "docs/team-evaluation-protocol-v0.1.md MISSING_EXPLICIT: protocollo umano-only/AI-only/H+A non documentato come deliverable versionato"
-  - "regione di critical error e contratto end-to-end non congelati (PRD Reality Gate v9)"
+  - "TEAM-EVAL-V0.1 resta PREREGISTRATION_DRAFT: freeze del protocollo e firme reviewers_minimi pendenti, data collection non iniziata"
+  - "Deliverable da produrre e congelare: documento versionato di definizione delle regioni di critical error (PRD v9 §24.5) e relativo contratto end-to-end (PRD Reality Gate v9)"
+  - "Readiness meccanica del freeze disponibile (scripts/team_evaluation_freeze_gate.py, docs/team-evaluation-freeze-kit.md): il kit non fabbrica firme e il freeze resta bloccato fino alle quattro attestazioni umane richieste dall'header del protocollo"

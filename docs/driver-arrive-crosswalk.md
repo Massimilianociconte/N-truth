@@ -1,6 +1,6 @@
 # DRIVER / ARRIVE / EDA crosswalk v0.2-snapshot
 
-Stato: **snapshot strutturato non approvato, content hash non ancora pinnato**.
+Stato: **snapshot strutturato non approvato; content hash pinnato dal custodian tecnico il 2026-08-27 (freeze driver-arrive-crosswalk-freeze)**
 N-Truth è un progetto indipendente: non è un prodotto NC3Rs, non certifica
 conformità DRIVER/ARRIVE, non riproduce le risorse e non implica alcun
 endorsement, implicito o esplicito, da parte di NC3Rs. Il crosswalk deve essere
@@ -54,10 +54,18 @@ grafo interno.
 
 ## 5. Snapshot versionato DRIVER (PRD v9 §3.5)
 
-Lo snapshot sostituisce il vecchio template `pending_review`. Il content hash è
-un segnaposto **esplicito e non finto**: finché il custodian non pinna l'hash
-reale del materiale mappato, nessuna voce può essere promossa a `implements` e
-nessun claim pubblico di mapping è ammesso.
+Lo snapshot sostituisce il vecchio template `pending_review`. Il primo pin del
+content hash è avvenuto in via puramente meccanica il 2026-08-27 tramite il
+meccanismo fail-closed `ExternalReferenceFreeze`
+(`data_manifests/driver-arrive-crosswalk-freeze.json`, ruolo custode
+`repository-maintainer`, chiusura dei diritti esterna), con checksum canonico
+SHA-256 del materiale mappato (calcolato sulla chiave blocco-snapshot, escluso
+il campo `content_hash` stesso): `4afcfb5b0e47ab5eee7523850685d4e35697f7aaa8f4099378a0b2419e939eb6`.
+Il pin è un atto di custodia, non una validazione scientifica: lo snapshot resta
+**non approvato**, la review del Methodology lead prima di qualunque claim
+pubblico di mapping e l'accuratezza claim-grade delle righe restano requisiti
+invariati, nessuna voce può essere promossa a `implements` e nessun claim
+pubblico di mapping è ammesso finché tali chiusure esterne non sono completate.
 
 ```yaml
 crosswalk_snapshot:
@@ -66,7 +74,7 @@ crosswalk_snapshot:
   standard_version: LAUNCH-2026-07-23
   official_url: https://nc3rs.org.uk/driver-recommendations
   snapshot_date: 2026-08-25
-  content_hash: PENDING_FIRST_PIN__REQUIRES_CUSTODIAN
+  content_hash: 4afcfb5b0e47ab5eee7523850685d4e35697f7aaa8f4099378a0b2419e939eb6
   relation_types_allowed:
     - implements
     - supports

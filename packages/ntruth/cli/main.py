@@ -683,6 +683,37 @@ def quick_design_reality_gate() -> None:
         typer.echo(f"  {predicate.value}: UNKNOWN")
 
 
+@quick_design_app.command("reality-gate-v9")
+def quick_design_reality_gate_v9() -> None:
+    """Compone il Reality Gate v9 (PRD v9 §0.8) sul assessment v8 canonico.
+
+    Stampa la composizione content-addressed dei 23 flag v9 sopra il gate v8
+    pinnato: resta HOLD finche non arrivano evidenze reali registrate. Non e
+    una autorizzazione e non modifica alcun gate esistente.
+    """
+    from ntruth.reality_gate.v9 import compose_default_hold_gate_v9
+
+    composition = compose_default_hold_gate_v9()
+    typer.echo(f"Reality Gate v9 — {composition.effective_state.value}")
+    typer.echo(f"composition_id: {composition.composition_id}")
+    typer.echo(f"content_checksum: {composition.content_checksum}")
+    typer.echo(
+        f"authorized_for_training: {str(composition.authorizes_substantive_training).lower()}"
+    )
+    typer.echo("v8_readiness_dimensions:")
+    for item in composition.v8_assessment.dimensions:
+        typer.echo(f"  {item.dimension.value}: {item.status.knowledge_state.value}")
+    typer.echo("v9_predicates:")
+    for item in composition.v9_evidence_ledger.predicate_assessments:
+        typer.echo(f"  {item.name.value}: {item.value.knowledge_state.value}")
+    typer.echo(
+        "unsatisfied_v9_predicates: "
+        + ", ".join(
+            name.value for name in composition.v9_evidence_ledger.unsatisfied_predicate_names()
+        )
+    )
+
+
 @quick_design_app.command("reality-gate-v7")
 def quick_design_reality_gate_v7() -> None:
     """Stampa il report storico v7 attraverso un adapter deprecato esplicito."""

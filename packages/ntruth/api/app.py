@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 from typing import Any, Literal
 
@@ -14,6 +15,7 @@ from ntruth.api.session_journal import (
     append_entry as journal_append_entry,
 )
 from ntruth.api.session_journal import (
+    default_session_journal_dir,
     journal_dir_from_env,
 )
 from ntruth.api.session_journal import (
@@ -218,6 +220,30 @@ class PlanExecutionGoldRequest(BaseModel):
     actor_role: str | None = Field(default=None, max_length=64)
 
 
+class V9DesignPreflightRequest(BaseModel):
+    """Preflight v9: matrice del disegno §11.2 + gate EU/contrast (PRD v9 §6.1).
+
+    Il chiamante registra l'assegnazione unita-per-unita; l'endpoint deriva i
+    fatti strutturali e applica il gate sidecar. Nessun test statistico viene
+    raccomandato (HANDOFF_ONLY).
+    """
+
+    assignments: dict[str, dict[str, str]]
+    declared_levels: dict[str, tuple[str, ...]]
+    blocks: dict[str, str] | None = None
+    factor_id: str = Field(min_length=1)
+    query_id: str = Field(min_length=1)
+    unit_type: str = Field(min_length=1)
+    factor_role: str = Field(min_length=1)
+    contrast_type: str = Field(min_length=1)
+    assignment_event_id: str | None = None
+    exposure_cluster: str | None = None
+    exposure_separable: bool | None = None
+    information_sufficient: bool
+    shared_exposure: bool = False
+    exposure_collapses_separability: bool = False
+
+
 def create_app() -> Any:
     """Crea l'app senza rendere FastAPI una dipendenza del core."""
 
@@ -286,7 +312,25 @@ def create_app() -> Any:
             request._body = bytes(body)
         return await call_next(request)
 
+    # Journal di sessione default-on (audit 2026-09-05): il resume v7 dopo un
+    # restart richiede il journal. La disattivazione resta esplicita con
+    # NTRUTH_SESSION_JOURNAL_DIR=off (o valore vuoto); senza configurazione si
+    # applica la directory locale di default, e se non e creabile si degrada
+    # su memoria volatile senza bloccare il server.
+    explicit_journal_config = bool((os.environ.get("NTRUTH_SESSION_JOURNAL_DIR") or "").strip())
     session_journal_dir = journal_dir_from_env()
+    if session_journal_dir is None and not explicit_journal_config:
+        default_dir = default_session_journal_dir()
+        try:
+            default_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+        except OSError:
+            print(
+                f"ntruth-api: journal di sessione non attivabile su {default_dir} "
+                "(OSError); le sessioni restano in memoria volatile",
+                flush=True,
+            )
+        else:
+            session_journal_dir = default_dir
 
     @api.get("/health")
     @api.get("/v1/health")
@@ -778,6 +822,103 @@ def create_app() -> Any:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         session = sessions.create(execution, session_id=session_id)
         return _v7_response(execution, session.id)
+
+    @api.get("/v9/reality-gate")
+    def reality_gate_v9() -> dict[str, Any]:
+        """Composizione v9 content-addressed sul gate v8 pinnato (PRD v9 §0.8).
+
+        Stato ispezionabile e deterministico: resta HOLD senza evidenze reali
+        registrate; non e una autorizzazione e non modifica alcun gate esistente.
+        """
+
+        from ntruth.reality_gate.v9 import compose_default_hold_gate_v9
+
+        composition = compose_default_hold_gate_v9()
+        payload = composition.model_dump(mode="json")
+        payload["predicates_satisfied"] = composition.predicates_satisfied
+        payload["effective_state"] = composition.effective_state.value
+        payload["authorizes_substantive_training"] = composition.authorizes_substantive_training
+        return payload
+
+    @api.post("/v9/design/preflight")
+    def v9_design_preflight(payload: V9DesignPreflightRequest) -> dict[str, Any]:
+        """Preflight EU/contrast su una matrice del disegno registrata.
+
+        Deriva i booleani §11.2 dall'assegnazione registrata e applica il gate
+        sidecar v9. Il risultato e una decisione di contratto, mai una
+        raccomandazione statistica (HANDOFF_ONLY).
+        """
+
+        from ntruth.schemas.factor_role import ContrastType, FactorRole
+        from ntruth.scientific.design_matrix import evaluate_design_matrix
+        from ntruth.scientific.v9_gates import gate_experimental_unit_claim
+
+        try:
+            role = FactorRole(payload.factor_role)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "unknown_factor_role", "message": str(exc)},
+            ) from exc
+        try:
+            contrast = ContrastType(payload.contrast_type)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "unknown_contrast_type", "message": str(exc)},
+            ) from exc
+        try:
+            check = evaluate_design_matrix(
+                assignments=payload.assignments,
+                declared_levels=payload.declared_levels,
+                blocks=payload.blocks,
+            )
+            gate_inputs = check.gate_inputs_for_factor(payload.factor_id)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "invalid_design", "message": str(exc)},
+            ) from exc
+        decision = gate_experimental_unit_claim(
+            query_id=payload.query_id,
+            factor_id=payload.factor_id,
+            unit_type=payload.unit_type,
+            role=role,
+            contrast_type=contrast,
+            assignment_event_id=payload.assignment_event_id,
+            levels_present=gate_inputs["levels_present"],
+            within_block_variation=gate_inputs["within_block_variation"],
+            fully_aliased=gate_inputs["fully_aliased"],
+            exposure_separable=payload.exposure_separable,
+            information_sufficient=payload.information_sufficient,
+            shared_exposure=payload.shared_exposure,
+            exposure_collapses_separability=payload.exposure_collapses_separability,
+            exposure_cluster=payload.exposure_cluster,
+        )
+        return {
+            "design_matrix": {
+                "units": check.units,
+                "factors": list(check.factors),
+                "levels_without_units": [list(pair) for pair in check.levels_without_units],
+                "fully_aliased": check.fully_aliased,
+                "aliased_factor_pairs": [list(pair) for pair in check.aliased_factor_pairs],
+                "within_block_variation": dict(check.within_block_variation),
+                "blocks_count": check.blocks_count,
+                "smallest_block_size": check.smallest_block_size,
+            },
+            "gate_inputs": gate_inputs,
+            "decision": {
+                "eu_emitted": decision.eu_emitted,
+                "eu_claim": (
+                    decision.eu_claim.model_dump(mode="json")
+                    if decision.eu_claim is not None
+                    else None
+                ),
+                "contrast_status": decision.contrast_status.value,
+                "denial_reason": decision.denial_reason,
+            },
+            "strategy": "HANDOFF_ONLY",
+        }
 
     @api.post("/v8/quick-design")
     def quick_design_v8(payload: QuickDesignV8Submission) -> dict[str, Any]:

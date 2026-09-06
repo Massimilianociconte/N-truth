@@ -1,1 +1,6 @@
-m5-pro-24g-20260801T222929Z-222008604c.protocol.json
+{
+  "kind": "latest-pointer",
+  "note": "JSON pointer replacing the former symlink; resolves locally to the newest timestamped artifact listed below.",
+  "points_to": "m5-pro-24g-20260801T222929Z-222008604c.protocol.json",
+  "sha256": "75d1eea638ef58bf9fe93d291cd6d6011e8b837f7438f845a450726ac08a9df5"
+}
