@@ -56,17 +56,35 @@ uv run ntruth quick-design reality-gate   # riporta lo HOLD canonico
 ## Residual gaps (onesti, non negoziabili)
 
 1. **Gold data assenti:** nessun Derivation Gold annotato né adjudicato.
+   Protocollo di ingresso definito (bozza non approvata) in
+   [real-anchor-protocol.md](real-anchor-protocol.md); nessun gate modificato.
 2. **Training:** `HOLD_PENDING_REAL_ANCHOR`; nessun run autorizzato o eseguito.
 3. **External Challenge:** nessun corpus custodito; lifecycle e policy feedback
    (ADR-0017) sono contratti pronti ma senza round reale.
-4. **Crosswalk hash pending:** lo snapshot driver→ARRIVE
-   ([docs/driver-arrive-crosswalk.md](driver-arrive-crosswalk.md)) attende il primo
-   pin del content hash da parte del custodian.
-5. Fallimento di portabilità interprete da checkout vergine: i pin dell'evaluator
-   derivati da bytecode richiedono il pin esplicito della versione Python
-   (vedi report clean-checkout).
+4. RISOLTO passo meccanico (2026-08-27): il content hash dello snapshot
+   driver→ARRIVE ([docs/driver-arrive-crosswalk.md](driver-arrive-crosswalk.md))
+   è stato pinnato dal custodian tecnico via `ExternalReferenceFreeze`
+   (`data_manifests/driver-arrive-crosswalk-freeze.json`). La chiusura
+   scientifica del crosswalk (review, rights closure, mapping claim-grade) resta
+   bloccata come SRR-V8-021.
+5. RISOLTO (2026-08-27): il fallimento di portabilità interprete da checkout vergine è
+   chiuso dal pin dell'interprete (`requires-python = ">=3.12,<3.14"` con
+   `.python-version` a `3.12`): il verifier su HEAD `cd17cb2` risolve Python 3.12.13
+   nell'ambiente effimero e riporta overall PASS sull'intera selezione unit
+   ([report clean-checkout 2026-08-27](clean-checkout-report-2026-08-27.md)).
 6. Blockers scientifici registrati in `SCIENTIFIC_REVIEW_REGISTER.md` invariati:
    Theory Reference Set, Real Anchor, reference stability, residual evidence.
+7. Lane ausiliaria locale (2026-08-27/28, fuori repository): trainer ausiliario
+   v4.1 con checkpoint/resume/eval-only, baseline ingegneristiche misurate
+   (entity test 0.8207 con context L384; ensemble intersezione 0.8222 in unità
+   ufficiali) e staging dati esterni ratificato (v2.1.0 train-only, leakage
+   screen). Dettagli e non-claim in
+   [auxiliary-training-lane-status-2026-08-28.md](auxiliary-training-lane-status-2026-08-28.md).
+   Campagna **CHIUSA il 2026-08-29** su decisione del proprietario: config di
+   produzione ausiliaria = ensemble intersezione entity (test 0.8222) + bio-base
+   L384 roles (test 0.7966); esterni v2.1.0 = trasferimento negativo archiviato.
+   Non modifica alcun confine di questo documento: validation NOT_STARTED,
+   training primario HOLD, Reality Gate HOLD.
 
 ## Reproducible truth gates
 

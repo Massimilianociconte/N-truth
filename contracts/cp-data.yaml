@@ -24,7 +24,9 @@ current_evidence:
   annotation_guideline:
     - docs/annotation-guideline-v0.1.md
   parser_gold:
-    - MISSING_EXPLICIT
+    - packages/ntruth/training/gold.py
+    - packages/ntruth/parser_ai/stages.py
+    - docs/parser-ai-contract.md
   derivation_gold:
     - docs/derivation-gold-protocol.md
     - packages/ntruth/training/gold.py
@@ -40,5 +42,5 @@ current_evidence:
   synthetic_policy:
     - docs/synthetic-data-generation-specification.md
 known_gaps:
-  - "Parser Gold assente: nessun dataset gold dedicato alla valutazione parser"
+  - "Parser Gold: contratti target pronti (GoldParserTarget v1.0.0 adjudicato, staged parser_ai candidate, docs/parser-ai-contract.md) ma nessun corpus gold adjudicato esiste ancora: assenza di dati, non di contratti"
   - "train/dev/test lineage non congelato: split ancora provvisori (PRD Reality Gate v9)"

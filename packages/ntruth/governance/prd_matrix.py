@@ -18,26 +18,25 @@ from typing import Final
 BLOCKER_ID_RE = re.compile(r"SRR-V8-[0-9]{3}")
 FINAL_STATUS_VALUES = frozenset({"IMPLEMENTED", "PARTIAL", "MISSING"})
 
+# 2026-08-27: V8-CORPUS and V8-STRATEGY-VALIDATION moved MISSING → PARTIAL after
+# the disposition reconciliation against implemented in-tree contracts
+# (see FINAL_IMPLEMENTATION_MATRIX.md, "Disposition reconciliation log").
 EXPECTED_REQUIREMENT_COUNT: Final = 88
 EXPECTED_IMPLEMENTED_COUNT: Final = 36
-EXPECTED_PARTIAL_COUNT: Final = 48
-EXPECTED_MISSING_COUNT: Final = 4
+EXPECTED_PARTIAL_COUNT: Final = 50
+EXPECTED_MISSING_COUNT: Final = 2
 
 MISSING_REQUIREMENT_IDS: Final[frozenset[str]] = frozenset(
     {
         "V8-CROSSWALK",
-        "V8-CORPUS",
         "V8-SYNTH-ABLATION",
-        "V8-STRATEGY-VALIDATION",
     }
 )
 
 MISSING_DISPOSITIONS: Final[Mapping[str, str]] = MappingProxyType(
     {
         "V8-CROSSWALK": "EXTERNAL_EVIDENCE_ONLY",
-        "V8-CORPUS": "EXTERNAL_EVIDENCE_ONLY",
         "V8-SYNTH-ABLATION": "EXTERNAL_EVIDENCE_ONLY",
-        "V8-STRATEGY-VALIDATION": "KEEP_FAIL_CLOSED",
     }
 )
 

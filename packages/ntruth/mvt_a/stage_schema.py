@@ -39,6 +39,13 @@ FORBIDDEN_FINAL_FIELDS: frozenset[str] = frozenset(
         "rule_result",
         "determinability_state",
         "final_determinability",
+        # PRD v9 §12.11: TargetPopulationClaim and claims of interference
+        # absence are never parser-predictable targets.
+        "target_population",
+        "target_population_claim",
+        "no_interference",
+        "interference_free",
+        "interference_absent",
     }
 )
 

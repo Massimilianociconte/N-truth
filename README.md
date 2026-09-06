@@ -22,7 +22,9 @@ historical behind explicit `DEPRECATED_V7_ADAPTER` surfaces only.
 > `IMPLEMENTED_WITH_EXPLICIT_BLOCKERS`. Scientific validation is **NOT_STARTED**,
 > training execution is **HOLD_PENDING_REAL_ANCHOR**, gold data are **not yet
 > annotated**, no custodied External Challenge corpus exists, and the
-> driver→ARRIVE crosswalk snapshot still has its content hash pending first pin.
+> driver→ARRIVE crosswalk snapshot content hash received its first mechanical
+> custodian pin (2026-08-27, ExternalReferenceFreeze); scientific approval of
+> the crosswalk remains pending (SRR-V8-021).
 > Green CI proves software contracts only — never accuracy, human agreement or
 > external validity.
 
@@ -106,7 +108,10 @@ No blocker is closed by passing software tests alone. Open items include:
 - training execution is `HOLD_PENDING_REAL_ANCHOR` — no authorized run has happened;
 - no custodied External Challenge round exists (lifecycle contracts are implemented,
   custody is empty);
-- driver→ARRIVE crosswalk snapshot content hash is pending first custodian pin;
+- driver→ARRIVE crosswalk content hash is mechanically pinned by the technical
+  custodian (`data_manifests/driver-arrive-crosswalk-freeze.json`, 2026-08-27);
+  scientific closure of the crosswalk (review, rights closure, claim-grade
+  mapping) remains blocked as `SRR-V8-021`;
 - partial graph scoring, universal few-cluster thresholds and report aggregation
   precedence remain review-blocked and fail-closed.
 
@@ -182,17 +187,21 @@ uv run python scripts/generate_sbom.py --check sbom.cdx.json
 bash scripts/verify_clean_checkout.sh                  # PRD v9 §26.10 / NFR-06 verifier
 ```
 
-At this committed baseline there is no standalone RTM checker script: requirement
-traceability lives in
-[docs/audits/prd-v8-full-migration/REQUIREMENT_TRACEABILITY_MATRIX.md](docs/audits/prd-v8-full-migration/REQUIREMENT_TRACEABILITY_MATRIX.md)
-and is reviewed through the audits, not mechanized yet.
+Requirement traceability is mechanized by
+`uv run python scripts/check_requirement_traceability.py`, which parses
+[docs/audits/prd-v8-full-migration/REQUIREMENT_TRACEABILITY_MATRIX.md](docs/audits/prd-v8-full-migration/REQUIREMENT_TRACEABILITY_MATRIX.md),
+reconciles it against `FINAL_IMPLEMENTATION_MATRIX.md` and
+`SCIENTIFIC_REVIEW_REGISTER.md`, and validates dispositions, risks, evidence
+paths, IDs and SRR blocker references. Findings use a two-severity model:
+errors always fail the run, while cross-matrix mismatches surface as warnings
+that fail only under `--strict`.
 
 The PRD example registry deliberately preserves Appendices A, AF and AG as
 expected-negative fixtures. Green CI must never silently "repair" those authoritative
 source examples. A green suite demonstrates the tested software contracts; it does not
 demonstrate accuracy on real documents, human agreement or external validity.
 
-Latest clean-checkout verdict: [docs/clean-checkout-report-2026-08-25.md](docs/clean-checkout-report-2026-08-25.md).
+Latest clean-checkout verdict: [docs/clean-checkout-report-2026-08-27.md](docs/clean-checkout-report-2026-08-27.md) (overall PASS); previous: [docs/clean-checkout-report-2026-08-25.md](docs/clean-checkout-report-2026-08-25.md).
 
 ## Data, privacy and repository safety
 

@@ -141,3 +141,40 @@ def test_quick_design_never_emits_final_independent_n_in_bootstrap() -> None:
     assert "independent_n" not in kinds
     if result.bootstrap.counts:
         assert result.bootstrap.counts[0].unit_type == "culture"
+
+
+def test_declared_randomization_unit_wins_over_allocation() -> None:
+    result = run_quick_design_v7_session(
+        QuickDesignV7Answers(
+            source_description="cells",
+            allocation_level="well",
+            assignment_method="random",
+            randomization_unit="plate",
+        )
+    )
+    mechanism = result.bootstrap.causal_context.assignment_mechanism
+    assert mechanism.randomization_unit == "plate"
+
+
+def test_undeclared_randomization_unit_falls_back_to_allocation() -> None:
+    result = run_quick_design_v7_session(
+        QuickDesignV7Answers(
+            source_description="cells",
+            allocation_level="culture",
+            assignment_method="blocked_random",
+        )
+    )
+    mechanism = result.bootstrap.causal_context.assignment_mechanism
+    assert mechanism.randomization_unit == "culture"
+
+
+def test_undeclared_randomization_unit_without_allocation_stays_absent() -> None:
+    result = run_quick_design_v7_session(
+        QuickDesignV7Answers(
+            source_description="cells",
+            allocation_level="unknown",
+            assignment_method="random",
+        )
+    )
+    mechanism = result.bootstrap.causal_context.assignment_mechanism
+    assert mechanism.randomization_unit is None

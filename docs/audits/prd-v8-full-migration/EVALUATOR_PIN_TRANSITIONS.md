@@ -68,3 +68,31 @@ regole restano identici salvo indicazione esplicita.
 - **Esito:** `verify_runtime_bundle` PASS; suite completa verde.
 - **Non coperto:** alcuna pretesa di approvazione scientifica; i blocker SRR
   (incluso SRR-V8-008) restano aperti verso i reviewer esterni.
+
+## 2026-08-27 — SRR-V8-021, passo meccanico parziale: primo pin del content hash del crosswalk DRIVER→ARRIVE (sezione separata dalla chiusura evaluator; nessuna transizione di pin evaluator)
+
+- **Trigger:** primo pin meccanico (custodia) del content hash dello snapshot
+  strutturato `CW-DRIVER-SNAPSHOT-001` in `docs/driver-arrive-crosswalk.md`,
+  eseguito con il meccanismo fail-closed `ExternalReferenceFreeze`
+  (`packages/ntruth/conformance/external_references.py`), che conserva il
+  blocker `SRR-V8-021` pinned. Non è una transizione di identita della
+  chiusura evaluator: Theory, Rulebook e i pin derivati restano invariati.
+- **Scope:** solo custodia meccanica del reference freeze; nessun claim di
+  conformità DRIVER/ARRIVE e nessun cambio di semantica delle regole.
+- **Artefatti:** `data_manifests/driver-arrive-crosswalk-freeze.json` (nuovo;
+  record interno validato con `ExternalReferenceFreeze.model_validate`, ruolo
+  custode `repository-maintainer`, `rights_closure_external: true`);
+  `docs/driver-arrive-crosswalk.md` (solo riga di stato, paragrafo §5 e campo
+  `content_hash` dello snapshot; righe di mapping non toccate).
+- **Digest:** checksum canonico SHA-256 del materiale mappato
+  `4afcfb5b0e47ab5eee7523850685d4e35697f7aaa8f4099378a0b2419e939eb6`
+  (canon `json.dumps(..., ensure_ascii=False, sort_keys=True,
+  separators=(",",":"))` sul blocco snapshot escluso il campo `content_hash`;
+  stesso schema di `ntruth.derivation_theory.loader.canonical_checksum`);
+  freeze record `declared_checksum`
+  `995894e671fc3bdd99fe2339ecfa761a6e703bc1e5c712a922186a338f957f61`.
+- **Esito:** record valido secondo il modulo di conformance; pin registrato.
+- **Non coperto:** approvazione scientifica dello snapshot, review del
+  Methodology lead, chiusura dei diritti e review indipendente (SRR-V8-021
+  resta aperta verso reviewer esterni), suite di mapping claim-grade: la voce
+  rimane `snapshot non approvato`, nessuna promozione a `implements`.

@@ -39,10 +39,18 @@ def test_shipped_parser_reads_the_committed_final_matrix() -> None:
 
 
 def test_missing_rows_have_explicit_operational_dispositions() -> None:
+    # 2026-08-27 reconciliation: only CROSSWALK and SYNTH-ABLATION remain MISSING;
+    # CORPUS and STRATEGY-VALIDATION moved to PARTIAL (contracts implemented,
+    # scientific closure still SRR-blocked) and are re-checked below from the
+    # matrix itself so the promoted rows cannot silently regress.
     assert disposition_for("V8-CROSSWALK") == "EXTERNAL_EVIDENCE_ONLY"
-    assert disposition_for("V8-CORPUS") == "EXTERNAL_EVIDENCE_ONLY"
     assert disposition_for("V8-SYNTH-ABLATION") == "EXTERNAL_EVIDENCE_ONLY"
-    assert disposition_for("V8-STRATEGY-VALIDATION") == "KEEP_FAIL_CLOSED"
+
+    rows = load_final_implementation_matrix(MATRIX)
+    for requirement_id in ("V8-CORPUS", "V8-STRATEGY-VALIDATION"):
+        row = next(r for r in rows if r.requirement_id == requirement_id)
+        assert row.status == "PARTIAL"
+        assert row.blocker_ids, requirement_id
 
 
 def test_parse_final_matrix_rejects_unknown_status() -> None:

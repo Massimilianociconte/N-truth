@@ -66,7 +66,12 @@ def test_repository_contracts_pass() -> None:
     assert checks["dependencies_acyclic"] == "PASS"
     summary = json.loads(checks["summary"])
     assert set(summary) == {"missing_explicit_count"}
-    assert summary["missing_explicit_count"] >= 1
+    # 2026-08-27: the last two honest MISSING_EXPLICIT markers (cp-eval
+    # critical_errors / team deliverable, cp-data parser_gold) were resolved
+    # against implemented in-tree contracts, so zero is the expected state.
+    # A future honest marker re-introduction must consciously update this pin,
+    # exactly as removing the previous ones did.
+    assert summary["missing_explicit_count"] == 0
 
 
 def test_valid_fixture_passes(tmp_path: Path) -> None:

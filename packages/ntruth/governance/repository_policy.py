@@ -159,6 +159,16 @@ _REVIEWED_REPOSITORY_ASSET_SHA256 = {
     "packages/ntruth/task_corpora/license_decisions/sourcedata.json": (
         "1b40388623703ed39f3a13e0b330048031ee10168873d78ecb869c7558a79626"
     ),
+    # Reviewed governance metadata (2026-08-27): protocol/ADR prose only — no
+    # challenge item bytes, no participant data ("nessun challenge set esiste").
+    # Scope-limited to these two exact paths and pins; any later byte change
+    # re-trips NO_CORPUS on their marker tokens until deliberately re-pinned.
+    "docs/adr/0017-challenge-feedback-lifecycle.md": (
+        "6dc69058a39b5fa5d2dc6be4740ea369a593861b2efdd9a0d9d99bf5c2bcb3d5"
+    ),
+    "docs/external-challenge-protocol-draft.md": (
+        "7cc4691eaf78dea92b55e3423eb0d091921d8eeb884adacadf4ab1e758899518"
+    ),
 }
 _SECRET_SUFFIXES = frozenset({".key", ".p12", ".pem", ".pfx"})
 _PRIVACY_PAYLOAD_SUFFIXES = frozenset({".csv", ".json", ".jsonl", ".tsv", ".txt", ".xml"})
