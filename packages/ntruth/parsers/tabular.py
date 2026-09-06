@@ -11,10 +11,15 @@ import csv
 import io
 from collections.abc import Iterable
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from ntruth.ingest.safety import neutralize_formula
 from ntruth.parsers.base import ParseFailure, RawDocument, RawTable
 from ntruth.schemas.document import ParserStatus
+
+if TYPE_CHECKING:
+    from openpyxl.workbook.workbook import Workbook
+    from openpyxl.worksheet.worksheet import Worksheet
 
 MAX_ROWS = 200_000
 MAX_COLUMNS = 512
@@ -76,13 +81,18 @@ class XlsxParser:
         except Exception as exc:
             raise ParseFailure(path, f"XLSX illeggibile ({type(exc).__name__})") from exc
 
+        # Seconda lettura con data_only=True: recupera i valori calcolati che
+        # Excel ha messo in cache. Le celle formula senza cache restano testo
+        # inerte con un avviso esplicito (audit 2026-09-05, F8).
+        try:
+            values_workbook = load_workbook(str(path), data_only=True, read_only=True)
+        except Exception:
+            values_workbook = None
+
         try:
             for sheet in workbook.worksheets:
-                rows = (
-                    ["" if cell is None else str(cell) for cell in row]
-                    for row in sheet.iter_rows(values_only=True)
-                    if any(value is not None and str(value).strip() for value in row)
-                )
+                values_sheet = _values_sheet(values_workbook, sheet.title)
+                rows = _iter_sheet_rows(sheet, values_sheet, doc)
                 table = _build_table(sheet.title, rows, doc, sheet=sheet.title)
                 if table is None:
                     doc.warnings.append(f"foglio '{sheet.title}' vuoto")
@@ -90,11 +100,59 @@ class XlsxParser:
                 doc.tables.append(table)
         finally:
             workbook.close()
+            if values_workbook is not None:
+                values_workbook.close()
 
         if not doc.tables:
             doc.status = ParserStatus.FAILED
             doc.warnings.append("nessun foglio leggibile")
         return doc
+
+
+def _values_sheet(values_workbook: Workbook | None, title: str) -> Worksheet | None:
+    """Return the cached-value twin of a sheet, or None when unavailable."""
+
+    if values_workbook is None:
+        return None
+    try:
+        return values_workbook[title]
+    except KeyError:
+        return None
+
+
+def _iter_sheet_rows(
+    sheet: Worksheet, values_sheet: Worksheet | None, doc: RawDocument
+) -> Iterable[list[str]]:
+    """Yield text rows, substituting cached values for formula cells.
+
+    La formula resta la fonte quando la cache manca: il valore calcolato non
+    viene mai inventato. Le celle senza cache sono contate e segnalate a fine
+    foglio.
+    """
+
+    value_rows = values_sheet.iter_rows(values_only=True) if values_sheet is not None else None
+    uncached = 0
+    for row in sheet.iter_rows(values_only=True):
+        value_row: tuple[object, ...] | None = None
+        if value_rows is not None:
+            value_row = next(value_rows, None)
+        cells: list[str] = []
+        for index, cell in enumerate(row):
+            text = "" if cell is None else str(cell)
+            if text.startswith("=") and value_row is not None and index < len(value_row):
+                cached = value_row[index]
+                if cached is not None and str(cached).strip():
+                    text = str(cached)
+                else:
+                    uncached += 1
+            cells.append(text)
+        if any(value.strip() for value in cells):
+            yield cells
+    if uncached:
+        doc.warnings.append(
+            f"foglio '{sheet.title}': {uncached} formule senza valore calcolato in cache "
+            "(aprire e salvare il file da Excel per generarla)"
+        )
 
 
 def _sniff_delimiter(content: str) -> str:

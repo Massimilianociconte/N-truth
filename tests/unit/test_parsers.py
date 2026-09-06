@@ -113,3 +113,82 @@ def test_jats_sections_and_legends(make_project: ProjectFactory) -> None:
     roles = {s.role for s in ir.sections}
     assert SectionRole.METHODS in roles
     assert SectionRole.STATISTICS in roles
+
+
+def _write_xlsx(path: Path, *, cached: bool) -> None:
+    """Scrive un XLSX con formula ``=1+1`` e, opzionalmente, la cache di Excel."""
+
+    import shutil
+    import zipfile
+
+    from openpyxl import Workbook
+
+    workbook = Workbook()
+    sheet = workbook.active
+    assert sheet is not None
+    sheet["A1"] = "wells"
+    sheet["A2"] = "=1+1"
+    workbook.save(path)
+    if not cached:
+        return
+    # Excel salva <f>1+1</f><v>2</v>: openpyxl scrive solo la formula, quindi
+    # la cache viene iniettata nel XML del foglio per simulare il file reale.
+    injectable = path.with_suffix(".cached.xlsx")
+    with (
+        zipfile.ZipFile(path) as source,
+        zipfile.ZipFile(injectable, "w", zipfile.ZIP_DEFLATED) as target,
+    ):
+        for member in source.namelist():
+            data = source.read(member)
+            if member.endswith("sheet1.xml"):
+                data = data.replace(b"<f>1+1</f>", b"<f>1+1</f><v>2</v>")
+            target.writestr(member, data)
+    shutil.move(injectable, path)
+
+
+def test_xlsx_formula_uses_cached_value_when_available(tmp_path: Path) -> None:
+    from ntruth.parsers.tabular import XlsxParser
+
+    path = tmp_path / "sheet.xlsx"
+    _write_xlsx(path, cached=True)
+    doc = XlsxParser().parse(path)
+    assert doc.tables, doc.warnings
+    rows = [list(row.values()) for row in doc.tables[0].rows]
+    assert rows == [["2"]]
+    assert not any("formule senza valore" in warning for warning in doc.warnings)
+
+
+def test_xlsx_formula_without_cache_stays_inert_and_warns(tmp_path: Path) -> None:
+    from ntruth.parsers.tabular import XlsxParser
+
+    path = tmp_path / "sheet.xlsx"
+    _write_xlsx(path, cached=False)
+    doc = XlsxParser().parse(path)
+    assert doc.tables, doc.warnings
+    rows = [list(row.values()) for row in doc.tables[0].rows]
+    assert rows == [["'=1+1"]]
+    assert any("formule senza valore" in warning for warning in doc.warnings)
+
+
+def test_no_usable_output_message_includes_per_file_warnings() -> None:
+    """L'abort riporta gli hint per-file del Document IR (audit 2026-09-05, F3)."""
+
+    from ntruth.pipeline import _no_usable_output_message
+    from ntruth.schemas.document import DocumentIR, SourceFile
+
+    scanned = SourceFile(
+        id="F-1",
+        filename="scanned.pdf",
+        relative_path="scanned.pdf",
+        media_type="application/pdf",
+        size_bytes=10,
+        sha256="0" * 64,
+        parser="pdf",
+        parser_version="0.0.0",
+        status=ParserStatus.FAILED,
+        warnings=("nessun testo estraibile: PDF probabilmente scansionato, serve OCR esplicito",),
+    )
+    document = DocumentIR(id="IR-1", files=(scanned,))
+    message = _no_usable_output_message(document)
+    assert "scanned.pdf" in message
+    assert "serve OCR esplicito" in message

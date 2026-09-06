@@ -158,7 +158,9 @@ def safe_extract_tar(archive: Path, destination: Path) -> None:
         for member in members:
             if is_ignorable_metadata(member.name):
                 continue
-            tf.extract(member, destination)
+            # PEP 706: filtro canonico oltre ai controlli manuali sopra;
+            # comportamento stabile anche su Python 3.14 (default 'data').
+            tf.extract(member, destination, filter="data")
 
 
 def safe_extract_archive(archive: Path, destination: Path) -> None:

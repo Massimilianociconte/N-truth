@@ -129,10 +129,7 @@ def analyze_project_legacy(
 
     document = build_document_ir(project)
     if not _has_usable_parser_output(document):
-        raise SafetyError(
-            "nessuna fonte ha prodotto testo, tabelle o codice utilizzabili; "
-            "gli output scientifici non vengono generati"
-        )
+        raise SafetyError(_no_usable_output_message(document))
     segmentation = segment_document_ir(document, project.manifest.name)
 
     versions = Versions(
@@ -571,6 +568,28 @@ def _has_usable_parser_output(document: DocumentIR) -> bool:
         or any(table.file_id in usable_file_ids for table in document.tables)
         or any(item.file_id in usable_file_ids for item in document.statistical_code)
     )
+
+
+def _no_usable_output_message(document: DocumentIR) -> str:
+    """Messaggio d'abort con i motivi per-file.
+
+    Senza i dettagli il caso piu comune (PDF scansionato senza OCR) mostra
+    all'utente solo la frase generica, nascondendo l'hint gia presente nel
+    Document IR (audit 2026-09-05, F3).
+    """
+
+    base = (
+        "nessuna fonte ha prodotto testo, tabelle o codice utilizzabili; "
+        "gli output scientifici non vengono generati"
+    )
+    details = [
+        f"{source.filename}: {'; '.join(source.warnings)}"
+        for source in document.files
+        if source.warnings
+    ]
+    if not details:
+        return base
+    return base + " | " + " | ".join(details)
 
 
 def _report_status(

@@ -73,6 +73,10 @@ _XML_START = re.compile(
 #: Prefissi che i fogli di calcolo interpretano come formula (CSV injection).
 _FORMULA_PREFIXES = ("=", "+", "-", "@")
 
+#: Connettori che rendono un prefisso +/- eseguibile come formula o DDE: senza
+#: uno di questi il valore e testo osservato (fidelity), non vettore.
+_FORMULA_CONNECTOR_CHARS = ("(", "|", "!", "=", "@", "+", "*", "/", "%", "\t", "\r", "\n")
+
 #: Frasi che tentano di dare istruzioni a un agente. Il contenuto dei documenti
 #: e sempre dato, mai comando: qui viene solo segnalato.
 _INJECTION_PATTERNS = [
@@ -456,23 +460,39 @@ def _probe_decompressed_bytes(path: Path) -> list[str]:
 
 
 def neutralize_formula(value: str) -> tuple[str, bool]:
-    """Disinnesca le formule nelle celle. Il valore originale resta nel testo citato.
+    """Disinnesca le formule eseguibili nelle celle, preservando il testo legittimo.
 
-    Un valore numerico negativo non e una formula; un valore con ``+`` iniziale
-    viene neutralizzato perche Excel/LibreOffice lo reinterprettano come formula
-    al round-trip (OWASP CSV injection).
+    Politica (OWASP CSV injection, orientata all'esecuzione di codice):
+
+    - ``=`` e ``@`` iniziali sono sempre neutralizzati;
+    - ``+`` seguito da un numero puro resta neutralizzato perche Excel/Office
+      lo reinterprettano come formula al round-trip (``+49`` → ``=49``);
+    - ``-`` seguito da un numero puro e un numero negativo, non una formula;
+    - ``+``/``-`` seguito da testo senza connettori di formula (``(``, ``|``,
+      ``!``, ``=``, ``@``, ``+``, ``*``, ``/``, ``%``, tab, CR, LF) e testo
+      osservato (``-5mg``, ``-20 °C``, ``+ treated arm``) e non viene piu
+      corrotto: non esiste percorso di esecuzione senza quei connettori;
+    - qualunque altro prefisso con connettori di formula resta neutralizzato
+      (``+SUM(A1)``, ``-cmd|' /c calc'!A1``, ``-2+3``).
     """
 
     stripped = value.lstrip()
-    if stripped.startswith(_FORMULA_PREFIXES):
+    if not stripped.startswith(_FORMULA_PREFIXES):
+        return value, False
+    sign, rest = stripped[0], stripped[1:]
+    if sign in {"+", "-"}:
         try:
             float(stripped)
         except ValueError:
-            return "'" + value, True
-        if stripped.startswith("+"):
+            pass
+        else:
+            if sign == "-":
+                return value, False
             # "+49" e numericamente valido ma resta un vettore di injection.
             return "'" + value, True
-    return value, False
+        if not any(ch in rest for ch in _FORMULA_CONNECTOR_CHARS):
+            return value, False
+    return "'" + value, True
 
 
 def detect_injection(text: str) -> list[str]:

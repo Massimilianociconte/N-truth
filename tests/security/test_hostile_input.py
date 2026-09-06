@@ -89,6 +89,14 @@ def test_oversized_file_is_rejected(tmp_path: Path, monkeypatch: pytest.MonkeyPa
         ("-5", False),
         ("drug", False),
         ("", False),
+        # Fidelity (audit 2026-09-05): testo osservato, non formula eseguibile.
+        ("-5mg", False),
+        ("-20 °C", False),
+        ("+ treated arm", False),
+        # Restano vettori: connettori di formula o DDE dopo il prefisso.
+        ("+SUM(A1)", True),
+        ("-cmd|' /c calc'!A1", True),
+        ("-2+3", True),
     ],
 )
 def test_formula_injection_is_neutralised(value: str, changed: bool) -> None:
