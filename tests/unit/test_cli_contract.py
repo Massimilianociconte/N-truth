@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -12,6 +13,15 @@ from typer.testing import CliRunner
 from ntruth.cli.main import app
 from ntruth.ingest.project import Project
 from ntruth.storage import StorageDatabase
+
+# Typer/Rich forza i colori quando GITHUB_ACTIONS, FORCE_COLOR o PY_COLORS sono
+# impostati: le sequenze ANSI spezzano stringhe come "--release-profile". Le
+# asserzioni leggono il testo visibile, identico con o senza terminale a colori.
+_ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+
+def _plain(text: str) -> str:
+    return _ANSI.sub("", text)
 
 
 @pytest.mark.parametrize("language", ["it", "en"])
@@ -60,8 +70,8 @@ def test_analyze_v7_rejects_unsupported_language_before_running(tmp_path: Path) 
     )
 
     assert result.exit_code == 2
-    assert "--lang" in result.output
-    assert "fr" in result.output
+    assert "--lang" in _plain(result.output)
+    assert "fr" in _plain(result.output)
     assert not output.exists()
 
 
@@ -69,9 +79,10 @@ def test_analyze_help_exposes_conservative_default_and_experimental_opt_in() -> 
     result = CliRunner().invoke(app, ["analyze-v7", "--help"])
 
     assert result.exit_code == 0, result.output
-    assert "--release-profile" in result.output
-    assert "d0_core" in result.output
-    assert "extended_experimental" in result.output
+    output = _plain(result.output)
+    assert "--release-profile" in output
+    assert "d0_core" in output
+    assert "extended_experimental" in output
 
 
 def test_sample_sheet_cli_generates_and_validates_v6_template(tmp_path: Path) -> None:
