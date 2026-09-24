@@ -10,7 +10,9 @@ permissions:
 jobs:
   deterministic-core:
     runs-on: macos-15
-    timeout-minutes: 30
+    # La suite completa (~4250 test) richiede ~26 min su macos-15: 30 min
+    # interrompevano il job prima di build, policy e smoke di rilascio.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: astral-sh/setup-uv@6b9c6063abd6010835644d4c2e1bef4cf5cd0fca # v6.0
@@ -73,7 +75,9 @@ jobs:
 
   linux-portability:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # 20 min erano inferiori alla durata della suite: il job veniva sempre
+    # annullato e la portabilita Linux non era mai verificata.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: astral-sh/setup-uv@6b9c6063abd6010835644d4c2e1bef4cf5cd0fca # v6.0
