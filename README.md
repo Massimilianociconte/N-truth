@@ -18,7 +18,8 @@ confidence / calibration / OOD machinery. The engineering substrate carries
 v8-named kernel contracts extended with v9 sidecar semantics; PRD v7 remains
 historical behind explicit `DEPRECATED_V7_ADAPTER` surfaces only.
 
-> **Repository status (2026-08-25, baseline `integration/prd-v9-unified`):**
+> **Repository status (2026-09-24, canonical line `main`; the unified PRD v9 baseline
+> `integration/prd-v9-unified` was merged into `main` on 2026-09-24):**
 > `IMPLEMENTED_WITH_EXPLICIT_BLOCKERS`. Scientific validation is **NOT_STARTED**,
 > training execution is **HOLD_PENDING_REAL_ANCHOR**, gold data are **not yet
 > annotated**, no custodied External Challenge corpus exists, and the
