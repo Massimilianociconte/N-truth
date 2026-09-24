@@ -90,3 +90,6 @@ data/training/p0-alpha/engineering-smoke-subset/*.jsonl
 data/training/p0-alpha/DATASET_CARD.md
 benchmarks/fewshot_p0/cases.jsonl
 benchmarks/fewshot_p0/constrained/predictions-C-frozen.jsonl
+
+# PDF di articoli di terzi usati localmente per prove manuali: mai pubblicati.
+paper/

@@ -28,15 +28,10 @@ export type {
   PlanExecutionSubmitResponse,
 } from "./d0/planExecutionTypes";
 
-export class ApiError extends Error {
-  constructor(
-    message: string,
-    readonly status: number,
-    readonly detail?: unknown,
-  ) {
-    super(message);
-  }
-}
+import { ApiError, request } from "./apiTransport";
+export { ApiError } from "./apiTransport";
+export { realityGateV9 } from "./realityGateV9";
+export type { RealityGateV9Flag, RealityGateV9Composition } from "./realityGateV9";
 
 function errorDetailField(error: ApiError, field: string): string | undefined {
   if (!error.detail || typeof error.detail !== "object" || !(field in error.detail)) {
@@ -54,73 +49,8 @@ export function apiErrorIssueId(error: ApiError): string | undefined {
   return errorDetailField(error, "issue_id");
 }
 
-async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, {
-    ...init,
-    headers: { "Content-Type": "application/json", ...init?.headers },
-  });
-  const body = (await response.json().catch(() => null)) as
-    | { detail?: unknown }
-    | null;
-  if (!response.ok) {
-    const detail = body?.detail;
-    const message =
-      typeof detail === "string"
-        ? detail
-        : typeof detail === "object" && detail && "message" in detail
-          ? String(detail.message)
-          : `Richiesta fallita (${response.status})`;
-    throw new ApiError(message, response.status, detail);
-  }
-  return body as T;
-}
-
 export async function health(): Promise<{ status: string; version: string }> {
   return request("/v1/health");
-}
-
-export interface RealityGateV9Flag {
-  name: string;
-  value: { knowledge_state: string };
-}
-
-export interface RealityGateV9Composition {
-  composition_id: string;
-  content_checksum: string;
-  effective_state: string;
-  authorizes_substantive_training: boolean;
-  predicates_satisfied: boolean;
-  v9_evidence_ledger: { predicate_assessments: RealityGateV9Flag[] };
-}
-
-function isRealityGateV9Composition(body: unknown): body is RealityGateV9Composition {
-  if (typeof body !== "object" || body === null) return false;
-  const candidate = body as Record<string, unknown>;
-  const ledger = candidate.v9_evidence_ledger;
-  if (typeof ledger !== "object" || ledger === null) return false;
-  const flags = (ledger as Record<string, unknown>).predicate_assessments;
-  return (
-    typeof candidate.composition_id === "string" &&
-    typeof candidate.content_checksum === "string" &&
-    candidate.content_checksum.length === 64 &&
-    typeof candidate.effective_state === "string" &&
-    typeof candidate.authorizes_substantive_training === "boolean" &&
-    Array.isArray(flags) &&
-    flags.every(
-      (flag) =>
-        typeof flag === "object" &&
-        flag !== null &&
-        typeof (flag as Record<string, unknown>).name === "string",
-    )
-  );
-}
-
-export async function realityGateV9(): Promise<RealityGateV9Composition> {
-  const body: unknown = await request("/v9/reality-gate");
-  if (!isRealityGateV9Composition(body)) {
-    throw new Error("malformed PRD v9 reality gate composition");
-  }
-  return body;
 }
 
 export async function preflight(domain: string): Promise<DomainTransparency> {
@@ -350,17 +280,21 @@ function hasExactKeys(
   );
 }
 
+// Engineering identity pins of the canonical conformance bundle. They must equal
+// the backend registry (theories/reviewed-evaluator-registry-*.json): every audited
+// evaluator pin transition updates them, and tests/unit/test_desktop_contract_pins.py
+// fails when they drift.
 const REVIEWED_CONFORMANCE_ASSET_PINS = {
   theory: "aa37639893e2ba7732496f2eb6a121291e0aad2d3bae51501c8f1ea9e9b6464f",
-  rulebook: "3e8cdb2567106a400b4e075b4d2526c520d24d45cf2778fe5d06524e4293535a",
+  rulebook: "21e1da7294ec392646ef29aa3cb3602f50f363b046cf6ab3de29f1cf44e28d68",
   profile_closure: "1080f48e37b719351554c406d85e8cce7c2106f9f01ee5b8168413f57a747698",
   reference_registry: "7e573af256a1365ca0e3892786f80a6a8f62710ce0e4dc39d1dfef24d2089db3",
   fixture_set: "f7a9b4c0a009fcbf1ae4c7a2bb3b15d8392225cb6e040ec17e2187cb396918e6",
-  evaluator_registry: "303a61eb63849301e34a8030519ce91e6e3a7034f22b068e854979aedbe67b93",
+  evaluator_registry: "ffc5216118c460cd66cef1c0c68e735d9b0b50faa5c6f9e5f5ba8f3efdd31dc8",
 } as const;
 
 const REVIEWED_CONFORMANCE_BUNDLE_CHECKSUM =
-  "b9b2e083789edd140ee9c9fdc9cc346f744c8d3eada312824e85f470dcd810ba";
+  "91958f5d9eb9a94abe7bf2e8376ab0182d926a01b78ebaf921a227b11744b1e4";
 
 function isConformanceBundle(value: unknown): value is JsonRecord {
   if (
@@ -1915,9 +1849,16 @@ export interface ProspectiveD0CompilePayload {
     fileRef: string | null;
   }>;
   language: "it" | "en";
-  rulesetId: "ntruth-core";
-  rulesetVersion: "0.2.0";
+  rulesetId: typeof D0_RULESET_ID;
+  rulesetVersion: typeof D0_RULESET_VERSION;
 }
+
+// Unico ruleset accettato dal compiler D0 (ntruth.rules.loader): una versione
+// stale viene rifiutata con 422 prospective_ruleset_not_allowed.
+export const D0_RULESET_ID = "ntruth-core" as const;
+export const D0_RULESET_VERSION = "0.3.0" as const;
+// Versione di GEN-001 riprodotta dalla preview client (non autorevole).
+export const D0_PREVIEW_RULE = "GEN-001@1.1.0" as const;
 
 export interface ProspectiveD0CompileResponse {
   session_id: string;
@@ -2000,6 +1941,43 @@ export interface ProspectiveD0CompileResponse {
     input_checksum: string;
     output_checksum: string;
   }>;
+}
+
+export interface PseudoreplicationRiskPayload {
+  total_units: number;
+  mean_obs_per_unit: number;
+  groups?: number;
+  alpha?: number;
+  tail?: "ONE_SIDED" | "TWO_SIDED";
+  icc?: number | null;
+}
+
+export interface PseudoreplicationRiskRow {
+  icc: number;
+  alpha_actual: number;
+}
+
+export interface PseudoreplicationRiskResponse {
+  pseudoreplication_risk: {
+    alpha_nominal: number;
+    declared: PseudoreplicationRiskRow | null;
+    sensitivity: PseudoreplicationRiskRow[];
+    naive_df: number;
+    method: string;
+    caveats: string[];
+  };
+  strategy: "HANDOFF_ONLY";
+  input_mode: "HUMAN_DECLARED";
+}
+
+/** Alpha effettiva di un'analisi che tratta osservazioni annidate come indipendenti. */
+export async function pseudoreplicationRisk(
+  payload: PseudoreplicationRiskPayload,
+): Promise<PseudoreplicationRiskResponse> {
+  return request("/v1/power/pseudoreplication-risk", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function compileProspectiveD0(

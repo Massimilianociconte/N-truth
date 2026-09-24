@@ -37,9 +37,9 @@ La voce **Progettazione D0** applica il microdominio congelato della v0.1-D:
    e devono usare soltanto ID pseudonimi;
 6. tipo del fattore, unita biologica target ed estimand minimo espliciti;
 7. verifica degli invarianti, tutti i sette `DeterminabilityState`, conteggi lifecycle scope-aware,
-   Evidence View e anteprima della proof trace `GEN-001@1.0.0`;
+   Evidence View e anteprima della proof trace `GEN-001@1.1.0`;
 8. compilazione canonica tramite `POST /v1/prospective/d0/compile`, ruleset fissato a
-   `ntruth-core@0.2.0` e hard verifier server-side.
+   `ntruth-core@0.3.0` e hard verifier server-side.
 
 Prima della compilazione, lo stato live e la proof trace visibile sono controlli client non
 autorevoli. Il click **Compila con verificatore D0** invia il draft e le righe al motore Python e

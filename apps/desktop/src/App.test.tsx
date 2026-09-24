@@ -34,20 +34,35 @@ describe("N-Truth workspace", () => {
     expect(screen.getByRole("heading", { name: "Progettazione prospettica D0" })).toBeInTheDocument();
   });
 
-  it("labels synthetic demonstration data and exposes the three synchronized views", () => {
+  it("labels synthetic demonstration data and renders one screen per nav voice", () => {
     render(<App />);
     enterSyntheticDemo();
     expect(screen.getByText("Demo storica · dati sintetici")).toBeInTheDocument();
+    // Progetto: overview con blocchi, senza form né grafo né evidenza.
     expect(screen.getByRole("heading", { name: "Blocchi sperimentali" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Target inferenziale" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Grafo del disegno sperimentale" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Evidenza" })).not.toBeInTheDocument();
+    // Esperimenti: master + tab target.
+    fireEvent.click(screen.getByRole("button", { name: "Esperimenti" }));
     expect(screen.getByRole("heading", { name: "Target inferenziale" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Grafo del disegno sperimentale" })).not.toBeInTheDocument();
+    // Grafo: solo struttura.
+    fireEvent.click(screen.getByRole("button", { name: "Grafo" }));
     expect(screen.getByRole("heading", { name: "Grafo del disegno sperimentale" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Target inferenziale" })).not.toBeInTheDocument();
+    // Documenti: solo evidenza.
+    fireEvent.click(screen.getByRole("button", { name: "Documenti" }));
     expect(screen.getByRole("heading", { name: "Evidenza" })).toBeInTheDocument();
+    // Progettazione D0: schermata dedicata.
+    fireEvent.click(screen.getByRole("button", { name: "Progettazione D0" }));
     expect(screen.getByRole("heading", { name: "Progettazione prospettica D0" })).toBeInTheDocument();
   });
 
   it("keeps export gated until the unvalidated domain is acknowledged", () => {
     render(<App />);
     enterSyntheticDemo();
+    fireEvent.click(screen.getByRole("button", { name: "Esporta" }));
     const exportButton = screen.getByRole("button", { name: "Esporta demo JSON" });
     expect(exportButton).toBeDisabled();
     fireEvent.click(screen.getByRole("checkbox", { name: "Ho verificato il limite e confermo" }));
@@ -57,6 +72,7 @@ describe("N-Truth workspace", () => {
   it("requires a rationale before applying a candidate correction", () => {
     render(<App />);
     enterSyntheticDemo();
+    fireEvent.click(screen.getByRole("button", { name: "Correzioni" }));
     const apply = screen.getByRole("button", { name: /Applica e ricalcola/ });
     expect(apply).toBeDisabled();
     fireEvent.change(screen.getByRole("spinbutton", { name: "Nuovo valore di n" }), { target: { value: "8" } });
@@ -64,12 +80,18 @@ describe("N-Truth workspace", () => {
     expect(apply).toBeEnabled();
   });
 
-  it("requires and records target plus minimum estimand before compilation", () => {
+  it("requires and records target plus minimum estimand before compilation", async () => {
     render(<App />);
     enterSyntheticDemo();
+    fireEvent.click(screen.getByRole("button", { name: "Esperimenti" }));
     fireEvent.click(screen.getByRole("button", { name: "Modifica target" }));
     const compile = screen.getByRole("button", { name: /Conferma target ed estimand/ });
     expect(compile).toBeDisabled();
+    // Gate di comprensione: 3 risposte corrette prima di sbloccare la conferma.
+    fireEvent.click(screen.getByRole("radio", { name: "L'unità assegnata al trattamento" }));
+    fireEvent.click(screen.getByRole("radio", { name: "n = 1: i 12 sono osservazioni replicate" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Consegna vincoli e domande allo statistico, senza suggerire test" }));
+    expect(await screen.findByText(/Comprensione registrata per questo blocco/)).toBeInTheDocument();
     fireEvent.change(screen.getByPlaceholderText(/Perché questo è il target corretto/), {
       target: { value: "Domanda e popolazione sono state confermate dal ricercatore." },
     });
@@ -81,8 +103,11 @@ describe("N-Truth workspace", () => {
   it("shows the non-certifying review output and typed evidence", () => {
     render(<App />);
     enterSyntheticDemo();
-    expect(screen.getByRole("heading", { name: "Methods e percorso di revisione" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Documenti" }));
     expect(screen.getByText(/Tipo AUTHOR_ASSERTION/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Esperimenti" }));
+    expect(screen.getByRole("heading", { name: "Methods e percorso di revisione" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "Methods e handoff" }));
     fireEvent.click(screen.getByText(/DRIVER · mappatura informativa/));
     expect(screen.getByText(/DRIVER-1 · Experimental unit/)).toBeInTheDocument();
   });
@@ -91,16 +116,22 @@ describe("N-Truth workspace", () => {
     render(<App />);
     enterSyntheticDemo();
     fireEvent.click(screen.getByRole("button", { name: "Switch interface to English" }));
+    fireEvent.click(screen.getByRole("button", { name: "D0 design" }));
     expect(screen.getByRole("heading", { name: "Prospective D0 design" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Project" }));
     expect(screen.getByRole("heading", { name: "Experiment blocks" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Graph" }));
     expect(screen.getByRole("heading", { name: "Experimental design graph" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Corrections" }));
     expect(screen.getByRole("heading", { name: "Human correction" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Experiments" }));
     expect(screen.getByRole("heading", { name: "Methods and review path" })).toBeInTheDocument();
   });
 
   it("edits graph nodes through an append-only candidate correction", () => {
     render(<App />);
     enterSyntheticDemo();
+    fireEvent.click(screen.getByRole("button", { name: "Grafo" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "Abilita canvas esteso sperimentale" }));
     fireEvent.click(screen.getByRole("button", { name: "Modifica grafo" }));
     fireEvent.change(screen.getByLabelText("Etichetta"), {
@@ -114,6 +145,7 @@ describe("N-Truth workspace", () => {
   it("indexes candidate exports by block instead of relabeling a stale payload", () => {
     render(<App />);
     enterSyntheticDemo();
+    fireEvent.click(screen.getByRole("button", { name: "Correzioni" }));
     const candidateExport = screen.getByRole("button", { name: "Esporta candidate" });
     expect(candidateExport).toBeDisabled();
     fireEvent.change(screen.getByRole("spinbutton", { name: "Nuovo valore di n" }), {
@@ -125,13 +157,16 @@ describe("N-Truth workspace", () => {
     fireEvent.click(screen.getByRole("button", { name: /Applica e ricalcola/ }));
     expect(candidateExport).toBeEnabled();
 
+    fireEvent.click(screen.getByRole("button", { name: "Esperimenti" }));
     fireEvent.click(screen.getByRole("button", { name: /Trattamento antibiotico/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Correzioni" }));
     expect(screen.getByRole("button", { name: "Esporta candidate" })).toBeDisabled();
   });
 
   it("offers only scientifically allocatable node types for factor levels", () => {
     render(<App />);
     enterSyntheticDemo();
+    fireEvent.click(screen.getByRole("button", { name: "Grafo" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "Abilita canvas esteso sperimentale" }));
     fireEvent.click(screen.getByRole("button", { name: "Modifica grafo" }));
     const allocation = screen.getByLabelText("Allocazione");
@@ -148,6 +183,7 @@ describe("N-Truth workspace", () => {
   it("keeps the post-v0.1 free canvas behind an explicit experimental gate", () => {
     render(<App />);
     enterSyntheticDemo();
+    fireEvent.click(screen.getByRole("button", { name: "Grafo" }));
     expect(screen.getByText("Canvas esteso sperimentale · post-v0.1-D")).toBeInTheDocument();
     expect(screen.getByText("Canvas non attivo")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Modifica grafo" })).not.toBeInTheDocument();
@@ -289,9 +325,12 @@ describe("N-Truth workspace", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Avvia analisi v7 deprecata" }));
 
-    expect(await screen.findByText("Revisione privacy richiesta")).toBeInTheDocument();
+    expect(await screen.findByText("Analisi fixture completata.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Esporta" }));
+    const exportScreen = screen.getByTestId("export-screen");
+    expect(within(exportScreen).getByText("Revisione privacy richiesta")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Salva report" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Scarica RO-Crate locale" })).toBeDisabled();
-    expect(screen.getByText(/privacy_findings_require_policy/)).toBeInTheDocument();
+    expect(within(exportScreen).getByText(/privacy_findings_require_policy/)).toBeInTheDocument();
   });
 });

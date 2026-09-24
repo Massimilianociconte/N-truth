@@ -196,7 +196,7 @@ describe("Prospective D0 workspace", () => {
     const [, request] = fetchMock.mock.calls[0];
     const payload = JSON.parse(String(request?.body));
     expect(payload.rulesetId).toBe("ntruth-core");
-    expect(payload.rulesetVersion).toBe("0.2.0");
+    expect(payload.rulesetVersion).toBe("0.3.0");
     expect(payload.draft.experimentBlockId).toMatch(/^EB-D0-/);
     expect(payload.draft).toMatchObject({
       factorKind: "treatment",
@@ -224,7 +224,7 @@ describe("Prospective D0 workspace", () => {
     expect(within(counts).getAllByText("NOT_REPORTED").length).toBeGreaterThan(0);
     expect(screen.getByText("NOT_CALCULATED")).toBeInTheDocument();
 
-    expect(screen.getByRole("heading", { name: "Proof trace · GEN-001@1.0.0" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Proof trace · GEN-001@1.1.0" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /samplesheet_invariants_valid/ }));
     expect(screen.getByText(/righe prospettiche; ID, provenienza/)).toBeInTheDocument();
     expect(screen.getByRole("table", { name: "Unita e n canonici API" })).toHaveTextContent(

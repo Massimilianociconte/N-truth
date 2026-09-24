@@ -23,7 +23,6 @@ import {
   Save,
   Search,
   Settings,
-  ChevronDown,
   ShieldAlert,
   Sparkles,
   Undo2,
@@ -70,6 +69,7 @@ import {
 import type {
   Alert,
   AnalysisResponse,
+  AssessmentScope,
   AuditEntry,
   BlockReviewOutput,
   DesignCompilation,
@@ -106,6 +106,21 @@ const NAVIGATION: Array<{ id: View; it: string; en: string; icon: Icon }> = [
   { id: "corrections", it: "Correzioni", en: "Corrections", icon: PencilLine },
   { id: "export", it: "Esporta", en: "Export", icon: ArrowDownToLine },
 ];
+
+/** Raggruppamento visivo Fase 1: 5 gruppi percepiti, 8 bottoni invariati.
+ * Nessun cambio di id/label/aria-label/onClick/ordine/tab-order. */
+const NAV_GROUPS: Array<{ key: string; it: string; en: string; ids: View[] }> = [
+  { key: "design", it: "Progetta", en: "Design", ids: ["prospective"] },
+  { key: "frame", it: "Inquadra", en: "Frame", ids: ["project", "experiments"] },
+  { key: "clarify", it: "Chiarisci", en: "Clarify", ids: ["questions", "graph"] },
+  { key: "sources", it: "Fonti e correzioni", en: "Sources & corrections", ids: ["documents", "corrections"] },
+  { key: "share", it: "Condividi", en: "Share", ids: ["export"] },
+];
+
+const NAV_BY_ID: Record<View, { id: View; it: string; en: string; icon: Icon }> =
+  Object.fromEntries(NAVIGATION.map((item) => [item.id, item])) as Record<
+    View, { id: View; it: string; en: string; icon: Icon }
+  >;
 
 const SEVERITY_LABEL: Record<Severity, string> = {
   critical: "Critica",
@@ -203,8 +218,19 @@ const EDITABLE_RELATION_TYPES = [
   "declares_clustering",
 ];
 
-function evidenceLocator(evidence?: EvidenceSpan): string {
-  if (!evidence) return "Evidenza non localizzata";
+/** Label semplici accanto al termine canonico (il canonico resta invariato). */
+const EVIDENCE_TYPE_LABEL: Record<string, { it: string; en: string }> = {
+  STRUCTURAL_FACT: { it: "Fatto dal disegno", en: "Design fact" },
+  AUTHOR_ASSERTION: { it: "Dichiarazione autori", en: "Author statement" },
+  SAMPLE_METADATA: { it: "Info campione", en: "Sample info" },
+  STATISTICAL_CODE: { it: "Codice analisi", en: "Analysis code" },
+  USER_CONFIRMATION: { it: "Conferma utente", en: "User confirmation" },
+  MODEL_INFERENCE: { it: "Lettura automatica", en: "Automatic reading" },
+  DERIVED_FACT: { it: "Fatto calcolato", en: "Computed fact" },
+  CONFLICTING_EVIDENCE: { it: "Versioni in contrasto", en: "Conflicting versions" },
+};
+
+function evidenceLocator(evidence?: EvidenceSpan): string {  if (!evidence) return "Evidenza non localizzata";
   if (evidence.cell) {
     const sheet = evidence.cell.sheet ? `${evidence.cell.sheet}!` : "";
     return `${sheet}${evidence.cell.table_id} · riga ${evidence.cell.row + 1} · ${evidence.cell.column}`;
@@ -223,13 +249,13 @@ function formatAuditTime(value: string | undefined, language: "it" | "en"): stri
 function focusId(view: View): string {
   return {
     prospective: "d0-panel",
-    project: "workspace",
-    documents: "evidence-panel",
-    experiments: "blocks-panel",
-    graph: "graph-panel",
-    questions: "inference-panel",
-    corrections: "correction-panel",
-    export: "export-bar",
+    project: "project-heading",
+    documents: "evidence-heading",
+    experiments: "blocks-heading",
+    graph: "graph-heading",
+    questions: "issues-heading",
+    corrections: "correction-heading",
+    export: "export-heading",
   }[view];
 }
 
@@ -300,21 +326,44 @@ function StatusSheet({
 }) {
   const it = language === "it";
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLElement>(null);
   useEffect(() => closeButtonRef.current?.focus(), []);
+  const handleDialogKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onClose();
+      return;
+    }
+    if (event.key !== "Tab" || !dialogRef.current) return;
+    const focusable = Array.from(
+      dialogRef.current.querySelectorAll<HTMLElement>(
+        "button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])",
+      ),
+    ).filter((element) => !element.hasAttribute("hidden"));
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && (document.activeElement === first || !dialogRef.current.contains(document.activeElement))) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
   return (
     <div
       className="dialog-backdrop"
       role="presentation"
-      onKeyDown={(event) => {
-        if (event.key === "Escape") onClose();
-      }}
       onMouseDown={(event) => event.target === event.currentTarget && onClose()}
     >
       <section
+        ref={dialogRef}
         className="dialog status-sheet"
         role="dialog"
         aria-modal="true"
         aria-labelledby="status-title"
+        onKeyDown={handleDialogKeyDown}
       >
         <div className="dialog-header">
           <div>
@@ -360,6 +409,262 @@ function StatusSheet({
   );
 }
 
+/** Lista blocchi riusata nelle schermate Progetto (overview) ed Esperimenti (master).
+ * Gli id sono parametrizzati: una sola istanza conserva gli id canonici
+ * (focus + aria), le altre usano suffissi per non duplicare il DOM. */
+function BlockListPanel({
+  blocks,
+  summaries,
+  selectedBlockId,
+  onSelect,
+  language,
+  focused = false,
+  panelId = "blocks-panel",
+  headingId = "blocks-heading",
+}: {
+  blocks: ExperimentBlock[];
+  summaries: Report["summaries"];
+  selectedBlockId?: string;
+  onSelect: (blockId: string) => void;
+  language: "it" | "en";
+  focused?: boolean;
+  panelId?: string;
+  headingId?: string;
+}) {
+  const it = language === "it";
+  return (
+    <section
+      id={panelId}
+      className={`panel block-list-panel${focused ? " focused-panel" : ""}`}
+      aria-labelledby={headingId}
+    >
+      <div className="panel-heading">
+        <div>
+          <span className="eyebrow">{it ? "Unità primaria di revisione" : "Primary review unit"}</span>
+          <h2 id={headingId}>{it ? "Blocchi sperimentali" : "Experiment blocks"}</h2>
+        </div>
+        <span className="count-label">{blocks.length}</span>
+      </div>
+      <div className="block-list">
+        {blocks.map((item, index) => {
+          const summary = summaries.find((entry) => entry.block_id === item.id);
+          const active = item.id === selectedBlockId;
+          return (
+            <button
+              key={item.id}
+              className={active ? "block-card selected" : "block-card"}
+              onClick={() => onSelect(item.id)}
+              aria-pressed={active}
+            >
+              <span className="block-index">E{index + 1}</span>
+              <span className="block-copy">
+                <strong>{item.title || `${it ? "Esperimento" : "Experiment"} ${index + 1}`}</strong>
+                <small>{item.evidence[0]?.section_title ?? (it ? "Fonte" : "Source")} · {item.source_file_ids.length} file</small>
+                <span className="block-meta">
+                  {item.corrections.length ? <><Check size={14} aria-hidden="true" /> {it ? "Corretto" : "Corrected"}</> : <><span className="empty-dot" /> {it ? "Da revisionare" : "Needs review"}</>}
+                  <span><Link2 size={14} aria-hidden="true" /> {summary?.n_alerts ?? item.alerts.length} {it ? "questioni" : "issues"}</span>
+                </span>
+              </span>
+              <ChevronRight size={17} className="block-chevron" aria-hidden="true" />
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function ReviewProgress({
+  reviewed,
+  total,
+  language,
+}: {
+  reviewed: number;
+  total: number;
+  language: "it" | "en";
+}) {
+  const it = language === "it";
+  const progress = total ? Math.round((reviewed / total) * 100) : 0;
+  return (
+    <div className="review-progress">
+      <div className="progress-title"><Check size={19} aria-hidden="true" /> <strong>{reviewed} {it ? "di" : "of"} {total} {it ? "blocchi corretti" : "corrected blocks"}</strong></div>
+      <div className="progress-track"><span style={{ width: `${progress}%` }} /></div>
+      <small>{progress}%</small>
+    </div>
+  );
+}
+
+function DomainGate({
+  report,
+  domainAcknowledged,
+  onAcknowledge,
+  language,
+  withCheckbox,
+}: {
+  report: Report;
+  domainAcknowledged: boolean;
+  onAcknowledge: (value: boolean) => void;
+  language: "it" | "en";
+  withCheckbox: boolean;
+}) {
+  const it = language === "it";
+  return (
+    <div className="domain-gate">
+      <ShieldAlert size={22} aria-hidden="true" />
+      <div>
+        <strong>{report.domain_transparency.validation_status === "validated" ? (it ? "Dominio validato" : "Validated domain") : (it ? "Dominio non validato" : "Unvalidated domain")}</strong>
+        <p>{report.domain_transparency.warning}</p>
+        {withCheckbox && report.domain_transparency.requires_acknowledgement && (
+          <label><input type="checkbox" checked={domainAcknowledged} onChange={(event) => onAcknowledge(event.target.checked)} /> {it ? "Ho verificato il limite e confermo" : "I reviewed and acknowledge this limitation"}</label>
+        )}
+        {!withCheckbox && report.domain_transparency.requires_acknowledgement && !domainAcknowledged && (
+          <small>{it ? "Conferma richiesta nella schermata Esporta." : "Acknowledgement required in the Export screen."}</small>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PrivacyGate({
+  isDemo,
+  privacyAudit,
+  shareReadiness,
+  language,
+}: {
+  isDemo: boolean;
+  privacyAudit?: PrivacyAudit;
+  shareReadiness?: ShareReadiness;
+  language: "it" | "en";
+}) {
+  const it = language === "it";
+  return (
+    <div className={`privacy-gate ${privacyAudit?.status ?? "not-evaluated"}`}>
+      <ShieldAlert size={22} aria-hidden="true" />
+      <div>
+        <strong>
+          {isDemo
+            ? it ? "Privacy non valutata nella demo" : "Privacy not evaluated in demo"
+            : privacyAudit?.status === "clean"
+              ? it ? "Scansione privacy pulita" : "Privacy scan clean"
+              : it ? "Revisione privacy richiesta" : "Privacy review required"}
+        </strong>
+        <p>
+          {isDemo
+            ? it ? "L’export demo resta marcato come non scientifico." : "Demo export remains marked as non-scientific."
+            : privacyAudit?.status === "clean"
+              ? it ? `${privacyAudit.scanned_fields} campi verificati localmente. La distribuzione resta soggetta a un gate esplicito.` : `${privacyAudit.scanned_fields} fields checked locally. Distribution still requires an explicit gate.`
+              : it ? `${privacyAudit?.finding_count ?? 0} finding: export locale bloccato finché non viene applicata una policy.` : `${privacyAudit?.finding_count ?? 0} findings: local export is blocked until a policy is applied.`}
+        </p>
+        {!isDemo && shareReadiness && (
+          <small>
+            {it ? "Condivisione non autorizzata" : "Sharing not authorized"}
+            {shareReadiness.reasons.length ? ` · ${shareReadiness.reasons.join(" · ")}` : ""}
+          </small>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Schermata Elicitazione: solo chiarire ciò che sblocca una decisione.
+ * Read-only: il form target vive solo in Esperimenti, qui solo link. */
+function QuestionsScreen({
+  block,
+  compilation,
+  reviewOutput,
+  rulesetVersion,
+  selectedAlertId,
+  onSelectAlert,
+  language,
+  onOpenExperiments,
+  onOpenCorrections,
+  onOpenDocuments,
+}: {
+  block?: ExperimentBlock;
+  compilation?: DesignCompilation;
+  reviewOutput?: BlockReviewOutput;
+  rulesetVersion?: string | null;
+  selectedAlertId?: string;
+  onSelectAlert: (alertId: string, evidenceId?: string) => void;
+  language: "it" | "en";
+  onOpenExperiments: () => void;
+  onOpenCorrections: () => void;
+  onOpenDocuments: () => void;
+}) {
+  const it = language === "it";
+  if (!block) return <EmptyState language={language} />;
+  const blocking = compilation?.elicitation.questions ?? [];
+  return (
+    <section className="panel questions-screen" aria-labelledby="issues-heading">
+      <div className="panel-heading">
+        <div>
+          <span className="eyebrow">Ruleset {String(rulesetVersion ?? "—")}</span>
+          <h2 id="issues-heading">{it ? "Questioni rilevate" : "Detected issues"}</h2>
+        </div>
+        <span className="panel-tools">
+          <span className="count-label">{block.alerts.length}</span>
+        </span>
+      </div>
+      <div className="questions-body">
+      {reviewOutput?.discriminating_question && (
+        <div className="discriminating">
+          <span className="eyebrow">{it ? "Domanda discriminante" : "Discriminating question"}</span>
+          <blockquote>{reviewOutput.discriminating_question.text}</blockquote>
+        </div>
+      )}
+      {!!blocking.length && (
+        <div className="blocking-questions">
+          <span className="eyebrow">
+            {it ? `Domande bloccanti (${blocking.length})` : `Blocking questions (${blocking.length})`}
+          </span>
+          <ul>
+            {blocking.map((item) => (
+              <li key={item.id}>{item.text}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <div className="issue-list">
+        {block.alerts.map((alert) => (
+          <IssueCard
+            key={alert.id}
+            alert={alert}
+            selected={alert.id === selectedAlertId}
+            language={language}
+            onSelect={() => onSelectAlert(alert.id, alert.evidence_ids[0])}
+          />
+        ))}
+        {!block.alerts.length && (
+          <p className="muted empty-copy">{it ? "Nessun alert generato dal ruleset attivo." : "No alerts generated by the active ruleset."}</p>
+        )}
+      </div>
+      {!!block.questions.length && (
+        <details className="questions-drawer">
+          <summary>{block.questions.length} {it ? "domande mirate agli autori" : "targeted questions for the authors"}</summary>
+          <ul>{block.questions.map((item) => (
+            <li key={item.id}>
+              {item.decisive && <strong>{it ? "Decisiva" : "Decisive"} · </strong>}{item.text}
+              {item.priority != null && <small> {it ? "priorita" : "priority"} {item.priority}</small>}
+            </li>
+          ))}</ul>
+        </details>
+      )}
+      <div className="screen-ctas">
+        <button type="button" className="button secondary compact" onClick={onOpenExperiments}>
+          {it ? "Rispondi in Esperimenti" : "Answer in Experiments"}
+        </button>
+        <button type="button" className="button secondary compact" onClick={onOpenCorrections}>
+          {it ? "Vai a Correzioni" : "Go to Corrections"}
+        </button>
+        <button type="button" className="button secondary compact" onClick={onOpenDocuments}>
+          {it ? "Verifica le fonti" : "Check the sources"}
+        </button>
+      </div>
+      </div>
+    </section>
+  );
+}
+
 export function App() {
   const [report, setReport] = useState<Report>(DEMO_REPORT);
   const [quickDesignResult, setQuickDesignResult] = useState<QuickDesignV8Response>();
@@ -374,6 +679,12 @@ export function App() {
   const [apiState, setApiState] = useState<"checking" | "online" | "offline">("checking");
   const [showImport, setShowImport] = useState(false);
   const importButtonRef = useRef<HTMLButtonElement>(null);
+  const statusButtonRef = useRef<HTMLButtonElement>(null);
+  const viewScrollRef = useRef<HTMLDivElement>(null);
+  const closeStatus = () => {
+    setShowStatus(false);
+    window.setTimeout(() => statusButtonRef.current?.focus(), 0);
+  };
   const [sessionId, setSessionId] = useState<string>();
   const [artifacts, setArtifacts] = useState<Record<string, string>>({});
   const [audit, setAudit] = useState<Record<string, AuditEntry[]>>({});
@@ -388,15 +699,53 @@ export function App() {
   const [domainAcknowledged, setDomainAcknowledged] = useState(false);
   const [wizardInitialStep, setWizardInitialStep] = useState(1);
   const [restoreInfo, setRestoreInfo] = useState<{ abrupt: boolean; at: string }>();
-  // Accordion dashboard: i pannelli lunghi partono chiusi; la nav apre il pannello richiesto.
+  // Accordion residuo per compatibilità checkpoint: il routing vero non usa collapse.
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({
     "graph-panel": true,
     "issues-panel": true,
     "review-output": true,
   });
-  const togglePanel = (id: string) =>
-    setCollapsed((current) => ({ ...current, [id]: !current[id] }));
-  const expandPanel = (id: string) => setCollapsed((current) => ({ ...current, [id]: false }));
+  // Tab contestuali L2: preferenza presentazionale per blocco, default fail-closed su target.
+  // Non persistita nel checkpoint (ricostruibile, evita merge tra schede).
+  const [blockTab, setBlockTab] = useState<Record<string, BlockTabKey>>({});
+  const selectBlockTab = (blockId: string, tab: BlockTabKey) =>
+    setBlockTab((current) => ({ ...current, [blockId]: tab }));
+  // Gate di comprensione: uno stato leggero per blocco, persistito come domain_acknowledged.
+  const [gateState, setGateState] = useState<Record<string, GateState>>({});
+  const passGate = (blockId: string) => {
+    setGateState((current) => ({
+      ...current,
+      [blockId]: {
+        passed: true,
+        skipped: false,
+        motivation: "",
+        attempts: current[blockId]?.attempts ?? 0,
+        answeredAt: new Date().toISOString(),
+      },
+    }));
+    setNotice(
+      uiLanguage === "it"
+        ? "Comprensione registrata per questo blocco. Non è un'approvazione del disegno."
+        : "Comprehension recorded for this block. Not a design approval.",
+    );
+  };
+  const skipGate = (blockId: string, motivation: string) => {
+    setGateState((current) => ({
+      ...current,
+      [blockId]: {
+        passed: false,
+        skipped: true,
+        motivation,
+        attempts: current[blockId]?.attempts ?? 0,
+        answeredAt: new Date().toISOString(),
+      },
+    }));
+    setNotice(
+      uiLanguage === "it"
+        ? "Skip registrato con motivazione. Non è un'approvazione del disegno."
+        : "Skip recorded with motivation. Not a design approval.",
+    );
+  };
   const [notice, setNotice] = useState<string>();
   const [demoPast, setDemoPast] = useState<Report[]>([]);
   const [demoFuture, setDemoFuture] = useState<Report[]>([]);
@@ -444,6 +793,14 @@ export function App() {
   }, [selectedAlertId, selectedBlock]);
 
   const workspaceActive = surface === "workspace" || quickDesignResult !== undefined;
+  // A canonical v8 ReportBundle replaces the document-review workspace: only the
+  // D0 planner and the report itself ("project") apply. The v7 views would show
+  // the synthetic demo still held in `report` as if it were the user's project.
+  const quickDesignActive = quickDesignResult !== undefined;
+  const viewAppliesToQuickDesign = (view: View): boolean =>
+    view === "prospective" || view === "project";
+  // Routing vero: ogni voce apre UNA schermata (render condizionale su activeView),
+  // contenuta nella viewport. Niente scroll-spy, niente espansioni di pannelli.
   const navigate = (view: View) => {
     if (!workspaceActive && view !== "prospective") {
       setNotice(
@@ -453,12 +810,34 @@ export function App() {
       );
       return;
     }
-    if (view === "graph") expandPanel("graph-panel");
-    if (view === "questions") expandPanel("inference-panel");
-    if (view === "corrections" || view === "documents") expandPanel("review-output");
+    if (quickDesignActive && !viewAppliesToQuickDesign(view)) {
+      setNotice(
+        uiLanguage === "it"
+          ? "Vista non applicabile al ReportBundle v8 del Quick Design: riguarda la revisione di fonti importate."
+          : "View not applicable to the Quick Design v8 ReportBundle: it covers review of imported sources.",
+      );
+      return;
+    }
     setActiveView(view);
+    // Torna in cima alla schermata (no-op sicuro in jsdom/test).
+    try {
+      viewScrollRef.current?.scrollTo?.({ top: 0 });
+    } catch {
+      // Contenitore non scrollabile in test: il focus resta la via di orientamento.
+    }
     requestAnimationFrame(() => {
-      document.getElementById(focusId(view))?.scrollIntoView({ behavior: "smooth", block: "start" });
+      // Il focus sull'h2 della vista è l'annuncio per tastiera e screen-reader.
+      const heading = document.getElementById(focusId(view));
+      if (!heading) return;
+      if (!heading.hasAttribute("tabindex")) {
+        heading.setAttribute("tabindex", "-1");
+        heading.addEventListener("blur", () => heading.removeAttribute("tabindex"), { once: true });
+      }
+      try {
+        (heading as HTMLElement).focus({ preventScroll: true });
+      } catch {
+        // jsdom/test senza focus layout: l'heading resta il punto di orientamento.
+      }
     });
   };
 
@@ -958,6 +1337,8 @@ export function App() {
     setAudit({});
     setCorrectionState({});
     setCandidateExports({});
+    setBlockTab({});
+    setGateState({});
     applyGovernanceState(response);
   };
 
@@ -984,18 +1365,20 @@ export function App() {
     setSelectedBlockId(DEMO_REPORT.blocks[0].id);
     setSelectedAlertId(DEMO_REPORT.blocks[0].alerts[0].id);
     setDomainAcknowledged(false);
+    setBlockTab({});
+    setGateState({});
   };
 
   // Deep-link QA/demo: ?demo=1 workspace sintetico, ?status=1 pannello gate,
   // ?wizard=N apre l'import direttamente al passo N del builder guidato.
+  // ?view= apre direttamente la schermata richiesta (routing vero, niente scroll).
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("demo") === "1") {
       openSyntheticDemo();
       const view = params.get("view");
-      if (view === "graph") {
-        setCollapsed((current) => ({ ...current, "graph-panel": false }));
-        setActiveView("graph");
+      if (view && (["prospective", "project", "documents", "experiments", "graph", "questions", "corrections", "export"] as const).includes(view as View)) {
+        setActiveView(view as View);
       }
     }
     if (params.get("status") === "1") setShowStatus(true);
@@ -1023,6 +1406,20 @@ export function App() {
           setActiveView((ui.active_view as View) ?? "experiments");
           setCollapsed(ui.collapsed ?? {});
           setDomainAcknowledged(Boolean(ui.domain_acknowledged));
+          if (ui.comprehension_gate) {
+            const restored: Record<string, GateState> = {};
+            for (const [blockId, record] of Object.entries(ui.comprehension_gate)) {
+              if (record && (record.passed || record.skipped)) {
+                restored[blockId] = {
+                  passed: Boolean(record.passed),
+                  skipped: Boolean(record.skipped),
+                  motivation: typeof record.motivation === "string" ? record.motivation : "",
+                  attempts: typeof record.attempts === "number" ? record.attempts : 0,
+                };
+              }
+            }
+            setGateState(restored);
+          }
         }
         if (cp.corrections) setCorrectionState(cp.corrections as typeof correctionState);
         if (cp.candidate_exports) setCandidateExports(cp.candidate_exports as typeof candidateExports);
@@ -1061,6 +1458,7 @@ export function App() {
           selected_evidence: selectedEvidenceId,
           collapsed,
           domain_acknowledged: domainAcknowledged,
+          comprehension_gate: gateState,
         },
       });
     }, 400);
@@ -1069,7 +1467,7 @@ export function App() {
     surface, isDemo, sessionId, report, quickDesignResult, correctionState,
     candidateExports, audit, privacyAudit, shareReadiness, activeView,
     selectedBlockId, selectedAlertId, selectedEvidenceId, collapsed,
-    domainAcknowledged,
+    domainAcknowledged, gateState,
   ]);
 
   useEffect(() => {
@@ -1102,6 +1500,8 @@ export function App() {
     setAudit({});
     setPrivacyAudit(undefined);
     setShareReadiness(undefined);
+    setBlockTab({});
+    setGateState({});
     setActiveView("project");
     setShowStatus(false);
   };
@@ -1111,36 +1511,93 @@ export function App() {
   const exportBlocked =
     (report.domain_transparency.requires_acknowledgement && !domainAcknowledged) ||
     privacyExportBlocked;
+  // Badge sobri testuali per la nav (mai solo colore; aria-hidden, il nome resta canonico).
+  // With a v8 ReportBundle open, the report is the "project" view whatever view
+  // a restored checkpoint remembered.
+  const effectiveView: View =
+    quickDesignActive && !viewAppliesToQuickDesign(activeView) ? "project" : activeView;
+  const navBadges: Partial<Record<View, string>> = workspaceActive && !quickDesignActive
+    ? {
+        experiments: `${report.blocks.length} ${uiLanguage === "it" ? "blocchi" : "blocks"}`,
+        questions: (() => {
+          const open = report.blocks.flatMap((item) => item.questions).filter((item) => item.decisive).length;
+          return open > 0 ? `${open} ${uiLanguage === "it" ? "bloccanti" : "blocking"}` : undefined;
+        })(),
+        documents: selectedBlock && selectedBlock.evidence.length > 0
+          ? `${selectedBlock.evidence.length} span`
+          : undefined,
+        corrections: (() => {
+          const total = report.blocks.reduce((sum, item) => sum + item.corrections.length, 0);
+          return total > 0 ? `${total} ${uiLanguage === "it" ? "candidate" : "candidates"}` : undefined;
+        })(),
+        export: exportBlocked ? (uiLanguage === "it" ? "gate" : "gated") : undefined,
+      }
+    : {};
 
   return (
     <div className="app-shell">
       <aside className="sidebar" aria-label={uiLanguage === "it" ? "Navigazione principale" : "Main navigation"}>
         <div className="brand"><strong>N-TRUTH</strong><small>DESIGN COMPILER</small></div>
         <nav className="primary-nav">
-          {NAVIGATION.map(({ id, it, en, icon: NavIcon }) => {
-            const label = uiLanguage === "it" ? it : en;
-            const disabled = !workspaceActive;
-            return (
-            <button
-              key={id}
-              className={`nav-item${disabled ? " disabled" : activeView === id ? " active" : ""}`}
-              onClick={() => navigate(id)}
-              aria-current={!disabled && activeView === id ? "page" : undefined}
-              aria-disabled={disabled || undefined}
-              title={
-                disabled
-                  ? uiLanguage === "it"
-                    ? "Attiva un progetto (demo o import) per usare questa sezione"
-                    : "Activate a project (demo or import) to use this section"
-                  : undefined
-              }
-              aria-label={label}
+          {NAV_GROUPS.map((group) => (
+            <div
+              key={group.key}
+              className="nav-group"
+              role="group"
+              aria-labelledby={`nav-group-${group.key}`}
             >
-              <NavIcon size={20} strokeWidth={1.8} />
-              <span>{label}</span>
-            </button>
-            );
-          })}
+              <span className="nav-group-heading" id={`nav-group-${group.key}`}>
+                {uiLanguage === "it" ? group.it : group.en}
+              </span>
+              {group.ids.map((id) => {
+                const { it, en, icon: NavIcon } = NAV_BY_ID[id];
+                const label = uiLanguage === "it" ? it : en;
+                const notApplicable = quickDesignActive && !viewAppliesToQuickDesign(id);
+                const disabled = !workspaceActive || notApplicable;
+                // Sottotitolo operativo: conserva il termine canonico (aria-label),
+                // aggiunge una riga semplice via title senza rinominare la voce.
+                const plainHint: Record<View, { it: string; en: string }> = {
+                  prospective: { it: "Progetta prima di eseguire: domanda, unità, piano", en: "Design before running: question, units, plan" },
+                  project: { it: "Riepilogo del progetto e stato di revisione", en: "Project summary and review status" },
+                  documents: { it: "Fonti sincronizzate ed evidenza citabile", en: "Synchronised sources and citable evidence" },
+                  experiments: { it: "Blocchi sperimentali da revisionare", en: "Experiment blocks to review" },
+                  graph: { it: "Struttura ricostruita del disegno", en: "Reconstructed design structure" },
+                  questions: { it: "Domande da chiarire, bloccanti e informative", en: "Questions to clarify, blocking and informative" },
+                  corrections: { it: "Correzioni proposte, candidate e mai gold", en: "Proposed corrections, candidate and never gold" },
+                  export: { it: "Gate di dominio e privacy, poi export locale", en: "Domain and privacy gates, then local export" },
+                };
+                const hint = uiLanguage === "it" ? plainHint[id].it : plainHint[id].en;
+                const badge = navBadges[id];
+                return (
+                <button
+                  key={id}
+                  className={`nav-item${disabled ? " disabled" : effectiveView === id ? " active" : ""}`}
+                  onClick={() => navigate(id)}
+                  aria-current={!disabled && effectiveView === id ? "page" : undefined}
+                  aria-disabled={disabled || undefined}
+                  title={
+                    notApplicable
+                      ? uiLanguage === "it"
+                        ? `Non applicabile al ReportBundle v8 del Quick Design · ${hint}`
+                        : `Not applicable to the Quick Design v8 ReportBundle · ${hint}`
+                      : disabled
+                      ? uiLanguage === "it"
+                        ? `Attiva un progetto (demo o import) per usare questa sezione · ${hint}`
+                        : `Activate a project (demo or import) to use this section · ${hint}`
+                      : badge
+                        ? `${hint} · ${badge}`
+                        : hint
+                  }
+                  aria-label={label}
+                >
+                  <NavIcon size={20} strokeWidth={1.8} aria-hidden="true" />
+                  <span>{label}</span>
+                  {badge && <span className="nav-count" aria-hidden="true">{badge}</span>}
+                </button>
+                );
+              })}
+            </div>
+          ))}
           {!workspaceActive && (
             <p className="nav-hint">
               {uiLanguage === "it"
@@ -1150,7 +1607,7 @@ export function App() {
           )}
         </nav>
         <div className="sidebar-footer">
-          <button className="nav-item" onClick={() => setShowStatus(true)}>
+          <button ref={statusButtonRef} className="nav-item" onClick={() => setShowStatus(true)}>
             <Settings size={19} /> <span>{uiLanguage === "it" ? "Stato e limiti" : "Status and limits"}</span>
           </button>
           <div className="build-status">
@@ -1225,7 +1682,7 @@ export function App() {
         </header>
 
         {notice && (
-          <div className="toast" role="status">
+          <div className="toast" role="status" aria-atomic="true" aria-live="polite">
             <Info size={17} /> <span>{notice}</span>
             <button aria-label={uiLanguage === "it" ? "Chiudi avviso" : "Close notice"} onClick={() => setNotice(undefined)}><X size={16} /></button>
           </div>
@@ -1236,114 +1693,164 @@ export function App() {
             language={uiLanguage}
             apiState={apiState}
             disclaimer={report.disclaimer}
-            onClose={() => setShowStatus(false)}
+            onClose={closeStatus}
             onCloseProject={() => {
               closeProject();
             }}
           />
         )}
 
-        {(activeView === "prospective" || surface === "workspace") && (
+        <div className="view-scroll" ref={viewScrollRef}>
+        <div className="view view-d0" hidden={activeView !== "prospective"}>
           <ProspectiveD0Workspace active={activeView === "prospective"} language={uiLanguage} />
-        )}
+        </div>
 
         {activeView === "prospective" ? null : surface === "welcome" && !quickDesignResult ? (
+          <div className="view view-welcome">
           <WelcomeHome
             language={uiLanguage}
             apiState={apiState}
             onStartDesign={() => setShowImport(true)}
             onOpenDemo={openSyntheticDemo}
           />
+          </div>
         ) : quickDesignResult ? (
+          <div className="view view-report">
           <ReportBundleV8View result={quickDesignResult} language={uiLanguage} />
+          </div>
         ) : (
           <>
-        <section className="workspace-grid">
-          <section
-            id="blocks-panel"
-            className={`panel block-list-panel ${activeView === "experiments" ? "focused-panel" : ""}`}
-            aria-labelledby="blocks-heading"
-          >
-            <div className="panel-heading">
-              <div>
-                <span className="eyebrow">{uiLanguage === "it" ? "Unità primaria di revisione" : "Primary review unit"}</span>
-                <h2 id="blocks-heading">{uiLanguage === "it" ? "Blocchi sperimentali" : "Experiment blocks"}</h2>
+            <div className="view view-project" hidden={activeView !== "project"}>
+                <div className="view-heading-row">
+                  <div>
+                    <span className="eyebrow">{uiLanguage === "it" ? "Orientarsi nel progetto" : "Getting oriented in the project"}</span>
+                    <h2 id="project-heading">{uiLanguage === "it" ? "Progetto" : "Project"}</h2>
+                  </div>
+                </div>
+                <WorkspaceSummaryStrip
+                  block={selectedBlock}
+                  blockIndex={Math.max(0, report.blocks.findIndex((item) => item.id === selectedBlock?.id))}
+                  blockCount={report.blocks.length}
+                  output={selectedBlock ? report.review_outputs?.[selectedBlock.id] : undefined}
+                  compilation={selectedCompilation}
+                  decisiveOpen={selectedBlock ? selectedBlock.questions.filter((item) => item.decisive).length : 0}
+                  domainBlocked={report.domain_transparency.requires_acknowledgement && !domainAcknowledged}
+                  privacyBlocked={privacyExportBlocked}
+                  language={uiLanguage}
+                />
+                <div className="project-grid">
+                  <BlockListPanel
+                    blocks={report.blocks}
+                    summaries={report.summaries}
+                    selectedBlockId={selectedBlock?.id}
+                    panelId="project-blocks-panel"
+                    headingId="project-blocks-heading"
+                    onSelect={(blockId) => {
+                      setSelectedBlockId(blockId);
+                      navigate("experiments");
+                    }}
+                    language={uiLanguage}
+                  />
+                  <section className="panel project-side" aria-label={uiLanguage === "it" ? "Stato e prossimi passi" : "Status and next steps"}>
+                    <ReviewProgress reviewed={reviewed} total={report.blocks.length} language={uiLanguage} />
+                    <DomainGate
+                      report={report}
+                      domainAcknowledged={domainAcknowledged}
+                      onAcknowledge={setDomainAcknowledged}
+                      language={uiLanguage}
+                      withCheckbox={false}
+                    />
+                    <PrivacyGate
+                      isDemo={isDemo}
+                      privacyAudit={privacyAudit}
+                      shareReadiness={shareReadiness}
+                      language={uiLanguage}
+                    />
+                    <p className="axis-boundary">
+                      {uiLanguage === "it"
+                        ? "La determinabilità non è approvazione del disegno."
+                        : "Determinability is not design approval."}
+                    </p>
+                    <div className="screen-ctas">
+                      <button type="button" className="button primary compact" onClick={() => navigate("experiments")}>
+                        {uiLanguage === "it" ? "Vai a Esperimenti" : "Go to Experiments"}
+                      </button>
+                      <button type="button" className="button secondary compact" onClick={() => navigate("questions")}>
+                        {uiLanguage === "it" ? "Vai a Elicitazione" : "Go to Elicitation"}
+                      </button>
+                    </div>
+                    <p className="muted screen-note">
+                      {uiLanguage === "it"
+                        ? "Questa schermata non contiene form di conferma, diagnostica né export."
+                        : "This screen contains no confirmation form, diagnostics or export."}
+                    </p>
+                  </section>
+                </div>
               </div>
-              <span className="count-label">{report.blocks.length}</span>
-            </div>
-            <div className="block-list">
-              {report.blocks.map((item, index) => {
-                const summary = report.summaries.find((entry) => entry.block_id === item.id);
-                const active = item.id === selectedBlock?.id;
-                return (
-                  <button
-                    key={item.id}
-                    className={active ? "block-card selected" : "block-card"}
-                    onClick={() => setSelectedBlockId(item.id)}
-                    aria-pressed={active}
-                  >
-                    <span className="block-index">E{index + 1}</span>
-                    <span className="block-copy">
-                      <strong>{item.title || `${uiLanguage === "it" ? "Esperimento" : "Experiment"} ${index + 1}`}</strong>
-                      <small>{item.evidence[0]?.section_title ?? (uiLanguage === "it" ? "Fonte" : "Source")} · {item.source_file_ids.length} file</small>
-                      <span className="block-meta">
-                        {item.corrections.length ? <><Check size={14} /> {uiLanguage === "it" ? "Corretto" : "Corrected"}</> : <><span className="empty-dot" /> {uiLanguage === "it" ? "Da revisionare" : "Needs review"}</>}
-                        <span><Link2 size={14} /> {summary?.n_alerts ?? item.alerts.length} {uiLanguage === "it" ? "questioni" : "issues"}</span>
-                      </span>
-                    </span>
-                    <ChevronRight size={17} className="block-chevron" />
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-
-          <div className="center-stack">
-            <InferencePanel
-              id="inference-panel"
-              active={activeView === "questions"}
-              block={selectedBlock}
-              compilation={selectedCompilation}
-              evidence={selectedEvidence}
-              isDemo={isDemo}
-              language={uiLanguage}
-              onConfirm={confirmTarget}
-            />
+            <div className="view view-experiments" hidden={activeView !== "experiments"}>
+                <div className="experiments-grid">
+                  <BlockListPanel
+                    blocks={report.blocks}
+                    summaries={report.summaries}
+                    selectedBlockId={selectedBlock?.id}
+                    onSelect={setSelectedBlockId}
+                    language={uiLanguage}
+                    focused
+                  />
+                  <div className="experiments-detail">
+                    {selectedBlock ? (
+                      <BlockReviewTabs
+                        block={selectedBlock}
+                        output={report.review_outputs?.[selectedBlock.id]}
+                        compilation={selectedCompilation}
+                        evidence={selectedEvidence}
+                        isDemo={isDemo}
+                        language={uiLanguage}
+                        onConfirm={confirmTarget}
+                        gate={gateState[selectedBlock.id] ?? EMPTY_GATE}
+                        onGatePass={() => passGate(selectedBlock.id)}
+                        onGateSkip={(motivation) => skipGate(selectedBlock.id, motivation)}
+                        tab={blockTab[selectedBlock.id] ?? "target"}
+                        onTabChange={(next) => selectBlockTab(selectedBlock.id, next)}
+                        active
+                        onOpenQuestions={() => navigate("questions")}
+                      />
+                    ) : (
+                      <EmptyState language={uiLanguage} />
+                    )}
+                  </div>
+                </div>
+              </div>
+            <div className="view view-questions" hidden={activeView !== "questions"}>
+                <QuestionsScreen
+                  block={selectedBlock}
+                  compilation={selectedCompilation}
+                  reviewOutput={selectedBlock ? report.review_outputs?.[selectedBlock.id] : undefined}
+                  rulesetVersion={report.versions.ruleset_version}
+                  selectedAlertId={selectedAlertId}
+                  onSelectAlert={(alertId, evidenceId) => {
+                    setSelectedAlertId(alertId);
+                    if (evidenceId) setSelectedEvidenceId(evidenceId);
+                  }}
+                  language={uiLanguage}
+                  onOpenExperiments={() => navigate("experiments")}
+                  onOpenCorrections={() => navigate("corrections")}
+                  onOpenDocuments={() => navigate("documents")}
+                />
+              </div>
+            <div className="view view-graph" hidden={activeView !== "graph"}>
             <section
               id="graph-panel"
-              className={`panel graph-panel ${activeView === "graph" ? "focused-panel" : ""} ${collapsed["graph-panel"] ? "collapsed" : ""}`}
+              className="panel graph-panel"
               aria-labelledby="graph-heading"
             >
-              <div
-                className={`panel-heading collapsible${collapsed["graph-panel"] ? " collapsed-head" : ""}`}
-                onClick={() => togglePanel("graph-panel")}
-              >
+              <div className="panel-heading">
                 <div>
                   <span className="eyebrow">{uiLanguage === "it" ? "Struttura ricostruita" : "Reconstructed structure"}</span>
                   <h2 id="graph-heading">{uiLanguage === "it" ? "Grafo del disegno sperimentale" : "Experimental design graph"}</h2>
                 </div>
                 <span className="panel-tools">
-                  {collapsed["graph-panel"] && (
-                    <span className="expand-hint">
-                      {uiLanguage === "it" ? "Espandi grafo e editor" : "Expand graph and editor"}
-                    </span>
-                  )}
                   <span className="count-label">{selectedBlock?.hierarchy.nodes.length ?? 0}</span>
-                  {!collapsed["graph-panel"] && (
-                    <button
-                      type="button"
-                      className="panel-toggle"
-                      aria-expanded
-                      aria-controls="graph-body"
-                      aria-label={uiLanguage === "it" ? "Comprimi grafo" : "Collapse graph"}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        togglePanel("graph-panel");
-                      }}
-                    >
-                      <ChevronDown size={19} />
-                    </button>
-                  )}
                 </span>
               </div>
               <div className="panel-collapse" id="graph-body" role="group">
@@ -1354,98 +1861,18 @@ export function App() {
                   language={uiLanguage}
                   onEvidenceSelect={(evidenceId) => {
                     setSelectedEvidenceId(evidenceId);
-                    setActiveView("documents");
+                    navigate("documents");
                   }}
                   onEdit={applyGraphCorrection}
                 />
-              ) : <EmptyState />}
+              ) : <EmptyState language={uiLanguage} />}
               </div>
             </section>
-
-            <section
-              id="issues-panel"
-              className={`panel issues-panel ${collapsed["issues-panel"] ? "collapsed" : ""}`}
-              aria-labelledby="issues-heading"
-            >
-              <div
-                className={`panel-heading collapsible${collapsed["issues-panel"] ? " collapsed-head" : ""}`}
-                onClick={() => togglePanel("issues-panel")}
-              >
-                <div>
-                  <span className="eyebrow">Ruleset {String(report.versions.ruleset_version ?? "—")}</span>
-                  <h2 id="issues-heading">{uiLanguage === "it" ? "Questioni rilevate" : "Detected issues"}</h2>
-                </div>
-                <span className="panel-tools">
-                  {collapsed["issues-panel"] && (
-                    <span className="expand-hint">
-                      {uiLanguage === "it" ? "Espandi alert e domande" : "Expand alerts and questions"}
-                    </span>
-                  )}
-                  <span className="count-label">{selectedBlock?.alerts.length ?? 0}</span>
-                  {!collapsed["issues-panel"] && (
-                    <button
-                      type="button"
-                      className="panel-toggle"
-                      aria-expanded
-                      aria-controls="issues-body"
-                      aria-label={uiLanguage === "it" ? "Comprimi questioni" : "Collapse issues"}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        togglePanel("issues-panel");
-                      }}
-                    >
-                      <ChevronDown size={19} />
-                    </button>
-                  )}
-                </span>
               </div>
-              <div className="panel-collapse" id="issues-body">
-              <div className="issue-list">
-                {selectedBlock?.alerts.map((alert) => (
-                  <IssueCard
-                    key={alert.id}
-                    alert={alert}
-                    selected={alert.id === selectedAlert?.id}
-                    language={uiLanguage}
-                    onSelect={() => {
-                      setSelectedAlertId(alert.id);
-                      setSelectedEvidenceId(alert.evidence_ids[0]);
-                      setActiveView("documents");
-                    }}
-                  />
-                ))}
-                {!selectedBlock?.alerts.length && (
-                  <p className="muted empty-copy">{uiLanguage === "it" ? "Nessun alert generato dal ruleset attivo." : "No alerts generated by the active ruleset."}</p>
-                )}
-              </div>
-              {!!selectedBlock?.questions.length && (
-                <details className="questions-drawer">
-                  <summary>{selectedBlock.questions.length} {uiLanguage === "it" ? "domande mirate agli autori" : "targeted questions for the authors"}</summary>
-                  <ul>{selectedBlock.questions.map((item) => (
-                    <li key={item.id}>
-                      {item.decisive && <strong>{uiLanguage === "it" ? "Decisiva" : "Decisive"} · </strong>}{item.text}
-                      {item.priority != null && <small> {uiLanguage === "it" ? "priorita" : "priority"} {item.priority}</small>}
-                    </li>
-                  ))}</ul>
-                </details>
-              )}
-              </div>
-            </section>
-
-            {selectedBlock && report.review_outputs?.[selectedBlock.id] && (
-              <ReviewOutputPanel
-                output={report.review_outputs[selectedBlock.id]}
-                language={uiLanguage}
-                collapsed={Boolean(collapsed["review-output"])}
-                onToggle={() => togglePanel("review-output")}
-              />
-            )}
-          </div>
-
-          <div className="right-stack">
+            <div className="view view-documents" hidden={activeView !== "documents"}>
             <section
               id="evidence-panel"
-              className={`panel evidence-panel ${activeView === "documents" ? "focused-panel" : ""}`}
+              className="panel evidence-panel"
               aria-labelledby="evidence-heading"
             >
               <div className="panel-heading">
@@ -1462,20 +1889,60 @@ export function App() {
                   </span>
                 )}
               </div>
-              <div className="source-locator"><FileText size={15} /> {evidenceLocator(selectedEvidence)}</div>
+              <div className="evidence-body">
+              <div className="source-locator"><FileText size={15} aria-hidden="true" /> {evidenceLocator(selectedEvidence)}</div>
               <blockquote className="evidence-excerpt">
                 {selectedEvidence?.text || (uiLanguage === "it" ? "Nessuno span di evidenza collegato a questa selezione." : "No evidence span is linked to this selection.")}
               </blockquote>
               <div className="provenance-row">
                 <span>File <code>{selectedEvidence?.file_id ?? "—"}</code></span>
-                <span>{uiLanguage === "it" ? "Tipo" : "Type"} {selectedEvidence?.evidence_type ?? (uiLanguage === "it" ? "non classificato" : "unclassified")}</span>
+                <span>
+                  {uiLanguage === "it" ? "Tipo" : "Type"}{" "}
+                  {selectedEvidence?.evidence_type ?? (uiLanguage === "it" ? "non classificato" : "unclassified")}
+                  {selectedEvidence?.evidence_type && EVIDENCE_TYPE_LABEL[selectedEvidence.evidence_type] && (
+                    <> · {uiLanguage === "it" ? EVIDENCE_TYPE_LABEL[selectedEvidence.evidence_type].it : EVIDENCE_TYPE_LABEL[selectedEvidence.evidence_type].en}</>
+                  )}
+                </span>
                 <span>Parser {selectedEvidence?.parser_version ?? "—"}</span>
               </div>
+              {selectedBlock && selectedBlock.evidence.length > 0 && (
+                <div className="evidence-list-wrap">
+                  <span className="evidence-list-label" id="evidence-list-label">
+                    {uiLanguage === "it"
+                      ? `Span del blocco (${selectedBlock.evidence.length})`
+                      : `Block spans (${selectedBlock.evidence.length})`}
+                  </span>
+                  <ul className="evidence-list" role="listbox" aria-labelledby="evidence-list-label">
+                    {selectedBlock.evidence.map((span) => {
+                      const isActive = span.id === selectedEvidence?.id;
+                      const typeLabel = span.evidence_type && EVIDENCE_TYPE_LABEL[span.evidence_type]
+                        ? (uiLanguage === "it" ? EVIDENCE_TYPE_LABEL[span.evidence_type].it : EVIDENCE_TYPE_LABEL[span.evidence_type].en)
+                        : span.evidence_type ?? "";
+                      return (
+                        <li key={span.id} role="option" aria-selected={isActive}>
+                          <button
+                            type="button"
+                            className={`evidence-option${isActive ? " selected" : ""}`}
+                            aria-current={isActive || undefined}
+                            onClick={() => setSelectedEvidenceId(span.id)}
+                          >
+                            <span className="evidence-option-locator">{evidenceLocator(span)}</span>
+                            {typeLabel && <span className="evidence-option-type">{typeLabel}</span>}
+                            <span className="evidence-option-excerpt">{span.text.slice(0, 140)}{span.text.length > 140 ? "…" : ""}</span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
+              </div>
             </section>
-
+              </div>
+            <div className="view view-corrections" hidden={activeView !== "corrections"}>
             <CorrectionPanel
               id="correction-panel"
-              active={activeView === "corrections"}
+              active
               block={selectedBlock}
               evidence={selectedEvidence}
               events={selectedBlock ? audit[selectedBlock.id] ?? [] : []}
@@ -1538,65 +2005,53 @@ export function App() {
               hasCandidate={Boolean(selectedCandidateExport)}
               exportAllowed={!privacyExportBlocked}
               />
-          </div>
-        </section>
-
-        <footer id="export-bar" className={`review-bar ${activeView === "export" ? "focused-panel" : ""}`}>
-          <div className="review-progress">
-            <div className="progress-title"><Check size={19} /> <strong>{reviewed} {uiLanguage === "it" ? "di" : "of"} {report.blocks.length} {uiLanguage === "it" ? "blocchi corretti" : "corrected blocks"}</strong></div>
-            <div className="progress-track"><span style={{ width: `${progress}%` }} /></div>
-            <small>{progress}%</small>
-          </div>
-          <div className="domain-gate">
-            <ShieldAlert size={22} />
-            <div>
-              <strong>{report.domain_transparency.validation_status === "validated" ? (uiLanguage === "it" ? "Dominio validato" : "Validated domain") : (uiLanguage === "it" ? "Dominio non validato" : "Unvalidated domain")}</strong>
-              <p>{report.domain_transparency.warning}</p>
-              {report.domain_transparency.requires_acknowledgement && (
-                <label><input type="checkbox" checked={domainAcknowledged} onChange={(event) => setDomainAcknowledged(event.target.checked)} /> {uiLanguage === "it" ? "Ho verificato il limite e confermo" : "I reviewed and acknowledge this limitation"}</label>
-              )}
-            </div>
-          </div>
-          <div className={`privacy-gate ${privacyAudit?.status ?? "not-evaluated"}`}>
-            <ShieldAlert size={22} />
-            <div>
-              <strong>
-                {isDemo
-                  ? uiLanguage === "it" ? "Privacy non valutata nella demo" : "Privacy not evaluated in demo"
-                  : privacyAudit?.status === "clean"
-                    ? uiLanguage === "it" ? "Scansione privacy pulita" : "Privacy scan clean"
-                    : uiLanguage === "it" ? "Revisione privacy richiesta" : "Privacy review required"}
-              </strong>
-              <p>
-                {isDemo
-                  ? uiLanguage === "it" ? "L’export demo resta marcato come non scientifico." : "Demo export remains marked as non-scientific."
-                  : privacyAudit?.status === "clean"
-                    ? uiLanguage === "it" ? `${privacyAudit.scanned_fields} campi verificati localmente. La distribuzione resta soggetta a un gate esplicito.` : `${privacyAudit.scanned_fields} fields checked locally. Distribution still requires an explicit gate.`
-                    : uiLanguage === "it" ? `${privacyAudit?.finding_count ?? 0} finding: export locale bloccato finché non viene applicata una policy.` : `${privacyAudit?.finding_count ?? 0} findings: local export is blocked until a policy is applied.`}
-              </p>
-              {!isDemo && shareReadiness && (
-                <small>
-                  {uiLanguage === "it" ? "Condivisione non autorizzata" : "Sharing not authorized"}
-                  {shareReadiness.reasons.length ? ` · ${shareReadiness.reasons.join(" · ")}` : ""}
-                </small>
-              )}
-            </div>
-          </div>
-          <div className="export-actions">
-            <button
-              className="button secondary"
-              disabled={privacyExportBlocked}
-              onClick={() => downloadJson("ntruth-report.json", report)}
-            >
-              <Save size={18} /> {uiLanguage === "it" ? "Salva report" : "Save report"}
-            </button>
-            <button className="button primary" disabled={exportBlocked} onClick={exportArtifact}>
-              <Download size={18} /> {isDemo ? (uiLanguage === "it" ? "Esporta demo JSON" : "Export demo JSON") : (uiLanguage === "it" ? "Scarica RO-Crate locale" : "Download local RO-Crate")}
-            </button>
-          </div>
-        </footer>
+              </div>
+            <div className="view view-export" hidden={activeView !== "export"}>
+                <section className="panel export-screen" aria-labelledby="export-heading" data-testid="export-screen">
+                  <div className="panel-heading">
+                    <div>
+                      <span className="eyebrow">{uiLanguage === "it" ? "Governare prima di scaricare" : "Govern before downloading"}</span>
+                      <h2 id="export-heading">{uiLanguage === "it" ? "Esporta" : "Export"}</h2>
+                    </div>
+                  </div>
+                  <div className="export-body">
+                  <ReviewProgress reviewed={reviewed} total={report.blocks.length} language={uiLanguage} />
+                  <DomainGate
+                    report={report}
+                    domainAcknowledged={domainAcknowledged}
+                    onAcknowledge={setDomainAcknowledged}
+                    language={uiLanguage}
+                    withCheckbox
+                  />
+                  <PrivacyGate
+                    isDemo={isDemo}
+                    privacyAudit={privacyAudit}
+                    shareReadiness={shareReadiness}
+                    language={uiLanguage}
+                  />
+                  </div>
+                  <div className="export-actions">
+                    <button
+                      className="button secondary"
+                      disabled={privacyExportBlocked}
+                      onClick={() => downloadJson("ntruth-report.json", report)}
+                    >
+                      <Save size={18} aria-hidden="true" /> {uiLanguage === "it" ? "Salva report" : "Save report"}
+                    </button>
+                    <button className="button primary" disabled={exportBlocked} onClick={exportArtifact}>
+                      <Download size={18} aria-hidden="true" /> {isDemo ? (uiLanguage === "it" ? "Esporta demo JSON" : "Export demo JSON") : (uiLanguage === "it" ? "Scarica RO-Crate locale" : "Download local RO-Crate")}
+                    </button>
+                  </div>
+                  <p className="muted screen-note">
+                    {uiLanguage === "it"
+                      ? "L'export resta locale. Dettagli tecnici (proof trace, checksum) via link sobrio su richiesta."
+                      : "Export stays local. Technical details (proof trace, checksums) via a discreet link on request."}
+                  </p>
+                </section>
+              </div>
           </>
         )}
+        </div>
       </main>
 
       {showImport && (
@@ -1990,101 +2445,199 @@ export function ReportBundleV8View({
   );
 }
 
-function ReviewOutputPanel({
-  output,
-  language,
-  collapsed = false,
-  onToggle,
-}: {
-  output: BlockReviewOutput;
-  language: "it" | "en";
-  collapsed?: boolean;
-  onToggle?: () => void;
-}) {
-  const pathLabel = {
+type BlockTabKey = "target" | "counts" | "alternatives" | "methods";
+
+const BLOCK_TABS: Array<{ key: BlockTabKey; it: string; en: string }> = [
+  { key: "target", it: "Target e scope", en: "Target and scope" },
+  { key: "counts", it: "Unità e conteggi", en: "Units and counts" },
+  { key: "alternatives", it: "Alternative e domande", en: "Alternatives and questions" },
+  { key: "methods", it: "Methods e handoff", en: "Methods and handoff" },
+];
+
+function pathStatusLabel(
+  status: BlockReviewOutput["path_status"],
+  language: "it" | "en",
+): string {
+  return {
     review_required: language === "it" ? "Revisione richiesta" : "Review required",
     conditional: language === "it" ? "Condizionale" : "Conditional",
     incomplete: language === "it" ? "Incompleto" : "Incomplete",
-  }[output.path_status];
+  }[status];
+}
+
+function scopeSummaryText(scope: AssessmentScope): string {
+  const parts = [
+    scope.factor_id,
+    scope.contrast_id,
+    scope.endpoint_id,
+    scope.group,
+    scope.timepoint,
+    scope.unit_type,
+    scope.lifecycle,
+    scope.population,
+    scope.condition,
+  ].filter(Boolean);
+  return parts.length ? parts.join(" · ") : "scope globale";
+}
+
+/** Tab B — solo unità e conteggi canonici. La diagnostica resta separata e chiusa. */
+function UnitCountsTab({
+  block,
+  output,
+  language,
+}: {
+  block: ExperimentBlock;
+  output?: BlockReviewOutput;
+  language: "it" | "en";
+}) {
+  const it = language === "it";
+  const canonical = output?.count_records ?? [];
+  const diagnostic = output?.diagnostic_count_records ?? [];
+  const exclusions = output?.exclusion_records ?? [];
   return (
-    <section className={`panel review-output-panel ${collapsed ? "collapsed" : ""}`} aria-labelledby="review-output-heading">
-      <div
-        className={`panel-heading collapsible${collapsed ? " collapsed-head" : ""}`}
-        onClick={onToggle}
-      >
-        <div>
-          <span className="eyebrow">
-            {language === "it" ? "Output di revisione · non certificante" : "Review output · non-certifying"}
-          </span>
-          <h2 id="review-output-heading">
-            {language === "it" ? "Methods e percorso di revisione" : "Methods and review path"}
-          </h2>
+    <div className="tabpanel-section">
+      {!!output?.n_table.length && (
+        <div className="count-block">
+          <h3>{it ? "Tabella n per ambito" : "n table by scope"}</h3>
+          <div className="count-table-wrap">
+            <table className="count-table" aria-label={it ? "Conteggi canonici per ambito" : "Canonical counts by scope"}>
+              <thead>
+                <tr>
+                  <th scope="col">{it ? "Ambito" : "Scope"}</th>
+                  <th scope="col">{it ? "Unità sperimentale" : "Experimental unit"}</th>
+                  <th scope="col">n {it ? "dichiarato" : "declared"}</th>
+                  <th scope="col">n {it ? "indipendente" : "independent"}</th>
+                  <th scope="col">{it ? "Inferibilità" : "Inferability"}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {output.n_table.map((row) => (
+                  <tr key={row.assessment_id}>
+                    <td>{row.scope}</td>
+                    <td>{row.experimental_unit ?? "—"}</td>
+                    <td>{row.n_declared ?? "—"}</td>
+                    <td>{row.n_independent ?? "—"}</td>
+                    <td>{row.inferability}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
-        <span className="panel-tools">
-          {collapsed && (
-            <span className="expand-hint">
-              {language === "it" ? "Espandi assi e handoff" : "Expand axes and handoff"}
-            </span>
-          )}
-          <span className={`compiler-status review-status-${output.path_status}`}>{pathLabel}</span>
-          {onToggle && !collapsed && (
-            <button
-              type="button"
-              className="panel-toggle"
-              aria-expanded
-              aria-controls="review-output-body"
-              aria-label={language === "it" ? "Comprimi output" : "Collapse output"}
-              onClick={(event) => {
-                event.stopPropagation();
-                onToggle();
-              }}
-            >
-              <ChevronDown size={19} />
-            </button>
-          )}
-        </span>
-      </div>
-      <div className="panel-collapse" id="review-output-body">
-      <p className="axis-boundary">
-        {language === "it"
-          ? "La determinabilità non è approvazione del disegno."
-          : "Determinability is not design approval."}
-      </p>
-      <div className="scientific-axis-grid">
+      )}
+      {!!block.unit_assessments.length && (
+        <div className="count-block">
+          <h3>{it ? "Valutazioni di unità per ambito" : "Unit assessments by scope"}</h3>
+          <ul className="unit-assessment-list">
+            {block.unit_assessments.map((item) => (
+              <li key={item.id}>
+                <strong>{scopeSummaryText(item.scope)}</strong>
+                <span>
+                  EU {item.experimental_unit ?? "—"} · {it ? "allocazione" : "allocation"}{" "}
+                  {item.allocation_unit_candidate ?? "—"} · n {it ? "indipendente" : "independent"}{" "}
+                  {item.n_independent ?? "—"} · {item.inferability} · {it ? "rischio" : "risk"} {item.risk}
+                </span>
+                {!!item.conditional_scenarios.length && (
+                  <small>
+                    {item.conditional_scenarios.length}{" "}
+                    {it ? "scenari condizionali" : "conditional scenarios"}
+                  </small>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <details className="review-details" open={canonical.length === 0}>
+        <summary>
+          {it ? "CANONICO — registro dei conteggi per replication" : "CANONICAL — count registry for replication"} · {canonical.length}
+        </summary>
+        {canonical.length ? (
+          <ul>
+            {canonical.map((record) => (
+              <li key={record.count_id}>
+                <code>{record.kind}</code> · {record.quantifier} ·{" "}
+                {record.value ?? (record.lower_bound != null || record.upper_bound != null
+                  ? `${record.lower_bound ?? "—"} - ${record.upper_bound ?? "—"}` : "—")} ·{" "}
+                {record.scope.lifecycle ?? "lifecycle unknown"}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="muted">{it ? "Nessun conteggio canonico in questo blocco." : "No canonical counts in this block."}</p>
+        )}
+      </details>
+      {!!diagnostic.length && (
+        <details className="review-details diagnostic-counts">
+          <summary>
+            {it ? "DIAGNOSTICO — statistica separata · non replication" : "DIAGNOSTIC — separate statistics · non replication"} · {diagnostic.length}
+          </summary>
+          <p className="muted">
+            {it
+              ? "Diagnostica per il controllo tecnico: non usare per n indipendente."
+              : "Technical-check diagnostics: do not use for independent n."}
+          </p>
+          <ul>
+            {diagnostic.map((record) => (
+              <li key={record.count_id}>
+                <code>{record.kind}</code> = {record.value ?? "—"}{" "}
+                <span className="diagnostic-only-badge">diagnostic_only</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+      {!!exclusions.length && (
+        <details className="review-details">
+          <summary>{it ? "Registro esclusioni" : "Exclusion registry"} · {exclusions.length}</summary>
+          <ul>
+            {exclusions.map((record) => (
+              <li key={record.id}>
+                {record.unit_type} · {record.phase} · {record.prespecified} · {record.reason ?? "reason not reported"}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+      {/* Il details CANONICO sopra copre già il caso vuoto: niente fallback duplicato. */}
+    </div>
+  );
+}
+
+/** Tab C — solo incertezza decidibile: determinabilità, alternative, discriminante. */
+function AlternativesTab({
+  block,
+  output,
+  language,
+  onOpenQuestions,
+}: {
+  block: ExperimentBlock;
+  output?: BlockReviewOutput;
+  language: "it" | "en";
+  onOpenQuestions: () => void;
+}) {
+  const it = language === "it";
+  const humanConfirmations = block.alerts.filter((item) => item.requires_human_confirmation).length;
+  return (
+    <div className="tabpanel-section">
+      {output ? (
         <section className="scientific-axis axis-determinability" data-testid="axis-determinability">
-          <span>{language === "it" ? "Determinabilità" : "Determinability"}</span>
+          <span>{it ? "Determinabilità" : "Determinability"}</span>
           <strong>{output.determinability.state}</strong>
           <small>{output.determinability.rationale}</small>
         </section>
-        <section className="scientific-axis axis-design-adequacy" data-testid="axis-design-adequacy">
-          <span>{language === "it" ? "Adeguatezza del disegno" : "Design adequacy"}</span>
-          <strong>{output.design_adequacy.finding}</strong>
-          <small>{output.design_adequacy.rationale}</small>
-        </section>
-      </div>
-      <div className="statistical-handoff">
-        <div>
-          <span>{language === "it" ? "Handoff statistico" : "Statistical handoff"}</span>
-          <strong>{output.strategy_module_status}</strong>
-        </div>
-        <small>
-          {language === "it"
-            ? "Solo requisiti strutturali e domande; nessuna strategia di analisi viene suggerita."
-            : "Structural requirements and questions only; no analysis strategy is suggested."}
-        </small>
-      </div>
-      <div className="review-methods">
-        <p>{output.status_reason}</p>
-        <blockquote>{output.methods_statement.text}</blockquote>
-        {output.methods_statement.limitations.map((item) => <small key={item}>{item}</small>)}
-      </div>
-      {output.plausible_graph_set && (
-        <details className="review-details" open>
+      ) : (
+        <p className="muted empty-copy">
+          {it ? "Output di revisione non disponibile per questo blocco." : "Review output unavailable for this block."}
+        </p>
+      )}
+      {output?.plausible_graph_set ? (
+        <details className="review-details">
           <summary>
-            {language === "it" ? "Grafi alternativi non risolti" : "Unresolved alternative graphs"} · {output.plausible_graph_set.alternatives.length}
+            {it ? "Grafi alternativi non risolti" : "Unresolved alternative graphs"} · {output.plausible_graph_set.alternatives.length}
           </summary>
           <p className="muted">
-            {language === "it" ? "Nessuna alternativa viene scelta automaticamente." : "No alternative is selected automatically."}
+            {it ? "Nessuna alternativa viene scelta automaticamente." : "No alternative is selected automatically."}
           </p>
           {output.discriminating_question && <blockquote>{output.discriminating_question.text}</blockquote>}
           <div className="statement-list">
@@ -2102,29 +2655,68 @@ function ReviewOutputPanel({
             ))}
           </div>
         </details>
+      ) : (
+        <p className="muted empty-copy">
+          {it ? "Nessun grafo alternativo: struttura univoca dal testo." : "No alternative graphs: single structure from the text."}
+        </p>
       )}
-      {!!output.count_records?.length && (
-        <details className="review-details">
-          <summary>{language === "it" ? "Registro canonico dei conteggi" : "Canonical count registry"} · {output.count_records.length}</summary>
-          <ul>
-            {output.count_records.map((record) => <li key={record.count_id}><code>{record.kind}</code> · {record.quantifier} · {record.value ?? (record.lower_bound != null || record.upper_bound != null ? `${record.lower_bound ?? "—"} - ${record.upper_bound ?? "—"}` : "—")} · {record.scope.lifecycle ?? "lifecycle unknown"}</li>)}
-          </ul>
-        </details>
-      )}
-      {!!output.diagnostic_count_records?.length && (
-        <details className="review-details diagnostic-counts" open>
-          <summary>{language === "it" ? "Diagnostica statistica separata · non replication" : "Separate statistical diagnostics · non replication"}</summary>
-          <ul>{output.diagnostic_count_records.map((record) => <li key={record.count_id}><code>{record.kind}</code> = {record.value ?? "—"}</li>)}</ul>
-        </details>
-      )}
-      {!!output.exclusion_records?.length && (
-        <details className="review-details">
-          <summary>{language === "it" ? "Registro esclusioni" : "Exclusion registry"} · {output.exclusion_records.length}</summary>
-          <ul>{output.exclusion_records.map((record) => <li key={record.id}>{record.unit_type} · {record.phase} · {record.prespecified} · {record.reason ?? "reason not reported"}</li>)}</ul>
-        </details>
-      )}
+      <p className="muted tab-crosslink">
+        {humanConfirmations > 0
+          ? it
+            ? `${humanConfirmations} questioni richiedono conferma umana.`
+            : `${humanConfirmations} issues require human confirmation.`
+          : it
+            ? "Nessuna questione richiede conferma umana in questo blocco."
+            : "No issues require human confirmation in this block."}{" "}
+        <button type="button" className="link-button" onClick={onOpenQuestions}>
+          {it ? "Apri Elicitazione" : "Open Elicitation"}
+        </button>
+      </p>
+    </div>
+  );
+}
+
+/** Tab D — methods non certificante, handoff strutturale, mappatura DRIVER. */
+function MethodsTab({
+  output,
+  language,
+}: {
+  output?: BlockReviewOutput;
+  language: "it" | "en";
+}) {
+  const it = language === "it";
+  if (!output) {
+    return (
+      <p className="muted empty-copy">
+        {it ? "Output di revisione non disponibile per questo blocco." : "Review output unavailable for this block."}
+      </p>
+    );
+  }
+  return (
+    <div className="tabpanel-section">
+      <section className="scientific-axis axis-design-adequacy" data-testid="axis-design-adequacy">
+        <span>{it ? "Adeguatezza del disegno" : "Design adequacy"}</span>
+        <strong>{output.design_adequacy.finding}</strong>
+        <small>{output.design_adequacy.rationale}</small>
+      </section>
+      <div className="statistical-handoff">
+        <div>
+          <span>{it ? "Handoff statistico" : "Statistical handoff"}</span>
+          <strong>{output.strategy_module_status}</strong>
+        </div>
+        <small>
+          {it
+            ? "Solo requisiti strutturali e domande; nessuna strategia di analisi viene suggerita."
+            : "Structural requirements and questions only; no analysis strategy is suggested."}
+        </small>
+      </div>
+      <div className="review-methods">
+        <p>{output.status_reason}</p>
+        <blockquote>{output.methods_statement.text}</blockquote>
+        {output.methods_statement.limitations.map((item) => <small key={item}>{item}</small>)}
+      </div>
       <details className="review-details">
-        <summary>DRIVER · {language === "it" ? "mappatura informativa" : "informative mapping"}</summary>
+        <summary>DRIVER · {it ? "mappatura informativa" : "informative mapping"}</summary>
         <div className="driver-list">
           {output.driver_checklist.map((item) => (
             <a key={item.item_id} href={item.source_url} target="_blank" rel="noreferrer">
@@ -2136,7 +2728,7 @@ function ReviewOutputPanel({
         </div>
       </details>
       <details className="review-details">
-        <summary>{language === "it" ? "Fatti, inferenze, ipotesi e limiti" : "Facts, inferences, hypotheses and limitations"}</summary>
+        <summary>{it ? "Fatti, inferenze, ipotesi e limiti" : "Facts, inferences, hypotheses and limitations"}</summary>
         <div className="statement-list">
           {output.statements.map((item) => (
             <div key={item.id} className={`statement-layer layer-${item.layer}`}>
@@ -2145,8 +2737,7 @@ function ReviewOutputPanel({
           ))}
         </div>
       </details>
-      </div>
-    </section>
+    </div>
   );
 }
 
@@ -2161,21 +2752,244 @@ function IssueCard({
   language: "it" | "en";
   onSelect: () => void;
 }) {
+  const severityText = SEVERITY_LABEL[alert.severity];
   return (
-    <button className={`issue-card severity-${alert.severity} ${selected ? "selected" : ""}`} onClick={onSelect}>
-      <span className="issue-icon"><AlertTriangle size={19} /></span>
+    <button className={`issue-card severity-${alert.severity} ${selected ? "selected" : ""}`} onClick={onSelect} aria-describedby={`${alert.id}-severity`}>
+      <span className="issue-icon" aria-hidden="true"><AlertTriangle size={19} /></span>
       <span className="issue-copy">
         <strong>{alert.message}</strong>
         <small>{alert.rule_id} · {alert.alert_class?.replaceAll("_", " ") ?? (language === "it" ? "classe legacy" : "legacy class")} · {alert.requires_human_confirmation ? (language === "it" ? "conferma umana richiesta" : "human confirmation required") : (language === "it" ? "conseguenza deterministica" : "deterministic consequence")}</small>
+        <small id={`${alert.id}-severity`} className="issue-severity-label">{severityText}</small>
       </span>
-      <span className="issue-confidence"><small>{language === "it" ? "Premesse" : "Premises"}</small>{(alert.premise_confidence ?? alert.confidence).toFixed(2)}</span>
-      <Link2 size={16} />
+      <span className="issue-confidence" title={language === "it" ? "Affidabilità della lettura automatica delle premesse, non probabilità che il claim sia vero" : "Automatic premise-reading reliability, not the probability that the claim is true"}><small>{language === "it" ? "Premesse" : "Premises"}</small>{(alert.premise_confidence ?? alert.confidence).toFixed(2)}</span>
+      <Link2 size={16} aria-hidden="true" />
     </button>
   );
 }
 
 function Confidence({ value, label = "Confidenza" }: { value: number; label?: string }) {
-  return <span className="confidence">{label} {value.toFixed(2)}</span>;
+  return (
+    <span
+      className="confidence"
+      title="Affidabilità della lettura automatica (parser) · non è la probabilità che il claim scientifico sia vero"
+    >
+      {label} {value.toFixed(2)}
+    </span>
+  );
+}
+
+export interface GateState {
+  passed: boolean;
+  skipped: boolean;
+  motivation: string;
+  attempts: number;
+}
+
+export const EMPTY_GATE: GateState = { passed: false, skipped: false, motivation: "", attempts: 0 };
+
+interface GateQuestion {
+  id: string;
+  conceptIt: string;
+  conceptEn: string;
+  textIt: string;
+  textEn: string;
+  optionsIt: [string, string, string];
+  optionsEn: [string, string, string];
+  correct: number;
+  feedbackIt: string;
+  feedbackEn: string;
+}
+
+const GATE_QUESTIONS: GateQuestion[] = [
+  {
+    id: "eu",
+    conceptIt: "Unità sperimentale",
+    conceptEn: "Experimental unit",
+    textIt: "Cosa decide l'unità sperimentale (n indipendente)?",
+    textEn: "What defines the experimental unit (independent n)?",
+    optionsIt: [
+      "Il pozzetto o la cellula dove misuro l'endpoint",
+      "L'unità assegnata al trattamento",
+      "Il punto dove applico il farmaco con la pipetta",
+    ],
+    optionsEn: [
+      "The well or cell where I measure the endpoint",
+      "The unit assigned to treatment",
+      "The spot where I pipette the drug",
+    ],
+    correct: 1,
+    feedbackIt: "Misurare non è assegnare: conta dove randomizzi, non dove leggi.",
+    feedbackEn: "Measuring is not assigning: count where you randomize, not where you read.",
+  },
+  {
+    id: "nlifecycle",
+    conceptIt: "Conteggi nel ciclo di vita",
+    conceptEn: "Lifecycle counts",
+    textIt: "Hai 1 donatore e 12 pozzetti misurati. Quanto vale n indipendente?",
+    textEn: "You have 1 donor and 12 measured wells. What is the independent n?",
+    optionsIt: [
+      "n = 12, uno per pozzetto",
+      "n = 1: i 12 sono osservazioni replicate",
+      "Dipende dal valore p",
+    ],
+    optionsEn: [
+      "n = 12, one per well",
+      "n = 1: the 12 are replicate observations",
+      "It depends on the p-value",
+    ],
+    correct: 1,
+    feedbackIt: "Le repliche tecniche non creano donatori nuovi.",
+    feedbackEn: "Technical replicates do not create new donors.",
+  },
+  {
+    id: "handoff",
+    conceptIt: "Passaggio al biostatistico",
+    conceptEn: "Handoff to the biostatistician",
+    textIt: "Cosa fa N-Truth dopo la conferma del target?",
+    textEn: "What does N-Truth do after target confirmation?",
+    optionsIt: [
+      "Suggerisce test, modello e potenza",
+      "Consegna vincoli e domande allo statistico, senza suggerire test",
+      "Approva il disegno sperimentale",
+    ],
+    optionsEn: [
+      "It suggests a test, a model and power",
+      "It hands constraints and questions to the statistician, suggesting no test",
+      "It approves the experimental design",
+    ],
+    correct: 1,
+    feedbackIt: "Chiarire la domanda non è approvarla; nessun test viene suggerito.",
+    feedbackEn: "Clarifying the question is not approving it; no test is suggested.",
+  },
+];
+
+/** Gate di comprensione leggero e non punitivo: sblocca la conferma del target.
+ * Tentativi illimitati; lo skip motivato resta visibile e vale solo per il blocco. */
+function ComprehensionGate({
+  blockId,
+  language,
+  gate,
+  onPass,
+  onSkip,
+}: {
+  blockId: string;
+  language: "it" | "en";
+  gate: GateState;
+  onPass: () => void;
+  onSkip: (motivation: string) => void;
+}) {
+  const it = language === "it";
+  const [answers, setAnswers] = useState<Record<string, number>>({});
+  const [skipOpen, setSkipOpen] = useState(false);
+  const [motivation, setMotivation] = useState("");
+  const doneRef = useRef(false);
+
+  useEffect(() => {
+    setAnswers({});
+    setSkipOpen(false);
+    setMotivation("");
+    doneRef.current = gate.passed || gate.skipped;
+  }, [blockId, gate.passed, gate.skipped]);
+
+  if (gate.passed || gate.skipped) {
+    return (
+      <p className="gate-done" role="status">
+        <Check size={15} aria-hidden="true" />{" "}
+        {gate.skipped
+          ? it
+            ? `Comprensione saltata con motivazione registrata · non è un'approvazione del disegno.`
+            : `Comprehension skipped with recorded motivation · not a design approval.`
+          : it
+            ? `Comprensione registrata · non è un'approvazione del disegno.`
+            : `Comprehension recorded · not a design approval.`}
+      </p>
+    );
+  }
+
+  const choose = (question: GateQuestion, index: number) => {
+    setAnswers((current) => {
+      if (current[question.id] === question.correct) return current;
+      const next = { ...current, [question.id]: index };
+      const allCorrect = GATE_QUESTIONS.every((item) => next[item.id] === item.correct);
+      if (allCorrect && !doneRef.current) {
+        doneRef.current = true;
+        window.setTimeout(onPass, 0);
+      }
+      return next;
+    });
+  };
+
+  return (
+    <section className="gate" aria-labelledby={`gate-heading-${blockId}`}>
+      <div className="gate-heading">
+        <CircleHelp size={18} aria-hidden="true" />
+        <div>
+          <span className="eyebrow">
+            {it ? "Prima di confermare · 3 mini-domande" : "Before confirming · 3 quick checks"}
+          </span>
+          <h3 id={`gate-heading-${blockId}`}>
+            {it ? "Verifica di comprensione" : "Comprehension check"}
+          </h3>
+        </div>
+      </div>
+      <p className="muted gate-intro">
+        {it
+          ? "Ti aiutano a usare i concetti giusti, non ti valutano. Tentativi illimitati."
+          : "They help you use the right concepts; they do not grade you. Unlimited attempts."}
+      </p>
+      {GATE_QUESTIONS.map((question) => {
+        const answer = answers[question.id];
+        const resolved = answer !== undefined;
+        const correct = answer === question.correct;
+        return (
+          <fieldset key={question.id} className="gate-question">
+            <legend>
+              <span className="gate-concept">{it ? question.conceptIt : question.conceptEn}</span>
+              {it ? question.textIt : question.textEn}
+            </legend>
+            {(it ? question.optionsIt : question.optionsEn).map((option, index) => (
+              <label key={option} className={`gate-option${resolved && index === question.correct ? " is-correct" : ""}${resolved && index === answer && !correct ? " is-wrong" : ""}`}>
+                <input
+                  type="radio"
+                  name={`gate-${blockId}-${question.id}`}
+                  checked={answer === index}
+                  onChange={() => choose(question, index)}
+                />
+                {option}
+              </label>
+            ))}
+            {resolved && (
+              <p className={`gate-feedback${correct ? " is-correct" : " is-wrong"}`} role="status">
+                {correct
+                  ? it ? `Corretto · ${question.feedbackIt}` : `Correct · ${question.feedbackEn}`
+                  : it ? "Non ancora: rileggi il feedback e riprova." : "Not yet: re-read the feedback and retry."}
+              </p>
+            )}
+          </fieldset>
+        );
+      })}
+      <details className="gate-skip" open={skipOpen} onToggle={(event) => setSkipOpen((event.target as HTMLDetailsElement).open)}>
+        <summary>{it ? "Salta con motivazione (revisori avanzati)" : "Skip with motivation (advanced reviewers)"}</summary>
+        <label className="field-label">
+          {it ? "Motivazione dello skip" : "Skip motivation"}
+          <textarea
+            value={motivation}
+            onChange={(event) => setMotivation(event.target.value)}
+            rows={2}
+            placeholder={it ? "Almeno 20 caratteri: ruolo e motivo." : "At least 20 characters: role and reason."}
+          />
+        </label>
+        <button
+          type="button"
+          className="button secondary compact"
+          disabled={motivation.trim().length < 20}
+          onClick={() => onSkip(motivation.trim())}
+        >
+          {it ? "Salta con motivazione" : "Skip with motivation"}
+        </button>
+      </details>
+    </section>
+  );
 }
 
 export function InferencePanel({
@@ -2187,6 +3001,9 @@ export function InferencePanel({
   isDemo,
   language,
   onConfirm,
+  gate,
+  onGatePass,
+  onGateSkip,
 }: {
   id: string;
   active: boolean;
@@ -2196,7 +3013,12 @@ export function InferencePanel({
   isDemo: boolean;
   language: "it" | "en";
   onConfirm: (draft: InferenceTargetDraft) => Promise<void> | void;
+  gate?: GateState;
+  onGatePass?: () => void;
+  onGateSkip?: (motivation: string) => void;
 }) {
+  // Senza wiring del gate (uso standalone/test) la conferma resta sbloccata.
+  const gateOk = !gate || gate.passed || gate.skipped;
   const targets = block?.inference_targets ?? [];
   const [selectedTargetId, setSelectedTargetId] = useState(targets[0]?.id ?? "");
   const target = targets.find((item) => item.id === selectedTargetId) ?? targets[0];
@@ -2356,7 +3178,8 @@ export function InferencePanel({
       generalizationLevel.trim() &&
       biologicalUnit &&
       rationale.trim().length >= 8 &&
-      preservedEstimands.every(Boolean),
+      preservedEstimands.every(Boolean) &&
+      gateOk,
   );
 
   const submit = async (event: FormEvent) => {
@@ -2519,6 +3342,25 @@ export function InferencePanel({
         <label className="field-label wide-field">{language === "it" ? "Razionale della conferma" : "Confirmation rationale"}
           <textarea value={rationale} onChange={(event) => setRationale(event.target.value)} rows={2} placeholder={language === "it" ? "Perché questo è il target corretto? (minimo 8 caratteri)" : "Why is this the correct target? (minimum 8 characters)"} />
         </label>
+        {gate && onGatePass && onGateSkip && block && (
+          <div className="wide-field">
+            <ComprehensionGate
+              key={block.id}
+              blockId={block.id}
+              language={language}
+              gate={gate}
+              onPass={onGatePass}
+              onSkip={onGateSkip}
+            />
+            {!gateOk && (
+              <p className="gate-block-note" role="note">
+                {language === "it"
+                  ? "Rispondi alle 3 mini-domande qui sopra per attivare la conferma: ti aiutano, non ti valutano."
+                  : "Answer the 3 quick checks above to enable confirmation: they help you, they do not grade you."}
+              </p>
+            )}
+          </div>
+        )}
         <div className="compiler-actions wide-field">
           <span>{target ? `${language === "it" ? "Stato fonte" : "Source status"}: ${target.status}` : (language === "it" ? "Nessun target nella fonte" : "No target in the source")} · {isDemo ? (language === "it" ? "demo sintetica" : "synthetic demo") : (language === "it" ? "conferma auditabile" : "auditable confirmation")}</span>
           <button className="button primary compact" disabled={!valid || busy}>
@@ -2535,6 +3377,171 @@ export function InferencePanel({
       )}
       <div className="compiler-guardrail">
         {language === "it" ? "Nessuna selezione automatica di test, formula o potenza: l’handoff resta strutturale." : "No automatic selection of tests, formulas or power analysis: the handoff remains structural."}
+      </div>
+    </section>
+  );
+}
+
+/** Sezione di revisione per-blocco con tab contestuali L2.
+ * Header sempre visibile (h2 ancorata ai test + stato percorso + HANDOFF_ONLY);
+ * un solo livello ontologico visibile alla volta. */
+export function BlockReviewTabs({
+  block,
+  output,
+  compilation,
+  evidence,
+  isDemo,
+  language,
+  onConfirm,
+  gate,
+  onGatePass,
+  onGateSkip,
+  tab,
+  onTabChange,
+  active,
+  onOpenQuestions,
+}: {
+  block: ExperimentBlock;
+  output?: BlockReviewOutput;
+  compilation?: DesignCompilation;
+  evidence?: EvidenceSpan;
+  isDemo: boolean;
+  language: "it" | "en";
+  onConfirm: (draft: InferenceTargetDraft) => Promise<void> | void;
+  gate: GateState;
+  onGatePass: () => void;
+  onGateSkip: (motivation: string) => void;
+  tab: BlockTabKey;
+  onTabChange: (tab: BlockTabKey) => void;
+  active: boolean;
+  onOpenQuestions: () => void;
+}) {
+  const it = language === "it";
+  const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+
+  const onTabListKeyDown = (event: React.KeyboardEvent) => {
+    if (!["ArrowRight", "ArrowLeft", "Home", "End"].includes(event.key)) return;
+    const target = event.target as HTMLElement;
+    if (target.closest("input, select, textarea, a, button:not([role='tab'])")) return;
+    event.preventDefault();
+    const order = BLOCK_TABS.map((item) => item.key);
+    const current = order.indexOf(tab);
+    let next = current;
+    if (event.key === "ArrowRight") next = (current + 1) % order.length;
+    if (event.key === "ArrowLeft") next = (current - 1 + order.length) % order.length;
+    if (event.key === "Home") next = 0;
+    if (event.key === "End") next = order.length - 1;
+    onTabChange(order[next]);
+    tabRefs.current[order[next]]?.focus();
+  };
+
+  return (
+    <section
+      id="review-output"
+      className={`panel review-output-panel ${active ? "focused-panel" : ""}`}
+      aria-labelledby="review-output-heading"
+    >
+      <div className="panel-heading">
+        <div>
+          <span className="eyebrow">
+            {it ? "Output di revisione · non certificante" : "Review output · non-certifying"}
+          </span>
+          <h2 id="review-output-heading">
+            {it ? "Methods e percorso di revisione" : "Methods and review path"}
+          </h2>
+        </div>
+        <span className="panel-tools">
+          {output && (
+            <span className={`compiler-status review-status-${output.path_status}`}>
+              {pathStatusLabel(output.path_status, language)}
+            </span>
+          )}
+          <span className="compiler-status handoff-pin" data-testid="handoff-pin" title={it ? "Nessun test o modello suggerito" : "No test or model suggested"}>
+            HANDOFF_ONLY
+          </span>
+        </span>
+      </div>
+      <p className="axis-boundary" data-testid="l2-boundary">
+        {it
+          ? "La determinabilità non è approvazione del disegno."
+          : "Determinability is not design approval."}
+      </p>
+      <div
+        className="block-tablist"
+        role="tablist"
+        aria-label={it ? "Sezioni del blocco in revisione" : "Sections of the block under review"}
+        onKeyDown={onTabListKeyDown}
+      >
+        {BLOCK_TABS.map((item) => {
+          const selected = tab === item.key;
+          const label = it ? item.it : item.en;
+          return (
+            <button
+              key={item.key}
+              ref={(element) => {
+                tabRefs.current[item.key] = element;
+              }}
+              type="button"
+              role="tab"
+              id={`blocktab-${block.id}-${item.key}`}
+              aria-selected={selected}
+              aria-controls={`blockpanel-${block.id}-${item.key}`}
+              tabIndex={selected ? 0 : -1}
+              className={`block-tab${selected ? " selected" : ""}`}
+              onClick={() => onTabChange(item.key)}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+      <div
+        role="tabpanel"
+        id={`blockpanel-${block.id}-target`}
+        aria-labelledby={`blocktab-${block.id}-target`}
+        hidden={tab !== "target"}
+        tabIndex={0}
+      >
+        <InferencePanel
+          id="inference-panel"
+          active={active}
+          block={block}
+          compilation={compilation}
+          evidence={evidence}
+          isDemo={isDemo}
+          language={language}
+          onConfirm={onConfirm}
+          gate={gate}
+          onGatePass={onGatePass}
+          onGateSkip={onGateSkip}
+        />
+      </div>
+      <div
+        role="tabpanel"
+        id={`blockpanel-${block.id}-counts`}
+        aria-labelledby={`blocktab-${block.id}-counts`}
+        hidden={tab !== "counts"}
+        tabIndex={0}
+      >
+        <UnitCountsTab block={block} output={output} language={language} />
+      </div>
+      <div
+        role="tabpanel"
+        id={`blockpanel-${block.id}-alternatives`}
+        aria-labelledby={`blocktab-${block.id}-alternatives`}
+        hidden={tab !== "alternatives"}
+        tabIndex={0}
+      >
+        <AlternativesTab block={block} output={output} language={language} onOpenQuestions={onOpenQuestions} />
+      </div>
+      <div
+        role="tabpanel"
+        id={`blockpanel-${block.id}-methods`}
+        aria-labelledby={`blocktab-${block.id}-methods`}
+        hidden={tab !== "methods"}
+        tabIndex={0}
+      >
+        <MethodsTab output={output} language={language} />
       </div>
     </section>
   );
@@ -2833,9 +3840,9 @@ function GraphView({
           {language === "it" ? (editing ? "Chiudi editor" : "Modifica grafo") : editing ? "Close editor" : "Edit graph"}
         </button>
       </div>
+      <div className="graph-scroll">
       <div
         className="graph-canvas"
-        style={{ height: `${canvasHeight + 8}px` }}
         role="group"
         aria-label={`Grafo con ${nodes.length} nodi e ${relations.length} relazioni`}
       >
@@ -2884,7 +3891,7 @@ function GraphView({
                 key={item.id}
                 className={`graph-node node-${nodeCategory(item)} ${selectedIds.has(item.id) ? "evidence-linked" : ""}`}
                 style={{ left: `${(position.x / 720) * 100}%`, top: `${(position.y / canvasHeight) * 100}%` }}
-                title={`${item.type} · confidenza premesse ${item.confidence.toFixed(2)}`}
+                title={`${item.type} · affidabilità lettura automatica ${item.confidence.toFixed(2)} (non probabilità di verità)`}
                 onClick={() => item.evidence_ids[0] && onEvidenceSelect(item.evidence_ids[0])}
               >
                 <small>{NODE_LABEL[item.type] ?? item.type}</small>
@@ -2896,7 +3903,7 @@ function GraphView({
               </button>
             );
           })}
-          {!nodes.length && <EmptyState />}
+          {!nodes.length && <EmptyState language={language} />}
           <svg className="graph-edge-labels" viewBox={`0 0 720 ${canvasHeight}`} aria-hidden="true">
             {relations.map((relation, index) => {
               const source = positions.get(relation.source);
@@ -3007,6 +4014,7 @@ function GraphView({
           </details>
         </div>
       )}
+      </div>
       </>}
     </div>
   );
@@ -3153,6 +4161,7 @@ function CorrectionPanel({
           <button aria-label={language === "it" ? "Ripeti correzione" : "Redo correction"} disabled={!canRedo} onClick={onRedo}><Redo2 size={17} /></button>
         </div>
       </div>
+      <div className="correction-body">
       {block && (block.count_records.length > 0 || block.exclusion_records.length > 0) ? (
         <CanonicalCorrectionForm
           block={block}
@@ -3183,20 +4192,23 @@ function CorrectionPanel({
           <label className="field-label">{language === "it" ? "Giustificazione" : "Rationale"}
             <textarea value={rationale} onChange={(event) => setRationale(event.target.value)} placeholder={language === "it" ? "Cita la fonte o spiega il giudizio (minimo 8 caratteri)." : "Cite the source or explain the judgement (minimum 8 characters)."} rows={3} />
           </label>
-          <div className="correction-footnote"><Link2 size={14} /> {evidence ? evidenceLocator(evidence) : (language === "it" ? "nessuna evidenza collegata" : "no linked evidence")}</div>
+          <div className="correction-footnote"><Link2 size={14} aria-hidden="true" /> {evidence ? evidenceLocator(evidence) : (language === "it" ? "nessuna evidenza collegata" : "no linked evidence")}</div>
           {evidence && (
-            <SpanLocator
-              evidence={evidence}
-              language={language}
-              onApply={(value) => {
-                setRefinement(value);
-                setRationale((currentRationale) =>
-                  currentRationale.trim().length >= 8
-                    ? currentRationale
-                    : `${value.locator}: ${currentRationale}`.trim(),
-                );
-              }}
-            />
+            <details className="span-refine-drawer">
+              <summary>{language === "it" ? "Raffina span di evidenza" : "Refine evidence span"}</summary>
+              <SpanLocator
+                evidence={evidence}
+                language={language}
+                onApply={(value) => {
+                  setRefinement(value);
+                  setRationale((currentRationale) =>
+                    currentRationale.trim().length >= 8
+                      ? currentRationale
+                      : `${value.locator}: ${currentRationale}`.trim(),
+                  );
+                }}
+              />
+            </details>
           )}
           {refinement && (
             <p className="span-refined-note" data-testid="span-refined-note">
@@ -3212,10 +4224,10 @@ function CorrectionPanel({
         </form>
       )}
       <div className="audit-panel">
-        <div className="audit-title"><span><History size={16} /> {language === "it" ? "Traccia di audit" : "Audit trail"}</span><button disabled={!hasCandidate || !exportAllowed} onClick={onExport}>{language === "it" ? "Esporta candidate" : "Export candidates"}</button></div>
+        <div className="audit-title"><span><History size={16} aria-hidden="true" /> {language === "it" ? "Traccia di audit" : "Audit trail"}</span><button disabled={!hasCandidate || !exportAllowed} onClick={onExport}>{language === "it" ? "Esporta candidate" : "Export candidates"}</button></div>
         {events.length ? events.slice(-3).reverse().map((event) => (
           <div className="audit-entry" key={event.id}>
-            <span className="avatar">{(event.actor_role ?? "R").slice(0, 1).toUpperCase()}</span>
+            <span className="avatar" aria-hidden="true">{(event.actor_role ?? "R").slice(0, 1).toUpperCase()}</span>
             <span>
               <strong>{event.action === "apply" ? (language === "it" ? "Correzione applicata" : "Correction applied") : event.action === "undo" ? (language === "it" ? "Correzione annullata" : "Correction undone") : (language === "it" ? "Correzione ripristinata" : "Correction restored")}</strong>
               <small>{event.actor_role ?? (language === "it" ? "ruolo legacy non registrato" : "legacy role not recorded")} · {formatAuditTime(event.recorded_at ?? event.at, language)}</small>
@@ -3223,6 +4235,23 @@ function CorrectionPanel({
             </span>
           </div>
         )) : <p className="muted">{language === "it" ? "Nessuna correzione registrata per questo blocco." : "No correction recorded for this block."}</p>}
+        {events.length > 3 && (
+          <details className="audit-full">
+            <summary>
+              {language === "it"
+                ? `Storia completa delle revisioni (${events.length})`
+                : `Full revision history (${events.length})`}
+            </summary>
+            <ul>
+              {events.map((event) => (
+                <li key={event.id}>
+                  {event.action} · {event.correction_id} · {event.actor_role ?? "—"} · {formatAuditTime(event.recorded_at ?? event.at, language)}
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+      </div>
       </div>
     </section>
   );
@@ -3435,6 +4464,82 @@ function ImportDialog({
   );
 }
 
-function EmptyState() {
-  return <div className="empty-state"><RotateCcw size={22} /><span>Nessun dato disponibile per questa vista.</span></div>;
+function EmptyState({ language = "it" }: { language?: "it" | "en" } = {}) {
+  return (
+    <div className="empty-state">
+      <RotateCcw size={22} aria-hidden="true" />
+      <span>{language === "it" ? "Nessun dato disponibile per questa vista." : "No data available for this view."}</span>
+    </div>
+  );
+}
+
+/** L1 — barra di contesto: le 5 informazioni per orientarsi senza scroll.
+ * Additiva: non sposta logica, legge solo lo stato esistente. */
+function WorkspaceSummaryStrip({
+  block,
+  blockIndex,
+  blockCount,
+  output,
+  compilation,
+  decisiveOpen,
+  domainBlocked,
+  privacyBlocked,
+  language,
+}: {
+  block?: ExperimentBlock;
+  blockIndex: number;
+  blockCount: number;
+  output?: BlockReviewOutput;
+  compilation?: DesignCompilation;
+  decisiveOpen: number;
+  domainBlocked: boolean;
+  privacyBlocked: boolean;
+  language: "it" | "en";
+}) {
+  const it = language === "it";
+  const experimentalUnit =
+    block?.unit_assessments.find((item) => item.experimental_unit)?.experimental_unit ?? "—";
+  const independentN =
+    block?.unit_assessments.find((item) => item.n_independent != null)?.n_independent ?? null;
+  return (
+    <div className="workspace-context-bar" role="region" aria-label={it ? "Riepilogo del blocco" : "Block summary"}>
+      <div className="context-block">
+        <span className="context-label">{it ? "Blocco" : "Block"}</span>
+        <strong>{block ? `${blockIndex + 1}/${blockCount} · ${block.title || block.id}` : "—"}</strong>
+      </div>
+      <span className="context-sep" aria-hidden="true">·</span>
+      <div className="context-block">
+        <span className="context-label">{it ? "Percorso" : "Path"}</span>
+        <strong>{output ? output.path_status : (compilation?.status === "ready" ? (it ? "Struttura completa" : "Structure complete") : (it ? "Astensione" : "Abstained"))}</strong>
+      </div>
+      <span className="context-sep" aria-hidden="true">·</span>
+      <div className="context-block">
+        <span className="context-label">{it ? "Si può decidere dal testo?" : "Decidable from text?"}</span>
+        <strong>{output?.determinability.state ?? "—"}</strong>
+      </div>
+      <span className="context-sep" aria-hidden="true">·</span>
+      <div className="context-block">
+        <span className="context-label">{it ? "Disegno adeguato?" : "Adequate design?"}</span>
+        <strong>{output?.design_adequacy.finding ?? "—"}</strong>
+      </div>
+      <span className="context-sep" aria-hidden="true">·</span>
+      <div className="context-block">
+        <span className="context-label">{it ? "Unità sperimentale · n indipendente" : "Experimental unit · independent n"}</span>
+        <strong>{experimentalUnit}{independentN != null ? ` · n = ${independentN}` : ""}</strong>
+      </div>
+      <span className="context-sep" aria-hidden="true">·</span>
+      <div className="context-block">
+        <span className="context-label">{it ? "Prossima azione" : "Next action"}</span>
+        <strong className={`context-gate ${decisiveOpen > 0 || domainBlocked || privacyBlocked ? "is-blocking" : "is-ok"}`}>
+          {decisiveOpen > 0
+            ? it ? `${decisiveOpen} domande decisive aperte` : `${decisiveOpen} decisive questions open`
+            : domainBlocked
+              ? it ? "Conferma il limite di dominio" : "Acknowledge the domain limit"
+              : privacyBlocked
+                ? it ? "Completa la revisione privacy" : "Complete the privacy review"
+                : it ? "Nessun blocco: procedi all'handoff" : "No blockers: proceed to handoff"}
+        </strong>
+      </div>
+    </div>
+  );
 }

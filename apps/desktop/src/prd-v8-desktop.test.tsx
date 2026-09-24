@@ -89,29 +89,42 @@ describe("PRD v8 desktop scientific boundary", () => {
     fireEvent.click(screen.getByRole("button", { name: "Apri demo sintetica" }));
 
     expect(screen.getByText("Demo storica · dati sintetici")).toBeInTheDocument();
-    expect(screen.getByText("HANDOFF_ONLY")).toBeInTheDocument();
-    expect(screen.getByText("La determinabilità non è approvazione del disegno.")).toBeInTheDocument();
     expect(screen.queryByText("Pronto")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Esperimenti" }));
+    expect(screen.getByTestId("handoff-pin")).toBeVisible();
+    expect(screen.getByTestId("handoff-pin")).toHaveTextContent("HANDOFF_ONLY");
+    expect(screen.getByTestId("l2-boundary")).toHaveTextContent("La determinabilità non è approvazione del disegno.");
     expect(screen.getByText("Struttura completa")).toBeInTheDocument();
 
+    fireEvent.click(screen.getByRole("tab", { name: "Alternative e domande" }));
     const determinability = screen.getByTestId("axis-determinability");
-    const adequacy = screen.getByTestId("axis-design-adequacy");
     expect(within(determinability).getByText("INSUFFICIENT_INFORMATION")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "Methods e handoff" }));
+    const panel = screen.getByRole("tabpanel");
+    const adequacy = within(panel).getByTestId("axis-design-adequacy");
     expect(within(adequacy).getByText("NOT_ASSESSED")).toBeInTheDocument();
-    expect(determinability).not.toContainElement(adequacy);
+    // Un solo livello ontologico alla volta: l'asse determinabilità non è in questo pannello.
+    expect(within(panel).queryByTestId("axis-determinability")).not.toBeInTheDocument();
   });
 
-  it("keeps adequacy unassessed when a user only confirms the structural target", () => {
+  it("keeps adequacy unassessed when a user only confirms the structural target", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: "Apri demo sintetica" }));
 
+    fireEvent.click(screen.getByRole("button", { name: "Esperimenti" }));
     fireEvent.click(screen.getByRole("button", { name: "Modifica target" }));
+    fireEvent.click(screen.getByRole("radio", { name: "L'unità assegnata al trattamento" }));
+    fireEvent.click(screen.getByRole("radio", { name: "n = 1: i 12 sono osservazioni replicate" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Consegna vincoli e domande allo statistico, senza suggerire test" }));
+    expect(await screen.findByText(/Comprensione registrata per questo blocco/)).toBeInTheDocument();
     fireEvent.change(screen.getByPlaceholderText(/Perché questo è il target corretto/), {
       target: { value: "Domanda e popolazione sono state confermate dal ricercatore." },
     });
     fireEvent.click(screen.getByRole("button", { name: /Conferma target ed estimand/ }));
 
+    fireEvent.click(screen.getByRole("tab", { name: "Methods e handoff" }));
     const adequacy = screen.getByTestId("axis-design-adequacy");
     expect(within(adequacy).getByText("NOT_ASSESSED")).toBeInTheDocument();
     expect(within(adequacy).getByText(/non autorizza una valutazione di adequacy/)).toBeInTheDocument();

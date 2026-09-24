@@ -52,26 +52,35 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.9em; }
 ::selection { background: rgb(199 125 43 / 28%); }
 
 /* ------------------------------------------------------------- shell */
-.app-shell { min-height: 100vh; display: grid; grid-template-columns: 236px minmax(0, 1fr); }
+.app-shell { min-height: 100vh; display: grid; grid-template-columns: 248px minmax(0, 1fr); }
 .sidebar {
-  position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column;
-  background: linear-gradient(180deg, #fbfcfb 0%, #f4f8f7 100%);
+  position: sticky; top: 0; height: 100vh; min-height: 0; display: flex; flex-direction: column;
+  background: linear-gradient(180deg, #fbfcfb 0%, #f2f7f6 100%);
   border-right: 1px solid var(--border);
 }
-.brand { padding: 28px 24px 20px; display: grid; gap: 6px; }
-.primary-nav { display: grid; gap: 6px; padding: 8px 14px; }
+.brand { padding: 24px 24px 16px; display: grid; gap: 4px; }
+.brand strong { font-size: 1.05rem; letter-spacing: 0.02em; }
+.brand small { color: var(--ink-muted); font-size: 0.72rem; font-weight: 750; letter-spacing: 0.14em; }
+.primary-nav { display: grid; gap: 4px; padding: 6px 12px 12px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+/* Voci contenute: lo sfondo di hover/attivo non tocca mai i bordi della sidebar. */
 .nav-item {
   display: flex; align-items: center; gap: 12px; min-height: var(--tap);
-  padding: 10px 14px; border: 1px solid transparent; border-radius: var(--radius-soft);
+  min-width: 0; overflow: hidden; margin: 1px 2px; padding: 10px 14px;
+  border: 1px solid transparent; border-radius: var(--radius-soft);
   background: transparent; color: var(--navy-soft); font-size: 0.95rem; font-weight: 650;
   text-align: left; transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
 }
 .nav-item:hover { background: rgb(8 127 131 / 7%); color: var(--navy); }
+.nav-item[aria-current="page"],
 .nav-item[aria-current="true"] {
   background: var(--teal-pale); border-color: #b7d8d4; color: var(--teal-dark); font-weight: 750;
+  box-shadow: inset 3px 0 0 var(--teal);
 }
-.sidebar-footer { margin-top: auto; padding: 14px; border-top: 1px solid var(--border); }
-.build-status { padding: 12px; display: flex; align-items: center; gap: 9px; color: var(--ink-muted); font-size: 0.85rem; }
+.nav-item svg { flex-shrink: 0; }
+.sidebar :focus-visible { outline-offset: -2px; }
+.sidebar-footer { margin-top: auto; padding: 12px; border-top: 1px solid var(--border); display: grid; gap: 4px; }
+.sidebar-footer .nav-item { margin: 0; }
+.build-status { padding: 8px 12px; display: flex; align-items: center; gap: 9px; color: var(--ink-muted); font-size: 0.82rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .status-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #9aa7b1; }
 
 .app-main { min-width: 0; padding-bottom: 120px; }
@@ -129,7 +138,7 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.9em; }
 }
 .welcome-lead { font-family: var(--display); font-size: clamp(2rem, 3.4vw, 2.9rem); line-height: 1.14; letter-spacing: -0.01em; }
 .welcome-pins { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; margin-top: 6px; }
-.welcome-pins { list-style: none; margin: 0; }
+.welcome-pins { list-style: none; margin: 0; padding: 0; }
 .welcome-pins li {
   padding: 18px 20px; background: var(--panel); border: 1px solid var(--border);
   border-radius: var(--radius); box-shadow: var(--shadow-soft);
@@ -893,3 +902,426 @@ select { max-width: 100%; }
   .d0-workspace { margin: 8px 8px 0; }
 }
 .local-state { gap: 7px; color: var(--navy-soft); font-size: 0.8rem; }
+
+/* ------------------------------------------------------------- UX audit 2026-09-15
+   L1 summary strip + semantic states + anti-card-soup + comfort.
+   Solo aggiunte: nessun selettore esistente viene rimosso o rinominato. */
+
+/* L1 — barra di contesto sticky: 5 info essenziali sopra il flusso verticale.
+   Non sostituisce i pannelli, li anticipa per ridurre lo scroll di orientamento. */
+.workspace-context-bar {
+  position: sticky; top: 72px; z-index: 30;
+  margin: var(--space-4) var(--space-5) 0; padding: 12px 18px;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px;
+  background: rgb(255 255 255 / 94%); backdrop-filter: blur(8px);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow-soft); font-size: 0.88rem; line-height: 1.45;
+}
+.workspace-context-bar strong { font-size: 0.95rem; }
+.workspace-context-bar .context-block { min-width: 0; display: grid; gap: 1px; }
+.workspace-context-bar .context-label {
+  color: var(--ink-muted); font-size: 0.7rem; font-weight: 800;
+  text-transform: uppercase; letter-spacing: 0.06em;
+}
+.workspace-context-bar .context-sep { color: var(--border-strong); }
+.workspace-context-bar .context-gate { font-weight: 750; }
+.workspace-context-bar .context-gate.is-blocking { color: #8d2626; }
+.workspace-context-bar .context-gate.is-ok { color: var(--teal-dark); }
+
+/* Gerarchia titoli: scala fissa a 4 livelli, eyebrow solo kicker. */
+.app-main h1 { font-size: 1.55rem; letter-spacing: -0.01em; }
+.panel-heading h2 { font-size: 1.18rem; }
+.v8-card h2 { font-size: 1.1rem; }
+.v8-card h3, .d0-section-title h2 { font-size: 0.98rem; }
+
+/* Leggibilità prosa scientifica: larghezza riga contenuta, interlinea ampia. */
+.evidence-excerpt, .review-methods blockquote, .compiler-summary small,
+.v8-report-header p, .welcome-lead, .axis-boundary {
+  max-width: 68ch;
+}
+.evidence-excerpt, .review-methods blockquote { line-height: 1.65; }
+.provenance-row { overflow-wrap: anywhere; }
+.v8-card pre, .knowledge-value pre {
+  max-width: 100%; overflow-x: auto; white-space: pre-wrap; overflow-wrap: anywhere;
+}
+code { overflow-wrap: anywhere; }
+
+/* Anti-card-soup: i raggruppamenti interni usano divisori, non card annidate.
+   Max 2 livelli di contenitore bordato. */
+.scientific-axis, .confirmed-target > div, .v8-record-list article, .v8-claim,
+.diff-row, .audit-entry {
+  box-shadow: none;
+}
+.statement-layer { background: transparent; }
+.driver-list a { background: transparent; box-shadow: none; }
+
+/* Sistema semantico: colore + label + bordo. Mai solo colore.
+   UNKNOWN resta distinto da conflitto e da incompleto. */
+.state-present {
+  border-color: #8ec9ac; background: #f1fbf6; color: #08764d;
+}
+.state-absent_explicit { border-color: #b9c1c8; background: #f3f5f6; color: #4b5964; }
+.state-unknown, .state-not_reported {
+  border-color: #d1ad62; border-style: dashed; background: #fff7e5; color: #745415;
+}
+.state-conflicting {
+  border-color: #c73b3b; border-style: double; border-width: 3px;
+  background: #fff0f0; color: #8d2626;
+}
+/* Severity issue-card: insufficient/infoUN distincti, high/critical distinti. */
+.issue-card.severity-insufficient { border-right-color: var(--amber); }
+.issue-card.severity-insufficient .issue-icon { background: #fff7e5; color: #745415; border: 1px dashed #d1ad62; }
+.issue-card.severity-info { border-right-color: #9aa7b1; }
+.issue-card.severity-info .issue-icon { background: #f3f5f6; color: #4b5964; }
+.issue-card.severity-medium { border-right-color: var(--amber); }
+.issue-card.severity-high { border-right-color: #e07b39; }
+.issue-card.severity-critical { border-right-color: var(--red); border-right-width: 6px; }
+.issue-severity-label {
+  display: inline-block; margin-top: 4px; padding: 2px 9px; border-radius: 999px;
+  border: 1px solid currentColor; font-size: 0.72rem; font-weight: 800;
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+/* AI-proposed non verificato: stile dedicato, mai verde/blu di conferma. */
+.candidate-note, .span-refined-note {
+  border: 1px dashed #beb4e5; border-radius: 999px; padding: 3px 11px;
+  background: #f8f6ff; color: #4e3d99;
+}
+/* Derivato deterministico: marcatore monospace sobrio. */
+.compiler-summary strong, .confirmed-target > div > strong { font-variant-numeric: tabular-nums; }
+
+/* Collapsible operabili da tastiera: focus visibile sull'header. */
+.panel-heading.collapsible:focus-visible {
+  outline: 3px solid rgb(8 127 131 / 38%); outline-offset: -3px; border-radius: var(--radius);
+}
+
+/* Comfort sessioni lunghe: ritmo verticale 8px, pannelli che respirano. */
+.center-stack, .right-stack { gap: 16px; }
+.workspace-grid { row-gap: 16px; }
+.panel-heading { padding: 16px 20px; }
+
+/* Responsive: la confidenza resta visibile in forma compatta, mai nascosta. */
+@media (max-width: 920px) {
+  .issue-card { grid-template-columns: 40px minmax(0, 1fr) auto; }
+  .issue-confidence { display: grid; font-size: 0.85rem; }
+  .workspace-context-bar { top: 0; margin: var(--space-3) var(--space-3) 0; }
+}
+/* Riduzione movimento per utenti sensibili. */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .graph-stage, .panel-toggle svg, .button { transition: none; }
+}
+
+/* ------------------------------------------------------------- UX Fase 1 — nav a gruppi (5 voci percepite, 8 bottoni invariati) */
+.nav-group { display: grid; gap: 2px; padding: 8px 0 2px; min-width: 0; }
+.nav-group + .nav-group { border-top: 1px dashed var(--border); margin-top: 8px; padding-top: 12px; }
+.nav-group-heading {
+  padding: 0 16px 4px; color: var(--ink-muted); font-size: 0.7rem; font-weight: 800;
+  text-transform: uppercase; letter-spacing: 0.1em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.nav-item .nav-count {
+  margin-left: auto; flex-shrink: 0; padding: 1px 8px; border: 1px solid var(--border); border-radius: 999px;
+  background: #f6faf9; color: var(--navy-soft); font-size: 0.76rem; font-weight: 750; white-space: nowrap;
+}
+@media (max-width: 960px) {
+  .nav-group { display: contents; }
+  .nav-group-heading { flex-basis: 100%; padding: 8px 12px 0; }
+}
+
+/* ------------------------------------------------------------- UX Fase 1b — tab contestuali L2 per blocco */
+.block-tablist {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  padding: 12px 20px; border-bottom: 1px solid var(--border); background: #fbfcfc;
+}
+.block-tab {
+  min-height: 40px; padding: 8px 16px; border: 1px solid var(--border);
+  border-radius: 999px; background: white; color: var(--navy-soft);
+  font-size: 0.88rem; font-weight: 700;
+  transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+}
+.block-tab:hover { border-color: var(--teal); color: var(--teal-dark); }
+.block-tab.selected {
+  background: var(--teal-pale); border-color: #b7d8d4; color: var(--teal-dark); font-weight: 800;
+}
+.review-output-panel [role="tabpanel"] { padding: 0; }
+.review-output-panel [role="tabpanel"]:focus-visible {
+  outline-offset: -3px;
+}
+.tabpanel-section { display: grid; gap: 0; }
+/* Pannello inferenza annidato nel tab: appiattito, niente doppia card. */
+.review-output-panel .inference-panel {
+  border: 0; border-radius: 0; box-shadow: none;
+}
+.review-output-panel .inference-panel .panel-heading { border-bottom: 1px solid var(--border); }
+.tab-crosslink { margin: 0; padding: 12px 20px 16px; font-size: 0.88rem; }
+.handoff-pin {
+  color: #4e3d99; border-color: #beb4e5; background: #f8f6ff;
+}
+/* Tabelle e liste compatte del tab Unità e conteggi. */
+.count-block { padding: 16px 20px 4px; display: grid; gap: 10px; }
+.count-block h3 { margin: 0; font-size: 0.95rem; }
+.count-table-wrap { max-width: 100%; overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius-soft); }
+.count-table { width: 100%; border-collapse: collapse; background: white; font-size: 0.85rem; }
+.count-table th { padding: 8px 10px; text-align: left; background: #f5f8f8; color: var(--navy-soft); font-size: 0.76rem; white-space: nowrap; }
+.count-table td { padding: 7px 10px; border-top: 1px solid #e6ebed; }
+.unit-assessment-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.unit-assessment-list li {
+  display: grid; gap: 3px; padding: 10px 12px; border: 1px solid var(--border);
+  border-radius: var(--radius-soft); background: #fbfcfd; font-size: 0.88rem;
+}
+.unit-assessment-list small { color: var(--ink-muted); }
+.diagnostic-only-badge {
+  padding: 1px 8px; border: 1px dashed #beb4e5; border-radius: 999px;
+  background: #f8f6ff; color: #4e3d99; font-size: 0.72rem; font-weight: 800;
+}
+
+/* ------------------------------------------------------------- UX Fase 1c — gate di comprensione */
+.gate {
+  margin: 0 20px 4px; padding: 14px 16px; display: grid; gap: 12px;
+  border: 1px solid #b7d8d4; border-radius: var(--radius-soft); background: #f5fbfa;
+}
+.gate-heading { display: flex; align-items: center; gap: 10px; color: var(--teal-dark); }
+.gate-heading h3 { margin: 2px 0 0; font-size: 1rem; color: var(--navy); }
+.gate-intro { margin: 0; font-size: 0.88rem; }
+.gate-question { margin: 0; padding: 12px; display: grid; gap: 8px; border: 1px solid var(--border); border-radius: var(--radius-soft); background: white; }
+.gate-question legend { padding: 0 6px; font-size: 0.9rem; font-weight: 700; color: var(--navy); }
+.gate-concept {
+  display: block; margin-bottom: 2px; color: var(--ink-muted); font-size: 0.72rem;
+  font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em;
+}
+.gate-option {
+  display: flex; align-items: flex-start; gap: 9px; padding: 8px 10px;
+  border: 1px solid #e0e5e7; border-radius: 8px; font-size: 0.9rem; cursor: pointer;
+}
+.gate-option:hover { border-color: var(--teal); }
+.gate-option input { margin-top: 3px; width: 17px; height: 17px; flex-shrink: 0; }
+.gate-option.is-correct { border-color: #80c7a7; background: #f1fbf6; }
+.gate-option.is-wrong { border-color: #e4a1a1; background: var(--red-pale); }
+.gate-feedback { margin: 0; font-size: 0.86rem; line-height: 1.5; }
+.gate-feedback.is-correct { color: #08764d; font-weight: 650; }
+.gate-feedback.is-wrong { color: #8d2626; }
+.gate-done {
+  margin: 0 20px 4px; padding: 10px 14px; display: flex; align-items: center; gap: 8px;
+  border: 1px solid #b7d8d4; border-radius: var(--radius-soft);
+  background: var(--teal-pale); color: var(--teal-dark); font-size: 0.88rem; font-weight: 650;
+}
+.gate-block-note {
+  margin: 10px 0 0; padding: 10px 14px; border-left: 4px solid var(--amber);
+  background: var(--amber-pale); color: #765200; font-size: 0.88rem; line-height: 1.5;
+  border-radius: 0 8px 8px 0;
+}
+.gate-skip { padding: 10px 12px; border: 1px dashed var(--border-strong); border-radius: var(--radius-soft); background: white; font-size: 0.88rem; }
+.gate-skip summary { cursor: pointer; font-weight: 750; color: var(--navy-soft); min-height: 32px; display: flex; align-items: center; }
+.gate-skip .field-label { margin-top: 10px; }
+
+/* ------------------------------------------------------------- UX Fase 1c — inspector evidenza L3 */
+.evidence-list-wrap { margin: 0 20px 18px; display: grid; gap: 8px; }
+.evidence-list-label { color: var(--ink-muted); font-size: 0.78rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; }
+.evidence-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; max-height: 320px; overflow-y: auto; }
+.evidence-list [role="option"] { margin: 0; }
+.evidence-option {
+  width: 100%; display: grid; gap: 3px; text-align: left; padding: 10px 12px;
+  border: 1px solid var(--border); border-radius: var(--radius-soft); background: white;
+  font-size: 0.85rem;
+}
+.evidence-option:hover { border-color: var(--teal); }
+.evidence-option.selected { border-color: var(--teal); background: #f4f9f8; box-shadow: 0 0 0 2px rgb(8 127 131 / 14%); }
+.evidence-option-locator { font-weight: 750; color: var(--navy); overflow-wrap: anywhere; }
+.evidence-option-type { color: var(--teal-dark); font-size: 0.76rem; font-weight: 750; }
+.evidence-option-excerpt { color: var(--ink-muted); font-size: 0.82rem; line-height: 1.5; overflow-wrap: anywhere; }
+.span-refine-drawer { margin-top: 4px; padding: 10px 12px; border: 1px dashed var(--border-strong); border-radius: var(--radius-soft); background: white; font-size: 0.88rem; }
+.span-refine-drawer summary { cursor: pointer; font-weight: 750; color: var(--navy-soft); min-height: 32px; display: flex; align-items: center; }
+.span-refine-drawer .span-locator { margin-top: 10px; }
+.audit-full { font-size: 0.86rem; color: var(--navy-soft); }
+.audit-full summary { cursor: pointer; font-weight: 750; color: var(--teal-dark); min-height: 32px; display: flex; align-items: center; }
+.audit-full ul { margin: 8px 0 0; padding-left: 18px; display: grid; gap: 6px; }
+.audit-full code, .audit-full li { overflow-wrap: anywhere; }
+
+/* Corpi scrollanti: un wrapper per schermo, header e azioni restano fissi. */
+.questions-body, .evidence-body, .correction-body, .export-body, .graph-scroll { display: grid; gap: 0; align-content: start; }
+
+/* ------------------------------------------------------------- UX routing + containment: viste bloccate in altezza,
+   UNA sola regione di scroll per schermo, mai la pagina (desktop) */
+@media (min-width: 961px) {
+  html, body { height: 100%; height: 100dvh; overflow: hidden; }
+  .app-shell { height: 100vh; height: 100dvh; min-height: 0; overflow: hidden; }
+  .app-main { display: flex; flex-direction: column; height: 100vh; height: 100dvh; min-height: 0; min-width: 0; overflow: hidden; padding-bottom: 0; }
+  .topbar { flex: 0 0 auto; }
+  .restore-banner { flex: 0 0 auto; }
+  /* Contenitore unico: distribuisce altezza, non scrolla */
+  .view-scroll { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; overscroll-behavior: contain; }
+  .view { flex: 1; min-height: 0; width: 100%; max-width: 1440px; margin: 0 auto; padding: var(--space-5); overflow: hidden; }
+  .view > * { min-width: 0; min-height: 0; }
+  .view-project, .view-experiments { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: var(--space-4); }
+  .view-questions, .view-graph, .view-documents, .view-corrections,
+  .view-export, .view-d0, .view-welcome { display: flex; flex-direction: column; gap: var(--space-4); }
+  .view-report { display: flex; flex-direction: column; overflow-y: auto; }
+  .view-heading-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex: 0 0 auto; }
+  .view-heading-row h2 { font-size: 1.35rem; letter-spacing: -0.01em; }
+  /* Colonne vincolate: si dividono l'altezza, scrollano dentro */
+  .project-grid { display: grid; grid-template-columns: minmax(300px, 0.9fr) minmax(0, 1.1fr); gap: var(--space-4); min-height: 0; overflow: hidden; align-items: stretch; }
+  .experiments-grid { display: grid; grid-template-columns: minmax(300px, 0.85fr) minmax(0, 1.35fr); gap: var(--space-4); min-height: 0; overflow: hidden; align-items: stretch; }
+  /* Pannelli colonna: header fisso + corpo che scrolla */
+  .block-list-panel, .review-output-panel, .questions-screen, .graph-panel,
+  .evidence-panel, .correction-panel, .export-screen { display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; height: 100%; }
+  .view-questions > section, .view-graph > section, .view-documents > section,
+  .view-corrections > section, .view-export > section { flex: 1; }
+  /* Unica regione scrollante per colonna */
+  .block-list, .review-output-panel [role="tabpanel"], .questions-body,
+  .evidence-body, .correction-body, .export-body, .project-side { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+  .graph-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; display: flex; flex-direction: column; }
+  .graph-workspace { display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; }
+  .graph-feature-gate, .graph-toolbar { flex: 0 0 auto; }
+  .view-graph .graph-panel { min-height: 0; }
+  .view-graph .graph-canvas { flex: 1 1 auto; min-height: min(420px, 100%); }
+  .project-grid > *, .experiments-grid > * { min-height: 0; min-width: 0; }
+  .evidence-list { max-height: none; overflow: visible; }
+  .view-questions .questions-screen, .view-documents .evidence-panel,
+  .view-corrections .correction-panel, .view-export .export-screen { max-width: 980px; }
+  .project-side { align-content: start; }
+  .project-grid > *, .experiments-grid > * { min-height: 0; min-width: 0; }
+  /* D0: stepper fisso, step e riepilogo scrollano indipendenti */
+  .view-d0 { padding: 14px 14px 0; }
+  .view-d0 > .d0-workspace { flex: 1; min-height: 0; margin: 0; overflow: hidden; }
+  .view-d0 .d0-layout { flex: 1; min-height: 0; overflow: hidden; }
+  .view-d0 .d0-step-content, .view-d0 .d0-profile-summary { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+}
+@media (max-width: 1400px) and (min-width: 961px) {
+  .experiments-grid { grid-template-columns: minmax(280px, 1fr) minmax(0, 1.5fr); }
+}
+@media (max-width: 1100px) and (min-width: 961px) {
+  .project-grid, .experiments-grid { grid-template-columns: 1fr; }
+}
+
+/* Schermate: CTA, note, blocchi chiarire */
+.screen-ctas { display: flex; flex-wrap: wrap; gap: 10px; padding: 14px 20px 8px; }
+.screen-note { margin: 0; padding: 0 20px 16px; font-size: 0.85rem; }
+.discriminating { margin: 14px 20px 0; padding: 12px 14px; border-left: 4px solid var(--teal); background: #f7fbfa; border-radius: 0 8px 8px 0; }
+.discriminating blockquote { margin: 8px 0 0; font: 0.98rem/1.6 Georgia, "Times New Roman", serif; }
+.blocking-questions { margin: 14px 20px 0; display: grid; gap: 8px; }
+.blocking-questions ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; font-size: 0.92rem; line-height: 1.55; }
+
+/* ------------------------------------------------------------- Fix grafici audit (screenshot D0 + shell) */
+/* Section labels are never truncated: when a text badge does not fit beside the
+   label it wraps to a second line (indented under the label) instead of eating it. */
+.nav-item { flex-wrap: wrap; row-gap: 2px; }
+.nav-item > span:first-of-type { flex: 1 1 auto; min-width: min-content; white-space: nowrap; }
+.nav-item .nav-count { flex-shrink: 0; }
+.sidebar .nav-item .nav-count { margin-left: auto; }
+.topbar { flex-wrap: wrap; row-gap: 10px; }
+.topbar > * { min-width: 0; }
+.project-title, .topbar-actions { display: flex; align-items: center; min-width: 0; flex-wrap: wrap; }
+.d0-heading { flex-wrap: wrap; min-height: 0; }
+.d0-heading > div { min-width: min(100%, 320px); flex: 1; }
+.d0-stepper { overflow-x: auto; }
+.d0-stepper button { white-space: nowrap; }
+.d0-nav-actions { flex-wrap: wrap; gap: 10px; }
+.d0-nav-actions .button { flex: 1 1 160px; }
+.d0-nav-actions .button:disabled { opacity: 1; background: #eef2f2; border-color: var(--border-strong); color: #47616e; }
+.d0-summary-note, .d0-summary-note p { color: #5e4b24; }
+.d0-summary-note svg, .d0-validation-list svg { color: #7c5600; flex-shrink: 0; }
+.d0-domain-callout, .d0-readonly-field, .d0-table-wrap, .d0-summary-note,
+.d0-compile-result, .d0-result-section { border-radius: var(--radius-soft); }
+.d0-step-content, .d0-profile-summary { padding: 16px 20px; }
+.d0-compile-result strong, .d0-compile-result code { overflow-wrap: anywhere; min-width: 0; }
+.d0-stepper button:focus-visible { outline-offset: -3px; border-radius: 8px; }
+@media (max-width: 1100px) {
+  .d0-layout { grid-template-columns: 1fr; }
+  .d0-step-content { border-right: 0; border-bottom: 1px solid var(--border); }
+}
+@media (max-width: 900px) {
+  .d0-proof-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 720px) {
+  .d0-compile-result { grid-template-columns: 1fr; }
+  .d0-field-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 680px) {
+  .d0-stepper { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 960px) {
+  .app-shell { height: auto; overflow: visible; }
+  .app-main { display: block; height: auto; overflow: visible; }
+  .view-scroll { overflow: visible; display: block; }
+  .view { display: block; height: auto; overflow: visible; }
+  .project-grid, .experiments-grid { grid-template-columns: 1fr; overflow: visible; }
+  .block-list-panel, .review-output-panel, .questions-screen, .graph-panel,
+  .evidence-panel, .correction-panel, .export-screen, .d0-workspace { height: auto; overflow: visible; }
+  .block-list, .review-output-panel [role="tabpanel"], .questions-body,
+  .evidence-body, .correction-body, .export-body, .project-side, .graph-scroll,
+  .d0-step-content, .d0-profile-summary { overflow: visible; }
+  .d0-layout { overflow: visible; }
+  .sidebar-footer { display: flex; align-items: center; gap: 8px; }
+  .build-status { white-space: nowrap; font-size: 0.78rem; }
+}
+
+/* ------------------------------------------------------------- UX keep-alive: le viste inattive restano montate ma nascoste.
+   Obbligatorio con !important: .view{display:grid} batterebbe lo UA stylesheet. */
+[hidden] { display: none !important; }
+
+/* Sticky senza sovrapposizioni: solo strip L1 e tablist restano fissi. */
+.view .panel-heading { position: static; }
+.view .workspace-context-bar { position: sticky; top: 0; z-index: 20; margin: 0; }
+.block-tablist { position: sticky; top: 0; z-index: 20; background: #fbfcfc; }
+.inference-panel { overflow: visible; }
+
+/* ------------------------------------------------------------- Overflow: nessun token esce dal riquadro */
+.workspace-context-bar > .context-block { flex: 1 1 170px; min-width: 0; }
+.workspace-context-bar .context-sep { flex-shrink: 0; }
+.workspace-context-bar strong, .context-block strong { min-width: 0; overflow-wrap: anywhere; }
+.panel-heading { flex-wrap: wrap; }
+.panel-heading h2 { min-width: 0; overflow-wrap: anywhere; }
+.confidence { white-space: normal; overflow-wrap: anywhere; max-width: 100%; flex-shrink: 0; }
+.statistical-handoff > div { flex-wrap: wrap; min-width: 0; }
+.statistical-handoff strong { min-width: 0; overflow-wrap: anywhere; }
+.domain-gate div, .privacy-gate div, .review-progress { min-width: 0; overflow-wrap: anywhere; }
+.progress-title, .view-heading-row { flex-wrap: wrap; min-width: 0; }
+.compiler-actions { flex-wrap: wrap; }
+.audit-entry > span:last-child { min-width: 0; overflow-wrap: anywhere; }
+.driver-list strong, .count-table td { overflow-wrap: anywhere; }
+.d0-state-table td:first-child { white-space: normal; overflow-wrap: anywhere; }
+.block-copy small, .block-copy strong, .issue-copy small, .issue-copy strong { overflow-wrap: anywhere; }
+.export-actions { min-width: 0; flex-wrap: wrap; }
+.project-grid > *, .experiments-grid > *, .view > * { min-width: 0; }
+.d0-sample-table td { overflow-wrap: anywhere; white-space: normal; }
+
+/* ------------------------------------------------------------- Cross-platform Win/macOS/Linux */
+:root {
+  --display: Inter, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "DejaVu Sans", ui-sans-serif, system-ui, sans-serif;
+  color-scheme: light;
+}
+body {
+  font-family: var(--display);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-kerning: normal;
+  font-synthesis: weight style;
+}
+code, .span-locator-text, .audit-entry small {
+  font-family: ui-monospace, "Cascadia Code", "Cascadia Mono", "Roboto Mono", "Noto Sans Mono", "DejaVu Sans Mono", Menlo, Consolas, monospace;
+  overflow-wrap: anywhere;
+}
+input[type="checkbox"], input[type="radio"] { accent-color: var(--teal); width: 18px; height: 18px; flex-shrink: 0; }
+.topbar, .dialog-backdrop, .workspace-context-bar { -webkit-backdrop-filter: blur(8px); }
+.view-scroll, .graph-canvas, .dialog, .d0-table-wrap, .evidence-list {
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: #c5d6d3 transparent;
+}
+.graph-stage { min-width: min(720px, 100%); }
+.graph-node { max-width: 100%; overflow-wrap: anywhere; }
+.toast { bottom: max(16px, env(safe-area-inset-bottom)); max-width: min(680px, calc(100vw - 32px)); overflow-wrap: anywhere; }
+.dialog-backdrop { padding: 16px; }
+.dialog { width: min(780px, calc(100vw - 32px)); overflow-wrap: anywhere; }
+.view :focus-visible { outline-offset: -2px; }
+@media (min-width: 961px) {
+  .app-shell, .app-main { height: 100vh; height: 100dvh; }
+  .dialog { max-height: calc(100vh - 48px); max-height: calc(100dvh - 48px); }
+  .view-graph .graph-canvas { height: min(62vh, 560px); height: min(62dvh, 560px); min-height: 320px; }
+}
+@media (max-width: 680px) {
+  .d0-stepper button { white-space: normal; text-align: center; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spin { animation: none; }
+  .graph-node:hover { transform: none; }
+}

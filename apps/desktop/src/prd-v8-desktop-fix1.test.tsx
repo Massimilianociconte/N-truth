@@ -185,6 +185,7 @@ describe("PRD v8 desktop canonical consumer and v7 boundary", () => {
     const urls = fetchMock.mock.calls.map(([input]) => String(input));
     expect(urls).toContain("/v7/analyze");
     expect(urls).not.toContain("/v1/analyze");
+    fireEvent.click(screen.getByRole("button", { name: "Esperimenti" }));
     expect(screen.getByRole("heading", { name: "Methods e percorso di revisione" })).toBeInTheDocument();
     expect(screen.getByText("Revisione richiesta")).toBeInTheDocument();
     expect(screen.queryByText(/ANOVA must never reach/)).not.toBeInTheDocument();

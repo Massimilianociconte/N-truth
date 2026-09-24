@@ -17,6 +17,14 @@ const KEY = "ntruth.checkpoint.v1";
 const CORRUPT_KEY = `${KEY}.corrupt`;
 const VERSION = 1;
 
+export interface ComprehensionGateRecord {
+  passed: boolean;
+  skipped: boolean;
+  motivation: string;
+  attempts: number;
+  answeredAt?: string;
+}
+
 export interface CheckpointUiState {
   active_view: string;
   selected_block?: string;
@@ -24,6 +32,7 @@ export interface CheckpointUiState {
   selected_evidence?: string;
   collapsed: Record<string, boolean>;
   domain_acknowledged: boolean;
+  comprehension_gate?: Record<string, ComprehensionGateRecord>;
 }
 
 export interface CheckpointPayload {
