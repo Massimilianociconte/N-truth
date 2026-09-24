@@ -3,7 +3,8 @@
   "description": "Il mixed model dichiara il cluster donatore, ma non prova da solo l'indipendenza dei sei donatori.",
   "factor": "treatment",
   "expect": {
-    "experimental_unit": "HumanDonor",
+    "allocation_unit_candidate": "HumanDonor",
+    "experimental_unit": null,
     "observational_unit": "Cell",
     "analytical_unit": "Cell",
     "n_declared": 1200,
@@ -13,13 +14,14 @@
     "inferability": "requires_confirmation",
     "risk": "insufficient_information",
     "alerts_include": [
+      "GEN-002",
+      "GEN-004",
+      "GEN-009",
       "GEN-010"
     ],
     "alerts_exclude": [
       "MIC-004",
-      "SC-001",
-      "GEN-002",
-      "GEN-009"
+      "SC-001"
     ],
     "abstained": true,
     "unresolved_conflicts": 0

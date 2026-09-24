@@ -1,0 +1,5 @@
+unrelated_alias {'pairs': (('batch', 'day'),), 'variation': {'batch': False, 'day': False, 'treatment': True}, 'inputs': {'levels_present': True, 'within_block_variation': True, 'fully_aliased': True}, 'status': 'STRUCTURALLY_ALIASED'}
+nested_confounding {'pairs': (), 'variation': {'batch': True, 'treatment': True}, 'inputs': {'levels_present': True, 'within_block_variation': True, 'fully_aliased': False}, 'status': 'SUPPORTED_WITHIN_RECORDED_DESIGN'}
+missing_as_variation {'pairs': (), 'variation': {'treatment': True}, 'inputs': {'levels_present': True, 'within_block_variation': True, 'fully_aliased': False}, 'status': 'SUPPORTED_WITHIN_RECORDED_DESIGN'}
+no_block {'pairs': (), 'variation': {'treatment': None}, 'inputs': {'levels_present': True, 'within_block_variation': False, 'fully_aliased': False}, 'status': 'PARTIALLY_SUPPORTED'}
+invented_block {'pairs': (), 'variation': {'treatment': True}, 'inputs': {'levels_present': True, 'within_block_variation': True, 'fully_aliased': False}, 'status': 'SUPPORTED_WITHIN_RECORDED_DESIGN'}

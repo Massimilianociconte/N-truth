@@ -1,8 +1,8 @@
 # N-Truth — Annotation Guideline v0.1
 
-**Stato:** bozza operativa riallineata al PRD v3; non approvata e non gold.<br>
+**Stato:** bozza operativa riallineata al PRD v6; non approvata e non gold.<br>
 **Owner richiesti:** annotation lead, wet-lab reviewer e adjudicator biostatistico.
-**Fonte normativa:** PRD v3 §§7–10, 14, 16–18 e Appendici A–D.
+**Fonte normativa:** PRD v6 §§7–10, 13–18 e Appendici A–D.
 
 Questa guideline deve essere revisionata prima del pilot. Non è consentito adattarla
 retroattivamente per migliorare l'accordo o le prestazioni di un modello.
@@ -20,10 +20,11 @@ Per ogni blocco, nell'ordine:
 2. marcare evidence span e classificarne il tipo;
 3. identificare unità, fattori, livelli, gruppi, endpoint e conteggi;
 4. annotare relazioni, coreference e provenance;
-5. specificare separatamente `allocation_level` e `application_level` per fattore;
+5. specificare separatamente `allocation_level`, `application_level` e
+   `independently_assigned` per fattore;
 6. definire contrasti e, se determinabile, estimando e target inferenziale;
 7. distinguere unità biologica, sperimentale, osservazionale e analitica;
-8. registrare `n` dichiarato, allocato, analizzato, osservazionale e indipendente per
+8. registrare lifecycle, quantificatore, esclusioni e tutti i count pertinenti per
    gruppo/contrasto/endpoint;
 9. classificare la determinabilità e conservare grafi/scenari alternativi;
 10. formulare la domanda minima che discrimina le alternative;
@@ -35,18 +36,22 @@ Per ogni blocco, nell'ordine:
 | Termine | Definizione operativa |
 |---|---|
 | Unità biologica | Entità biologica di interesse o origine del materiale: donatore, animale, linea, coltura primaria, organoide, tessuto o altra entità definita dal dominio. |
-| **Unità sperimentale** | Più piccola unità alla quale i livelli di un fattore possono essere assegnati indipendentemente, per il contrasto considerato. Non è globale. |
+| **Unità sperimentale** | Più piccola unità alla quale i livelli di un fattore sono stati assegnati in modo operativamente indipendente, per il contrasto considerato. `allocation_level` da solo non basta. |
 | Unità osservazionale | Entità sulla quale viene effettuata la misura. |
 | Unità analitica | Riga o aggregato effettivamente inserito nel modello statistico. |
 | Replica biologica | Istanza indipendente dell'unità biologica pertinente alla domanda e alla popolazione di inferenza; non è provata dalla sola etichetta dell'autore. |
 | Replica tecnica / sottocampione | Misura o lavorazione ripetuta sullo stesso materiale; non incrementa automaticamente le unità sperimentali. |
 | `allocation_level` | Livello al quale i valori del fattore possono essere assegnati indipendentemente. |
 | `application_level` | Livello sul quale la procedura viene materialmente applicata. Può differire dall'allocazione. |
+| `independently_assigned` | Tri-state obbligatorio `TRUE`, `FALSE`, `UNKNOWN`; `TRUE` richiede un meccanismo osservabile e auditabile. |
+| `independence_mechanism` | Evento/procedura che sostiene l'indipendenza, con timing rispetto a split, pooling, preparazione e trattamento. |
+| `independence_evidence_ids` | Evidenze dedicate alla premessa di indipendenza; non riusare implicitamente l'evidenza della sola allocation. |
 | Contrasto | Livelli di uno o più fattori che vengono confrontati per uno specifico endpoint. |
 | Estimando minimo | Endpoint, misura dell'effetto, popolazione o insieme di unità target, livello di generalizzazione, fattori ed eventuale tempo/condizione. |
 | `n_declared` | Numero associato dagli autori a un risultato, con entità e posizione. |
 | `n_observational` | Numero di osservazioni o misure. |
 | `n_independent` | Istanze dell'unità sperimentale pertinenti a fattore e contrasto, eventualmente condizionali. |
+| `effective_n` | Diagnostica statistica opzionale; non è un conteggio fisico e non può sanare replicazione mancante. |
 
 ### 2.1 Principio per fattore
 
@@ -56,10 +61,11 @@ contrasto ed endpoint; non si sceglie una sola unità per il blocco.
 
 ### 2.2 Allocazione non è applicazione
 
-I due campi non vanno copiati automaticamente. Se una procedura è materialmente
+I campi non vanno copiati automaticamente. Se una procedura è materialmente
 eseguita sul campione ma il trattamento era già stato assegnato alla sorgente, si
-conservano entrambi i livelli. Se uno dei due non è riportato, resta `null` e genera una
-domanda.
+conservano entrambi i livelli. ID, well, costanza di una colonna o la frase
+“independent experiment” non promuovono mai da soli il tri-state a `TRUE`. Se un fatto
+non è riportato, resta `UNKNOWN`/`null` con reason code e genera una domanda.
 
 ## 3. Evidenza e provenance
 
@@ -115,7 +121,8 @@ metadata (`nested_in`, `derived_from`, `split_from`, `pooled_from`, `paired_with
 `belongs_to_group`, `excluded_from`, `supports`, `contradicts`,
 `declares_clustering`).
 
-ID differenti non dimostrano indipendenza. I termini generici `replicate`, `sample` o
+ID differenti e livelli di fattore nel sample sheet descrivono provenance/associazione,
+non dimostrano allocation, application o indipendenza. I termini generici `replicate`, `sample` o
 `experiment` non diventano tipi del grafo senza definizione operativa.
 
 ### Passo 4 — Mappa di unità e n
@@ -126,19 +133,28 @@ Per ogni scope fattore × contrasto × endpoint × gruppo, quando applicabile:
 unità biologica       : ...
 allocation_level      : ... | null
 application_level     : ... | null
+independently_assigned: TRUE | FALSE | UNKNOWN
+independence_mechanism: ... | null
+independence_evidence_ids: [...] | []
 unità sperimentale    : ... | null
 unità osservazionale  : ... | null
 unità analitica       : ... | null
-n dichiarato          : ... | null
-n allocato            : ... | null
-n analizzato          : ... | null
-n osservazionale      : ... | null
-n indipendente        : ... | null
-determinabilità       : DETERMINATE | MULTIPLE_PLAUSIBLE_GRAPHS |
-                       CONFLICTING_INFORMATION | INDETERMINATE
+planned_n             : valore + quantifier + scope
+allocated_n           : valore + quantifier + scope
+treated_n             : valore + quantifier + scope
+observed_n            : valore + quantifier + scope
+excluded_n            : valore + fase/criterio + scope
+analysed_n            : valore + quantifier + scope
+declared/observational/analytical/independent_n : ...
+biological_source_count: ...
+determinabilità       : DETERMINATE | CONDITIONALLY_DETERMINATE |
+                       MULTIPLE_PLAUSIBLE_GRAPHS | INSUFFICIENT_INFORMATION |
+                       CONFLICTING_INFORMATION | INVALID_GRAPH | OUT_OF_SCOPE
 ```
 
-Un `null` motivato non viene sostituito con un numero vicino. Se l'indipendenza cambia
+Ogni quantificatore è uno tra `EXACT`, `LOWER_BOUND`, `UPPER_BOUND`, `APPROXIMATE`,
+`RANGE`, `UNKNOWN`, `NOT_REPORTED`. Un `null` motivato non viene sostituito con zero o
+con un numero vicino. Se l'indipendenza cambia
 in base a un fatto non confermato, annotare `conditional_on`, valori
 `if_confirmed`/`if_rejected`, domanda ed evidenze.
 
@@ -166,19 +182,21 @@ dall'annotazione originaria.
 
 ### Calibration set
 
-- 30 casi non conteggiati nel test;
+- 30-50 casi non conteggiati nel test;
 - annotazione indipendente da profilo wet-lab e statistico;
+- doppia obbligatoria sui campi decisivi e campionamento stratificato sul resto;
 - analisi degli errori dello schema e revisione della guideline;
 - nessun fine-tuning sul materiale congelato come test.
 
 ### Feasibility pilot
 
-- 150–250 Experiment Bundle;
-- 100% doppia annotazione;
+- 100-150 Experiment Bundle;
+- 100% doppia annotazione sui campi decisivi e sul test; 25-40% full-double sul train;
 - adjudication di tutti i disaccordi;
 - guideline versionata e decisioni motivate.
 
 Riportare separatamente accordo sui tipi di unità, `allocation_level`,
+`independently_assigned`, critical edges,
 determinabilità, archi/grafo e differenze biologo-biostatistico. Cohen κ è adatta solo
 a categorie fisse; per grafi usare F1 su archi, graph edit distance o altre misure
 predefinite nel protocollo. L'IAA si misura prima dell'adjudication.
@@ -207,3 +225,7 @@ Questa bozza diventa operativa soltanto dopo:
 
 Il passo successivo non è il training: è verificare che persone competenti riescano a
 rappresentare lo stesso disegno nello stesso modo e documentare dove non concordano.
+
+Nota di controllo: l'Appendice D del PRD riporta ancora 150-250 casi, mentre corpo,
+roadmap e Definition of Done riportano 100-150. Questa guideline usa 100-150 e tratta
+il valore dell'appendice come erratum editoriale aperto.

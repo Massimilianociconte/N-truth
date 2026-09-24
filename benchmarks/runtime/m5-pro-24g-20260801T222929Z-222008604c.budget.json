@@ -1,0 +1,184 @@
+{
+  "identity": {
+    "benchmark_id": "m5-pro-24g-20260801T222929Z-222008604c",
+    "machine_model": "Mac17,9",
+    "measured_at": "2026-08-01T22:29:29.701200Z",
+    "operating_system": "macOS 26.5.2",
+    "runtime_name": "mlx-lm",
+    "runtime_version": "0.31.3",
+    "unified_memory_bytes": 25769803776
+  },
+  "stages": [
+    {
+      "benchmark_id": "m5-pro-24g-20260801T222929Z-222008604c",
+      "max_additional_peak_ram_bytes": 2525495296,
+      "max_input_tokens": 473,
+      "max_latency_ms": 603.672541998094,
+      "max_swap_delta_bytes": 0,
+      "observation_ids": [
+        "obs-low_memory-mlx_generate-r1",
+        "obs-low_memory-mlx_generate-r2",
+        "obs-low_memory-mlx_generate-r3"
+      ],
+      "profile": "LOW_MEMORY",
+      "sample_count": 3,
+      "stage_id": "mlx_generate"
+    },
+    {
+      "benchmark_id": "m5-pro-24g-20260801T222929Z-222008604c",
+      "max_additional_peak_ram_bytes": 2525495296,
+      "max_input_tokens": 1125,
+      "max_latency_ms": 2206.110750004882,
+      "max_swap_delta_bytes": 0,
+      "observation_ids": [
+        "obs-balanced-mlx_generate-r1",
+        "obs-balanced-mlx_generate-r2",
+        "obs-balanced-mlx_generate-r3"
+      ],
+      "profile": "BALANCED",
+      "sample_count": 3,
+      "stage_id": "mlx_generate"
+    },
+    {
+      "benchmark_id": "m5-pro-24g-20260801T222929Z-222008604c",
+      "max_additional_peak_ram_bytes": 2525495296,
+      "max_input_tokens": 2244,
+      "max_latency_ms": 3782.3588339961134,
+      "max_swap_delta_bytes": 0,
+      "observation_ids": [
+        "obs-quality-mlx_generate-r1",
+        "obs-quality-mlx_generate-r2",
+        "obs-quality-mlx_generate-r3"
+      ],
+      "profile": "QUALITY",
+      "sample_count": 3,
+      "stage_id": "mlx_generate"
+    },
+    {
+      "benchmark_id": "m5-pro-24g-20260801T222929Z-222008604c",
+      "max_additional_peak_ram_bytes": 67764224,
+      "max_input_tokens": 0,
+      "max_latency_ms": 122.471915994538,
+      "max_swap_delta_bytes": 0,
+      "observation_ids": [
+        "obs-low_memory-rules_engine-r1",
+        "obs-low_memory-rules_engine-r2"
+      ],
+      "profile": "LOW_MEMORY",
+      "sample_count": 2,
+      "stage_id": "rules_engine"
+    },
+    {
+      "benchmark_id": "m5-pro-24g-20260801T222929Z-222008604c",
+      "max_additional_peak_ram_bytes": 67682304,
+      "max_input_tokens": 0,
+      "max_latency_ms": 0.6947499932721257,
+      "max_swap_delta_bytes": 0,
+      "observation_ids": [
+        "obs-low_memory-hard_verifier-r1",
+        "obs-low_memory-hard_verifier-r2"
+      ],
+      "profile": "LOW_MEMORY",
+      "sample_count": 2,
+      "stage_id": "hard_verifier"
+    },
+    {
+      "benchmark_id": "m5-pro-24g-20260801T222929Z-222008604c",
+      "max_additional_peak_ram_bytes": 67682304,
+      "max_input_tokens": 0,
+      "max_latency_ms": 0.2598340070107952,
+      "max_swap_delta_bytes": 0,
+      "observation_ids": [
+        "obs-low_memory-semantic_verifier-r1",
+        "obs-low_memory-semantic_verifier-r2"
+      ],
+      "profile": "LOW_MEMORY",
+      "sample_count": 2,
+      "stage_id": "semantic_verifier"
+    },
+    {
+      "benchmark_id": "m5-pro-24g-20260801T222929Z-222008604c",
+      "max_additional_peak_ram_bytes": 67682304,
+      "max_input_tokens": 0,
+      "max_latency_ms": 124.41466700693127,
+      "max_swap_delta_bytes": 0,
+      "observation_ids": [
+        "obs-balanced-rules_engine-r1",
+        "obs-balanced-rules_engine-r2"
+      ],
+      "profile": "BALANCED",
+      "sample_count": 2,
+      "stage_id": "rules_engine"
+    },
+    {
+      "benchmark_id": "m5-pro-24g-20260801T222929Z-222008604c",
+      "max_additional_peak_ram_bytes": 67682304,
+      "max_input_tokens": 0,
+      "max_latency_ms": 0.606792003964074,
+      "max_swap_delta_bytes": 0,
+      "observation_ids": [
+        "obs-balanced-hard_verifier-r1",
+        "obs-balanced-hard_verifier-r2"
+      ],
+      "profile": "BALANCED",
+      "sample_count": 2,
+      "stage_id": "hard_verifier"
+    },
+    {
+      "benchmark_id": "m5-pro-24g-20260801T222929Z-222008604c",
+      "max_additional_peak_ram_bytes": 67682304,
+      "max_input_tokens": 0,
+      "max_latency_ms": 0.2742919896263629,
+      "max_swap_delta_bytes": 0,
+      "observation_ids": [
+        "obs-balanced-semantic_verifier-r1",
+        "obs-balanced-semantic_verifier-r2"
+      ],
+      "profile": "BALANCED",
+      "sample_count": 2,
+      "stage_id": "semantic_verifier"
+    },
+    {
+      "benchmark_id": "m5-pro-24g-20260801T222929Z-222008604c",
+      "max_additional_peak_ram_bytes": 67682304,
+      "max_input_tokens": 0,
+      "max_latency_ms": 120.44112499279436,
+      "max_swap_delta_bytes": 0,
+      "observation_ids": [
+        "obs-quality-rules_engine-r1",
+        "obs-quality-rules_engine-r2"
+      ],
+      "profile": "QUALITY",
+      "sample_count": 2,
+      "stage_id": "rules_engine"
+    },
+    {
+      "benchmark_id": "m5-pro-24g-20260801T222929Z-222008604c",
+      "max_additional_peak_ram_bytes": 67682304,
+      "max_input_tokens": 0,
+      "max_latency_ms": 0.6459159922087565,
+      "max_swap_delta_bytes": 0,
+      "observation_ids": [
+        "obs-quality-hard_verifier-r1",
+        "obs-quality-hard_verifier-r2"
+      ],
+      "profile": "QUALITY",
+      "sample_count": 2,
+      "stage_id": "hard_verifier"
+    },
+    {
+      "benchmark_id": "m5-pro-24g-20260801T222929Z-222008604c",
+      "max_additional_peak_ram_bytes": 67682304,
+      "max_input_tokens": 0,
+      "max_latency_ms": 0.33016699308063835,
+      "max_swap_delta_bytes": 0,
+      "observation_ids": [
+        "obs-quality-semantic_verifier-r1",
+        "obs-quality-semantic_verifier-r2"
+      ],
+      "profile": "QUALITY",
+      "sample_count": 2,
+      "stage_id": "semantic_verifier"
+    }
+  ]
+}

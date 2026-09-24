@@ -16,8 +16,9 @@ from typing import Any
 import pytest
 
 from ntruth.ingest.project import Project
-from ntruth.pipeline import AnalysisResult, analyze_project
+from ntruth.pipeline import AnalysisResult, analyze_project_v7_adapter
 from ntruth.rules.loader import load_ruleset
+from ntruth.schemas.manifest import ReleaseProfile
 from ntruth.schemas.rules import Ruleset
 
 FIXTURES_DIR = Path(__file__).parent / "scientific_fixtures"
@@ -60,7 +61,7 @@ def analyze_directory(source: Path, workspace: Path, *, lang: str = "it") -> Ana
     """Esegue la pipeline completa su una cartella di input."""
     project = Project.create(workspace, name=source.name, language="en")
     project.add(source)
-    return analyze_project(project, ruleset=load_ruleset(), lang=lang)
+    return analyze_project_v7_adapter(project, ruleset=load_ruleset(), lang=lang)
 
 
 @pytest.fixture
@@ -79,18 +80,29 @@ def make_project(tmp_path: Path) -> ProjectFactory:
     """Crea un progetto con file scritti al volo."""
 
     def _make(
-        files: dict[str, str], name: str = "test", project_name: str | None = None
+        files: dict[str, str],
+        name: str = "test",
+        project_name: str | None = None,
+        release_profile: ReleaseProfile = ReleaseProfile.D0_CORE,
+        ruleset_version: str | None = None,
     ) -> Project:
         """`name` isola le cartelle, `project_name` e il nome logico del progetto.
 
         Tenerli distinti permette di creare due workspace diversi con lo stesso
         input logico, che e cio che serve per verificare la riproducibilita.
+        ``ruleset_version`` fissa una versione storica del ruleset.
         """
         source = tmp_path / f"src-{name}"
         source.mkdir(parents=True, exist_ok=True)
         for filename, content in files.items():
             (source / filename).write_text(content, encoding="utf-8")
-        project = Project.create(tmp_path / f"prj-{name}", name=project_name or name, language="en")
+        project = Project.create(
+            tmp_path / f"prj-{name}",
+            name=project_name or name,
+            language="en",
+            release_profile=release_profile,
+            **({} if ruleset_version is None else {"ruleset_version": ruleset_version}),
+        )
         project.add(source)
         return project
 

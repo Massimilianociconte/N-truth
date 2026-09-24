@@ -1,0 +1,50 @@
+{
+  "schema_version": "1.0.0",
+  "profile_role": "technical_load_config",
+  "notes": [
+    "Describes how to load the model only.",
+    "Does not record runtime or scientific qualification.",
+    "Qualification, if any, will live in models/registry (separate cluster)."
+  ],
+  "runtime": {
+    "name": "mlx-lm",
+    "platform": "macOS Apple Silicon",
+    "device": "metal"
+  },
+  "model": {
+    "provider": "granite",
+    "selection_role": "experimental_backend_not_default",
+    "scientifically_selected": false,
+    "canonical_repository": "ibm-granite/granite-4.1-3b",
+    "canonical_revision": "c0650403e44e78ec0262dab1c90914c65b196c4e",
+    "repository": "mlx-community/granite-4.1-3b-4bit",
+    "revision": "b1b476b5a17c46b7d6cd663b4a8ed44b66720aef",
+    "local_path": "models/local/granite-4.1-3b-4bit",
+    "expected_weight_file": "model.safetensors",
+    "expected_weight_bytes": 2127162429,
+    "expected_weight_sha256": "cff9d052cc3c68ea66b3d364788eb96fca2be82868d9ad92bd968e73b125194d",
+    "quantization_bits": 4,
+    "configured_maximum_context_tokens": 131072,
+    "context_window_tokens": 131072,
+    "mlx_distribution": {
+      "kind": "community_conversion",
+      "official_ibm": false,
+      "converter": "mlx-lm"
+    },
+    "license": "Apache-2.0",
+    "license_url": "https://www.apache.org/licenses/LICENSE-2.0",
+    "model_card_url": "https://huggingface.co/ibm-granite/granite-4.1-3b",
+    "chat_template": "granite_role_tags",
+    "output_policy": {
+      "candidate_facts_only": true,
+      "forbidden_direct_outputs": [
+        "final_independent_n",
+        "definitive_pseudoreplication_verdict",
+        "experiment_validity_judgement",
+        "statistical_test_choice",
+        "paper_quality_score",
+        "determinability_verdict"
+      ]
+    }
+  }
+}

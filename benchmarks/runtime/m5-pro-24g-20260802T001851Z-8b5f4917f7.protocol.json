@@ -1,0 +1,132 @@
+{
+  "benchmark_id": "m5-pro-24g-20260802T001851Z-8b5f4917f7",
+  "budget_path": "/Users/massimilianociconte/Documents/N-truth/benchmarks/runtime/m5-pro-24g-20260802T001851Z-8b5f4917f7.budget.json",
+  "budget_stage_keys": [
+    "LOW_MEMORY/mlx_generate",
+    "BALANCED/mlx_generate"
+  ],
+  "cpu_raw": {},
+  "environment_probe": {
+    "machine_model": "Mac17,9",
+    "operating_system": "macOS 26.5.2",
+    "runtime_name": "mlx-lm",
+    "runtime_version": "0.31.3",
+    "unified_memory_bytes": 25769803776
+  },
+  "host": {
+    "machine": "arm64",
+    "platform": "macOS-26.5.2-arm64-arm-64bit",
+    "processor": "arm",
+    "protocol_version": "1.0.0",
+    "python": "3.12.13"
+  },
+  "identity": {
+    "benchmark_id": "m5-pro-24g-20260802T001851Z-8b5f4917f7",
+    "machine_model": "Mac17,9",
+    "measured_at": "2026-08-02T00:18:51.456298Z",
+    "operating_system": "macOS 26.5.2",
+    "runtime_name": "mlx-lm",
+    "runtime_version": "0.31.3",
+    "unified_memory_bytes": 25769803776
+  },
+  "measured_at": "2026-08-02T00:18:51.456298Z",
+  "mlx_raw": {
+    "generate_runs": [
+      {
+        "additional_peak_ram_bytes": 40845312,
+        "baseline_rss_bytes": 2505539584,
+        "end_peak_rss_window_bytes": 2505424896,
+        "end_rss_bytes": 2505424896,
+        "end_ru_maxrss_bytes": 2545811456,
+        "input_tokens": 167,
+        "latency_ms": 481.7879590118537,
+        "max_new_tokens": 32,
+        "observation_id": "obs-low_memory-mlx_generate-r1",
+        "output_chars": 180,
+        "output_tokens": 32,
+        "profile": "LOW_MEMORY",
+        "prompt_chars": 826,
+        "replica": 1,
+        "swap_delta_bytes": 0
+      },
+      {
+        "additional_peak_ram_bytes": 40927232,
+        "baseline_rss_bytes": 2505506816,
+        "end_peak_rss_window_bytes": 2505506816,
+        "end_rss_bytes": 2505506816,
+        "end_ru_maxrss_bytes": 2545811456,
+        "input_tokens": 323,
+        "latency_ms": 223.00650000397582,
+        "max_new_tokens": 48,
+        "observation_id": "obs-balanced-mlx_generate-r1",
+        "output_chars": 0,
+        "output_tokens": 1,
+        "profile": "BALANCED",
+        "prompt_chars": 1624,
+        "replica": 1,
+        "swap_delta_bytes": 0
+      }
+    ],
+    "load": {
+      "additional_peak_rss_bytes": 43106304,
+      "after_rss_bytes": 2507620352,
+      "before_rss_bytes": 2464579584,
+      "load_and_warmup_latency_ms": 776.218125000014,
+      "model_path": "/Users/massimilianociconte/Documents/N-truth/models/local/granite-4.1-3b-4bit",
+      "peak_rss_window_bytes": 2507685888,
+      "peak_ru_maxrss_bytes": 2545811456,
+      "swap_after_bytes": 417008189,
+      "swap_before_bytes": 417008189,
+      "swap_delta_bytes": 0
+    }
+  },
+  "model_path": "/Users/massimilianociconte/Documents/N-truth/models/local/granite-4.1-3b-4bit",
+  "observation_count": 2,
+  "observations": [
+    {
+      "additional_peak_ram_bytes": 40845312,
+      "benchmark_id": "m5-pro-24g-20260802T001851Z-8b5f4917f7",
+      "input_tokens": 167,
+      "latency_ms": 481.7879590118537,
+      "observation_id": "obs-low_memory-mlx_generate-r1",
+      "output_tokens": 32,
+      "profile": "LOW_MEMORY",
+      "stage_id": "mlx_generate",
+      "swap_delta_bytes": 0
+    },
+    {
+      "additional_peak_ram_bytes": 40927232,
+      "benchmark_id": "m5-pro-24g-20260802T001851Z-8b5f4917f7",
+      "input_tokens": 323,
+      "latency_ms": 223.00650000397582,
+      "observation_id": "obs-balanced-mlx_generate-r1",
+      "output_tokens": 1,
+      "profile": "BALANCED",
+      "stage_id": "mlx_generate",
+      "swap_delta_bytes": 0
+    }
+  ],
+  "protocol_version": "1.0.0",
+  "quality_notes": [
+    "Envelope per stage = massimi osservati (derive_stage_budget).",
+    "additional_peak_ram_bytes include footprint modello per fail-closed sequenziale.",
+    "Swap e system-wide (HostResourceProbe); non attribuito al solo processo.",
+    "Questo artifact e misurato; non e validazione scientifica del modello.",
+    "Ripetere il benchmark se cambiano modello, quantizzazione, runtime o OS major."
+  ],
+  "release_claim": "measured_runtime_budget_only",
+  "workloads": [
+    {
+      "max_new_tokens": 32,
+      "profile": "LOW_MEMORY",
+      "prompt_chars": 800,
+      "replicates": 1
+    },
+    {
+      "max_new_tokens": 48,
+      "profile": "BALANCED",
+      "prompt_chars": 1600,
+      "replicates": 1
+    }
+  ]
+}

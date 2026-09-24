@@ -1,0 +1,11 @@
+{
+  "label": "ENGINEERING_SMOKE_ONLY",
+  "n_train_chat": 150,
+  "n_valid_chat": 30,
+  "distributable": false,
+  "promotable": false,
+  "substantive_training_allowed": false,
+  "note": "Subset for optional future pipe tests; default engineering smoke uses ntruth-ml runtime-smoke-only fixtures.",
+  "parent_snapshot": "p0-alpha",
+  "parent_status": "SYN_G1_UNANCHORED"
+}

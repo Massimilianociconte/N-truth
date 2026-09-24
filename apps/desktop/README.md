@@ -1,25 +1,101 @@
 # Desktop application
 
-La UI React/Vite è servita dall'API FastAPI esclusivamente su loopback in `/app/`. Offre
-import da percorso locale, navigazione per `ExperimentBlock`, grafo, evidenza sincronizzata,
-elicitazione e conferma del target inferenziale, correzioni append-only con undo/redo, ricalcolo
-e download degli export registrati nella sessione. La conferma del target passa dalla stessa
-traccia di audit delle altre correzioni e non viene promossa automaticamente a gold.
+La UI React/Vite è servita dall'API FastAPI esclusivamente su loopback in `/app/` ed è la
+superficie locale di N-Truth. La modalità primaria è il wizard prospettico D0 del PRD v6;
+accanto convivono il Quick Design guidato PRD v8 (lane canonica con preview e conferma) e il
+workspace retrospettivo per import da percorso locale, revisione di `ExperimentBlock`, evidenza
+sincronizzata, elicitazione del target inferenziale, correzioni append-only con undo/redo,
+ricalcolo ed export della sessione. La conferma del target passa dalla stessa traccia di audit
+delle altre correzioni e non viene promossa automaticamente a gold.
 
-## Sviluppo
+## Avvio locale
+
+Requisiti: Node.js `>=20.19` e pnpm `11.9.0` (la versione è fissata in `package.json`).
 
 ```bash
+cd apps/desktop
 pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-Il dev server inoltra `/v1` a `127.0.0.1:8765`. Il build di produzione viene incluso nel wheel:
+Vite ascolta esclusivamente su `http://127.0.0.1:5173/app/` e inoltra le superfici versionate
+`/v1`, `/v7`, `/v8` e `/health` a `http://127.0.0.1:8765`. In assenza dell'API la UI resta
+utilizzabile con dati sintetici esplicitamente marcati come demo.
+
+## Percorso prospettico D0
+
+La voce **Progettazione D0** applica il microdominio congelato della v0.1-D:
+
+1. colture cellulari su piastra;
+2. una domanda e un target inferenziale;
+3. esattamente un fattore, due livelli distinti e un endpoint primario;
+4. `allocation_level`, `application_level`, `independently_assigned` tri-state e meccanismo
+   operativo obbligatorio quando l'indipendenza è `TRUE`;
+5. SampleSheet con colonne Appendix O e ID univoci; una cella nullable vuota significa
+   `null`, mentre le stringhe segnaposto `NULL`/`unknown` sono vietate; `day_id`,
+   `operator_id` e `incubator_id` possono rendere osservabile il confondimento per riga
+   e devono usare soltanto ID pseudonimi;
+6. tipo del fattore, unita biologica target ed estimand minimo espliciti;
+7. verifica degli invarianti, tutti i sette `DeterminabilityState`, conteggi lifecycle scope-aware,
+   Evidence View e anteprima della proof trace `GEN-001@1.1.0`;
+8. compilazione canonica tramite `POST /v1/prospective/d0/compile`, ruleset fissato a
+   `ntruth-core@0.3.0` e hard verifier server-side.
+
+Prima della compilazione, lo stato live e la proof trace visibile sono controlli client non
+autorevoli. Il click **Compila con verificatore D0** invia il draft e le righe al motore Python e
+mostra separatamente stato canonico, capability, hard-verifier, checksum del ruleset e readiness.
+Nessuno dei due percorsi crea annotazioni gold o certifica validita scientifica. I conteggi non
+ancora riconciliati sono `NOT_REPORTED`, mai zero implicito; `effective_n` rimane separato da
+`independent_n`. Se una riga è `excluded`, `exclusion_reason` deve riportare fase e autore, per
+esempio `post-treatment | autore: AB | criterio: contaminazione`.
+
+Il contratto API accetta al massimo 10.000 righe, 8 MiB di body complessivo e 64 campi extra per
+riga. La sessione restituita e effimera nella memoria del processo; il riavvio dell'API la elimina.
+
+## Quick Design v8, checkpoint e workspace retrospettivo
+
+La schermata iniziale accende due strade: il builder guidato PRD v8 (`QuickDesignWizard`) che
+compila un ReportBundle canonico con preview non vincolante e conferma atomica, e l'import da
+percorso locale per il flusso storico v7 deprecato, adattato a presentazione neutra tramite
+`/v7/analyze`. Lo stato scientifico resta dichiarato in apertura: `HANDOFF_ONLY`, `NOT_STARTED`,
+`HOLD`; nessun gate si apre dalla UI.
+
+Il progetto aperto è protetto da un checkpoint locale con autosave, rilevamento di chiusura
+improvvisa (crash) e ripristino automatico alla riapertura; il pannello **Stato e limiti**
+consente di chiudere il progetto ed eliminare il checkpoint della sessione. Nel workspace
+retrospettivo il canvas grafico libero è classificato **esteso sperimentale · post-v0.1-D**: è
+disattivo per default e richiede un opt-in esplicito, mentre il percorso D0 ufficiale usa wizard,
+tabelle, Core Profile e proof trace.
+
+## Test e build
 
 ```bash
 pnpm test
 pnpm build
 ```
 
-La schermata iniziale usa soltanto dati sintetici marcati come demo; non rappresenta un risultato
-scientifico. Un wrapper Tauri firmato/notarizzato resta un deliverable separato: la web UI locale
-non prova packaging, firma, notarizzazione o release macOS.
+`pnpm test` esegue Vitest/jsdom. `pnpm build` esegue il type-check TypeScript (`tsc -b`) e genera
+gli asset Vite in `dist/`, inclusi poi nel wheel. Non è configurato uno script lint separato: il
+type-check del build è il controllo statico frontend disponibile.
+
+Per una verifica manuale minima:
+
+1. aprire `/app/` e confermare la welcome con i pin di stato;
+2. aprire **Progettazione D0**, visitare i quattro passi, modificare un campo e controllare il
+   riepilogo live;
+3. aprire **Verifica**, compilare con la API e controllare capability, hard verifier, checksum e
+   stato canonico; seguire poi una premessa fino all'Evidence View;
+4. controllare che le fasi non osservate siano `NOT_REPORTED`;
+5. raggiungere **Grafo** e verificare che il canvas resti nascosto finché non si abilita il gate
+   sperimentale.
+
+## Limiti della superficie desktop
+
+- I dati iniziali sono sintetici e non costituiscono un risultato scientifico; la demo storica non
+  è un ReportBundle v8 validato.
+- Senza l'API locale la compilazione fallisce in modo visibile e resta disponibile soltanto la
+  preview client non autorevole; non esiste fallback silenzioso a un verdetto locale.
+- I dettagli tabellari della proof trace nella UI sono ancora una rappresentazione client; stato,
+  capability, verifier e readiness canonici provengono dalla risposta API.
+- Un wrapper Tauri firmato/notarizzato resta un deliverable separato: build web, firma,
+  notarizzazione e release macOS sono evidenze distinte.

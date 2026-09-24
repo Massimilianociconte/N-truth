@@ -1,0 +1,1880 @@
+{
+  "generated_at": "2026-08-02",
+  "branch": "docs/full-documentation-refresh-20260802",
+  "head": "22c496e558e99d345503c27f718b5a51b8efb6d2",
+  "total_paths": 308,
+  "policy": {
+    "no_indiscriminate_commit": true,
+    "annotation_whitelist_only": true,
+    "registry_SoT_for_qualification": true,
+    "push_merge": "HOLD until clean-checkout docs consistent"
+  },
+  "clusters": {
+    "INFRA": [
+      {
+        "status": " M",
+        "path": ".env.example",
+        "publishability": "review_needed",
+        "note": ""
+      },
+      {
+        "status": " M",
+        "path": ".github/workflows/ci.yml",
+        "publishability": "review_needed",
+        "note": ""
+      },
+      {
+        "status": " M",
+        "path": ".gitignore",
+        "publishability": "review_needed",
+        "note": ""
+      }
+    ],
+    "OTHER_CODE": [
+      {
+        "status": " M",
+        "path": "apps/desktop/README.md",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "apps/desktop/src/App.test.tsx",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "apps/desktop/src/App.tsx",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "apps/desktop/src/api.ts",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "apps/desktop/src/data/demo.ts",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "apps/desktop/src/styles.css",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "apps/desktop/src/types.ts",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/__init__.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/api/app.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/api/sessions.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/application.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/cli/main.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/corrections/engine.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/corrections/recalculate.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/design/__init__.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/design/compiler.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/design/schema.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/extract/facts.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/extract/numbers.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/extract/table_extract.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/extract/text_extract.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/governance/__init__.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/governance/lineage.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/graph/builder.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/graph/determinability.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/graph/units.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/graph/validation.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/ingest/__init__.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/ingest/project.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/ingest/safety.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/parser_ai/__init__.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/parsers/jats.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/parsers/registry.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/parsers/tabular.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/pipeline.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/reporting/__init__.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/reporting/html_report.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/reporting/json_report.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/reporting/positive.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/reporting/ro_crate.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/rules/engine.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/rules/loader.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/rules/predicates.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/schemas/__init__.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/schemas/core.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/schemas/experiment.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/schemas/graph.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/schemas/manifest.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/schemas/report.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/schemas/rules.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/training/__init__.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/training/cli.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/training/manifest.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/training/preparation.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/training/records.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/training/splits.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "tests/conftest.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "tests/golden/report_v3_software_snapshot.json",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "tests/integration/test_api_exports_transparency.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "tests/integration/test_ingest_blocks_formats.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "tests/integration/test_pipeline.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "tests/integration/test_prd_v3_governance_exports.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "tests/property/test_graph_properties.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "tests/regression/test_scientific_regressions.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "tests/rule_fixtures/context_factory.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "tests/scientific_fixtures/test_use_cases.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "tests/scientific_fixtures/uc01_donor_cells/expected.json",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "tests/scientific_fixtures/uc02_preparations/expected.json",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "tests/scientific_fixtures/uc03_animal_cells/expected.json",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "tests/scientific_fixtures/uc04_cage_diet/expected.json",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "tests/scientific_fixtures/uc05_maternal/expected.json",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "tests/scientific_fixtures/uc06_repeated_measures/expected.json",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "tests/scientific_fixtures/uc07_pooling/expected.json",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "tests/scientific_fixtures/uc08_undefined_experiments/expected.json",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "tests/scientific_fixtures/uc09_exclusions/expected.json",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "tests/scientific_fixtures/uc10_source_conflict/expected.json",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "tests/scientific_fixtures/uc11_well_treatment/expected.json",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "tests/scientific_fixtures/uc12_mixed_model/expected.json",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "tests/security/test_hostile_input.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "tests/unit/test_cli_contract.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "tests/unit/test_corrections.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "tests/unit/test_extraction.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "tests/unit/test_graph_validation.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "tests/unit/test_mlx_evaluation_lineage.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "tests/unit/test_mlx_snapshot_integrity.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "tests/unit/test_mlx_training_pipeline.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "tests/unit/test_parsers.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "tests/unit/test_positive_output_v3.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "tests/unit/test_prd_v3_code_parser.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "tests/unit/test_prd_v3_contracts.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "tests/unit/test_prd_v3_determinability_graph.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "tests/unit/test_prd_v3_graph_design.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "tests/unit/test_rules_contract.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "tests/unit/test_scientific_references.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "tests/unit/test_training_dataset_preparation.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": " M",
+        "path": "tests/unit/test_training_dedup_split_integrity.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "apps/desktop/src/CanonicalCorrectionForm.test.tsx",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "apps/desktop/src/CanonicalCorrectionForm.tsx",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "apps/desktop/src/d0/PlanExecutionPanel.test.tsx",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "apps/desktop/src/d0/PlanExecutionPanel.tsx",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "apps/desktop/src/d0/ProspectiveD0Workspace.test.tsx",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "apps/desktop/src/d0/ProspectiveD0Workspace.tsx",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "apps/desktop/src/d0/planExecutionTypes.ts",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "apps/desktop/src/d0/types.ts",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "ontology/ntruth-core-0.2.0.json",
+        "publishability": "review_needed",
+        "note": ""
+      },
+      {
+        "status": "??",
+        "path": "packages/ntruth/capabilities.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "packages/ntruth/facsimile/__init__.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "packages/ntruth/facsimile/schema.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "packages/ntruth/parser_ai/stages.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "packages/ntruth/prospective/__init__.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "packages/ntruth/prospective/compiler.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "packages/ntruth/prospective/plan_execution.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "packages/ntruth/prospective/schema.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "packages/ntruth/prospective/sessions.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "packages/ntruth/runtime_resources/__init__.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "packages/ntruth/runtime_resources/budget_io.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "packages/ntruth/runtime_resources/chunking.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "packages/ntruth/runtime_resources/manager.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "packages/ntruth/runtime_resources/profiles.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "packages/ntruth/runtime_resources/schema.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "packages/ntruth/sample_sheet/__init__.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "packages/ntruth/sample_sheet/io.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "packages/ntruth/sample_sheet/schema.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "packages/ntruth/storage/__init__.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "packages/ntruth/storage/blobs.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "packages/ntruth/storage/database.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "packages/ntruth/storage/migrations.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "packages/ntruth/training/candidate_conformance.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "packages/ntruth/training/gold.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "packages/ntruth/training/metrics_v6.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "packages/ntruth/training/runtime_benchmark.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "packages/ntruth/training/runtime_env.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "packages/ntruth/verifier/__init__.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "packages/ntruth/verifier/hard.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "packages/ntruth/verifier/output_policy.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "packages/ntruth/verifier/semantic.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "packages/ntruth/verifier/validation_stack.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "rulesets/ntruth-core-0.2.0.json",
+        "publishability": "review_needed",
+        "note": ""
+      },
+      {
+        "status": "??",
+        "path": "tests/fixtures/v6/facsimile_split_counterfactuals.json",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "tests/integration/test_plan_execution_api.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "tests/integration/test_prospective_d0_api.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "tests/unit/test_core_profile_capability.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "tests/unit/test_import_boundaries.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "tests/unit/test_mlx_resource_bridge.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "tests/unit/test_p0_synthetic.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "tests/unit/test_prospective_d0_compiler.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "tests/unit/test_prospective_plan_execution.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "tests/unit/test_release_profile.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "tests/unit/test_runtime_resource_manager.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "tests/unit/test_sample_sheet.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "tests/unit/test_semantic_stage_scorer.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "tests/unit/test_semantic_verifier.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "tests/unit/test_v6_count_contracts.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "tests/unit/test_v6_ontology_asset.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "tests/unit/test_v6_split_facsimile_invariants.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "tests/unit/test_v6_stage_contracts.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "tests/unit/test_v6_storage.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "tests/unit/test_v6_training_eligibility.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      },
+      {
+        "status": "??",
+        "path": "tests/unit/test_validation_stack.py",
+        "publishability": "review_needed",
+        "note": "may mix foundation + post-HEAD work"
+      }
+    ],
+    "UNCATEGORIZED": [
+      {
+        "status": " M",
+        "path": "data/annotations/README.md",
+        "publishability": "review_needed",
+        "note": ""
+      },
+      {
+        "status": " D",
+        "path": "models/configs/qwen3-4b-instruct-2507-mlx-qlora.json",
+        "publishability": "review_needed",
+        "note": ""
+      },
+      {
+        "status": " M",
+        "path": "pyproject.toml",
+        "publishability": "review_needed",
+        "note": ""
+      },
+      {
+        "status": " M",
+        "path": "scripts/check_distribution.py",
+        "publishability": "review_needed",
+        "note": ""
+      },
+      {
+        "status": " M",
+        "path": "scripts/declare_rule_fixtures.py",
+        "publishability": "review_needed",
+        "note": ""
+      },
+      {
+        "status": " M",
+        "path": "uv.lock",
+        "publishability": "review_needed",
+        "note": ""
+      },
+      {
+        "status": "??",
+        "path": "prd/README.md",
+        "publishability": "review_needed",
+        "note": ""
+      }
+    ],
+    "ADR_DOCS": [
+      {
+        "status": " M",
+        "path": "docs/adr/0001-inference-target-compiler-first.md",
+        "publishability": "publishable_docs",
+        "note": "may need rewrite after code lands"
+      },
+      {
+        "status": " M",
+        "path": "docs/annotation-guideline-v0.1.md",
+        "publishability": "publishable_docs",
+        "note": "may need rewrite after code lands"
+      },
+      {
+        "status": " M",
+        "path": "docs/architettura.md",
+        "publishability": "publishable_docs",
+        "note": "may need rewrite after code lands"
+      },
+      {
+        "status": " M",
+        "path": "docs/data-and-model-development.md",
+        "publishability": "publishable_docs",
+        "note": "may need rewrite after code lands"
+      },
+      {
+        "status": " M",
+        "path": "docs/data-card-v0.1.md",
+        "publishability": "publishable_docs",
+        "note": "may need rewrite after code lands"
+      },
+      {
+        "status": " M",
+        "path": "docs/data-governance-v3.md",
+        "publishability": "publishable_docs",
+        "note": "may need rewrite after code lands"
+      },
+      {
+        "status": " M",
+        "path": "docs/data-management-plan-draft.md",
+        "publishability": "publishable_docs",
+        "note": "may need rewrite after code lands"
+      },
+      {
+        "status": " M",
+        "path": "docs/dataset-assessment.md",
+        "publishability": "publishable_docs",
+        "note": "may need rewrite after code lands"
+      },
+      {
+        "status": " M",
+        "path": "docs/design-specification-v0.1.md",
+        "publishability": "publishable_docs",
+        "note": "may need rewrite after code lands"
+      },
+      {
+        "status": " M",
+        "path": "docs/first-human-steps-checklist.md",
+        "publishability": "publishable_docs",
+        "note": "may need rewrite after code lands"
+      },
+      {
+        "status": " M",
+        "path": "docs/mlx-training-pipeline.md",
+        "publishability": "publishable_docs",
+        "note": "may need rewrite after code lands"
+      },
+      {
+        "status": " M",
+        "path": "docs/parser-ai-contract.md",
+        "publishability": "publishable_docs",
+        "note": "may need rewrite after code lands"
+      },
+      {
+        "status": " M",
+        "path": "docs/prd-v3-reconciliation.md",
+        "publishability": "publishable_docs",
+        "note": "may need rewrite after code lands"
+      },
+      {
+        "status": " M",
+        "path": "docs/repository-structure.md",
+        "publishability": "publishable_docs",
+        "note": "may need rewrite after code lands"
+      },
+      {
+        "status": " M",
+        "path": "docs/scientific-references.md",
+        "publishability": "publishable_docs",
+        "note": "may need rewrite after code lands"
+      },
+      {
+        "status": " M",
+        "path": "docs/scrivere-regole.md",
+        "publishability": "publishable_docs",
+        "note": "may need rewrite after code lands"
+      },
+      {
+        "status": " M",
+        "path": "docs/troubleshooting.md",
+        "publishability": "publishable_docs",
+        "note": "may need rewrite after code lands"
+      },
+      {
+        "status": " M",
+        "path": "docs/validation-protocol-draft.md",
+        "publishability": "publishable_docs",
+        "note": "may need rewrite after code lands"
+      },
+      {
+        "status": "??",
+        "path": "docs/absolute-claims-register-v6.1.md",
+        "publishability": "publishable_docs",
+        "note": "may need rewrite after code lands"
+      },
+      {
+        "status": "??",
+        "path": "docs/adr/0002-model-architecture-benchmark-gate.md",
+        "publishability": "publishable_docs",
+        "note": "may need rewrite after code lands"
+      },
+      {
+        "status": "??",
+        "path": "docs/adr/0003-runtime-backend-and-resource-management.md",
+        "publishability": "publishable_docs",
+        "note": "may need rewrite after code lands"
+      },
+      {
+        "status": "??",
+        "path": "docs/adr/0004-quantization-benchmark-gate.md",
+        "publishability": "publishable_docs",
+        "note": "may need rewrite after code lands"
+      },
+      {
+        "status": "??",
+        "path": "docs/adr/0005-structured-decoding-and-semantic-validity.md",
+        "publishability": "publishable_docs",
+        "note": "may need rewrite after code lands"
+      },
+      {
+        "status": "??",
+        "path": "docs/adr/0006-independent-verifier-boundary.md",
+        "publishability": "publishable_docs",
+        "note": "may need rewrite after code lands"
+      },
+      {
+        "status": "??",
+        "path": "docs/adr/0007-local-storage-backend.md",
+        "publishability": "publishable_docs",
+        "note": "may need rewrite after code lands"
+      },
+      {
+        "status": "??",
+        "path": "docs/adr/0008-rules-engine-language.md",
+        "publishability": "publishable_docs",
+        "note": "may need rewrite after code lands"
+      },
+      {
+        "status": "??",
+        "path": "docs/adr/0009-prospective-plan-versus-execution.md",
+        "publishability": "publishable_docs",
+        "note": "may need rewrite after code lands"
+      },
+      {
+        "status": "??",
+        "path": "docs/adr/0011-constrained-decoding-outlines-mlx.md",
+        "publishability": "publishable_docs",
+        "note": "must commit with implementation"
+      },
+      {
+        "status": "??",
+        "path": "docs/adr/0012-p0-lora-approved.md",
+        "publishability": "publishable_docs",
+        "note": "must commit with implementation"
+      },
+      {
+        "status": "??",
+        "path": "docs/benchmarks-granite-migration.md",
+        "publishability": "publishable_docs",
+        "note": "after code committed"
+      },
+      {
+        "status": "??",
+        "path": "docs/core-profile-d0.md",
+        "publishability": "publishable_docs",
+        "note": "may need rewrite after code lands"
+      },
+      {
+        "status": "??",
+        "path": "docs/derivation-gold-protocol.md",
+        "publishability": "publishable_docs",
+        "note": "may need rewrite after code lands"
+      },
+      {
+        "status": "??",
+        "path": "docs/driver-arrive-crosswalk.md",
+        "publishability": "publishable_docs",
+        "note": "may need rewrite after code lands"
+      },
+      {
+        "status": "??",
+        "path": "docs/external-challenge-protocol-draft.md",
+        "publishability": "publishable_docs",
+        "note": "may need rewrite after code lands"
+      },
+      {
+        "status": "??",
+        "path": "docs/facsimile-review-specification.md",
+        "publishability": "publishable_docs",
+        "note": "may need rewrite after code lands"
+      },
+      {
+        "status": "??",
+        "path": "docs/lean-governance-matrix-v6.1.md",
+        "publishability": "publishable_docs",
+        "note": "may need rewrite after code lands"
+      },
+      {
+        "status": "??",
+        "path": "docs/model-granite-conversion.md",
+        "publishability": "publishable_docs",
+        "note": "after code committed"
+      },
+      {
+        "status": "??",
+        "path": "docs/model-multiplatform-runtime.md",
+        "publishability": "publishable_docs",
+        "note": "after code committed"
+      },
+      {
+        "status": "??",
+        "path": "docs/operational-independence-policy.md",
+        "publishability": "publishable_docs",
+        "note": "may need rewrite after code lands"
+      },
+      {
+        "status": "??",
+        "path": "docs/prd-v6-reconciliation.md",
+        "publishability": "publishable_docs",
+        "note": "may need rewrite after code lands"
+      },
+      {
+        "status": "??",
+        "path": "docs/prd-v6.1-changelog.md",
+        "publishability": "publishable_docs",
+        "note": "may need rewrite after code lands"
+      },
+      {
+        "status": "??",
+        "path": "docs/prd-v6.1-gemini-response-matrix.md",
+        "publishability": "publishable_docs",
+        "note": "may need rewrite after code lands"
+      },
+      {
+        "status": "??",
+        "path": "docs/resource-funding-gate.md",
+        "publishability": "publishable_docs",
+        "note": "may need rewrite after code lands"
+      },
+      {
+        "status": "??",
+        "path": "docs/runtime-resource-budget-v6.1.md",
+        "publishability": "publishable_docs",
+        "note": "may need rewrite after code lands"
+      },
+      {
+        "status": "??",
+        "path": "docs/sample-sheet-v6.md",
+        "publishability": "publishable_docs",
+        "note": "may need rewrite after code lands"
+      },
+      {
+        "status": "??",
+        "path": "docs/semantic-verifier-runtime.md",
+        "publishability": "publishable_docs",
+        "note": "after code committed"
+      },
+      {
+        "status": "??",
+        "path": "docs/synthetic-data-generation-specification.md",
+        "publishability": "publishable_docs",
+        "note": "may need rewrite after code lands"
+      },
+      {
+        "status": "??",
+        "path": "docs/synthetic-task-use-matrix-v6.1.md",
+        "publishability": "publishable_docs",
+        "note": "may need rewrite after code lands"
+      }
+    ],
+    "TRAINING_P0": [
+      {
+        "status": " M",
+        "path": "packages/ntruth/training/mlx_dataset.py",
+        "publishability": "publishable_code",
+        "note": ""
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/training/mlx_inference.py",
+        "publishability": "publishable_code",
+        "note": ""
+      },
+      {
+        "status": " M",
+        "path": "packages/ntruth/training/mlx_runtime.py",
+        "publishability": "publishable_code",
+        "note": ""
+      },
+      {
+        "status": "??",
+        "path": "data/training/p0-alpha/DATASET_CARD.md",
+        "publishability": "publishable_synthetic",
+        "note": "synthetic only; card required"
+      },
+      {
+        "status": "??",
+        "path": "data/training/p0-alpha/TEST_REAL_PLACEHOLDER.README.md",
+        "publishability": "publishable_synthetic",
+        "note": "synthetic only; card required"
+      },
+      {
+        "status": "??",
+        "path": "data/training/p0-alpha/TEST_REAL_PLACEHOLDER.jsonl",
+        "publishability": "publishable_synthetic",
+        "note": "synthetic only; card required"
+      },
+      {
+        "status": "??",
+        "path": "data/training/p0-alpha/engineering-smoke-subset/README.md",
+        "publishability": "generated_local",
+        "note": "run artifacts not product source"
+      },
+      {
+        "status": "??",
+        "path": "data/training/p0-alpha/engineering-smoke-subset/meta.json",
+        "publishability": "generated_local",
+        "note": "run artifacts not product source"
+      },
+      {
+        "status": "??",
+        "path": "data/training/p0-alpha/engineering-smoke-subset/train.chat.jsonl",
+        "publishability": "generated_local",
+        "note": "run artifacts not product source"
+      },
+      {
+        "status": "??",
+        "path": "data/training/p0-alpha/engineering-smoke-subset/valid.chat.jsonl",
+        "publishability": "generated_local",
+        "note": "run artifacts not product source"
+      },
+      {
+        "status": "??",
+        "path": "data/training/p0-alpha/manifest.json",
+        "publishability": "publishable_synthetic",
+        "note": "synthetic only; card required"
+      },
+      {
+        "status": "??",
+        "path": "data/training/p0-alpha/train.chat.jsonl",
+        "publishability": "publishable_synthetic",
+        "note": "synthetic only; card required"
+      },
+      {
+        "status": "??",
+        "path": "data/training/p0-alpha/train.jsonl",
+        "publishability": "publishable_synthetic",
+        "note": "synthetic only; card required"
+      },
+      {
+        "status": "??",
+        "path": "data/training/p0-alpha/validation.chat.jsonl",
+        "publishability": "publishable_synthetic",
+        "note": "synthetic only; card required"
+      },
+      {
+        "status": "??",
+        "path": "data/training/p0-alpha/validation.jsonl",
+        "publishability": "publishable_synthetic",
+        "note": "synthetic only; card required"
+      },
+      {
+        "status": "??",
+        "path": "docs/training/human-anchored-calibration-plan.md",
+        "publishability": "publishable_docs",
+        "note": ""
+      },
+      {
+        "status": "??",
+        "path": "docs/training/p0-alpha-training-data-specification.md",
+        "publishability": "publishable_docs",
+        "note": ""
+      },
+      {
+        "status": "??",
+        "path": "packages/ntruth/training/fewshot_p0_fixtures.py",
+        "publishability": "publishable_code",
+        "note": ""
+      },
+      {
+        "status": "??",
+        "path": "packages/ntruth/training/mlx_component.py",
+        "publishability": "publishable_code",
+        "note": ""
+      },
+      {
+        "status": "??",
+        "path": "packages/ntruth/training/mlx_resource_bridge.py",
+        "publishability": "publishable_code",
+        "note": ""
+      },
+      {
+        "status": "??",
+        "path": "packages/ntruth/training/p0_synthetic.py",
+        "publishability": "publishable_code",
+        "note": ""
+      },
+      {
+        "status": "??",
+        "path": "packages/ntruth/training/semantic_stage_scorer.py",
+        "publishability": "publishable_code",
+        "note": ""
+      },
+      {
+        "status": "??",
+        "path": "scripts/models/build_p0_alpha_dataset.py",
+        "publishability": "publishable_scripts",
+        "note": ""
+      },
+      {
+        "status": "??",
+        "path": "scripts/models/preflight_p0_lora.py",
+        "publishability": "publishable_scripts",
+        "note": ""
+      },
+      {
+        "status": "??",
+        "path": "scripts/models/run_engineering_smoke_lora.py",
+        "publishability": "publishable_scripts",
+        "note": ""
+      }
+    ],
+    "CONSTRAINED_B4": [
+      {
+        "status": "??",
+        "path": "benchmarks/fewshot_p0/BASELINE_B4.md",
+        "publishability": "publishable_eval",
+        "note": "exclude private predictions if any"
+      },
+      {
+        "status": "??",
+        "path": "benchmarks/fewshot_p0/README.md",
+        "publishability": "publishable_eval",
+        "note": "exclude private predictions if any"
+      },
+      {
+        "status": "??",
+        "path": "benchmarks/fewshot_p0/cases.jsonl",
+        "publishability": "publishable_eval",
+        "note": "exclude private predictions if any"
+      },
+      {
+        "status": "??",
+        "path": "benchmarks/fewshot_p0/constrained/REPORT_B4_CONSTRAINED.md",
+        "publishability": "publishable_eval",
+        "note": "exclude private predictions if any"
+      },
+      {
+        "status": "??",
+        "path": "benchmarks/fewshot_p0/constrained/SEMANTIC_C_REPORT.md",
+        "publishability": "publishable_eval",
+        "note": "exclude private predictions if any"
+      },
+      {
+        "status": "??",
+        "path": "benchmarks/fewshot_p0/constrained/audit.json",
+        "publishability": "publishable_eval",
+        "note": "exclude private predictions if any"
+      },
+      {
+        "status": "??",
+        "path": "benchmarks/fewshot_p0/constrained/matrix-candidate_graph_minimal-20260802T101316Z.json",
+        "publishability": "publishable_eval",
+        "note": "exclude private predictions if any"
+      },
+      {
+        "status": "??",
+        "path": "benchmarks/fewshot_p0/constrained/matrix-candidate_graph_minimal-latest.json",
+        "publishability": "publishable_eval",
+        "note": "exclude private predictions if any"
+      },
+      {
+        "status": "??",
+        "path": "benchmarks/fewshot_p0/constrained/matrix-candidate_relations-20260802T095627Z.json",
+        "publishability": "publishable_eval",
+        "note": "exclude private predictions if any"
+      },
+      {
+        "status": "??",
+        "path": "benchmarks/fewshot_p0/constrained/matrix-candidate_relations-latest.json",
+        "publishability": "publishable_eval",
+        "note": "exclude private predictions if any"
+      },
+      {
+        "status": "??",
+        "path": "benchmarks/fewshot_p0/constrained/matrix-entity_count-20260802T095111Z.json",
+        "publishability": "publishable_eval",
+        "note": "exclude private predictions if any"
+      },
+      {
+        "status": "??",
+        "path": "benchmarks/fewshot_p0/constrained/matrix-entity_count-latest.json",
+        "publishability": "publishable_eval",
+        "note": "exclude private predictions if any"
+      },
+      {
+        "status": "??",
+        "path": "benchmarks/fewshot_p0/constrained/matrix-evidence_extraction-20260802T094522Z.json",
+        "publishability": "publishable_eval",
+        "note": "exclude private predictions if any"
+      },
+      {
+        "status": "??",
+        "path": "benchmarks/fewshot_p0/constrained/matrix-evidence_extraction-latest.json",
+        "publishability": "publishable_eval",
+        "note": "exclude private predictions if any"
+      },
+      {
+        "status": "??",
+        "path": "benchmarks/fewshot_p0/constrained/matrix-summary-latest.json",
+        "publishability": "publishable_eval",
+        "note": "exclude private predictions if any"
+      },
+      {
+        "status": "??",
+        "path": "benchmarks/fewshot_p0/constrained/predictions-C-frozen.jsonl",
+        "publishability": "publishable_eval",
+        "note": "exclude private predictions if any"
+      },
+      {
+        "status": "??",
+        "path": "benchmarks/fewshot_p0/constrained/semantic-C-20260802T102610Z.json",
+        "publishability": "publishable_eval",
+        "note": "exclude private predictions if any"
+      },
+      {
+        "status": "??",
+        "path": "benchmarks/fewshot_p0/constrained/semantic-C-latest.json",
+        "publishability": "publishable_eval",
+        "note": "exclude private predictions if any"
+      },
+      {
+        "status": "??",
+        "path": "benchmarks/fewshot_p0/constrained/semantic-C-manifest.json",
+        "publishability": "publishable_eval",
+        "note": "exclude private predictions if any"
+      },
+      {
+        "status": "??",
+        "path": "benchmarks/fewshot_p0/manifest.json",
+        "publishability": "publishable_eval",
+        "note": "exclude private predictions if any"
+      },
+      {
+        "status": "??",
+        "path": "benchmarks/fewshot_p0/results/baseline-20260802T003646Z.json",
+        "publishability": "publishable_eval",
+        "note": "exclude private predictions if any"
+      },
+      {
+        "status": "??",
+        "path": "benchmarks/fewshot_p0/results/baseline-latest.json",
+        "publishability": "publishable_eval",
+        "note": "exclude private predictions if any"
+      },
+      {
+        "status": "??",
+        "path": "benchmarks/runtime/README.md",
+        "publishability": "publishable_eval",
+        "note": "budget protocols"
+      },
+      {
+        "status": "??",
+        "path": "benchmarks/runtime/latest.budget.json",
+        "publishability": "publishable_eval",
+        "note": "budget protocols"
+      },
+      {
+        "status": "??",
+        "path": "benchmarks/runtime/latest.protocol.json",
+        "publishability": "publishable_eval",
+        "note": "budget protocols"
+      },
+      {
+        "status": "??",
+        "path": "benchmarks/runtime/m5-pro-24g-20260801T222929Z-222008604c.budget.json",
+        "publishability": "publishable_eval",
+        "note": "budget protocols"
+      },
+      {
+        "status": "??",
+        "path": "benchmarks/runtime/m5-pro-24g-20260801T222929Z-222008604c.protocol.json",
+        "publishability": "publishable_eval",
+        "note": "budget protocols"
+      },
+      {
+        "status": "??",
+        "path": "benchmarks/runtime/m5-pro-24g-20260802T001809Z-5613246180.budget.json",
+        "publishability": "publishable_eval",
+        "note": "budget protocols"
+      },
+      {
+        "status": "??",
+        "path": "benchmarks/runtime/m5-pro-24g-20260802T001809Z-5613246180.protocol.json",
+        "publishability": "publishable_eval",
+        "note": "budget protocols"
+      },
+      {
+        "status": "??",
+        "path": "benchmarks/runtime/m5-pro-24g-20260802T001851Z-8b5f4917f7.budget.json",
+        "publishability": "publishable_eval",
+        "note": "budget protocols"
+      },
+      {
+        "status": "??",
+        "path": "benchmarks/runtime/m5-pro-24g-20260802T001851Z-8b5f4917f7.protocol.json",
+        "publishability": "publishable_eval",
+        "note": "budget protocols"
+      },
+      {
+        "status": "??",
+        "path": "benchmarks/runtime/template-budget.schema.example.json",
+        "publishability": "publishable_eval",
+        "note": "budget protocols"
+      },
+      {
+        "status": "??",
+        "path": "scripts/models/run_b4_constrained_matrix.py",
+        "publishability": "publishable_scripts",
+        "note": ""
+      },
+      {
+        "status": "??",
+        "path": "scripts/models/run_granite_fewshot_baseline.py",
+        "publishability": "publishable_scripts",
+        "note": ""
+      },
+      {
+        "status": "??",
+        "path": "scripts/models/score_b4_semantic_c.py",
+        "publishability": "publishable_scripts",
+        "note": ""
+      },
+      {
+        "status": "??",
+        "path": "tests/unit/test_constrained_decoding.py",
+        "publishability": "publishable_tests",
+        "note": ""
+      },
+      {
+        "status": "??",
+        "path": "tests/unit/test_fewshot_p0_conformance.py",
+        "publishability": "publishable_tests",
+        "note": ""
+      }
+    ],
+    "ANNOTATION": [
+      {
+        "status": "??",
+        "path": "docs/annotation-reality-check-p0-v0.1.md",
+        "publishability": "publishable_docs",
+        "note": ""
+      },
+      {
+        "status": "??",
+        "path": "scripts/annotations/hash_source.py",
+        "publishability": "publishable_scripts",
+        "note": "validators only"
+      },
+      {
+        "status": "??",
+        "path": "scripts/annotations/validate_real_experiment_bundle.py",
+        "publishability": "publishable_scripts",
+        "note": "validators only"
+      }
+    ],
+    "GRANITE_BACKEND": [
+      {
+        "status": "??",
+        "path": "models/configs/granite-4.1-3b-mlx-qlora.json",
+        "publishability": "publishable_config",
+        "note": "resolve UNVERIFIED vs registry SoT"
+      },
+      {
+        "status": "??",
+        "path": "models/configs/granite-4.1-3b-p0-lora.json",
+        "publishability": "publishable_config",
+        "note": "resolve UNVERIFIED vs registry SoT"
+      },
+      {
+        "status": "??",
+        "path": "models/configs/legacy/README.md",
+        "publishability": "publishable_config",
+        "note": "resolve UNVERIFIED vs registry SoT"
+      },
+      {
+        "status": "??",
+        "path": "models/configs/legacy/qwen3-4b-instruct-2507-mlx-qlora.json",
+        "publishability": "publishable_config",
+        "note": "resolve UNVERIFIED vs registry SoT"
+      },
+      {
+        "status": "??",
+        "path": "packages/ntruth/model_backends/__init__.py",
+        "publishability": "publishable_code",
+        "note": "core implementation"
+      },
+      {
+        "status": "??",
+        "path": "packages/ntruth/model_backends/base.py",
+        "publishability": "publishable_code",
+        "note": "core implementation"
+      },
+      {
+        "status": "??",
+        "path": "packages/ntruth/model_backends/constrained.py",
+        "publishability": "publishable_code",
+        "note": "core implementation"
+      },
+      {
+        "status": "??",
+        "path": "packages/ntruth/model_backends/factory.py",
+        "publishability": "publishable_code",
+        "note": "core implementation"
+      },
+      {
+        "status": "??",
+        "path": "packages/ntruth/model_backends/granite.py",
+        "publishability": "publishable_code",
+        "note": "core implementation"
+      },
+      {
+        "status": "??",
+        "path": "packages/ntruth/model_backends/legacy/__init__.py",
+        "publishability": "publishable_code",
+        "note": "core implementation"
+      },
+      {
+        "status": "??",
+        "path": "packages/ntruth/model_backends/legacy/qwen_backend.py",
+        "publishability": "publishable_code",
+        "note": "core implementation"
+      },
+      {
+        "status": "??",
+        "path": "packages/ntruth/model_backends/qualification_ledger.py",
+        "publishability": "publishable_code",
+        "note": "core implementation"
+      },
+      {
+        "status": "??",
+        "path": "packages/ntruth/model_backends/registry.py",
+        "publishability": "publishable_code",
+        "note": "core implementation"
+      },
+      {
+        "status": "??",
+        "path": "packages/ntruth/model_backends/stage_schemas.py",
+        "publishability": "publishable_code",
+        "note": "core implementation"
+      },
+      {
+        "status": "??",
+        "path": "scripts/models/acquire_granite.py",
+        "publishability": "publishable_scripts",
+        "note": ""
+      },
+      {
+        "status": "??",
+        "path": "scripts/models/qualify_granite_runtime.py",
+        "publishability": "publishable_scripts",
+        "note": ""
+      },
+      {
+        "status": "??",
+        "path": "tests/unit/test_model_backends.py",
+        "publishability": "publishable_tests",
+        "note": ""
+      },
+      {
+        "status": "??",
+        "path": "tests/unit/test_qualification_ledger.py",
+        "publishability": "publishable_tests",
+        "note": ""
+      }
+    ],
+    "REGISTRY_QUAL": [
+      {
+        "status": "??",
+        "path": "models/ntruth-granite-3b/manifests/README.md",
+        "publishability": "publishable_with_care",
+        "note": "manifests only; no weights"
+      },
+      {
+        "status": "??",
+        "path": "models/ntruth-granite-3b/manifests/acquisition-mlx-4bit.json",
+        "publishability": "publishable_with_care",
+        "note": "manifests only; no weights"
+      },
+      {
+        "status": "??",
+        "path": "models/ntruth-granite-3b/manifests/runtime-qualification-20260802T001747Z.json",
+        "publishability": "publishable_with_care",
+        "note": "manifests only; no weights"
+      },
+      {
+        "status": "??",
+        "path": "models/ntruth-granite-3b/manifests/runtime-qualification-20260802T001815Z.json",
+        "publishability": "publishable_with_care",
+        "note": "manifests only; no weights"
+      },
+      {
+        "status": "??",
+        "path": "models/ntruth-granite-3b/manifests/runtime-qualification-20260802T001857Z.json",
+        "publishability": "publishable_with_care",
+        "note": "manifests only; no weights"
+      },
+      {
+        "status": "??",
+        "path": "models/ntruth-granite-3b/manifests/runtime-qualification-latest.json",
+        "publishability": "publishable_with_care",
+        "note": "manifests only; no weights"
+      },
+      {
+        "status": "??",
+        "path": "models/registry/default.json",
+        "publishability": "publishable_with_care",
+        "note": "machine-readable gates; no sqlite ledger unless policy"
+      },
+      {
+        "status": "??",
+        "path": "models/registry/training_program.json",
+        "publishability": "publishable_with_care",
+        "note": "machine-readable gates; no sqlite ledger unless policy"
+      }
+    ]
+  }
+}

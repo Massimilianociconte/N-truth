@@ -1,0 +1,52 @@
+{
+  "identity": {
+    "benchmark_id": "TEMPLATE-EXAMPLE-NOT-A-MEASUREMENT",
+    "machine_model": "TEMPLATE-NOT-MEASURED",
+    "unified_memory_bytes": 1,
+    "operating_system": "TEMPLATE OS — replace with probe_runtime_environment output",
+    "runtime_name": "mlx-lm",
+    "runtime_version": "replace-with-installed-mlx-lm-version",
+    "measured_at": "2026-01-01T00:00:00Z"
+  },
+  "stages": [
+    {
+      "benchmark_id": "TEMPLATE-EXAMPLE-NOT-A-MEASUREMENT",
+      "profile": "BALANCED",
+      "stage_id": "mlx_generate",
+      "observation_ids": [
+        "template-obs-1"
+      ],
+      "sample_count": 1,
+      "max_input_tokens": 1,
+      "max_additional_peak_ram_bytes": 1,
+      "max_swap_delta_bytes": 0,
+      "max_latency_ms": 1.0
+    },
+    {
+      "benchmark_id": "TEMPLATE-EXAMPLE-NOT-A-MEASUREMENT",
+      "profile": "LOW_MEMORY",
+      "stage_id": "mlx_generate",
+      "observation_ids": [
+        "template-obs-low-1"
+      ],
+      "sample_count": 1,
+      "max_input_tokens": 1,
+      "max_additional_peak_ram_bytes": 1,
+      "max_swap_delta_bytes": 0,
+      "max_latency_ms": 1.0
+    },
+    {
+      "benchmark_id": "TEMPLATE-EXAMPLE-NOT-A-MEASUREMENT",
+      "profile": "QUALITY",
+      "stage_id": "mlx_generate",
+      "observation_ids": [
+        "template-obs-quality-1"
+      ],
+      "sample_count": 1,
+      "max_input_tokens": 1,
+      "max_additional_peak_ram_bytes": 1,
+      "max_swap_delta_bytes": 0,
+      "max_latency_ms": 1.0
+    }
+  ]
+}

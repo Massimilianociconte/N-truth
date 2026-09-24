@@ -28,7 +28,10 @@ from ntruth.schemas.graph import (
     rank_of,
 )
 
-PROVENANCE = Provenance(origin=ProvenanceKind.EXPLICIT)
+PROVENANCE = Provenance(
+    origin=ProvenanceKind.DERIVED,
+    derivation="property-generated structural fixture",
+)
 RANKED_NODE_TYPES = tuple(CONTAINMENT_RANK)
 ALL_NODE_TYPES = tuple(NodeType)
 ALL_RELATION_TYPES = tuple(RelationType)

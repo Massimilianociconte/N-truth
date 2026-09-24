@@ -12,12 +12,13 @@ from collections.abc import Iterable, Mapping
 
 import networkx as nx
 
-from ntruth.schemas.core import ProvenanceKind
+from ntruth.schemas.core import Provenance, ProvenanceKind
 from ntruth.schemas.experiment import (
     Contrast,
     Endpoint,
     ExperimentBlock,
     Factor,
+    GraphStatus,
     Hierarchy,
     InferenceTarget,
     NScope,
@@ -86,6 +87,14 @@ def validate_hierarchy(
 
     nodes_by_id = {node.id: node for node in hierarchy.nodes}
     for node in hierarchy.nodes:
+        _append_graph_provenance_violations(
+            violations,
+            owner_kind="node",
+            owner_id=node.id,
+            evidence_ids=node.evidence_ids,
+            provenance=node.provenance,
+            node_ids=(node.id,),
+        )
         if node.provenance.origin is ProvenanceKind.MODEL:
             if not node.evidence_ids:
                 violations.append(
@@ -122,6 +131,15 @@ def validate_hierarchy(
                 )
             )
             continue
+
+        _append_graph_provenance_violations(
+            violations,
+            owner_kind="relation",
+            owner_id=relation.id,
+            evidence_ids=relation.evidence_ids,
+            provenance=relation.provenance,
+            relation_ids=(relation.id,),
+        )
 
         if relation.provenance.origin is ProvenanceKind.MODEL:
             if not relation.evidence_ids:
@@ -193,6 +211,99 @@ def validate_hierarchy(
     return tuple(violations)
 
 
+def _append_graph_provenance_violations(
+    violations: list[GraphViolation],
+    *,
+    owner_kind: str,
+    owner_id: str,
+    evidence_ids: tuple[str, ...],
+    provenance: Provenance,
+    node_ids: tuple[str, ...] = (),
+    relation_ids: tuple[str, ...] = (),
+) -> None:
+    """Applica la matrice di lineage v6 a ogni nodo e arco."""
+
+    origin = provenance.origin
+    provenance_evidence = tuple(provenance.evidence_ids)
+    if not set(evidence_ids).issubset(provenance_evidence):
+        violations.append(
+            GraphViolation(
+                code="graph_evidence_provenance_mismatch",
+                message=f"{owner_kind} {owner_id}: evidence_ids assenti dalla provenance",
+                node_ids=node_ids,
+                relation_ids=relation_ids,
+            )
+        )
+    if origin in {ProvenanceKind.EXPLICIT, ProvenanceKind.TABULAR} and not evidence_ids:
+        violations.append(
+            GraphViolation(
+                code="source_graph_element_without_evidence",
+                message=f"{owner_kind} {owner_id}: origine {origin.value} senza evidenza locale",
+                node_ids=node_ids,
+                relation_ids=relation_ids,
+            )
+        )
+    elif origin is ProvenanceKind.DERIVED and not (
+        provenance.derivation and provenance.derivation.strip()
+    ):
+        violations.append(
+            GraphViolation(
+                code="derived_graph_element_without_derivation",
+                message=f"{owner_kind} {owner_id}: origine derived senza derivazione",
+                node_ids=node_ids,
+                relation_ids=relation_ids,
+            )
+        )
+    elif origin is ProvenanceKind.RULE:
+        versioned_rule = bool(provenance.rule_id and provenance.ruleset_version)
+        has_inputs = bool(evidence_ids or (provenance.derivation and provenance.derivation.strip()))
+        if not versioned_rule or not has_inputs:
+            violations.append(
+                GraphViolation(
+                    code="rule_graph_element_without_trace",
+                    message=(
+                        f"{owner_kind} {owner_id}: origine rule senza rule/version "
+                        "e input o derivazione"
+                    ),
+                    node_ids=node_ids,
+                    relation_ids=relation_ids,
+                )
+            )
+    elif origin in {ProvenanceKind.USER, ProvenanceKind.ADJUDICATION}:
+        timestamp = provenance.timestamp
+        timestamp_aware = (
+            timestamp is not None
+            and timestamp.tzinfo is not None
+            and timestamp.utcoffset() is not None
+        )
+        actor_present = bool(provenance.actor_role and provenance.actor_role.strip())
+        correction_audit = bool(
+            provenance.correction_id and provenance.correction_id.strip() and timestamp_aware
+        )
+        initial_confirmation = bool(evidence_ids and actor_present)
+        traceable = actor_present and (
+            correction_audit
+            if (
+                origin is ProvenanceKind.ADJUDICATION
+                or provenance.correction_id
+                or provenance.correction_role
+            )
+            else initial_confirmation
+        )
+        if not traceable:
+            violations.append(
+                GraphViolation(
+                    code="human_graph_element_without_audit",
+                    message=(
+                        f"{owner_kind} {owner_id}: provenance umana senza evidenza di "
+                        "conferma iniziale oppure audit completo della correzione"
+                    ),
+                    node_ids=node_ids,
+                    relation_ids=relation_ids,
+                )
+            )
+
+
 def assert_valid_hierarchy(
     hierarchy: Hierarchy,
     *,
@@ -247,6 +358,18 @@ def validate_experiment_block(block: ExperimentBlock) -> tuple[GraphViolation, .
     )
     _append_duplicate_violations(
         violations,
+        "duplicate_count_record_id",
+        "count record",
+        (item.count_id for item in block.count_records),
+    )
+    _append_duplicate_violations(
+        violations,
+        "duplicate_exclusion_record_id",
+        "exclusion record",
+        (item.id for item in block.exclusion_records),
+    )
+    _append_duplicate_violations(
+        violations,
         "duplicate_assessment_id",
         "unit assessment",
         (item.id for item in block.unit_assessments),
@@ -277,6 +400,18 @@ def validate_experiment_block(block: ExperimentBlock) -> tuple[GraphViolation, .
     statements = {item.id: item for item in block.n_statements}
     questions = {item.id: item for item in block.questions}
     graph_nodes = {item.id: item for item in block.hierarchy.nodes}
+
+    violations.extend(
+        _validate_plausible_graph_set(
+            block,
+            evidence_ids=evidence_ids,
+            factors=factors,
+            contrasts=contrasts,
+            endpoints=endpoints,
+            inference_targets=inference_targets,
+            questions=questions,
+        )
+    )
 
     for target in block.inference_targets:
         node = graph_nodes.get(target.id)
@@ -368,6 +503,67 @@ def validate_experiment_block(block: ExperimentBlock) -> tuple[GraphViolation, .
                 inference_targets=inference_targets,
             )
         )
+
+    for count in block.count_records:
+        owner = f"count record {count.count_id}"
+        if count.scope.factor_id is not None and count.scope.factor_id not in factors:
+            violations.append(
+                _reference_violation(
+                    "dangling_count_factor", owner, "factor", count.scope.factor_id
+                )
+            )
+        if count.scope.contrast_id is not None and count.scope.contrast_id not in contrasts:
+            violations.append(
+                _reference_violation(
+                    "dangling_count_contrast", owner, "contrast", count.scope.contrast_id
+                )
+            )
+        if count.scope.endpoint_id is not None and count.scope.endpoint_id not in endpoints:
+            violations.append(
+                _reference_violation(
+                    "dangling_count_endpoint", owner, "endpoint", count.scope.endpoint_id
+                )
+            )
+
+    for exclusion in block.exclusion_records:
+        owner = f"exclusion record {exclusion.id}"
+        if exclusion.factor_id is not None and exclusion.factor_id not in factors:
+            violations.append(
+                _reference_violation(
+                    "dangling_exclusion_factor", owner, "factor", exclusion.factor_id
+                )
+            )
+        if exclusion.contrast_id is not None and exclusion.contrast_id not in contrasts:
+            violations.append(
+                _reference_violation(
+                    "dangling_exclusion_contrast", owner, "contrast", exclusion.contrast_id
+                )
+            )
+        if exclusion.endpoint_id is not None and exclusion.endpoint_id not in endpoints:
+            violations.append(
+                _reference_violation(
+                    "dangling_exclusion_endpoint", owner, "endpoint", exclusion.endpoint_id
+                )
+            )
+        if exclusion.unit_id is not None:
+            unit = graph_nodes.get(exclusion.unit_id)
+            if unit is None:
+                violations.append(
+                    _reference_violation(
+                        "dangling_exclusion_unit", owner, "graph unit", exclusion.unit_id
+                    )
+                )
+            elif unit.type is not exclusion.unit_type:
+                violations.append(
+                    GraphViolation(
+                        code="exclusion_unit_type_mismatch",
+                        message=(
+                            f"{owner} dichiara unit_type={exclusion.unit_type.value}, "
+                            f"ma il nodo {unit.id} ha type={unit.type.value}"
+                        ),
+                        node_ids=(unit.id,),
+                    )
+                )
 
     for alert in block.alerts:
         for question_id in alert.question_ids:
@@ -557,6 +753,199 @@ def _validate_scope(
     return tuple(violations)
 
 
+def _validate_plausible_graph_set(
+    block: ExperimentBlock,
+    *,
+    evidence_ids: set[str],
+    factors: Mapping[str, Factor],
+    contrasts: Mapping[str, Contrast],
+    endpoints: Mapping[str, Endpoint],
+    inference_targets: Mapping[str, InferenceTarget],
+    questions: Mapping[str, object],
+) -> tuple[GraphViolation, ...]:
+    """Valida fail-closed i rami che autorizzano ``MULTIPLE_PLAUSIBLE_GRAPHS``."""
+
+    graph_set = block.plausible_graph_set
+    if graph_set is None:
+        return ()
+
+    violations: list[GraphViolation] = []
+    if block.graph_status is not GraphStatus.CONDITIONAL:
+        violations.append(
+            GraphViolation(
+                code="alternative_graph_set_without_conditional_status",
+                message="plausible_graph_set richiede graph_status=conditional",
+            )
+        )
+    if len(graph_set.alternatives) < 2:
+        violations.append(
+            GraphViolation(
+                code="alternative_graph_set_too_small",
+                message="plausible_graph_set richiede almeno due grafi alternativi",
+            )
+        )
+    _append_duplicate_violations(
+        violations,
+        "duplicate_alternative_graph_id",
+        "alternative graph",
+        (item.id for item in graph_set.alternatives),
+    )
+    signatures = [item.scientific_signature() for item in graph_set.alternatives]
+    if len(signatures) != len(set(signatures)):
+        violations.append(
+            GraphViolation(
+                code="duplicate_alternative_graph_content",
+                message="plausible_graph_set contiene grafi scientificamente equivalenti",
+            )
+        )
+
+    question = questions.get(graph_set.discriminating_question_id)
+    if question is None:
+        violations.append(
+            _reference_violation(
+                "dangling_alternative_graph_question",
+                f"plausible graph set {graph_set.id}",
+                "question",
+                graph_set.discriminating_question_id,
+            )
+        )
+    elif not bool(getattr(question, "decisive", False)):
+        violations.append(
+            GraphViolation(
+                code="alternative_graph_question_not_decisive",
+                message=(
+                    f"question {graph_set.discriminating_question_id} deve avere decisive=true"
+                ),
+            )
+        )
+
+    _append_alternative_traceability_violations(
+        violations,
+        owner_kind="plausible graph set",
+        owner_id=graph_set.id,
+        direct_evidence=graph_set.evidence_ids,
+        provenance=graph_set.provenance,
+        known_evidence=evidence_ids,
+    )
+    for alternative in graph_set.alternatives:
+        _append_alternative_traceability_violations(
+            violations,
+            owner_kind="alternative graph",
+            owner_id=alternative.id,
+            direct_evidence=alternative.evidence_ids,
+            provenance=alternative.provenance,
+            known_evidence=evidence_ids,
+        )
+        if not alternative.hierarchy.nodes:
+            violations.append(
+                GraphViolation(
+                    code="empty_alternative_graph",
+                    message=f"alternative graph {alternative.id} non contiene nodi",
+                )
+            )
+        violations.extend(validate_hierarchy(alternative.hierarchy, evidence_ids=evidence_ids))
+        _append_duplicate_violations(
+            violations,
+            "duplicate_alternative_consequence_id",
+            f"alternative graph {alternative.id} consequence",
+            (item.id for item in alternative.consequences),
+        )
+        if not alternative.consequences:
+            violations.append(
+                GraphViolation(
+                    code="alternative_graph_without_consequences",
+                    message=f"alternative graph {alternative.id} non esplicita conseguenze",
+                )
+            )
+        alternative_node_types = {node.type for node in alternative.hierarchy.nodes}
+        for consequence in alternative.consequences:
+            _append_alternative_traceability_violations(
+                violations,
+                owner_kind="alternative graph consequence",
+                owner_id=consequence.id,
+                direct_evidence=consequence.evidence_ids,
+                provenance=consequence.provenance,
+                known_evidence=evidence_ids,
+            )
+            violations.extend(
+                _validate_scope(
+                    f"alternative graph consequence {consequence.id}",
+                    consequence.scope,
+                    factors=factors,
+                    contrasts=contrasts,
+                    endpoints=endpoints,
+                    inference_targets=inference_targets,
+                )
+            )
+            if (
+                consequence.experimental_unit is not None
+                and consequence.experimental_unit not in alternative_node_types
+            ):
+                violations.append(
+                    GraphViolation(
+                        code="alternative_consequence_unit_missing_from_graph",
+                        message=(
+                            f"consequence {consequence.id} usa experimental_unit "
+                            f"{consequence.experimental_unit.value} assente dal grafo "
+                            f"{alternative.id}"
+                        ),
+                    )
+                )
+            if (
+                consequence.n_independent is not None or consequence.n_independent_by_group
+            ) and consequence.experimental_unit is None:
+                violations.append(
+                    GraphViolation(
+                        code="alternative_n_without_experimental_unit",
+                        message=(
+                            f"consequence {consequence.id} pubblica n senza experimental_unit"
+                        ),
+                    )
+                )
+    return tuple(violations)
+
+
+def _append_alternative_traceability_violations(
+    violations: list[GraphViolation],
+    *,
+    owner_kind: str,
+    owner_id: str,
+    direct_evidence: tuple[str, ...],
+    provenance: object,
+    known_evidence: set[str],
+) -> None:
+    provenance_evidence = tuple(getattr(provenance, "evidence_ids", ()))
+    provenance_origin = getattr(provenance, "origin", None)
+    if not direct_evidence:
+        violations.append(
+            GraphViolation(
+                code="alternative_graph_object_without_evidence",
+                message=f"{owner_kind} {owner_id} non ha evidence_ids",
+            )
+        )
+    if not set(direct_evidence).issubset(provenance_evidence):
+        violations.append(
+            GraphViolation(
+                code="alternative_evidence_missing_from_provenance",
+                message=f"{owner_kind} {owner_id} ha evidence non inclusa nella provenance",
+            )
+        )
+    if provenance_origin is ProvenanceKind.MODEL:
+        violations.append(
+            GraphViolation(
+                code="model_authority_forbidden_for_core_alternative",
+                message=f"{owner_kind} {owner_id} conserva autorita model nel contratto core",
+            )
+        )
+    _append_missing_evidence(
+        violations,
+        owner_kind=owner_kind,
+        owner_id=owner_id,
+        referenced=(*direct_evidence, *provenance_evidence),
+        known=known_evidence,
+    )
+
+
 def _reference_violation(code: str, owner: str, target_kind: str, target_id: str) -> GraphViolation:
     return GraphViolation(
         code=code,
@@ -582,6 +971,7 @@ def _validate_block_evidence(
                     *item.evidence_ids,
                     *item.allocation_evidence_ids,
                     *item.application_evidence_ids,
+                    *item.independence_evidence_ids,
                 ),
                 item.provenance.evidence_ids,
             )
@@ -617,6 +1007,14 @@ def _validate_block_evidence(
             for item in block.n_statements
         ),
         *(
+            ("count record", item.count_id, item.evidence_ids, item.provenance.evidence_ids)
+            for item in block.count_records
+        ),
+        *(
+            ("exclusion record", item.id, item.evidence_ids, item.provenance.evidence_ids)
+            for item in block.exclusion_records
+        ),
+        *(
             (
                 "unit assessment",
                 item.id,
@@ -636,7 +1034,15 @@ def _validate_block_evidence(
             ("alert", item.id, item.evidence_ids, item.provenance.evidence_ids)
             for item in block.alerts
         ),
-        *(("contradiction", item.id, item.evidence_ids, ()) for item in block.contradictions),
+        *(
+            (
+                "contradiction",
+                item.id,
+                item.evidence_ids,
+                item.provenance.evidence_ids if item.provenance is not None else (),
+            )
+            for item in block.contradictions
+        ),
         *(("correction", item.id, item.evidence_ids, ()) for item in block.corrections),
     ]
     for kind, owner_id, direct, provenance in objects:

@@ -2,13 +2,25 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from ntruth import SCHEMA_VERSION, __version__
+from ntruth.api.session_journal import (
+    append_entry as journal_append_entry,
+)
+from ntruth.api.session_journal import (
+    default_session_journal_dir,
+    journal_dir_from_env,
+)
+from ntruth.api.session_journal import (
+    read_entry as journal_read_entry,
+)
 from ntruth.api.sessions import (
     SessionArtifactNotFound,
     SessionBlockNotFound,
@@ -21,8 +33,10 @@ from ntruth.application import (
     DomainAcknowledgementRequired,
     NoUsableFilesError,
     RedactedDerivativeMaterial,
+    V8ApplicationInputReviewRequired,
     evaluate_distribution_readiness,
     execute_analysis,
+    execute_analysis_v7_adapter,
 )
 from ntruth.corrections import CorrectionEngineError, CorrectionLedger
 from ntruth.governance import (
@@ -31,15 +45,48 @@ from ntruth.governance import (
     PrivacyBlocked,
     PrivacyPolicy,
     RedactionManifest,
+    enforce_privacy,
+    scan_text,
 )
 from ntruth.ingest.safety import SafetyError
-from ntruth.reporting import read_json, report_to_dict
+from ntruth.power.schema import PowerMethod, PowerPlanInput, PseudoreplicationRiskInput
+from ntruth.power.simulation import SimulatedPowerRequest
+from ntruth.prospective import (
+    MAX_PROSPECTIVE_D0_BODY_BYTES,
+    MAX_PROSPECTIVE_D0_ROWS,
+    ProspectiveD0CompileRequest,
+    ProspectiveD0RulesetError,
+    ProspectiveD0ValidationError,
+    ProspectiveGoldRecord,
+    ProspectivePlanExecutionRecord,
+    ProspectiveSession,
+    ProspectiveSessionNotFound,
+    ProspectiveSessionRegistry,
+    compile_prospective_d0,
+)
+from ntruth.quick_design import (
+    GuidedQuickDesignBuildRequest,
+    QuickDesignScientificReviewRequired,
+    QuickDesignV7Answers,
+    QuickDesignV8Submission,
+    build_guided_quick_design,
+    export_v7_for_biostatistician,
+    run_quick_design_v7_session,
+    run_quick_design_v8,
+    validate_raw_wizard_submission,
+)
+from ntruth.reporting import (
+    read_json,
+    read_report_bundle_json,
+    report_bundle_to_dict,
+    report_to_dict,
+)
 from ntruth.rules.loader import (
     DEFAULT_RULESET_ID,
     DEFAULT_RULESET_VERSION,
     RulesetNotFound,
 )
-from ntruth.schemas.core import Provenance, ProvenanceKind, stable_id
+from ntruth.schemas.core import Provenance, ProvenanceKind, content_checksum, stable_id
 from ntruth.schemas.experiment import (
     Correction,
     CorrectionReason,
@@ -48,7 +95,8 @@ from ntruth.schemas.experiment import (
     InferenceTargetStatus,
 )
 from ntruth.schemas.graph import NodeType
-from ntruth.schemas.manifest import LicenseManifest
+from ntruth.schemas.manifest import LicenseManifest, ReleaseProfile
+from ntruth.storage import StorageDatabase, StorageIntegrityError
 from ntruth.transparency import SUPPORTED_DOMAINS, VALIDATED_DOMAINS, assess_domain
 
 
@@ -64,7 +112,26 @@ class AnalyzeRequest(BaseModel):
     domain: str = "quantitative_microscopy"
     ruleset_id: str = DEFAULT_RULESET_ID
     ruleset_version: str = DEFAULT_RULESET_VERSION
+    release_profile: ReleaseProfile = ReleaseProfile.D0_CORE
     acknowledge_unvalidated_domain: bool = False
+
+
+class LegacyQuickDesignRequest(BaseModel):
+    source_description: str = Field(min_length=1)
+    preparation_description: str = "unknown"
+    factor_id: str = "treatment"
+    levels: tuple[str, str] = ("control", "treated")
+    endpoint_id: str = "viability"
+    contrast_id: str = "control_vs_treated"
+    allocation_level: str = "unknown"
+    application_level: str = "unknown"
+    assignment_timing: str = "unknown"
+    assignment_method: str = "unknown"
+    independently_assigned: str = "UNKNOWN"
+    biological_source_independence: str = "UNKNOWN"
+    interference_status: str = "UNKNOWN"
+    planned_unit_type: str = "unknown"
+    planned_units_per_level: int | None = None
 
 
 class CorrectionDraft(BaseModel):
@@ -87,6 +154,7 @@ class ApplyCorrectionRequest(BaseModel):
 class NavigateCorrectionRequest(BaseModel):
     session_id: str
     block_id: str
+    reviewer_role: str = Field(default="reviewer", min_length=2, max_length=64)
 
 
 class InferenceTargetDraft(BaseModel):
@@ -137,6 +205,50 @@ class DistributionReadinessRequest(BaseModel):
     acknowledgement_reference: str | None = None
 
 
+class PlanExecutionAppendRequest(BaseModel):
+    """Append di un candidato piano/esecuzione su storage locale SQLite."""
+
+    project_id: str = Field(min_length=1, max_length=200)
+    project_dir: str = Field(min_length=1, max_length=4000)
+    record: dict[str, Any]
+    actor_role: str | None = Field(default=None, max_length=64)
+
+
+class PlanExecutionGoldRequest(BaseModel):
+    """Promozione a gold adjudicato di un candidato piano/esecuzione."""
+
+    project_dir: str = Field(min_length=1, max_length=4000)
+    gold: dict[str, Any]
+    actor_role: str | None = Field(default=None, max_length=64)
+
+
+class V9DesignPreflightRequest(BaseModel):
+    """Preflight v9: matrice del disegno §11.2 + gate EU/contrast (PRD v9 §6.1).
+
+    Il chiamante registra l'assegnazione unita-per-unita; l'endpoint deriva i
+    fatti strutturali e applica il gate sidecar. Nessun test statistico viene
+    raccomandato (HANDOFF_ONLY).
+    """
+
+    assignments: dict[str, dict[str, str]]
+    declared_levels: dict[str, tuple[str, ...]]
+    # None = blocking non documentato (variazione intra-blocco non valutabile:
+    # al massimo PARTIALLY_SUPPORTED). Un disegno senza blocchi per costruzione
+    # si dichiara con un unico blocco che contiene tutte le unita.
+    blocks: dict[str, str] | None = None
+    factor_id: str = Field(min_length=1)
+    query_id: str = Field(min_length=1)
+    unit_type: str = Field(min_length=1)
+    factor_role: str = Field(min_length=1)
+    contrast_type: str = Field(min_length=1)
+    assignment_event_id: str | None = None
+    exposure_cluster: str | None = None
+    exposure_separable: bool | None = None
+    information_sufficient: bool
+    shared_exposure: bool = False
+    exposure_collapses_separability: bool = False
+
+
 def create_app() -> Any:
     """Crea l'app senza rendere FastAPI una dipendenza del core."""
 
@@ -155,9 +267,75 @@ def create_app() -> Any:
     )
     api.add_middleware(
         TrustedHostMiddleware,
-        allowed_hosts=["127.0.0.1", "localhost", "testserver"],
+        # Nessun host di test in produzione: i TestClient usano
+        # base_url="http://127.0.0.1" (vedi tests/integration).
+        allowed_hosts=["127.0.0.1", "localhost"],
     )
     sessions = SessionRegistry()
+    prospective_sessions = ProspectiveSessionRegistry()
+
+    @api.middleware("http")
+    async def reject_oversized_prospective_body(request: Any, call_next: Any) -> Any:
+        path = request.url.path
+        if path == "/v1/prospective/d0/compile" or path.startswith(
+            "/v1/prospective/plan-execution"
+        ):
+            raw_length = request.headers.get("content-length")
+            if raw_length is not None:
+                try:
+                    body_length = int(raw_length)
+                except ValueError:
+                    return JSONResponse(
+                        status_code=400,
+                        content={"detail": {"code": "invalid_content_length"}},
+                    )
+                if body_length > MAX_PROSPECTIVE_D0_BODY_BYTES:
+                    return JSONResponse(
+                        status_code=413,
+                        content={
+                            "detail": {
+                                "code": "prospective_payload_too_large",
+                                "max_body_bytes": MAX_PROSPECTIVE_D0_BODY_BYTES,
+                            }
+                        },
+                    )
+            body = bytearray()
+            async for chunk in request.stream():
+                if len(body) + len(chunk) > MAX_PROSPECTIVE_D0_BODY_BYTES:
+                    return JSONResponse(
+                        status_code=413,
+                        content={
+                            "detail": {
+                                "code": "prospective_payload_too_large",
+                                "max_body_bytes": MAX_PROSPECTIVE_D0_BODY_BYTES,
+                            }
+                        },
+                    )
+                body.extend(chunk)
+            # Starlette riusa il body gia verificato nel receive wrapper di
+            # ``call_next``; nessun secondo buffering legge lo stream originale.
+            request._body = bytes(body)
+        return await call_next(request)
+
+    # Journal di sessione default-on (audit 2026-09-05): il resume v7 dopo un
+    # restart richiede il journal. La disattivazione resta esplicita con
+    # NTRUTH_SESSION_JOURNAL_DIR=off (o valore vuoto); senza configurazione si
+    # applica la directory locale di default, e se non e creabile si degrada
+    # su memoria volatile senza bloccare il server.
+    explicit_journal_config = bool((os.environ.get("NTRUTH_SESSION_JOURNAL_DIR") or "").strip())
+    session_journal_dir = journal_dir_from_env()
+    if session_journal_dir is None and not explicit_journal_config:
+        default_dir = default_session_journal_dir()
+        try:
+            default_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+        except OSError:
+            print(
+                f"ntruth-api: journal di sessione non attivabile su {default_dir} "
+                "(OSError); le sessioni restano in memoria volatile",
+                flush=True,
+            )
+        else:
+            session_journal_dir = default_dir
 
     @api.get("/health")
     @api.get("/v1/health")
@@ -172,6 +350,23 @@ def create_app() -> Any:
             "validated_domains": list(VALIDATED_DOMAINS),
             "privacy_scan": "local_stand_off",
             "distribution_gate": "explicit_fail_closed",
+            "prospective_d0_limits": {
+                "max_rows": MAX_PROSPECTIVE_D0_ROWS,
+                "max_body_bytes": MAX_PROSPECTIVE_D0_BODY_BYTES,
+                "session_persistence": "ephemeral_process_memory",
+            },
+            "plan_execution_persistence": "sqlite_append_only",
+            "default_release_profile": ReleaseProfile.D0_CORE.value,
+            "input_profiles": {
+                ReleaseProfile.D0_CORE.value: [".txt", ".md", ".csv"],
+                ReleaseProfile.EXTENDED_EXPERIMENTAL.value: [
+                    ".docx",
+                    ".xlsx",
+                    ".pdf",
+                    ".xml/.nxml/.jats",
+                    ".r/.py/.rmd",
+                ],
+            },
         }
 
     @api.post("/preflight")
@@ -179,21 +374,358 @@ def create_app() -> Any:
     def preflight(payload: DomainPreflightRequest) -> dict[str, Any]:
         return assess_domain(payload.domain).model_dump(mode="json")
 
-    @api.post("/analyze")
-    @api.post("/v1/analyze")
-    def analyze(payload: AnalyzeRequest) -> dict[str, Any]:
-        notice = assess_domain(payload.domain)
-        if notice.requires_acknowledgement and not payload.acknowledge_unvalidated_domain:
+    def prospective_response(session: ProspectiveSession) -> dict[str, Any]:
+        return {
+            "session_id": session.id,
+            "session_persistence": "ephemeral_process_memory",
+            "audit_trail": [item.model_dump(mode="json") for item in session.audit_trail],
+            **session.compilation.model_dump(mode="json"),
+        }
+
+    @api.post("/v1/prospective/d0/compile")
+    def compile_prospective(payload: ProspectiveD0CompileRequest) -> dict[str, Any]:
+        """Compila il wizard D0; input non valido non crea alcuna sessione."""
+
+        try:
+            compilation = compile_prospective_d0(payload)
+        except ProspectiveD0RulesetError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": exc.code,
+                    "allowed_ruleset": (f"{DEFAULT_RULESET_ID}@{DEFAULT_RULESET_VERSION}"),
+                    "message": str(exc),
+                },
+            ) from exc
+        except ProspectiveD0ValidationError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": "prospective_d0_invalid",
+                    "issues": [item.model_dump(mode="json") for item in exc.issues],
+                },
+            ) from exc
+        session = prospective_sessions.create(
+            compilation,
+            actor_role=payload.draft.reviewer_role,
+            input_checksum=content_checksum(payload.model_dump(mode="json")),
+        )
+        return prospective_response(session)
+
+    @api.get("/v1/prospective/d0/sessions/{session_id}")
+    def prospective_session(session_id: str) -> dict[str, Any]:
+        try:
+            return prospective_response(prospective_sessions.get(session_id))
+        except ProspectiveSessionNotFound as exc:
+            raise HTTPException(status_code=404, detail="Sessione prospettica non trovata") from exc
+
+    @api.get("/v1/prospective/d0/sessions/{session_id}/export")
+    def export_prospective_session(session_id: str) -> Any:
+        """Esporta soltanto JSON canonico; nessun file viene pubblicato o caricato."""
+
+        try:
+            session = prospective_sessions.get(session_id)
+        except ProspectiveSessionNotFound as exc:
+            raise HTTPException(status_code=404, detail="Sessione prospettica non trovata") from exc
+        filename = f"ntruth-d0-{session.compilation.compilation_id}.json"
+        export_payload = {
+            **session.compilation.model_dump(mode="json"),
+            "audit_trail": [item.model_dump(mode="json") for item in session.audit_trail],
+        }
+        serialized_export = json.dumps(
+            export_payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        privacy_scan = scan_text(
+            serialized_export,
+            artifact_id=session.compilation.compilation_id,
+            field_path="prospective_d0_export",
+        )
+        try:
+            enforce_privacy(privacy_scan, PrivacyPolicy.BLOCKED)
+        except PrivacyBlocked as exc:
             raise HTTPException(
                 status_code=409,
                 detail={
-                    "code": "domain_acknowledgement_required",
-                    "message": notice.warning,
-                    "domain_transparency": notice.model_dump(mode="json"),
+                    "code": "privacy_export_blocked",
+                    "message": (
+                        "L'export contiene identificatori potenzialmente sensibili; "
+                        "creare una copia redatta prima della distribuzione."
+                    ),
+                    "finding_count": len(privacy_scan.findings),
+                    "finding_kinds": sorted(
+                        {finding.kind.value for finding in privacy_scan.findings}
+                    ),
+                },
+            ) from exc
+        return JSONResponse(
+            content=export_payload,
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    def _open_project_database(project_dir: str) -> StorageDatabase:
+        root = Path(project_dir).expanduser()
+        if root.is_symlink():
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": "invalid_project_dir",
+                    "message": "project_dir symlink non ammesso",
+                },
+            )
+        database_path = root / "ntruth.sqlite3"
+        if database_path.is_symlink():
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": "invalid_project_dir",
+                    "message": "database SQLite symlink non ammesso",
                 },
             )
         try:
-            execution = execute_analysis(
+            return StorageDatabase(database_path)
+        except StorageIntegrityError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "storage_integrity_error", "message": str(exc)},
+            ) from exc
+
+    def _ensure_project_registered(
+        database: StorageDatabase,
+        *,
+        project_id: str,
+        manifest_checksum: str,
+    ) -> None:
+        exists = database.connection.execute(
+            "SELECT 1 FROM projects WHERE project_id = ?", (project_id,)
+        ).fetchone()
+        if exists is None:
+            database.upsert_project(
+                project_id=project_id,
+                name=project_id,
+                # Nessun manifest esiste in questo percorso: il checksum e
+                # quello del record piano/esecuzione di bootstrap. Il marcatore
+                # esplicito evita la bugia semantica "manifest.json".
+                manifest_path="plan-execution-bootstrap",
+                manifest_checksum=manifest_checksum,
+            )
+
+    def _plan_execution_response(record: Any) -> dict[str, Any]:
+        return {
+            "record_id": record.record_id,
+            "project_id": record.project_id,
+            "status": record.status,
+            "content_checksum": record.content_checksum,
+            "payload": record.payload,
+            "actor_role": record.actor_role,
+            "parent_candidate_id": record.parent_candidate_id,
+            "created_at": record.created_at,
+        }
+
+    @api.post("/v1/prospective/plan-execution")
+    def append_plan_execution(payload: PlanExecutionAppendRequest) -> dict[str, Any]:
+        """Persiste un candidato piano/esecuzione su SQLite append-only locale."""
+
+        try:
+            validated = ProspectivePlanExecutionRecord.model_validate(payload.record)
+        except ValidationError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": "plan_execution_invalid",
+                    "message": "ProspectivePlanExecutionRecord non valido",
+                    "errors": json.loads(exc.json()),
+                },
+            ) from exc
+
+        record_payload = validated.model_dump(mode="json")
+        canonical = json.dumps(
+            record_payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+        bootstrap_checksum = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+        with _open_project_database(payload.project_dir) as database:
+            _ensure_project_registered(
+                database,
+                project_id=payload.project_id,
+                manifest_checksum=bootstrap_checksum,
+            )
+            try:
+                stored = database.put_plan_execution_candidate(
+                    payload.project_id,
+                    record_payload,
+                    actor_role=payload.actor_role,
+                )
+            except StorageIntegrityError as exc:
+                raise HTTPException(
+                    status_code=409,
+                    detail={"code": "plan_execution_storage_error", "message": str(exc)},
+                ) from exc
+        return _plan_execution_response(stored)
+
+    @api.get("/v1/prospective/plan-execution/{record_id}")
+    def get_plan_execution(record_id: str, project_dir: str) -> dict[str, Any]:
+        """Carica un record piano/esecuzione da storage locale.
+
+        Lettura senza side effect: un GET non crea directory ne database;
+        il progetto deve esistere gia (la creazione avviene solo in POST).
+        """
+
+        root = Path(project_dir).expanduser()
+        if not (root / "ntruth.sqlite3").is_file():
+            # Stesso codice di un record assente: la lettura resta idempotente
+            # e non crea directory ne database come side effect.
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "code": "plan_execution_not_found",
+                    "message": "Record piano/esecuzione non trovato",
+                },
+            )
+        with _open_project_database(project_dir) as database:
+            database.verify_integrity()
+            stored = database.get_plan_execution(record_id)
+        if stored is None:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "code": "plan_execution_not_found",
+                    "message": "Record piano/esecuzione non trovato",
+                },
+            )
+        return _plan_execution_response(stored)
+
+    @api.post("/v1/prospective/plan-execution/{record_id}/gold")
+    def promote_plan_execution_gold(
+        record_id: str, payload: PlanExecutionGoldRequest
+    ) -> dict[str, Any]:
+        """Promuove un candidato a gold adjudicato senza mutare il candidato."""
+
+        try:
+            gold = ProspectiveGoldRecord.model_validate(payload.gold)
+        except ValidationError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": "plan_execution_gold_invalid",
+                    "message": "ProspectiveGoldRecord non valido",
+                    "errors": json.loads(exc.json()),
+                },
+            ) from exc
+
+        gold_payload = gold.model_dump(mode="json")
+        plan_execution_payload = gold.plan_execution.model_dump(mode="json")
+        plan_execution_canonical = json.dumps(
+            plan_execution_payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+        plan_execution_checksum = hashlib.sha256(
+            plan_execution_canonical.encode("utf-8")
+        ).hexdigest()
+
+        with _open_project_database(payload.project_dir) as database:
+            candidate = database.get_plan_execution(record_id)
+            if candidate is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail={
+                        "code": "plan_execution_not_found",
+                        "message": "Candidato piano/esecuzione non trovato",
+                    },
+                )
+            if candidate.status != "candidate":
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": "plan_execution_not_candidate",
+                        "message": "Solo un candidato puo essere promosso a gold",
+                        "status": candidate.status,
+                    },
+                )
+            candidate_domain_id = candidate.payload.get("record_id")
+            if candidate_domain_id != gold.plan_execution.record_id:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": "plan_execution_gold_mismatch",
+                        "message": ("gold.plan_execution.record_id non coincide con il candidato"),
+                    },
+                )
+            if candidate.content_checksum != plan_execution_checksum:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": "plan_execution_gold_mismatch",
+                        "message": (
+                            "gold.plan_execution non coincide con il payload del candidato"
+                        ),
+                    },
+                )
+            try:
+                stored = database.promote_plan_execution_gold(
+                    record_id,
+                    gold_payload,
+                    actor_role=payload.actor_role or gold.adjudicator_role,
+                )
+            except StorageIntegrityError as exc:
+                raise HTTPException(
+                    status_code=409,
+                    detail={"code": "plan_execution_gold_conflict", "message": str(exc)},
+                ) from exc
+        return _plan_execution_response(stored)
+
+    @api.post("/analyze")
+    @api.post("/v1/analyze")
+    def analyze(payload: AnalyzeRequest) -> dict[str, Any]:
+        try:
+            execute_analysis(Path(payload.source), out=Path(payload.out))
+        except V8ApplicationInputReviewRequired as exc:
+            review = exc.review_requirement
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": review.status.value,
+                    "issue_id": review.issue_id,
+                    "message": review.rationale,
+                },
+            ) from exc
+
+        raise HTTPException(  # pragma: no cover - raw Path inputs are blocked by contract
+            status_code=409,
+            detail={"code": "SCIENTIFIC_REVIEW_REQUIRED", "issue_id": "SRR-V8-008"},
+        )
+
+    def _v7_response(execution: Any, session_id: str) -> dict[str, Any]:
+        return {
+            "report": report_to_dict(execution.result.report),
+            "ingest_summary": execution.ingest.summary(),
+            "artifacts": {name: str(path) for name, path in execution.written.items()},
+            "domain_transparency": execution.transparency.model_dump(mode="json"),
+            "session_id": session_id,
+            "run_id": execution.run_id,
+            "revision": execution.revision,
+            "output_dir": str(execution.run_dir),
+            "privacy_audit": execution.privacy_audit.model_dump(mode="json"),
+            "share_readiness": execution.share_readiness.model_dump(mode="json"),
+            "contract": {
+                "code": "DEPRECATED_V7_ADAPTER",
+                "version": "v7",
+            },
+        }
+
+    @api.post("/v7/analyze")
+    def analyze_v7(payload: AnalyzeRequest) -> dict[str, Any]:
+        try:
+            execution = execute_analysis_v7_adapter(
                 Path(payload.source),
                 out=Path(payload.out),
                 project_dir=Path(payload.project_dir) if payload.project_dir else None,
@@ -201,6 +733,7 @@ def create_app() -> Any:
                 domain=payload.domain,
                 ruleset_id=payload.ruleset_id,
                 ruleset_version=payload.ruleset_version,
+                release_profile=payload.release_profile,
                 require_domain_acknowledgement=True,
                 acknowledged_unvalidated_domain=payload.acknowledge_unvalidated_domain,
             )
@@ -216,24 +749,378 @@ def create_app() -> Any:
         except (FileNotFoundError, NoUsableFilesError, SafetyError, RulesetNotFound) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         session = sessions.create(execution)
+        if session_journal_dir is not None:
+            journal_append_entry(
+                session_journal_dir,
+                session.id,
+                {
+                    "lane": "v7",
+                    "source": payload.source,
+                    "out": payload.out,
+                    "project_dir": payload.project_dir,
+                    "language": payload.language,
+                    "domain": payload.domain,
+                    "ruleset_id": payload.ruleset_id,
+                    "ruleset_version": payload.ruleset_version,
+                    "acknowledge_unvalidated_domain": payload.acknowledge_unvalidated_domain,
+                },
+            )
+        return _v7_response(execution, session.id)
+
+    @api.post("/v1/sessions/{session_id}/resume")
+    def resume_session(session_id: str) -> dict[str, Any]:
+        """Ricostruisce esplicitamente una sessione journallata dopo un restart.
+
+        Replay deterministico della richiesta registrata: nessuna resurrezione
+        silenziosa al boot, nessuna sovrascrittura di run precedenti (l'analisi
+        crea una nuova revisione append-only). Fail-closed sul checksum.
+        """
+
+        if session_journal_dir is None:
+            raise HTTPException(
+                status_code=404,
+                detail={"code": "session_journal_disabled"},
+            )
+        try:
+            live = sessions.get(session_id)
+        except SessionNotFound:
+            live = None
+        if live is not None:
+            return _v7_response(live.execution, session_id)
+
+        entry = journal_read_entry(session_journal_dir, session_id)
+        if entry is None:
+            raise HTTPException(
+                status_code=404,
+                detail={"code": "session_not_resumable", "session_id": session_id},
+            )
+        request = entry.request
+        if request.get("lane") != "v7":
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "session_lane_not_resumable", "lane": str(request.get("lane"))},
+            )
+        try:
+            execution = execute_analysis_v7_adapter(
+                Path(str(request["source"])),
+                out=Path(str(request["out"])),
+                project_dir=Path(str(request["project_dir"]))
+                if request.get("project_dir")
+                else None,
+                language=str(request.get("language", "it")),
+                domain=str(request.get("domain", "quantitative_microscopy")),
+                ruleset_id=str(request.get("ruleset_id", "")),
+                ruleset_version=str(request.get("ruleset_version", "")),
+                require_domain_acknowledgement=True,
+                acknowledged_unvalidated_domain=bool(request.get("acknowledge_unvalidated_domain")),
+            )
+        except DomainAcknowledgementRequired as exc:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "domain_acknowledgement_required",
+                    "message": str(exc),
+                    "domain_transparency": exc.transparency.model_dump(mode="json"),
+                },
+            ) from exc
+        except (FileNotFoundError, NoUsableFilesError, SafetyError, RulesetNotFound) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        session = sessions.create(execution, session_id=session_id)
+        return _v7_response(execution, session.id)
+
+    @api.get("/v9/reality-gate")
+    def reality_gate_v9() -> dict[str, Any]:
+        """Composizione v9 content-addressed sul gate v8 pinnato (PRD v9 §0.8).
+
+        Stato ispezionabile e deterministico: resta HOLD senza evidenze reali
+        registrate; non e una autorizzazione e non modifica alcun gate esistente.
+        """
+
+        from ntruth.reality_gate.v9 import compose_default_hold_gate_v9
+
+        composition = compose_default_hold_gate_v9()
+        payload = composition.model_dump(mode="json")
+        payload["predicates_satisfied"] = composition.predicates_satisfied
+        payload["effective_state"] = composition.effective_state.value
+        payload["authorizes_substantive_training"] = composition.authorizes_substantive_training
+        return payload
+
+    @api.post("/v9/design/preflight")
+    def v9_design_preflight(payload: V9DesignPreflightRequest) -> dict[str, Any]:
+        """Preflight EU/contrast su una matrice del disegno registrata.
+
+        Deriva i booleani §11.2 dall'assegnazione registrata e applica il gate
+        sidecar v9. Il risultato e una decisione di contratto, mai una
+        raccomandazione statistica (HANDOFF_ONLY).
+        """
+
+        from ntruth.schemas.factor_role import ContrastType, FactorRole
+        from ntruth.scientific.design_matrix import evaluate_design_matrix
+        from ntruth.scientific.v9_gates import gate_experimental_unit_claim
+
+        try:
+            role = FactorRole(payload.factor_role)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "unknown_factor_role", "message": str(exc)},
+            ) from exc
+        try:
+            contrast = ContrastType(payload.contrast_type)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "unknown_contrast_type", "message": str(exc)},
+            ) from exc
+        try:
+            check = evaluate_design_matrix(
+                assignments=payload.assignments,
+                declared_levels=payload.declared_levels,
+                blocks=payload.blocks,
+            )
+            gate_inputs = check.gate_inputs_for_factor(payload.factor_id)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "invalid_design", "message": str(exc)},
+            ) from exc
+        decision = gate_experimental_unit_claim(
+            query_id=payload.query_id,
+            factor_id=payload.factor_id,
+            unit_type=payload.unit_type,
+            role=role,
+            contrast_type=contrast,
+            assignment_event_id=payload.assignment_event_id,
+            levels_present=gate_inputs["levels_present"],
+            within_block_variation=gate_inputs["within_block_variation"],
+            fully_aliased=gate_inputs["fully_aliased"],
+            exposure_separable=payload.exposure_separable,
+            information_sufficient=payload.information_sufficient,
+            shared_exposure=payload.shared_exposure,
+            exposure_collapses_separability=payload.exposure_collapses_separability,
+            exposure_cluster=payload.exposure_cluster,
+            assignment_complete=gate_inputs["assignment_complete"],
+            between_cluster_only=gate_inputs["between_cluster_only"],
+        )
         return {
-            "report": report_to_dict(execution.result.report),
-            "ingest_summary": execution.ingest.summary(),
-            "artifacts": {name: str(path) for name, path in execution.written.items()},
-            "domain_transparency": execution.transparency.model_dump(mode="json"),
-            "session_id": session.id,
-            "run_id": execution.run_id,
-            "revision": execution.revision,
-            "output_dir": str(execution.run_dir),
-            "privacy_audit": execution.privacy_audit.model_dump(mode="json"),
-            "share_readiness": execution.share_readiness.model_dump(mode="json"),
+            "design_matrix": {
+                "units": check.units,
+                "factors": list(check.factors),
+                "levels_without_units": [list(pair) for pair in check.levels_without_units],
+                "fully_aliased": check.fully_aliased,
+                "aliased_factor_pairs": [list(pair) for pair in check.aliased_factor_pairs],
+                "within_block_variation": dict(check.within_block_variation),
+                "blocks_count": check.blocks_count,
+                "smallest_block_size": check.smallest_block_size,
+                "aliased_with_factor": list(check.aliased_with(payload.factor_id)),
+                "unassigned_units": {
+                    factor: list(units) for factor, units in check.unassigned_units.items()
+                },
+                "constant_within_levels_of": {
+                    factor: list(others)
+                    for factor, others in check.constant_within_levels_of.items()
+                },
+            },
+            "gate_inputs": gate_inputs,
+            "decision": {
+                "eu_emitted": decision.eu_emitted,
+                "eu_claim": (
+                    decision.eu_claim.model_dump(mode="json")
+                    if decision.eu_claim is not None
+                    else None
+                ),
+                "contrast_status": decision.contrast_status.value,
+                "denial_reason": decision.denial_reason,
+            },
+            "strategy": "HANDOFF_ONLY",
         }
+
+    @api.post("/v8/quick-design")
+    def quick_design_v8(payload: QuickDesignV8Submission) -> dict[str, Any]:
+        """Raw author-asserted prospective flow; never a guided confirmation lane."""
+
+        from ntruth.verification_scope import verification_scope
+
+        with verification_scope():
+            return _quick_design_v8(payload)
+
+    def _quick_design_v8(payload: QuickDesignV8Submission) -> dict[str, Any]:
+        from ntruth.derivation_theory.runtime import load_runtime_bundle
+
+        try:
+            validate_raw_wizard_submission(payload)
+            result = run_quick_design_v8(
+                payload,
+                conformance_bundle=load_runtime_bundle(),
+            )
+        except QuickDesignScientificReviewRequired as exc:
+            review = exc.review_requirement
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "SCIENTIFIC_REVIEW_REQUIRED",
+                    "issue_id": review.issue_id,
+                    "message": review.rationale,
+                },
+            ) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return {
+            "planned_design": result.planned_design.model_dump(mode="json"),
+            "report": report_bundle_to_dict(result.report_bundle),
+            "artifacts": tuple(artifact.model_dump(mode="json") for artifact in result.artifacts),
+            "contract": {
+                "code": "PRD_V8",
+                "version": "8.0.0",
+                "strategy_module_status": result.report_bundle.strategy_module_status.value,
+                "input_mode": "RAW_AUTHOR_ASSERTED",
+                "guided_confirmation": False,
+            },
+        }
+
+    @api.post("/v8/quick-design/build-submission")
+    def build_quick_design_submission(
+        payload: GuidedQuickDesignBuildRequest,
+    ) -> dict[str, Any]:
+        """Preview, or atomically confirm and execute, reviewed guided fields."""
+
+        from ntruth.verification_scope import verification_scope
+
+        # One scope for build and serialization: dumping the response re-validates
+        # every nested knowledge envelope, which would otherwise re-execute the
+        # already verified pipeline contexts from scratch.
+        with verification_scope():
+            return _build_quick_design_submission(payload)
+
+    def _build_quick_design_submission(payload: GuidedQuickDesignBuildRequest) -> dict[str, Any]:
+        try:
+            response = build_guided_quick_design(payload)
+        except QuickDesignScientificReviewRequired as exc:
+            review = exc.review_requirement
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": review.status.value,
+                    "issue_id": review.issue_id,
+                    "message": review.rationale,
+                },
+            ) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return response.model_dump(mode="json")
+
+    @api.post("/v7/quick-design")
+    def quick_design_v7(payload: LegacyQuickDesignRequest) -> dict[str, Any]:
+        """Explicitly qualified historical adapter; never the canonical route."""
+
+        try:
+            result = run_quick_design_v7_session(
+                QuickDesignV7Answers(
+                    source_description=payload.source_description,
+                    preparation_description=payload.preparation_description,
+                    factor_id=payload.factor_id,
+                    levels=payload.levels,
+                    endpoint_id=payload.endpoint_id,
+                    contrast_id=payload.contrast_id,
+                    allocation_level=payload.allocation_level,
+                    application_level=payload.application_level,
+                    assignment_timing=payload.assignment_timing,
+                    assignment_method=payload.assignment_method,
+                    independently_assigned=payload.independently_assigned,
+                    biological_source_independence=payload.biological_source_independence,
+                    interference_status=payload.interference_status,
+                    planned_unit_type=payload.planned_unit_type,
+                    planned_units_per_level=payload.planned_units_per_level,
+                )
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return {
+            "result": export_v7_for_biostatistician(result),
+            "contract": {
+                "code": "DEPRECATED_V7_ADAPTER",
+                "version": "v7",
+            },
+        }
+
+    @api.get("/v8/report")
+    def report_v8(path: str) -> dict[str, Any]:
+        report_path = Path(path).expanduser().resolve()
+        # Containment: il report deve appartenere a un run attivo registrato
+        # in questo processo. Nessuna lettura arbitraria del filesystem.
+        allowed_roots = [
+            Path(session.execution.run_dir).resolve() for session in sessions.iter_sessions()
+        ]
+        if not any(
+            report_path == root or report_path.is_relative_to(root) for root in allowed_roots
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": "report_path_outside_active_runs",
+                    "message": (
+                        f"Percorso fuori dai run attivi di questa sessione API: {report_path}"
+                    ),
+                },
+            )
+        if not report_path.is_file():
+            raise HTTPException(status_code=404, detail=f"Report non trovato: {report_path}")
+        try:
+            loaded = read_report_bundle_json(report_path)
+        except (OSError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=f"Report non valido: {exc}") from exc
+        return report_bundle_to_dict(loaded)
+
+    @api.get("/v7/report")
+    def report_v7(path: str) -> dict[str, Any]:
+        """Explicitly qualified legacy report reader."""
+
+        report_path = Path(path).expanduser().resolve()
+        # Containment: il report deve appartenere a un run attivo registrato
+        # in questo processo. Nessuna lettura arbitraria del filesystem.
+        allowed_roots = [
+            Path(session.execution.run_dir).resolve() for session in sessions.iter_sessions()
+        ]
+        if not any(
+            report_path == root or report_path.is_relative_to(root) for root in allowed_roots
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": "report_path_outside_active_runs",
+                    "message": (
+                        f"Percorso fuori dai run attivi di questa sessione API: {report_path}"
+                    ),
+                },
+            )
+        if not report_path.is_file():
+            raise HTTPException(status_code=404, detail=f"Report non trovato: {report_path}")
+        try:
+            loaded = read_json(report_path)
+        except (OSError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=f"Report non valido: {exc}") from exc
+        return report_to_dict(loaded)
 
     @api.get("/report")
     @api.get("/v1/report")
     @api.get("/v1/reports")
     def report(path: str) -> dict[str, Any]:
-        report_path = Path(path).expanduser()
+        report_path = Path(path).expanduser().resolve()
+        allowed_roots = [
+            Path(session.execution.run_dir).resolve() for session in sessions.iter_sessions()
+        ]
+        if not any(
+            report_path == root or report_path.is_relative_to(root) for root in allowed_roots
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": "report_path_outside_active_runs",
+                    "message": (
+                        f"Percorso fuori dai run attivi di questa sessione API: {report_path}"
+                    ),
+                },
+            )
         if not report_path.is_file():
             raise HTTPException(status_code=404, detail=f"Report non trovato: {report_path}")
         try:
@@ -493,9 +1380,9 @@ def create_app() -> Any:
         try:
             session = sessions.get(payload.session_id)
             update = (
-                session.undo(payload.block_id)
+                session.undo(payload.block_id, actor_role=payload.reviewer_role)
                 if action == "undo"
-                else session.redo(payload.block_id)
+                else session.redo(payload.block_id, actor_role=payload.reviewer_role)
             )
             return correction_response(update)
         except (SessionNotFound, SessionBlockNotFound) as exc:
@@ -530,6 +1417,84 @@ def create_app() -> Any:
                 else "text/html"
             ),
         )
+
+    @api.post("/v1/power/plan")
+    def power_plan(payload: PowerPlanInput) -> dict[str, Any]:
+        """Piano a priori candidate-only su EU indipendenti (HANDOFF_ONLY).
+
+        Il calcolo avviene solo dopo EU-gate, SESOI e applicability gate.
+        Nessun test/modello e raccomandato; nessuna validita certificata.
+        """
+
+        from ntruth.power.planner import PowerBlockedError, build_power_plan
+
+        try:
+            plan = build_power_plan(payload)
+        except PowerBlockedError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": exc.code, "message": str(exc)},
+            ) from exc
+        return {
+            "power_plan_candidate": plan.model_dump(mode="json"),
+            "strategy": "HANDOFF_ONLY",
+            "input_mode": "HUMAN_DECLARED",
+        }
+
+    @api.post("/v1/power/pseudoreplication-risk")
+    def power_pseudoreplication_risk(payload: PseudoreplicationRiskInput) -> dict[str, Any]:
+        """Alpha effettiva di un'analisi che tratta osservazioni annidate come indipendenti.
+
+        Diagnostica esatta (intercetto casuale, disegno bilanciato) sull'ICC
+        dichiarata e su una griglia di sensitivity; non modifica EU o claim.
+        """
+
+        from ntruth.power.calculator import PowerComputationError
+        from ntruth.power.pseudoreplication import pseudoreplication_risk
+
+        try:
+            result = pseudoreplication_risk(payload)
+        except PowerComputationError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "pseudoreplication_risk_invalid", "message": str(exc)},
+            ) from exc
+        return {
+            "pseudoreplication_risk": result.model_dump(mode="json"),
+            "strategy": "HANDOFF_ONLY",
+            "input_mode": "HUMAN_DECLARED",
+        }
+
+    @api.post("/v1/power/plan-simulated")
+    def power_plan_simulated(payload: SimulatedPowerRequest) -> dict[str, Any]:
+        """Piano via simulazione gerarchica sul modello dichiarato (HANDOFF_ONLY).
+
+        Usare quando /v1/power/plan risponde 409 simulation_required.
+        Frequenza Monte Carlo ±MCSE, mai probabilita calibrata.
+        """
+
+        from ntruth.power.planner import PowerBlockedError, build_power_plan
+
+        try:
+            plan = build_power_plan(payload.plan, simulation=payload.simulation)
+        except PowerBlockedError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": exc.code, "message": str(exc)},
+            ) from exc
+        if plan.method != PowerMethod.MONTE_CARLO_HIERARCHICAL:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "simulation_not_required",
+                    "message": "La formula chiusa e applicabile: usare /v1/power/plan.",
+                },
+            )
+        return {
+            "power_plan_candidate": plan.model_dump(mode="json"),
+            "strategy": "HANDOFF_ONLY",
+            "input_mode": "HUMAN_DECLARED",
+        }
 
     ui_dir = _ui_directory()
     if ui_dir is not None:

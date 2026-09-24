@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import os
 import tarfile
 from pathlib import Path
 
@@ -37,3 +38,20 @@ def test_safe_extract_tar_absolute_path(tmp_path: Path):
 
     with pytest.raises(FSError, match="Unsafe absolute path"):
         safe_extract_tar(tar_path, dest)
+
+
+def test_safe_extract_tar_strips_privileged_mode_bits(tmp_path: Path):
+    tar_path = tmp_path / "modes.tar"
+    dest = tmp_path / "extracted"
+
+    buf = io.BytesIO(b"hello")
+    with tarfile.open(tar_path, "w") as tf:
+        ti = tarfile.TarInfo(name="owned.txt")
+        ti.size = 5
+        ti.mode = 0o4755
+        tf.addfile(ti, fileobj=buf)
+
+    safe_extract_tar(tar_path, dest)
+    extracted = dest / "owned.txt"
+    assert extracted.read_text() == "hello"
+    assert os.stat(extracted).st_mode & 0o7000 == 0

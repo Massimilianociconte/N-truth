@@ -1,0 +1,20 @@
+{
+  "acquired_at": "2026-08-02T00:15:24.103388Z",
+  "canonical_model_id": "ibm-granite/granite-4.1-3b",
+  "configured_maximum_context_tokens": 131072,
+  "context_window_status": "configured_from_model_card_not_host_validated",
+  "expected_bytes": 2127162429,
+  "expected_sha256": "cff9d052cc3c68ea66b3d364788eb96fca2be82868d9ad92bd968e73b125194d",
+  "integrity_ok": true,
+  "license": "Apache-2.0",
+  "local_path": "models/local/granite-4.1-3b-4bit",
+  "mlx_kind": "community_conversion_not_official_ibm",
+  "mlx_lm_version_at_acquisition": "0.31.3",
+  "mlx_repository": "mlx-community/granite-4.1-3b-4bit",
+  "revision": "b1b476b5a17c46b7d6cd663b4a8ed44b66720aef",
+  "role": "provisional_primary_train_a",
+  "scientifically_selected": false,
+  "weight_bytes": 2127162429,
+  "weight_file": "model.safetensors",
+  "weight_sha256": "cff9d052cc3c68ea66b3d364788eb96fca2be82868d9ad92bd968e73b125194d"
+}

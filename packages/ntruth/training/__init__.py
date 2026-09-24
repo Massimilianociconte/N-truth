@@ -1,5 +1,10 @@
 """Preparazione deterministica di dataset; nessun training viene avviato qui."""
 
+from ntruth.training.gold import (
+    GOLD_PARSER_TARGET_VERSION,
+    GoldParserTarget,
+    SubmissionComparison,
+)
 from ntruth.training.manifest import dumps_dataset_manifest, dumps_preparation_report
 from ntruth.training.preparation import DatasetValidationError, prepare_dataset
 from ntruth.training.records import (
@@ -22,17 +27,20 @@ from ntruth.training.records import (
 )
 
 __all__ = [
+    "GOLD_PARSER_TARGET_VERSION",
     "AnnotationStatus",
     "DatasetFormatError",
     "DatasetManifest",
     "DatasetValidationError",
     "DuplicateDecision",
     "DuplicateKind",
+    "GoldParserTarget",
     "PreparationConfig",
     "PreparationReport",
     "PreparedDataset",
     "PreparedRecord",
     "SplitRatios",
+    "SubmissionComparison",
     "SupervisedRecord",
     "SupervisionProvenance",
     "dumps_dataset_manifest",

@@ -1,4 +1,9 @@
-# Data Management Plan — draft v0.1 / PRD v3
+# Data Management Plan — draft v0.2 / PRD v6
+
+> **HISTORICAL_NON_NORMATIVE.** Questa bozza PRD v3 non autorizza acquisizione o uso
+> di dati nel contratto v8. Vedere [../GOVERNANCE.md](../GOVERNANCE.md),
+> [privacy-dpia-screening.md](privacy-dpia-screening.md) e
+> [prd-v8-data-training-evaluation-boundary.md](prd-v8-data-training-evaluation-boundary.md).
 
 **Stato:** bozza operativa; richiede approvazione del data steward prima di acquisire dati reali.
 
@@ -35,6 +40,7 @@ dell'autore separate da risposte esperte e hash del record di governance.
 ## Storage e accesso
 
 - Workspace locale su volume cifrato; rete e telemetria disattivate per default.
+- SQLite locale per manifest, revisioni e audit; blob immutabili deduplicati per SHA-256.
 - Accesso minimo per ruolo; external test separato dagli ambienti di sviluppo.
 - Log privi di contenuto scientifico e identificatori per default.
 - Backup cifrati solo se autorizzati dall'accordo dati.
@@ -49,8 +55,9 @@ di audit non identificativi quando richiesto.
 ## Versioning e split
 
 Snapshot content-addressed; correzioni tramite nuova versione. Split per articolo, progetto,
-preprint/versione, laboratorio quando possibile, dataset/supplementi e template sintetici.
-Synthetic solo nel train; test ed external set congelati prima della model selection. Ogni run
+preprint/versione, laboratorio, facility, corresponding author, dataset/supplementi,
+synthetic family e counterfactual. Synthetic solo nel train; test ed external challenge
+congelati prima della model selection e mai training-eligible. Ogni run
 registra automaticamente lockfile, codice, runtime, modello, profilo, seed e snapshot. Le
 versioni di schema, contratto parser, guideline e ontologia devono essere fissate nel manifest
 del dataset e conservate insieme al run.
@@ -61,5 +68,5 @@ del dataset e conservate insieme al run.
 - [ ] License policy approvata.
 - [ ] Retention e incident response approvati.
 - [ ] Accordi per eventuali dati di laboratorio firmati dalle parti autorizzate.
-- [ ] Dieci Experiment Bundle reali/pubblici autorizzati disponibili per la verifica iniziale.
+- [ ] 10-20 Experiment Bundle reali/pubblici autorizzati disponibili per lo schema bootstrap D0.
 - [ ] DPIA screening completato se entrano dati personali o categorie particolari.

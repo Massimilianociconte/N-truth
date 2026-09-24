@@ -1,4 +1,4 @@
-"""Contratto JSON stabile e backend-agnostic del parser AI (PRD v3, sezione 13).
+"""Contratto JSON candidate-only e backend-agnostic del parser AI (PRD v8 §13).
 
 Il contratto descrive soltanto candidate facts. Non contiene verdetti e non
 consente al modello di scrivere nel grafo scientifico confermato.
@@ -7,17 +7,392 @@ consente al modello di scrivere nel grafo scientifico confermato.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any, Literal
+from enum import Enum
+from math import isnan
+from typing import Any, Literal, cast
 
-from pydantic import Field, JsonValue, model_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    JsonValue,
+    SerializerFunctionWrapHandler,
+    field_validator,
+    model_serializer,
+    model_validator,
+)
 
+from ntruth.mvt_a.stage_schema import (
+    ALLOWED_CANDIDATE_COUNT_KINDS,
+    StageCoverage,
+    assert_no_final_scientific_fields,
+)
+from ntruth.schemas.block_boundary import BlockBoundaryPredicate
 from ntruth.schemas.core import Determinability, EvidenceType, FrozenModel
 from ntruth.schemas.document import DocumentIR, StatisticalCodeArtifact
 from ntruth.schemas.graph import ALLOCATABLE_NODE_TYPES, NodeType, RelationType
 
-PARSER_AI_CONTRACT_VERSION = "2.0.0"
+PARSER_AI_CONTRACT_VERSION = "8.0.0"
+PARSER_AI_V3_CONTRACT_VERSION = "2.0.0"
 
 type ConfidenceScore = float
+
+
+def _raw_candidate_contract_tree(
+    value: object,
+    *,
+    seen: set[int] | None = None,
+) -> object:
+    """Expose public raw model state before Pydantic can omit invalid extras."""
+
+    if seen is None:
+        seen = set()
+    tracked = isinstance(value, (BaseModel, Mapping, list, tuple, set, frozenset))
+    identity = id(value)
+    if tracked:
+        if identity in seen:
+            raise ValueError("candidate runtime tree contains a recursive container cycle")
+        seen.add(identity)
+    try:
+        if isinstance(value, BaseModel):
+            raw_values = value.__dict__
+            if type(raw_values) is not dict:
+                raise ValueError(
+                    "candidate runtime model state must be exact builtin dict, "
+                    f"got {type(raw_values).__name__}"
+                )
+            if object.__getattribute__(value, "__pydantic_private__") is not None:
+                raise ValueError("candidate runtime model has non-canonical Pydantic private state")
+            declared_fields = type(value).model_fields
+            payload: dict[object, object] = {
+                field_name: _raw_candidate_contract_tree(raw_values[field_name], seen=seen)
+                for field_name in declared_fields
+                if field_name in raw_values
+            }
+            for field_name in raw_values:
+                if type(field_name) is not str:
+                    raise ValueError(
+                        "candidate runtime model state key must be exact builtin str, "
+                        f"got {type(field_name).__name__}"
+                    )
+                if field_name in declared_fields:
+                    continue
+                raise ValueError(
+                    "candidate runtime model has non-canonical undeclared public field "
+                    f"{field_name!r}"
+                )
+            extra_values = value.__pydantic_extra__
+            if extra_values is not None:
+                if type(extra_values) is not dict:
+                    raise ValueError(
+                        "candidate runtime container type for Pydantic extras must be "
+                        f"exact builtin dict, got {type(extra_values).__name__}"
+                    )
+                if extra_values:
+                    extra_field = next(iter(extra_values))
+                    raise ValueError(
+                        "candidate runtime model has non-canonical undeclared Pydantic "
+                        f"extra field {extra_field!r}"
+                    )
+                raise ValueError(
+                    "candidate runtime model has a non-canonical empty Pydantic extra store"
+                )
+            return payload
+        if isinstance(value, Mapping):
+            if type(value) is not dict:
+                raise ValueError(
+                    "candidate runtime container type must be exact builtin dict, "
+                    f"got {type(value).__name__}"
+                )
+            mapping_payload: dict[object, object] = {}
+            for key, item in value.items():
+                raw_key = _raw_candidate_contract_tree(key, seen=seen)
+                raw_item = _raw_candidate_contract_tree(item, seen=seen)
+                try:
+                    mapping_payload[raw_key] = raw_item
+                except TypeError as exc:
+                    raise ValueError("candidate runtime mapping key is not canonical") from exc
+            return mapping_payload
+        if isinstance(value, (list, tuple, set, frozenset)):
+            if type(value) not in {list, tuple, set, frozenset}:
+                raise ValueError(
+                    "candidate runtime container type must be an exact builtin, "
+                    f"got {type(value).__name__}"
+                )
+            return tuple(_raw_candidate_contract_tree(item, seen=seen) for item in value)
+        if isinstance(value, Enum):
+            enum_state = object.__getattribute__(value, "__dict__")
+            if type(enum_state) is not dict:
+                raise ValueError(
+                    "candidate runtime enum state must be exact builtin dict, "
+                    f"got {type(enum_state).__name__}"
+                )
+            canonical_state_fields = {
+                "_value_",
+                "_name_",
+                "__objclass__",
+                "_sort_order_",
+            }
+            enum_state_fields = tuple(dict.keys(enum_state))
+            if (
+                any(type(field_name) is not str for field_name in enum_state_fields)
+                or set(enum_state_fields) != canonical_state_fields
+            ):
+                raise ValueError(
+                    "candidate runtime enum has non-canonical undeclared or missing state"
+                )
+            enum_type = type(value)
+            member_names = enum_type.__dict__.get("_member_names_")
+            member_map = enum_type.__dict__.get("_member_map_")
+            value_map = enum_type.__dict__.get("_value2member_map_")
+            if (
+                type(member_names) is not list
+                or type(member_map) is not dict
+                or type(value_map) is not dict
+                or any(type(name) is not str for name in member_names)
+            ):
+                raise ValueError("candidate runtime enum definition is not canonical")
+            canonical_names = [
+                name for name in member_names if dict.__getitem__(member_map, name) is value
+            ]
+            canonical_values = [
+                member_value for member_value, member in dict.items(value_map) if member is value
+            ]
+            if len(canonical_names) != 1 or len(canonical_values) != 1:
+                raise ValueError("candidate runtime enum member is not canonical")
+            canonical_name = canonical_names[0]
+            canonical_value = canonical_values[0]
+            if (
+                type(enum_state["_name_"]) is not str
+                or enum_state["_name_"] != canonical_name
+                or enum_state["__objclass__"] is not enum_type
+                or type(enum_state["_sort_order_"]) is not int
+                or enum_state["_sort_order_"] != member_names.index(canonical_name)
+                or type(enum_state["_value_"]) is not type(canonical_value)
+                or enum_state["_value_"] != canonical_value
+            ):
+                raise ValueError("candidate runtime enum state is not canonical")
+            return value
+        if isinstance(value, (str, int, float, bool, bytes)) and type(value) not in {
+            str,
+            int,
+            float,
+            bool,
+            bytes,
+        }:
+            raise ValueError(
+                "candidate runtime scalar type must be an exact builtin or canonical enum, "
+                f"got {type(value).__name__}"
+            )
+        return value
+    finally:
+        if tracked:
+            seen.remove(identity)
+
+
+def _assert_exact_candidate_model_types(
+    actual: object,
+    canonical: object,
+    *,
+    path: str = "$",
+    seen: set[tuple[int, int]] | None = None,
+) -> None:
+    """Reject non-canonical Pydantic runtime types anywhere in the candidate tree."""
+
+    if seen is None:
+        seen = set()
+    identity = (id(actual), id(canonical))
+    if identity in seen:
+        return
+    seen.add(identity)
+    if isinstance(canonical, BaseModel):
+        if type(actual) is not type(canonical):
+            raise ValueError(
+                f"candidate runtime type at {path} must be exact canonical "
+                f"{type(canonical).__name__}, got {type(actual).__name__}"
+            )
+        actual_fields_set = object.__getattribute__(actual, "__pydantic_fields_set__")
+        model_fields = type(canonical).model_fields
+        declared_fields = set(model_fields)
+        if (
+            type(actual_fields_set) is not set
+            or any(type(field_name) is not str for field_name in actual_fields_set)
+            or not actual_fields_set.issubset(declared_fields)
+        ):
+            raise ValueError(f"candidate runtime field-set metadata at {path} is not canonical")
+        actual_values = actual.__dict__
+        canonical_values = canonical.__dict__
+        for field_name in model_fields:
+            if field_name not in actual_values or field_name not in canonical_values:
+                raise ValueError(f"candidate runtime field {path}.{field_name} is not canonical")
+        required_fields = {
+            field_name for field_name, field in model_fields.items() if field.is_required()
+        }
+        if not required_fields.issubset(actual_fields_set):
+            raise ValueError(
+                f"candidate runtime field-set metadata at {path} omits a required field"
+            )
+        sparse_payload = {
+            field_name: _raw_candidate_contract_tree(actual_values[field_name])
+            for field_name in model_fields
+            if field_name in actual_fields_set
+        }
+        try:
+            sparse_canonical = type(canonical).model_validate(sparse_payload)
+        except Exception as exc:
+            raise ValueError(
+                f"candidate runtime field-set metadata at {path} cannot reconstruct defaults: {exc}"
+            ) from exc
+        sparse_values = sparse_canonical.__dict__
+        for field_name in model_fields:
+            if field_name in actual_fields_set:
+                continue
+            actual_value = actual_values[field_name]
+            default_value = sparse_values[field_name]
+            if type(actual_value) is not type(default_value) or actual_value != default_value:
+                raise ValueError(
+                    f"candidate runtime field-set metadata at {path} omits non-default "
+                    f"field {field_name!r}"
+                )
+        object.__setattr__(
+            canonical,
+            "__pydantic_fields_set__",
+            set(actual_fields_set),
+        )
+        for field_name in model_fields:
+            _assert_exact_candidate_model_types(
+                actual_values[field_name],
+                canonical_values[field_name],
+                path=f"{path}.{field_name}",
+                seen=seen,
+            )
+        return
+    if type(canonical) is dict:
+        if type(actual) is not dict or len(actual) != len(canonical):
+            raise ValueError(f"candidate runtime mapping at {path} is not canonical")
+        unmatched_mapping_items = list(canonical.items())
+        for index, (actual_key, actual_item) in enumerate(actual.items()):
+            match_index = next(
+                (
+                    candidate_index
+                    for candidate_index, (canonical_key, _) in enumerate(unmatched_mapping_items)
+                    if type(actual_key) is type(canonical_key) and actual_key == canonical_key
+                ),
+                None,
+            )
+            if match_index is None:
+                raise ValueError(f"candidate runtime mapping key at {path} is not canonical")
+            canonical_key, canonical_item = unmatched_mapping_items.pop(match_index)
+            _assert_exact_candidate_model_types(
+                actual_key,
+                canonical_key,
+                path=f"{path}.<key:{index}>",
+                seen=seen,
+            )
+            _assert_exact_candidate_model_types(
+                actual_item,
+                canonical_item,
+                path=f"{path}[{canonical_key!r}]",
+                seen=seen,
+            )
+        return
+    if type(canonical) in {list, tuple}:
+        if type(actual) is not type(canonical):
+            raise ValueError(f"candidate runtime container at {path} is not canonical")
+        actual_sequence = cast(list[object] | tuple[object, ...], actual)
+        canonical_sequence = cast(list[object] | tuple[object, ...], canonical)
+        if len(actual_sequence) != len(canonical_sequence):
+            raise ValueError(f"candidate runtime container at {path} is not canonical")
+        for index, (actual_item, canonical_item) in enumerate(
+            zip(actual_sequence, canonical_sequence, strict=True)
+        ):
+            _assert_exact_candidate_model_types(
+                actual_item,
+                canonical_item,
+                path=f"{path}[{index}]",
+                seen=seen,
+            )
+        return
+    if type(canonical) in {set, frozenset}:
+        if type(actual) is not type(canonical):
+            raise ValueError(f"candidate runtime container at {path} is not canonical")
+        actual_set = cast(set[object] | frozenset[object], actual)
+        canonical_set = cast(set[object] | frozenset[object], canonical)
+        if len(actual_set) != len(canonical_set):
+            raise ValueError(f"candidate runtime container at {path} is not canonical")
+        unmatched_set_items = list(canonical_set)
+        for index, actual_item in enumerate(actual_set):
+            match_index = next(
+                (
+                    candidate_index
+                    for candidate_index, canonical_item in enumerate(unmatched_set_items)
+                    if actual_item == canonical_item
+                ),
+                None,
+            )
+            if match_index is None:
+                raise ValueError(f"candidate runtime set item at {path}[{index}] is not canonical")
+            canonical_item = unmatched_set_items.pop(match_index)
+            _assert_exact_candidate_model_types(
+                actual_item,
+                canonical_item,
+                path=f"{path}[{index}]",
+                seen=seen,
+            )
+        return
+    if type(actual) is not type(canonical):
+        raise ValueError(
+            f"candidate runtime type at {path} must be exact canonical "
+            f"{type(canonical).__name__}, got {type(actual).__name__}"
+        )
+    if type(actual) is float and isnan(actual) and isnan(cast(float, canonical)):
+        return
+    scalar_values_match = actual == canonical
+    if type(scalar_values_match) is not bool or not scalar_values_match:
+        raise ValueError(f"candidate runtime scalar value at {path} is not canonical")
+
+
+def _canonicalize_exact_candidate_model(
+    value: object,
+    *,
+    model_type: type[BaseModel],
+    boundary_name: str,
+) -> BaseModel:
+    """Reject non-canonical runtime state, then rebuild an exact model tree."""
+
+    try:
+        raw_tree = _raw_candidate_contract_tree(value)
+        assert_no_final_scientific_fields(raw_tree)
+        if isinstance(value, BaseModel) and type(value) is not model_type:
+            raise ValueError(
+                f"{boundary_name} runtime type at $ must be exact canonical "
+                f"{model_type.__name__}, got {type(value).__name__}"
+            )
+        canonical = model_type.model_validate(raw_tree)
+        if type(value) is model_type:
+            _assert_exact_candidate_model_types(value, canonical)
+        return canonical
+    except ValueError:
+        raise
+    except Exception as exc:
+        raise ValueError(f"{boundary_name} runtime tree cannot be canonicalized: {exc}") from exc
+
+
+def canonicalize_candidate_boundary_model[CandidateBoundaryModelT: BaseModel](
+    value: object,
+    *,
+    model_type: type[CandidateBoundaryModelT],
+    boundary_name: str,
+) -> CandidateBoundaryModelT:
+    """Return a fresh exact model after the shared raw candidate-boundary gate."""
+
+    return cast(
+        CandidateBoundaryModelT,
+        _canonicalize_exact_candidate_model(
+            value,
+            model_type=model_type,
+            boundary_name=boundary_name,
+        ),
+    )
 
 
 class ParserAISectionInput(FrozenModel):
@@ -207,6 +582,25 @@ class CandidateExperimentBlock(CandidateFact):
     title: str
 
 
+class CandidateBlockBoundary(CandidateFact):
+    """Router proposal only; ``rationale`` is descriptive and never decisive."""
+
+    block_id: str
+    boundary_predicates: tuple[BlockBoundaryPredicate, ...] = Field(min_length=1)
+    rationale: str
+
+    @model_validator(mode="after")
+    def _described_candidate(self) -> CandidateBlockBoundary:
+        if not self.block_id.strip() or not self.rationale.strip():
+            raise ValueError("block boundary candidate requires block_id and rationale")
+        criteria = tuple(predicate.criterion for predicate in self.boundary_predicates)
+        if len(criteria) != len(set(criteria)):
+            raise ValueError(
+                "block boundary criterion must be unique; contradictory states are forbidden"
+            )
+        return self
+
+
 class CandidateNode(CandidateFact):
     node_id: str
     block_id: str
@@ -297,14 +691,14 @@ class CandidateEstimand(CandidateFact):
         return self
 
 
-class DeterminabilityAssessment(FrozenModel):
+class DeterminabilityAssessmentV3(FrozenModel):
     status: Determinability
     rationale: str
     confidence: ConfidenceScore = Field(ge=0.0, le=1.0, allow_inf_nan=False)
     evidence_ids: tuple[str, ...] = ()
 
     @model_validator(mode="after")
-    def _determinate_requires_evidence(self) -> DeterminabilityAssessment:
+    def _determinate_requires_evidence(self) -> DeterminabilityAssessmentV3:
         if self.status is Determinability.DETERMINATE and not self.evidence_ids:
             raise ValueError("DETERMINATE richiede evidence_ids")
         return self
@@ -326,7 +720,7 @@ class ClarificationQuestion(FrozenModel):
     rationale: str
 
 
-class ParserAIModelMetadata(FrozenModel):
+class ParserAIModelMetadataV3(FrozenModel):
     adapter_name: str
     model_name: str
     model_version: str
@@ -336,8 +730,8 @@ class ParserAIModelMetadata(FrozenModel):
     local_execution: bool = True
 
 
-class ParserAIOutput(FrozenModel):
-    """Output candidato completo; ``extra=forbid`` esclude verdetti nascosti."""
+class ParserAIOutputV3(FrozenModel):
+    """Deprecated PRD-v3 output accepted only by the named v3 adapter."""
 
     contract_version: Literal["2.0.0"] = "2.0.0"
     experiment_blocks: tuple[CandidateExperimentBlock, ...] = ()
@@ -348,13 +742,13 @@ class ParserAIOutput(FrozenModel):
     endpoints: tuple[CandidateEndpoint, ...] = ()
     contrasts: tuple[CandidateContrast, ...] = ()
     candidate_estimands: tuple[CandidateEstimand, ...] = ()
-    determinability: DeterminabilityAssessment
+    determinability: DeterminabilityAssessmentV3
     alternatives: tuple[CandidateAlternative, ...] = ()
     clarification_questions: tuple[ClarificationQuestion, ...] = ()
-    model_metadata: ParserAIModelMetadata
+    model_metadata: ParserAIModelMetadataV3
 
     @model_validator(mode="after")
-    def _referential_integrity(self) -> ParserAIOutput:
+    def _referential_integrity(self) -> ParserAIOutputV3:
         evidence_by_id = _unique_map(self.evidence_spans, "evidence_id")
         blocks = _unique_map(self.experiment_blocks, "block_id")
         nodes = _unique_map(self.candidate_nodes, "node_id")
@@ -480,7 +874,461 @@ class ParserAIOutput(FrozenModel):
         return self
 
 
-def validate_contract_pair(request: ParserAIInput, response: ParserAIOutput) -> ParserAIOutput:
+class CandidateCount(CandidateFact):
+    count_id: str
+    block_id: str
+    kind: str
+    candidate_value: int | float | str
+    raw_text: str
+
+    @model_validator(mode="after")
+    def _candidate_kind_only(self) -> CandidateCount:
+        if self.kind not in ALLOWED_CANDIDATE_COUNT_KINDS:
+            raise ValueError(f"unrecognised candidate count kind: {self.kind!r}")
+        return self
+
+
+class CandidateEvent(CandidateFact):
+    event_id: str
+    block_id: str
+    event_type: str
+    participant_candidate_ids: tuple[str, ...] = ()
+
+
+class CandidateGraph(CandidateFact):
+    graph_id: str
+    block_id: str
+    candidate_node_ids: tuple[str, ...] = ()
+    candidate_edge_ids: tuple[str, ...] = ()
+    candidate_event_ids: tuple[str, ...] = ()
+
+
+class MissingPredicateCandidate(FrozenModel):
+    predicate_name: str
+    block_id: str
+    rationale: str
+    evidence_ids: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def _described(self) -> MissingPredicateCandidate:
+        if not self.predicate_name.strip() or not self.rationale.strip():
+            raise ValueError("missing predicate requires a name and rationale")
+        return self
+
+
+class ParserModelMetadata(FrozenModel):
+    adapter_name: str
+    model_name: str
+    model_version: str
+    model_checksum: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    prompt_template_version: str
+    contract_version: Literal["8.0.0"] = "8.0.0"
+    local_execution: bool = True
+
+
+class ParserCandidateOutput(FrozenModel):
+    """Canonical v8 parser output: candidates and coverage, never final claims."""
+
+    contract_version: Literal["8.0.0"] = "8.0.0"
+    experiment_blocks: tuple[CandidateExperimentBlock, ...] = ()
+    block_boundaries: tuple[CandidateBlockBoundary, ...] = ()
+    evidence_spans: tuple[ParserAIEvidenceSpan, ...] = ()
+    candidate_nodes: tuple[CandidateNode, ...] = ()
+    candidate_edges: tuple[CandidateEdge, ...] = ()
+    factors: tuple[CandidateFactor, ...] = ()
+    endpoints: tuple[CandidateEndpoint, ...] = ()
+    contrasts: tuple[CandidateContrast, ...] = ()
+    candidate_estimands: tuple[CandidateEstimand, ...] = ()
+    candidate_counts: tuple[CandidateCount, ...] = ()
+    candidate_events: tuple[CandidateEvent, ...] = ()
+    candidate_graphs: tuple[CandidateGraph, ...] = ()
+    alternatives: tuple[CandidateAlternative, ...] = ()
+    clarification_questions: tuple[ClarificationQuestion, ...] = ()
+    missing_predicates: tuple[MissingPredicateCandidate, ...] = ()
+    coverage: StageCoverage
+    model_metadata: ParserModelMetadata
+
+    def assert_raw_candidate_only(self) -> ParserCandidateOutput:
+        """Reject hidden final fields and return an exact canonical runtime tree."""
+
+        return cast(
+            ParserCandidateOutput,
+            canonicalize_candidate_boundary_model(
+                self,
+                model_type=ParserCandidateOutput,
+                boundary_name="candidate",
+            ),
+        )
+
+    def model_dump(self, **kwargs: Any) -> dict[str, Any]:
+        """Serialize only after validating the complete raw candidate tree."""
+
+        self.assert_raw_candidate_only()
+        return BaseModel.model_dump(self, **kwargs)
+
+    def model_dump_json(self, **kwargs: Any) -> str:
+        """Serialize JSON only after validating the complete raw candidate tree."""
+
+        self.assert_raw_candidate_only()
+        return BaseModel.model_dump_json(self, **kwargs)
+
+    @model_serializer(mode="wrap")
+    def _serialize_after_raw_validation(
+        self,
+        handler: SerializerFunctionWrapHandler,
+    ) -> Any:
+        """Apply the raw gate when Pydantic serializes this model as a child."""
+
+        self.assert_raw_candidate_only()
+        return handler(self)
+
+    def __getstate__(self) -> dict[str, Any]:
+        """Reject hidden candidate state before entering a pickle envelope."""
+
+        checked = self.assert_raw_candidate_only()
+        return BaseModel.__getstate__(checked)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _raw_candidate_only(cls, value: Any) -> Any:
+        assert_no_final_scientific_fields(value)
+        return value
+
+    @model_validator(mode="after")
+    def _referential_integrity(self) -> ParserCandidateOutput:
+        evidence_by_id = _unique_map(self.evidence_spans, "evidence_id")
+        blocks = _unique_map(self.experiment_blocks, "block_id")
+        boundaries = _unique_map(self.block_boundaries, "block_id")
+        nodes = _unique_map(self.candidate_nodes, "node_id")
+        edges = _unique_map(self.candidate_edges, "edge_id")
+        factors = _unique_map(self.factors, "factor_id")
+        endpoints = _unique_map(self.endpoints, "endpoint_id")
+        contrasts = _unique_map(self.contrasts, "contrast_id")
+        estimands = _unique_map(self.candidate_estimands, "estimand_id")
+        counts = _unique_map(self.candidate_counts, "count_id")
+        events = _unique_map(self.candidate_events, "event_id")
+        graphs = _unique_map(self.candidate_graphs, "graph_id")
+        alternatives = _unique_map(self.alternatives, "alternative_id")
+        questions = _unique_map(self.clarification_questions, "question_id")
+
+        globally_scoped_candidate_ids = (
+            *nodes,
+            *edges,
+            *factors,
+            *endpoints,
+            *contrasts,
+            *estimands,
+            *counts,
+            *events,
+            *graphs,
+            *alternatives,
+        )
+        if len(globally_scoped_candidate_ids) != len(set(globally_scoped_candidate_ids)):
+            raise ValueError("candidate IDs must be globally unique across active types")
+
+        candidates: tuple[CandidateFact, ...] = (
+            *self.experiment_blocks,
+            *self.block_boundaries,
+            *self.candidate_nodes,
+            *self.candidate_edges,
+            *self.factors,
+            *self.endpoints,
+            *self.contrasts,
+            *self.candidate_estimands,
+            *self.candidate_counts,
+            *self.candidate_events,
+            *self.candidate_graphs,
+            *self.alternatives,
+        )
+        for candidate in candidates:
+            _require_subset(candidate.evidence_ids, evidence_by_id, "evidence_id")
+
+        if set(boundaries) != set(blocks):
+            raise ValueError("every experiment block requires exactly one boundary candidate")
+
+        scoped_block_ids = (
+            *(item.block_id for item in self.block_boundaries),
+            *(item.block_id for item in self.candidate_nodes),
+            *(item.block_id for item in self.candidate_edges),
+            *(item.block_id for item in self.factors),
+            *(item.block_id for item in self.endpoints),
+            *(item.block_id for item in self.contrasts),
+            *(item.block_id for item in self.candidate_estimands),
+            *(item.block_id for item in self.candidate_counts),
+            *(item.block_id for item in self.candidate_events),
+            *(item.block_id for item in self.candidate_graphs),
+            *(item.block_id for item in self.alternatives),
+            *(item.block_id for item in self.clarification_questions),
+            *(item.block_id for item in self.missing_predicates),
+        )
+        _require_subset(scoped_block_ids, blocks, "block_id")
+
+        for edge in self.candidate_edges:
+            _require_subset((edge.source_id, edge.target_id), nodes, "node_id")
+            if (
+                nodes[edge.source_id].block_id != edge.block_id
+                or nodes[edge.target_id].block_id != edge.block_id
+            ):
+                raise ValueError("candidate edge crosses experiment blocks")
+        for contrast in self.contrasts:
+            _require_subset(contrast.factor_ids, factors, "factor_id")
+            _require_subset(contrast.endpoint_ids, endpoints, "endpoint_id")
+            if any(
+                factors[item_id].block_id != contrast.block_id for item_id in contrast.factor_ids
+            ):
+                raise ValueError("candidate contrast crosses experiment block")
+            if any(
+                endpoints[item_id].block_id != contrast.block_id
+                for item_id in contrast.endpoint_ids
+            ):
+                raise ValueError("candidate contrast crosses experiment block")
+        for estimand in self.candidate_estimands:
+            _require_subset(estimand.factor_ids, factors, "factor_id")
+            _require_subset((estimand.endpoint_id,), endpoints, "endpoint_id")
+            if any(
+                factors[item_id].block_id != estimand.block_id for item_id in estimand.factor_ids
+            ):
+                raise ValueError("candidate estimand crosses experiment block")
+            if endpoints[estimand.endpoint_id].block_id != estimand.block_id:
+                raise ValueError("candidate estimand crosses experiment block")
+            if estimand.contrast_id is not None:
+                _require_subset((estimand.contrast_id,), contrasts, "contrast_id")
+                if contrasts[estimand.contrast_id].block_id != estimand.block_id:
+                    raise ValueError("candidate estimand contrast crosses experiment block")
+        candidate_ids = set(nodes) | set(edges) | set(factors) | set(endpoints) | set(contrasts)
+        candidate_ids |= set(estimands) | set(counts) | set(events) | set(graphs)
+        candidate_blocks = {
+            **{item_id: item.block_id for item_id, item in nodes.items()},
+            **{item_id: item.block_id for item_id, item in edges.items()},
+            **{item_id: item.block_id for item_id, item in factors.items()},
+            **{item_id: item.block_id for item_id, item in endpoints.items()},
+            **{item_id: item.block_id for item_id, item in contrasts.items()},
+            **{item_id: item.block_id for item_id, item in estimands.items()},
+            **{item_id: item.block_id for item_id, item in counts.items()},
+            **{item_id: item.block_id for item_id, item in events.items()},
+            **{item_id: item.block_id for item_id, item in graphs.items()},
+        }
+        for event in self.candidate_events:
+            _require_subset(event.participant_candidate_ids, nodes, "node candidate_id")
+            if any(
+                nodes[item_id].block_id != event.block_id
+                for item_id in event.participant_candidate_ids
+            ):
+                raise ValueError("candidate event participant has wrong type or experiment block")
+        for graph in self.candidate_graphs:
+            _require_subset(graph.candidate_node_ids, nodes, "node_id")
+            _require_subset(graph.candidate_edge_ids, edges, "edge_id")
+            _require_subset(graph.candidate_event_ids, events, "event_id")
+            references = (
+                *graph.candidate_node_ids,
+                *graph.candidate_edge_ids,
+                *graph.candidate_event_ids,
+            )
+            if any(candidate_blocks[item_id] != graph.block_id for item_id in references):
+                raise ValueError("candidate graph crosses experiment block")
+        for alternative in self.alternatives:
+            _require_subset(alternative.candidate_node_ids, nodes, "node_id")
+            _require_subset(alternative.candidate_edge_ids, edges, "edge_id")
+            references = (*alternative.candidate_node_ids, *alternative.candidate_edge_ids)
+            if any(candidate_blocks[item_id] != alternative.block_id for item_id in references):
+                raise ValueError("candidate alternative crosses experiment block")
+        for question in self.clarification_questions:
+            _require_subset(question.resolves_candidate_ids, candidate_ids, "candidate_id")
+            if any(
+                candidate_blocks[item_id] != question.block_id
+                for item_id in question.resolves_candidate_ids
+            ):
+                raise ValueError("clarification question crosses experiment block")
+        for missing in self.missing_predicates:
+            _require_subset(missing.evidence_ids, evidence_by_id, "evidence_id")
+        if self.model_metadata.contract_version != self.contract_version:
+            raise ValueError("model metadata contract version mismatch")
+        if questions and not blocks:
+            raise ValueError("clarification questions require an experiment block")
+        if alternatives and not blocks:
+            raise ValueError("alternatives require an experiment block")
+        return self
+
+
+def canonicalize_parser_candidate_output(value: Any) -> ParserCandidateOutput:
+    """Return a fresh exact candidate tree after inspecting all raw runtime state."""
+
+    return cast(
+        ParserCandidateOutput,
+        canonicalize_candidate_boundary_model(
+            value,
+            model_type=ParserCandidateOutput,
+            boundary_name="candidate",
+        ),
+    )
+
+
+class GoldSubmissionReference(FrozenModel):
+    submission_id: str
+    submission_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    reviewer_id: str
+    reviewer_role: str
+
+    @model_validator(mode="after")
+    def _non_blank(self) -> GoldSubmissionReference:
+        if not all(
+            value.strip() for value in (self.submission_id, self.reviewer_id, self.reviewer_role)
+        ):
+            raise ValueError("gold submission reference fields must not be blank")
+        return self
+
+
+class GoldMaterialDifference(FrozenModel):
+    field_path: str
+    submission_a_value_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    submission_b_value_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    adjudicated_value_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    resolution_rationale: str
+
+    @model_validator(mode="after")
+    def _non_blank(self) -> GoldMaterialDifference:
+        if not self.field_path.strip() or not self.resolution_rationale.strip():
+            raise ValueError("gold material difference requires path and rationale")
+        return self
+
+
+class GoldParserTarget(FrozenModel):
+    """Human-adjudicated supervision envelope, distinct from model output."""
+
+    schema_version: Literal["8.0.0"] = "8.0.0"
+    candidate_target: ParserCandidateOutput
+    adjudication_id: str
+    reviewer_ids: tuple[str, ...] = Field(min_length=2)
+    adjudication_rationale: str
+    submission_references: tuple[GoldSubmissionReference, ...]
+    comparison_status: Literal[
+        "AGREED",
+        "MATERIAL_DIFFERENCES_RESOLVED",
+        "CONFLICT_ADJUDICATED",
+    ]
+    material_differences: tuple[GoldMaterialDifference, ...]
+
+    @field_validator("candidate_target", mode="before")
+    @classmethod
+    def _canonical_candidate_target(cls, value: Any) -> ParserCandidateOutput:
+        return canonicalize_parser_candidate_output(value)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _raw_candidate_only(cls, value: Any) -> Any:
+        assert_no_final_scientific_fields(value)
+        return value
+
+    def assert_raw_candidate_only(self) -> GoldParserTarget:
+        """Return fresh exact gold and candidate trees after raw-state inspection."""
+
+        return cast(
+            GoldParserTarget,
+            canonicalize_candidate_boundary_model(
+                self,
+                model_type=GoldParserTarget,
+                boundary_name="gold target",
+            ),
+        )
+
+    def model_dump(self, **kwargs: Any) -> dict[str, Any]:
+        """Serialize only after validating the complete raw gold tree."""
+
+        self.assert_raw_candidate_only()
+        return BaseModel.model_dump(self, **kwargs)
+
+    def model_dump_json(self, **kwargs: Any) -> str:
+        """Serialize JSON only after validating the complete raw gold tree."""
+
+        self.assert_raw_candidate_only()
+        return BaseModel.model_dump_json(self, **kwargs)
+
+    @model_serializer(mode="wrap")
+    def _serialize_after_raw_validation(
+        self,
+        handler: SerializerFunctionWrapHandler,
+    ) -> Any:
+        """Apply the raw gate when Pydantic serializes this gold as a child."""
+
+        self.assert_raw_candidate_only()
+        return handler(self)
+
+    def __getstate__(self) -> dict[str, Any]:
+        """Reject hidden gold state before entering a pickle envelope."""
+
+        checked = self.assert_raw_candidate_only()
+        return BaseModel.__getstate__(checked)
+
+    @model_validator(mode="after")
+    def _adjudicated(self) -> GoldParserTarget:
+        if not self.adjudication_id.strip() or not self.adjudication_rationale.strip():
+            raise ValueError("GoldParserTarget requires adjudication evidence")
+        if any(not reviewer.strip() for reviewer in self.reviewer_ids):
+            raise ValueError("GoldParserTarget reviewer IDs must not be blank")
+        if len(self.reviewer_ids) != len(set(self.reviewer_ids)):
+            raise ValueError("GoldParserTarget reviewer IDs must be unique")
+        if len(self.submission_references) != 2:
+            raise ValueError("GoldParserTarget requires exactly two submission references")
+        submission_ids = tuple(item.submission_id for item in self.submission_references)
+        if len(set(submission_ids)) != 2:
+            raise ValueError("GoldParserTarget submission IDs must be distinct")
+        submission_reviewers = tuple(item.reviewer_id for item in self.submission_references)
+        if submission_reviewers != self.reviewer_ids:
+            raise ValueError(
+                "GoldParserTarget reviewer IDs must match submission reviewers exactly"
+            )
+        if self.comparison_status == "AGREED" and self.material_differences:
+            raise ValueError("AGREED submissions cannot retain material differences")
+        if self.comparison_status != "AGREED" and not self.material_differences:
+            raise ValueError("non-agreed submissions require material differences")
+        return self
+
+
+def canonicalize_gold_parser_target(value: Any) -> GoldParserTarget:
+    """Return a fresh exact gold tree without trusting a prevalidated instance."""
+
+    return cast(
+        GoldParserTarget,
+        canonicalize_candidate_boundary_model(
+            value,
+            model_type=GoldParserTarget,
+            boundary_name="gold target",
+        ),
+    )
+
+
+class ParserV3MigrationReviewRequired(ValueError):
+    """Legacy direct-verdict targets require explicit human re-adjudication."""
+
+
+def migrate_parser_ai_output_v3_to_gold(_payload: Any) -> GoldParserTarget:
+    raise ParserV3MigrationReviewRequired(
+        "SCIENTIFIC_REVIEW_REQUIRED: ParserAIOutput v3 contains direct determinability; "
+        "it cannot be silently promoted to GoldParserTarget"
+    )
+
+
+def validate_contract_pair_v3(
+    request: ParserAIInput, response: ParserAIOutputV3
+) -> ParserAIOutputV3:
+    """Deprecated v3 request/response validation for the named legacy adapter."""
+
+    return cast(ParserAIOutputV3, _validate_contract_coordinates(request, response))
+
+
+def validate_candidate_contract_pair(
+    request: ParserAIInput, response: ParserCandidateOutput
+) -> ParserCandidateOutput:
+    """Validate v8 candidate evidence coordinates against immutable source input."""
+
+    response = canonicalize_parser_candidate_output(response)
+    return cast(ParserCandidateOutput, _validate_contract_coordinates(request, response))
+
+
+def _validate_contract_coordinates(
+    request: ParserAIInput,
+    response: ParserAIOutputV3 | ParserCandidateOutput,
+) -> ParserAIOutputV3 | ParserCandidateOutput:
     """Valida coordinate e file dell'output rispetto all'input immutabile."""
 
     text_by_file = {document.file_id: document.text for document in request.documents}
@@ -517,7 +1365,9 @@ def parser_ai_json_schemas() -> dict[str, dict[str, object]]:
 
     return {
         "input": ParserAIInput.model_json_schema(),
-        "output": ParserAIOutput.model_json_schema(),
+        "candidate_output": ParserCandidateOutput.model_json_schema(),
+        "gold_parser_target": GoldParserTarget.model_json_schema(),
+        "legacy_v3_output": ParserAIOutputV3.model_json_schema(),
     }
 
 

@@ -49,7 +49,7 @@ Semantica della valutazione, in quest'ordine:
 Un predicato sconosciuto non e mai considerato falso: la regola diventa `unevaluable`,
 non scatta e il fatto viene riportato nei limiti del report.
 
-Nel PRD v3 `alert_class` è concettualmente obbligatoria e separata dalla severity:
+Nel PRD v6 `alert_class` resta obbligatoria e separata dalla severity:
 
 - `DESIGN_REPLICATION`: replicazione/allocazione dell'intervento;
 - `ANALYTICAL_DEPENDENCE`: osservazioni correlate e analisi;
@@ -59,8 +59,8 @@ Una regola non va spostata tra classi per renderne il messaggio più severo. La 
 descrive impatto/correggibilità, non il tipo scientifico del problema.
 
 Il modello dati conserva temporaneamente `DESIGN_REPLICATION` come default per leggere
-snapshot legacy. Il ruleset v3 deve valorizzare il campo esplicitamente: ometterlo non è
-una classificazione scientifica e non chiude la DoD.
+snapshot legacy. Il ruleset core deve valorizzare il campo esplicitamente: ometterlo
+non e una classificazione scientifica e non chiude la DoD.
 
 ## Sintassi delle precondizioni
 
@@ -96,7 +96,15 @@ Ogni espressione puo essere negata con `not `:
 
 **Modello statistico**
 `model_declared()`, `model_is_mixed()`, `model_is_simple()`, `model_accounts_for(X)`,
-`model_accounts_for_assignment()`
+`model_accounts_for_assignment()`, `model_accounts_for_experimental_unit()`
+
+`model_accounts_for_assignment()` accetta un termine per l'unita sperimentale **o per un
+livello superiore**: descrive se il modello cita un livello pertinente (GEN-009).
+`model_accounts_for_experimental_unit()` accetta solo il termine per l'unita sperimentale ed e
+l'eccezione corretta quando l'analisi e piu fine dell'assegnazione: un effetto casuale per il
+donatore non rappresenta la correlazione tra cellule della stessa coltura trattata. Dal ruleset
+`ntruth-core@0.3.0` le sette regole di sottocampionamento (GEN-002, CC-001, MIC-003, MIC-004,
+SC-001, ANI-001, ANI-003) usano il predicato stretto; `0.2.0` resta byte-identico e riproducibile.
 
 **Processo**
 `pooling_present()`, `aggregation_present()`, `repeated_measures_present()`,
@@ -123,12 +131,12 @@ puo affermare piu di quanto il grafo contenga.
 
 - Ogni predicato citato da una regola deve esistere (`test_every_predicate_exists`).
 - Tutte le 32 regole del ruleset core devono essere presenti, dichiarare esplicitamente
-  una classe v3 e coprire insieme l'intera tassonomia.
+  una classe e coprire insieme l'intera tassonomia mantenuta dalla v6.
 - Una regola `critical` deve dichiarare almeno un'eccezione o una condizione di
   astensione **e** richiedere conferma umana: una regola critica senza via d'uscita
   produce falsi allarmi e richiede review scientifica.
 - Ogni regola deve avere messaggio italiano e inglese: il layer linguistico è separato
-  da quello scientifico (PRD v3 NFR-11).
+  da quello scientifico (requisito mantenuto dal PRD v6).
 - La confidenza delle premesse può essere riportata; l'outcome deterministico non riceve
   una probabilità propria.
 

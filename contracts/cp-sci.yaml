@@ -1,0 +1,41 @@
+# CP-SCI — Contract Package PRD v9 §0.6/§20.2. Sintassi YAML subset deterministica
+# validata da scripts/check_contract_packages.py (nessuna dipendenza esterna).
+id: CP-SCI
+title: Scientific Semantics
+version: 0.1.0-alpha
+status: DRAFT
+owner: biostatistician-methodologist
+gate: prima di derivare claim
+reviewers_minimi:
+  - wet-lab-reviewer
+  - ml-engineering-lead
+modules:
+  - core_kernel
+  - factor_role_contrast_type
+  - derivation_theory
+  - material_lineage
+  - counts
+  - scenario_completeness
+  - profile_closure
+dependencies: []
+current_evidence:
+  core_kernel:
+    - packages/ntruth/schemas/kernel.py
+    - packages/ntruth/schemas/knowledge.py
+  factor_role_contrast_type:
+    - packages/ntruth/schemas/factor_role.py
+  derivation_theory:
+    - theories/ntruth-derivation-theory-0.1.0.json
+    - packages/ntruth/derivation_theory/runtime.py
+  material_lineage:
+    - packages/ntruth/schemas/material_lineage.py
+  counts:
+    - packages/ntruth/schemas/count_registry.py
+    - packages/ntruth/schemas/counts.py
+  scenario_completeness:
+    - packages/ntruth/schemas/coverage.py
+  profile_closure:
+    - theories/simple-cell-culture-profile-closure-0.1.0.json
+known_gaps:
+  - "SRR-V8-008 aperto: profile closure non rivista da reviewer esterni"
+  - "SRR-V8-021/SRR-V8-022: Derivation Theory senza chiusura scientifica esterna"

@@ -16,10 +16,13 @@ from ntruth.schemas.core import EvidenceSpan, NTruthModel, content_checksum, sta
 from ntruth.schemas.experiment import (
     Contradiction,
     Contrast,
+    CountRecord,
     Endpoint,
     Estimand,
+    ExclusionRecord,
     ExperimentBlock,
     Factor,
+    GraphStatus,
     Hierarchy,
     InferenceTarget,
     InferenceTargetStatus,
@@ -32,7 +35,7 @@ from ntruth.schemas.experiment import (
 )
 from ntruth.schemas.graph import NodeType, RelationType
 
-DESIGN_SPECIFICATION_VERSION: Final[Literal["0.2.0"]] = "0.2.0"
+DESIGN_SPECIFICATION_VERSION: Final[Literal["0.3.0"]] = "0.3.0"
 
 
 class TargetPopulationSupport(StrEnum):
@@ -53,7 +56,7 @@ class CompilationStatus(StrEnum):
 class DesignSpecification(NTruthModel):
     """Snapshot JSON autosufficiente del design IR di un ExperimentBlock."""
 
-    specification_version: Literal["0.2.0"] = DESIGN_SPECIFICATION_VERSION
+    specification_version: Literal["0.3.0"] = DESIGN_SPECIFICATION_VERSION
     specification_id: str
     block_id: str
     title: str = ""
@@ -66,8 +69,11 @@ class DesignSpecification(NTruthModel):
     estimands: tuple[Estimand, ...] = ()
     models: tuple[StatisticalModelFact, ...] = ()
     processes: tuple[ProcessFact, ...] = ()
+    graph_status: GraphStatus = GraphStatus.CANDIDATE
     hierarchy: Hierarchy = Field(default_factory=Hierarchy)
     n_statements: tuple[NStatement, ...] = ()
+    count_records: tuple[CountRecord, ...] = ()
+    exclusion_records: tuple[ExclusionRecord, ...] = ()
     unit_assessments: tuple[UnitAssessment, ...] = ()
     questions: tuple[Question, ...] = ()
     contradictions: tuple[Contradiction, ...] = ()
@@ -87,7 +93,7 @@ class DesignSpecification(NTruthModel):
         if not isinstance(data, Mapping):
             return data
         payload = dict(data)
-        if payload.get("specification_version") == "0.1.0":
+        if payload.get("specification_version") in {"0.1.0", "0.2.0"}:
             payload["specification_version"] = DESIGN_SPECIFICATION_VERSION
         return payload
 
@@ -109,8 +115,11 @@ class DesignSpecification(NTruthModel):
                 "estimands",
                 "models",
                 "processes",
+                "graph_status",
                 "hierarchy",
                 "n_statements",
+                "count_records",
+                "exclusion_records",
                 "unit_assessments",
                 "questions",
                 "contradictions",
@@ -136,8 +145,11 @@ class DesignSpecification(NTruthModel):
             estimands=block.estimands,
             models=block.models,
             processes=block.processes,
+            graph_status=block.graph_status,
             hierarchy=block.hierarchy,
             n_statements=block.n_statements,
+            count_records=block.count_records,
+            exclusion_records=block.exclusion_records,
             unit_assessments=block.unit_assessments,
             questions=block.questions,
             contradictions=block.contradictions,

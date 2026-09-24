@@ -105,7 +105,7 @@ def ro_crate_to_dict(
             "sha256": _sha256(path),
             "ntruth:artifactRole": label,
         }
-        if label in {"parser_ai_input_schema", "parser_ai_output_schema"}:
+        if label.endswith("_schema"):
             entity["conformsTo"] = {"@id": "https://json-schema.org/draft/2020-12/schema"}
         candidate_metadata = _candidate_metadata(path) if label.startswith("candidate_") else None
         if candidate_metadata is not None:

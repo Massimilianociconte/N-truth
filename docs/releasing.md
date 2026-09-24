@@ -1,6 +1,10 @@
 # Procedura di release software
 
-Questa procedura produce artefatti software; non chiude i gate scientifici.
+Questa procedura produce artefatti software conformi ai contratti correnti del
+**PRD v8.0**; non chiude i gate scientifici. Lo stato software può essere
+`IMPLEMENTED_WITH_EXPLICIT_BLOCKERS` mentre Reality Gate v8, training ed External
+Challenge restano `HOLD`. Gli adapter v7 devono restare espliciti e marcati
+`DEPRECATED_V7_ADAPTER`.
 
 ## Preflight
 
@@ -18,6 +22,8 @@ possono avanzare indipendentemente.
 ## Gate riproducibili
 
 ```bash
+uv run python scripts/check_prd_v8_contracts.py
+uv run python scripts/check_repository_policy.py
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy packages
@@ -30,6 +36,14 @@ uv run python scripts/check_distribution.py
 uv run python scripts/smoke_release.py
 uv run ntruth-ml --help
 ```
+
+Il gate `check_prd_v8_contracts.py` confronta lo snapshot JSON Schema incorporato con
+gli schema runtime, esegue gli esempi PRD canonici ed expected-negative, valida la
+mappa current-to-target e risolve i link della documentazione corrente. Le
+contraddizioni interne del PRD sono blocker `SCIENTIFIC_REVIEW_REQUIRED`, non esempi
+silenziosamente riscritti. Il gate repository esprime solo
+`NO_FINDING_DETECTED_NOT_AN_ATTESTATION`: non sostituisce privacy, licenza o
+contamination attestation.
 
 `pnpm build` deve precedere `uv build`, perché il wheel include gli asset UI. Ispezionare
 la wheel prima del tag. `check_distribution.py` rifiuta cache, dati locali, `.env` e
@@ -70,3 +84,7 @@ ML opzionale.
 Una release può essere marcata “software alpha”. Le diciture “scientificamente
 validata”, “gold”, “DRIVER-compliant” o equivalenti richiedono le evidenze esterne
 elencate nel protocollo di validazione.
+
+Prima del tag verificare inoltre che Theory ↔ Rulebook conformance, separazione
+determinabilità ↔ adeguatezza, ScenarioCoverage, Canonical Count Registry, Reality
+Gate v8 e `HANDOFF_ONLY` restino visibili nei test e negli artefatti installati.

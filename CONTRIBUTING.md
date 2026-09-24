@@ -4,6 +4,11 @@ N-Truth accetta contributi software, scientifici e documentali, ma richiede conf
 evidenza più rigorosi di un progetto applicativo ordinario. Una suite verde non rende
 una regola scientificamente approvata e un esempio sintetico non diventa gold.
 
+Il contratto corrente è **N-Truth PRD v8.0**. Lo stato del repository è
+`IMPLEMENTED_WITH_EXPLICIT_BLOCKERS`: descrive l'implementazione ingegneristica, non
+la readiness scientifica. Le superfici v7 sono storiche e devono essere nominate
+esplicitamente come `DEPRECATED_V7_ADAPTER`.
+
 ## Prima di iniziare
 
 - Leggere la [specifica pubblica](docs/public-specification-v0.1.md), la
@@ -19,6 +24,17 @@ una regola scientificamente approvata e un esempio sintetico non diventa gold.
 
 ## Invarianti da preservare
 
+- Separare Derivation Theory, Rulebook, Implementation Conformance Fixtures e
+  Derivation Gold; il Rulebook non è la fonte della teoria scientifica.
+- Preservare la chiusura **Theory ↔ Rulebook**: clause ID, predicati richiesti e
+  irrilevanti con rationale, fixture positiva/negativa, controfattuale minimo, proof
+  trace e known-gap handling.
+- Tenere indipendenti determinabilità e adeguatezza: `DETERMINATE` non significa buon
+  disegno e `DesignAdequacyFinding` non è un claim derivato.
+- Usare semantica open-world con `KnowledgeState`; niente `null` o liste vuote
+  scientificamente ambigue.
+- Scoping query/coorte/gruppo/evento per claim e conteggi; non usare la sorgente
+  biologica come proxy dell'indipendenza di assegnazione.
 - Distinguere `DESIGN_REPLICATION`, `ANALYTICAL_DEPENDENCE` e `INFERENCE_SCOPE`.
 - Non fondere `allocation_level` e `application_level`.
 - Non creare un'unità sperimentale globale per l'intero paper.
@@ -71,6 +87,8 @@ fixture scientifica completa.
 
 ```bash
 uv sync --extra dev --extra api --locked
+uv run python scripts/check_prd_v8_contracts.py
+uv run python scripts/check_repository_policy.py
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy packages
@@ -111,6 +129,14 @@ La descrizione deve includere:
 - dati o licenze coinvolti (oppure “nessuno”);
 - limiti e gate ancora aperti;
 - reviewer richiesti: software, wet-lab, biostatistica, governance.
+
+Per ogni modifica v8 dichiarare inoltre:
+
+- clausole PRD e theory clause ID coinvolti;
+- esito del gate esempi/schema/mappa e del gate repository `NO_CORPUS`;
+- separazione determinabilità/adeguatezza e impatto open-world;
+- eventuale migration esplicita v7 e marker `DEPRECATED_V7_ADAPTER`;
+- blocker `SRR-V8-*` aperti o chiusi, con evidenza e autorità della decisione.
 
 Un maintainer può accettare una modifica per sviluppo lasciando aperta la review
 scientifica. Questo stato deve rimanere visibile nel changelog e nelle card.

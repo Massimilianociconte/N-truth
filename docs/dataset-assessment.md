@@ -135,8 +135,9 @@ used to design the system are not described as blind external validation.
 
 The local machine has less than 100 GiB available. Therefore:
 
-- the committed MLX profile requires at least 50 GiB still free after the base-model
-  download; 25-30 GiB is only the absolute floor that no archival decision may cross;
+- the committed MLX smoke profile currently uses a 50 GiB post-download guardrail;
+  this planning value is replaced by a measured Runtime Resource Budget before a
+  real training or release claim;
 - cap raw plus processed data at 15-20 GiB;
 - acquire 50-100 targeted JATS articles before considering any bulk source;
 - cap each supplement bundle and inspect its manifest before download;

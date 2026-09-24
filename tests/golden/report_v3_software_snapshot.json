@@ -1,33 +1,33 @@
 {
   "fixture_kind": "deterministic_software_snapshot_not_expert_gold",
-  "content_checksum": "76d7e051620f60070882a2f08fea9cf74a80cf02b4f94654b10692fa9bbef3a6",
+  "content_checksum": "1959afb5391e169af44e458676d43db2bdb53f19221405a726bae013de15aabe",
   "projection": {
-    "report_id": "rep-ed5b31f1565e",
+    "report_id": "rep-d3f5de02ebfa",
     "project_id": "prj-84e9c3c9fa6f",
     "versions": {
-      "schema_version": "0.2.0",
-      "parser_version": "0.2.0",
-      "graph_version": "0.2.0",
+      "schema_version": "0.3.0",
+      "parser_version": "0.3.0",
+      "graph_version": "0.3.0",
       "ruleset_id": "ntruth-core",
-      "ruleset_version": "0.1.0",
-      "ontology_version": "0.1.0",
+      "ruleset_version": "0.2.0",
+      "ontology_version": "0.2.0",
       "model_version": null
     },
     "totals": {
       "blocks": 1,
       "compiler_abstained": 1,
-      "alerts": 6,
+      "alerts": 2,
       "critical": 0,
-      "insufficient": 2,
-      "questions": 6,
+      "insufficient": 1,
+      "questions": 5,
       "unresolved_conflicts": 0
     },
     "summary": {
       "block_id": "blk-158be3cbe930",
       "title": "Materials and Methods",
-      "max_severity": "high",
-      "n_alerts": 6,
-      "n_questions": 6,
+      "max_severity": "insufficient",
+      "n_alerts": 2,
+      "n_questions": 5,
       "n_unresolved_conflicts": 0,
       "assessments_with_independent_n": 0,
       "assessments_total": 1,
@@ -36,7 +36,7 @@
     "block": {
       "id": "blk-158be3cbe930",
       "title": "Materials and Methods",
-      "determinability": "MULTIPLE_PLAUSIBLE_GRAPHS",
+      "determinability": "INSUFFICIENT_INFORMATION",
       "node_types": [
         "CellCulture",
         "Well",
@@ -75,7 +75,7 @@
       },
       "assessment": {
         "biological_unit": null,
-        "experimental_unit": "CellCulture",
+        "experimental_unit": null,
         "observational_unit": "Cell",
         "analytical_unit": "Cell",
         "n_declared": 120,
@@ -84,24 +84,9 @@
         "n_observational": 120,
         "n_independent": null,
         "inferability": "requires_confirmation",
-        "risk": "likely_pseudoreplication"
+        "risk": "insufficient_information"
       },
       "alerts": [
-        {
-          "rule_id": "GEN-001",
-          "alert_class": "design_replication",
-          "severity": "info"
-        },
-        {
-          "rule_id": "GEN-002",
-          "alert_class": "analytical_dependence",
-          "severity": "high"
-        },
-        {
-          "rule_id": "GEN-004",
-          "alert_class": "analytical_dependence",
-          "severity": "medium"
-        },
         {
           "rule_id": "GEN-010",
           "alert_class": "design_replication",
@@ -111,25 +96,14 @@
           "rule_id": "MIC-001",
           "alert_class": "analytical_dependence",
           "severity": "info"
-        },
-        {
-          "rule_id": "MIC-004",
-          "alert_class": "analytical_dependence",
-          "severity": "insufficient"
         }
       ],
       "questions": [
         {
-          "id": "qst-78f1eeb69def",
+          "id": "qst-0d3705fef718",
           "priority": 100,
           "decisive": true,
-          "impact": "analytical_dependence"
-        },
-        {
-          "id": "qst-8eeb03760b6d",
-          "priority": 100,
-          "decisive": true,
-          "impact": "analytical_dependence"
+          "impact": "Senza tri-state TRUE e meccanismo non e pubblicabile un singolo n."
         },
         {
           "id": "qst-9980f88520bf",
@@ -138,7 +112,7 @@
           "impact": "La risposta cambia n indipendente per questo gruppo e contrasto."
         },
         {
-          "id": "qst-79beaee8397b",
+          "id": "qst-7c84ad5fac45",
           "priority": 80,
           "decisive": true,
           "impact": "analytical_dependence"
@@ -162,7 +136,7 @@
       "methods_status": "incomplete",
       "non_certifying": true,
       "n_row": {
-        "experimental_unit": "CellCulture",
+        "experimental_unit": null,
         "observational_unit": "Cell",
         "analytical_unit": "Cell",
         "n_declared": 120,
@@ -181,7 +155,7 @@
         "DRIVER-6": "not_assessed"
       },
       "statement_layers": [
-        "fact",
+        "assertion",
         "inference",
         "limitation",
         "limitation",
@@ -189,17 +163,14 @@
         "limitation"
       ],
       "candidate_analysis_strategies": [
-        "Aggregare le misure entro ciascuna unita sperimentale, se coerente con l'estimando.",
-        "Usare una strategia di analisi che rappresenti esplicitamente la dipendenza gerarchica.",
         "Risolvere le domande decisive prima di scegliere qualunque analisi inferenziale."
       ],
       "decisive_question_ids": [
-        "qst-03a45b468655",
-        "qst-54c86050d5f1",
-        "qst-78f1eeb69def",
-        "qst-8eeb03760b6d",
+        "qst-0d3705fef718",
+        "qst-138783efd348",
+        "qst-845edcdd8b10",
         "qst-9980f88520bf",
-        "qst-79beaee8397b",
+        "qst-7c84ad5fac45",
         "qst-cebebdc1f595",
         "qst-7459fe6625b5"
       ]

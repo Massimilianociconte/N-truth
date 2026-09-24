@@ -1,0 +1,39 @@
+{
+  "identity": {
+    "benchmark_id": "m5-pro-24g-20260802T001851Z-8b5f4917f7",
+    "machine_model": "Mac17,9",
+    "measured_at": "2026-08-02T00:18:51.456298Z",
+    "operating_system": "macOS 26.5.2",
+    "runtime_name": "mlx-lm",
+    "runtime_version": "0.31.3",
+    "unified_memory_bytes": 25769803776
+  },
+  "stages": [
+    {
+      "benchmark_id": "m5-pro-24g-20260802T001851Z-8b5f4917f7",
+      "max_additional_peak_ram_bytes": 40845312,
+      "max_input_tokens": 167,
+      "max_latency_ms": 481.7879590118537,
+      "max_swap_delta_bytes": 0,
+      "observation_ids": [
+        "obs-low_memory-mlx_generate-r1"
+      ],
+      "profile": "LOW_MEMORY",
+      "sample_count": 1,
+      "stage_id": "mlx_generate"
+    },
+    {
+      "benchmark_id": "m5-pro-24g-20260802T001851Z-8b5f4917f7",
+      "max_additional_peak_ram_bytes": 40927232,
+      "max_input_tokens": 323,
+      "max_latency_ms": 223.00650000397582,
+      "max_swap_delta_bytes": 0,
+      "observation_ids": [
+        "obs-balanced-mlx_generate-r1"
+      ],
+      "profile": "BALANCED",
+      "sample_count": 1,
+      "stage_id": "mlx_generate"
+    }
+  ]
+}

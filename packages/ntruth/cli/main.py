@@ -16,8 +16,10 @@ from ntruth.application import (
     DistributionGovernanceBundle,
     DomainAcknowledgementRequired,
     NoUsableFilesError,
+    V8ApplicationInputReviewRequired,
     evaluate_distribution_readiness,
     execute_analysis,
+    execute_analysis_v7_adapter,
 )
 from ntruth.governance import GovernanceDenied, PrivacyBlocked
 from ntruth.ingest.project import Project
@@ -30,7 +32,9 @@ from ntruth.rules.loader import (
     available_rulesets,
     load_ruleset,
 )
+from ntruth.sample_sheet import generate_sample_sheet, validate_sample_sheet
 from ntruth.schemas.core import Severity
+from ntruth.schemas.manifest import ReleaseProfile
 from ntruth.schemas.report import DomainTransparency
 
 app = typer.Typer(
@@ -41,9 +45,19 @@ app = typer.Typer(
 rules_app = typer.Typer(add_completion=False, help="Ispezione dei ruleset versionati.")
 quick_design_app = typer.Typer(
     add_completion=False,
-    help="Quick Design Session (PRD v7): simple_cell_culture vertical slice.",
+    help="Quick Design Session PRD v8; the historical v7 adapter is explicitly named.",
+)
+sample_sheet_app = typer.Typer(
+    add_completion=False,
+    help="Generazione e validazione del SampleSheetSpec v6.",
+)
+power_app = typer.Typer(
+    add_completion=False,
+    help="Piano a priori di EU indipendenti (candidate-only, HANDOFF_ONLY).",
 )
 app.add_typer(rules_app, name="rules")
+app.add_typer(sample_sheet_app, name="sample-sheet")
+app.add_typer(power_app, name="power")
 app.add_typer(quick_design_app, name="quick-design")
 
 _SEVERITY_MARK = {
@@ -57,6 +71,32 @@ _SEVERITY_MARK = {
 
 @app.command()
 def analyze(
+    source: Path = typer.Argument(..., help="File o cartella con input candidato."),
+    out: Path = typer.Option(Path("./ntruth-out"), "--out", "-o", help="Cartella di output."),
+) -> None:
+    """Blocca input grezzi finche il contratto scientifico v8 non e revisionato."""
+
+    try:
+        execute_analysis(source, out=out)
+    except V8ApplicationInputReviewRequired as exc:
+        review = exc.review_requirement
+        typer.secho(
+            f"{review.status.value}: {review.issue_id}",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        typer.secho(
+            f"{review.rationale} Per il contratto storico usare esplicitamente analyze-v7.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=2) from exc
+
+    raise typer.Exit(code=2)  # pragma: no cover - raw Path inputs are blocked by contract
+
+
+@app.command("analyze-v7")
+def analyze_v7(
     source: Path = typer.Argument(..., help="File o cartella con Methods, legend e sample sheet."),
     out: Path = typer.Option(Path("./ntruth-out"), "--out", "-o", help="Cartella di output."),
     project_dir: Path | None = typer.Option(
@@ -83,9 +123,22 @@ def analyze(
     ruleset_version: str = typer.Option(
         DEFAULT_RULESET_VERSION, "--ruleset-version", help="Versione del ruleset."
     ),
+    release_profile: ReleaseProfile = typer.Option(
+        ReleaseProfile.D0_CORE,
+        "--release-profile",
+        help=(
+            "d0_core oppure extended_experimental per abilitare esplicitamente "
+            "DOCX/XLSX/PDF/JATS e codice read-only."
+        ),
+    ),
     quiet: bool = typer.Option(False, "--quiet", "-q", help="Stampa solo i percorsi di output."),
 ) -> None:
-    """Analizza documenti locali e produce report JSON, HTML e graph.json."""
+    """Esegue l'adapter scientifico v7 deprecato su documenti locali."""
+    typer.secho(
+        "DEPRECATED_V7_ADAPTER: contratto scientifico v7 esplicitamente selezionato.",
+        fg=typer.colors.YELLOW,
+        err=True,
+    )
     source = source.expanduser()
     if not source.exists():
         typer.secho(f"Percorso inesistente: {source}", fg=typer.colors.RED, err=True)
@@ -96,7 +149,7 @@ def analyze(
             typer.secho("ATTENZIONE DOMINIO: " + notice.warning, fg=typer.colors.YELLOW, err=True)
 
     try:
-        execution = execute_analysis(
+        execution = execute_analysis_v7_adapter(
             source,
             out=out,
             project_dir=project_dir,
@@ -104,6 +157,7 @@ def analyze(
             domain=domain,
             ruleset_id=ruleset_id,
             ruleset_version=ruleset_version,
+            release_profile=release_profile,
             on_preflight=show_preflight,
             require_domain_acknowledgement=True,
             acknowledged_unvalidated_domain=acknowledge_unvalidated_domain,
@@ -116,7 +170,7 @@ def analyze(
             err=True,
         )
         raise typer.Exit(code=2) from exc
-    except NoUsableFilesError as exc:
+    except (NoUsableFilesError, SafetyError) as exc:
         typer.secho(str(exc), fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
 
@@ -272,10 +326,30 @@ def distribution_check(
 @app.command()
 def verify(
     project_dir: Path = typer.Argument(..., help="Cartella del progetto da verificare."),
+    migrate_legacy_manifest: bool = typer.Option(
+        False,
+        "--migrate-legacy-manifest",
+        help=(
+            "Migra esplicitamente un vero manifest pre-v6, soltanto dopo aver "
+            "verificato tutte le copie sorgente."
+        ),
+    ),
+    legacy_manifest_sha256: str | None = typer.Option(
+        None,
+        "--legacy-manifest-sha256",
+        help=(
+            "SHA-256 esatto di manifest.json, obbligatorio per un legacy privo "
+            "del vecchio checksum."
+        ),
+    ),
 ) -> None:
     """Verifica i checksum dei file registrati nel progetto (PRD FR-007)."""
     try:
-        project = Project.open(project_dir.expanduser())
+        project = Project.open(
+            project_dir.expanduser(),
+            migrate_legacy_manifest=migrate_legacy_manifest,
+            legacy_manifest_sha256=legacy_manifest_sha256,
+        )
     except (OSError, ValidationError, SafetyError) as exc:
         typer.secho(f"Workspace non verificabile: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=2) from exc
@@ -287,6 +361,56 @@ def verify(
     typer.secho(
         f"Integrita verificata: {len(project.manifest.files)} file, "
         f"checksum manifest {project.manifest.checksum()[:16]}",
+        fg=typer.colors.GREEN,
+    )
+
+
+@sample_sheet_app.command("init")
+def sample_sheet_init(
+    destination: Path = typer.Argument(..., help="Percorso del nuovo template CSV."),
+    factor: list[str] | None = typer.Option(
+        None,
+        "--factor",
+        "-f",
+        help="Nome di un fattore; ripetere l'opzione per piu fattori.",
+    ),
+    force: bool = typer.Option(False, "--force", help="Sovrascrive soltanto il file indicato."),
+) -> None:
+    """Crea il template canonico; non compila allocation o indipendenza."""
+
+    try:
+        written = generate_sample_sheet(
+            destination.expanduser(),
+            factor_names=tuple(factor or ("treatment",)),
+            overwrite=force,
+        )
+    except (OSError, ValueError) as exc:
+        typer.secho(f"Template non creato: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2) from exc
+    typer.secho(f"Sample sheet v6 creato: {written}", fg=typer.colors.GREEN)
+    typer.echo("Gli identificatori e i livelli dei fattori non provano allocation o indipendenza.")
+
+
+@sample_sheet_app.command("validate")
+def sample_sheet_validate(
+    source: Path = typer.Argument(..., help="Sample sheet CSV da controllare."),
+) -> None:
+    """Valida struttura, lifecycle, identificatori e valori senza modificare il CSV."""
+
+    validation = validate_sample_sheet(source.expanduser())
+    for issue in validation.issues:
+        location = f" riga={issue.row}" if issue.row is not None else ""
+        location += f" colonna={issue.column}" if issue.column is not None else ""
+        message = f"[{issue.severity.value}] {issue.code}{location}: {issue.message}"
+        colour = typer.colors.RED if issue.severity.value == "error" else typer.colors.YELLOW
+        typer.secho(message, fg=colour)
+    if not validation.valid or validation.spec is None:
+        typer.secho("Sample sheet non valido.", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+    typer.secho(
+        f"Sample sheet valido: {len(validation.spec.rows)} righe, "
+        f"{len(validation.spec.factor_columns)} fattori, schema "
+        f"{validation.spec.schema_version}.",
         fg=typer.colors.GREEN,
     )
 
@@ -365,7 +489,93 @@ def rules_paths() -> None:
 
 
 @quick_design_app.command("run")
-def quick_design_run(
+@quick_design_app.command("run-v8")
+def quick_design_run_v8(
+    submission: Path = typer.Argument(..., help="QuickDesignV8Submission JSON locale."),
+    out: Path = typer.Option(Path("./ntruth-quick-design-v8"), "--out", "-o"),
+) -> None:
+    """Esegue la Quick Design v8 esclusivamente tramite il pipeline verificato."""
+
+    import json
+
+    from ntruth.derivation_theory.runtime import load_runtime_bundle
+    from ntruth.quick_design.v8 import (
+        QuickDesignV8Submission,
+        run_quick_design_v8,
+        validate_raw_wizard_submission,
+    )
+    from ntruth.reporting.v8 import (
+        write_report_bundle_html,
+        write_report_bundle_json,
+        write_report_bundle_yaml,
+    )
+
+    try:
+        parsed = QuickDesignV8Submission.model_validate_json(
+            submission.expanduser().read_text(encoding="utf-8")
+        )
+        validate_raw_wizard_submission(parsed)
+        result = run_quick_design_v8(
+            parsed,
+            conformance_bundle=load_runtime_bundle(),
+        )
+    except (OSError, ValidationError, ValueError) as exc:
+        typer.secho(f"Quick Design PRD v8 non eseguibile: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2) from exc
+
+    out = out.expanduser()
+    out.mkdir(parents=True, exist_ok=True)
+    plan_path = out / "planned-design-v8.json"
+    plan_path.write_text(
+        json.dumps(
+            result.planned_design.model_dump(mode="json"),
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    report_json = write_report_bundle_json(result.report_bundle, out / "report-v8.json")
+    report_yaml = write_report_bundle_yaml(result.report_bundle, out / "report-v8.yaml")
+    report_html = write_report_bundle_html(result.report_bundle, out / "report-v8.html")
+    artifact_names = {
+        "SAMPLE_SHEET": "sample-sheet-v8.csv",
+        "METHODS_DRAFT": "methods-draft-v8.md",
+        "ID_CONVENTION": "id-convention-v8.txt",
+        "EXECUTION_LOG": "execution-log-v8.txt",
+    }
+    artifact_paths: list[Path] = []
+    for artifact in result.artifacts:
+        artifact_path = out / artifact_names[artifact.kind.value]
+        artifact_path.write_text(artifact.content, encoding="utf-8")
+        artifact_paths.append(artifact_path)
+    artifact_manifest = out / "quick-design-artifacts-v8.json"
+    artifact_manifest.write_text(
+        json.dumps(
+            tuple(artifact.model_dump(mode="json") for artifact in result.artifacts),
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    typer.echo("PRD_V8 Quick Design completed through the verified deterministic pipeline.")
+    typer.echo(f"Strategy module: {result.report_bundle.strategy_module_status.value}")
+    for path in (
+        plan_path,
+        report_json,
+        report_yaml,
+        report_html,
+        *artifact_paths,
+        artifact_manifest,
+    ):
+        typer.echo(str(path))
+
+
+@quick_design_app.command("run-v7")
+def quick_design_run_v7(
     source: str = typer.Option(..., "--source", help="Descrizione della sorgente biologica."),
     factor: str = typer.Option("treatment", "--factor"),
     levels: str = typer.Option(
@@ -396,16 +606,21 @@ def quick_design_run(
     freeze: bool = typer.Option(False, "--freeze", help="Congela il piano e stampa export JSON."),
     output: Path | None = typer.Option(None, "--output", help="Scrivi export JSON su file."),
 ) -> None:
-    """Sessione Quick Design minimale (simple_cell_culture). Non e validazione scientifica."""
+    """Adapter storico v7 esplicito; non e il contratto scientifico corrente."""
     import json
 
     from ntruth.quick_design import (
-        QuickDesignAnswers,
-        export_for_biostatistician,
-        freeze_plan,
-        run_quick_design_session,
+        QuickDesignV7Answers,
+        export_v7_for_biostatistician,
+        freeze_v7_plan,
+        run_quick_design_v7_session,
     )
 
+    typer.secho(
+        "DEPRECATED_V7_ADAPTER: Quick Design contract v7 explicitly selected.",
+        fg=typer.colors.YELLOW,
+        err=True,
+    )
     level_parts = tuple(part.strip() for part in levels.split(",") if part.strip())
     if len(level_parts) != 2:
         typer.secho(
@@ -413,7 +628,7 @@ def quick_design_run(
             fg=typer.colors.RED,
         )
         raise typer.Exit(code=2)
-    answers = QuickDesignAnswers(
+    answers = QuickDesignV7Answers(
         source_description=source,
         factor_id=factor,
         levels=(level_parts[0], level_parts[1]),
@@ -428,12 +643,12 @@ def quick_design_run(
         planned_unit_type=planned_unit_type,
         planned_units_per_level=n_per_level,
     )
-    result = run_quick_design_session(answers)
+    result = run_quick_design_v7_session(answers)
     if freeze:
-        result = freeze_plan(result)
-        payload = result.export_payload or export_for_biostatistician(result)
+        result = freeze_v7_plan(result)
+        payload = result.export_payload or export_v7_for_biostatistician(result)
     else:
-        payload = export_for_biostatistician(result)
+        payload = export_v7_for_biostatistician(result)
 
     typer.secho("Quick Design Session — simple_cell_culture", bold=True)
     typer.echo(f"  determinability : {result.determinability.value}")
@@ -455,80 +670,282 @@ def quick_design_run(
 
 @quick_design_app.command("reality-gate")
 def quick_design_reality_gate() -> None:
-    """Stampa lo stato atteso del Reality Gate (fail-closed, non validato)."""
+    """Stampa il confine canonico v8, che resta HOLD senza trust esterno."""
     from ntruth.reality_gate import (
-        GatePredicateName,
-        GatePurpose,
-        GateValue,
-        PredicateEvidence,
-        RealityGatePredicate,
-        ScientificValidation,
-        ScientificValidationEvidence,
-        evaluate_reality_gate,
-        human_blocker_report,
+        SUBSTANTIVE_TRAINING_PREDICATES,
+        ReadinessDimensionV8,
     )
-    from ntruth.reality_gate.gate import EXPECTED_CURRENT_STATE
-    from ntruth.reality_gate.predicates import predicate_for_mvt_a
+
+    typer.echo("Reality Gate 8.0.0 — HOLD")
+    typer.echo("status: SCIENTIFIC_REVIEW_REQUIRED")
+    typer.echo("authorized_for_training: false")
+    typer.echo("reason: production trust root and real reviewed evidence are unavailable")
+    typer.echo("readiness_dimensions:")
+    for dimension in ReadinessDimensionV8:
+        typer.echo(f"  {dimension.value}: SCIENTIFIC_REVIEW_REQUIRED")
+    typer.echo("substantive_training_predicates:")
+    for predicate in SUBSTANTIVE_TRAINING_PREDICATES:
+        typer.echo(f"  {predicate.value}: UNKNOWN")
+
+
+@quick_design_app.command("reality-gate-v9")
+def quick_design_reality_gate_v9() -> None:
+    """Compone il Reality Gate v9 (PRD v9 §0.8) sul assessment v8 canonico.
+
+    Stampa la composizione content-addressed dei 23 flag v9 sopra il gate v8
+    pinnato: resta HOLD finche non arrivano evidenze reali registrate. Non e
+    una autorizzazione e non modifica alcun gate esistente.
+    """
+    from ntruth.reality_gate.v9 import compose_default_hold_gate_v9
+
+    composition = compose_default_hold_gate_v9()
+    typer.echo(f"Reality Gate v9 — {composition.effective_state.value}")
+    typer.echo(f"composition_id: {composition.composition_id}")
+    typer.echo(f"content_checksum: {composition.content_checksum}")
+    typer.echo(
+        f"authorized_for_training: {str(composition.authorizes_substantive_training).lower()}"
+    )
+    typer.echo("v8_readiness_dimensions:")
+    for dimension in composition.v8_assessment.dimensions:
+        typer.echo(f"  {dimension.dimension.value}: {dimension.status.knowledge_state.value}")
+    typer.echo("v9_predicates:")
+    for predicate in composition.v9_evidence_ledger.predicate_assessments:
+        typer.echo(f"  {predicate.name.value}: {predicate.value.knowledge_state.value}")
+    typer.echo(
+        "unsatisfied_v9_predicates: "
+        + ", ".join(
+            name.value for name in composition.v9_evidence_ledger.unsatisfied_predicate_names()
+        )
+    )
+
+
+@quick_design_app.command("reality-gate-v7")
+def quick_design_reality_gate_v7() -> None:
+    """Stampa il report storico v7 attraverso un adapter deprecato esplicito."""
+    from ntruth.reality_gate.v7 import (
+        EXPECTED_CURRENT_STATE_V7,
+        GatePredicateNameV7,
+        GatePurposeV7,
+        GateValueV7,
+        PredicateEvidenceV7,
+        RealityGatePredicateV7,
+        ScientificValidationEvidenceV7,
+        ScientificValidationV7,
+        evaluate_reality_gate_v7,
+        human_blocker_report_v7,
+        predicate_for_mvt_a_v7,
+    )
 
     preds = (
-        RealityGatePredicate(
-            name=GatePredicateName.SCHEMA_STABLE_ON_REAL_CASES,
-            value=GateValue.UNKNOWN,
-            evidence=PredicateEvidence(basis="no real-case pilot closed in clean checkout"),
+        RealityGatePredicateV7(
+            name=GatePredicateNameV7.SCHEMA_STABLE_ON_REAL_CASES,
+            value=GateValueV7.UNKNOWN,
+            evidence=PredicateEvidenceV7(basis="no real-case pilot closed in clean checkout"),
         ),
-        RealityGatePredicate(
-            name=GatePredicateName.NO_BLOCKING_SCHEMA_GAPS,
-            value=GateValue.UNKNOWN,
-            evidence=PredicateEvidence(basis="schema contracts exist; real-case gaps unmeasured"),
+        RealityGatePredicateV7(
+            name=GatePredicateNameV7.NO_BLOCKING_SCHEMA_GAPS,
+            value=GateValueV7.UNKNOWN,
+            evidence=PredicateEvidenceV7(basis="schema contracts exist; real-case gaps unmeasured"),
         ),
-        RealityGatePredicate(
-            name=GatePredicateName.REAL_ANCHOR_AVAILABLE,
-            value=GateValue.FALSE,
-            evidence=PredicateEvidence(basis="no real anchor corpus in clean checkout"),
+        RealityGatePredicateV7(
+            name=GatePredicateNameV7.REAL_ANCHOR_AVAILABLE,
+            value=GateValueV7.FALSE,
+            evidence=PredicateEvidenceV7(basis="no real anchor corpus in clean checkout"),
         ),
-        RealityGatePredicate(
-            name=GatePredicateName.LICENCE_SCOPE_VERIFIED,
-            value=GateValue.UNKNOWN,
-            evidence=PredicateEvidence(basis="BLK-DATA-001 open"),
+        RealityGatePredicateV7(
+            name=GatePredicateNameV7.LICENCE_SCOPE_VERIFIED,
+            value=GateValueV7.UNKNOWN,
+            evidence=PredicateEvidenceV7(basis="BLK-DATA-001 open"),
         ),
-        RealityGatePredicate(
-            name=GatePredicateName.PROTECTED_SPLIT_FROZEN,
-            value=GateValue.FALSE,
-            evidence=PredicateEvidence(basis="no protected real split frozen"),
+        RealityGatePredicateV7(
+            name=GatePredicateNameV7.PROTECTED_SPLIT_FROZEN,
+            value=GateValueV7.FALSE,
+            evidence=PredicateEvidenceV7(basis="no protected real split frozen"),
         ),
-        RealityGatePredicate(
-            name=GatePredicateName.HUMAN_SECOND_REVIEW_COMPLETED,
-            value=GateValue.FALSE,
-            evidence=PredicateEvidence(basis="not started"),
+        RealityGatePredicateV7(
+            name=GatePredicateNameV7.HUMAN_SECOND_REVIEW_COMPLETED,
+            value=GateValueV7.FALSE,
+            evidence=PredicateEvidenceV7(basis="not started"),
         ),
-        RealityGatePredicate(
-            name=GatePredicateName.DECISIVE_FIELDS_REVIEWED,
-            value=GateValue.FALSE,
-            evidence=PredicateEvidence(basis="not started"),
+        RealityGatePredicateV7(
+            name=GatePredicateNameV7.DECISIVE_FIELDS_REVIEWED,
+            value=GateValueV7.FALSE,
+            evidence=PredicateEvidenceV7(basis="not started"),
         ),
-        RealityGatePredicate(
-            name=GatePredicateName.REAL_BASELINE_EXECUTED,
-            value=GateValue.FALSE,
-            evidence=PredicateEvidence(basis="not started"),
+        RealityGatePredicateV7(
+            name=GatePredicateNameV7.REAL_BASELINE_EXECUTED,
+            value=GateValueV7.FALSE,
+            evidence=PredicateEvidenceV7(basis="not started"),
         ),
-        predicate_for_mvt_a(
-            GatePredicateName.SYNTHETIC_FACTORY_HUMAN_CALIBRATED,
-            PredicateEvidence(basis="N/A for MVT-A before synthetic promotion (E-14)"),
+        predicate_for_mvt_a_v7(
+            GatePredicateNameV7.SYNTHETIC_FACTORY_HUMAN_CALIBRATED,
+            PredicateEvidenceV7(basis="N/A for MVT-A before synthetic promotion (E-14)"),
         ),
     )
-    result = evaluate_reality_gate(
+    result = evaluate_reality_gate_v7(
         preds,
-        purpose=GatePurpose.MVT_A_EXPLORATORY,
-        scientific_validation=ScientificValidationEvidence(
-            status=ScientificValidation.NOT_STARTED,
+        purpose=GatePurposeV7.MVT_A_EXPLORATORY,
+        scientific_validation=ScientificValidationEvidenceV7(
+            status=ScientificValidationV7.NOT_STARTED,
             evidence_basis="scientific validation not started",
         ),
     )
-    typer.echo(human_blocker_report(result))
+    typer.echo("DEPRECATED_V7_ADAPTER")
+    typer.echo(human_blocker_report_v7(result))
     typer.echo("")
     typer.echo("EXPECTED_CURRENT_STATE:")
-    for key, value in EXPECTED_CURRENT_STATE.items():
+    for key, value in EXPECTED_CURRENT_STATE_V7.items():
         typer.echo(f"  {key}: {value}")
+
+
+@power_app.command("plan")
+def power_plan(
+    submission: Path = typer.Argument(..., help="PowerPlanInput JSON locale."),
+    out: Path = typer.Option(Path("./ntruth-power-plan"), "--out", "-o"),
+) -> None:
+    """Piano a priori candidate-only: EU indipendenti + assunzioni + sensitivity.
+
+    Il calcolo avviene solo dopo EU-gate, SESOI e applicability gate. Nessun
+    test o modello viene raccomandato (HANDOFF_ONLY); il piano richiede
+    conferma umana/biostatistica prima dell'esecuzione.
+    """
+
+    import json
+
+    from ntruth.power.planner import PowerBlockedError, build_power_plan
+    from ntruth.power.schema import PowerPlanInput
+
+    try:
+        parsed = PowerPlanInput.model_validate_json(
+            submission.expanduser().read_text(encoding="utf-8")
+        )
+        plan = build_power_plan(parsed)
+    except (OSError, ValidationError, PowerBlockedError) as exc:
+        typer.secho(f"Piano di potenza non emesso: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2) from exc
+
+    out = out.expanduser()
+    out.mkdir(parents=True, exist_ok=True)
+    plan_path = out / "power-plan-candidate.json"
+    plan_path.write_text(
+        json.dumps(plan.model_dump(mode="json"), ensure_ascii=False, indent=2, sort_keys=True)
+        + "\n",
+        encoding="utf-8",
+    )
+    typer.echo(
+        f"EU indipendenti richieste: {plan.required_total_eu} totale "
+        f"({', '.join(str(item) for item in plan.required_per_group)} per gruppo)"
+    )
+    typer.echo(
+        f"Potenza raggiunta: {plan.achieved_power:.4f} "
+        f"(target {plan.target_power:g}, metodo {plan.method.value})"
+    )
+    typer.echo(f"Strategy: {plan.strategy} · validazione: {plan.scientific_validation_status}")
+    typer.echo(str(plan_path))
+
+
+@power_app.command("false-positive")
+def power_false_positive(
+    units: int = typer.Option(..., "--units", min=2, help="Unita sperimentali totali."),
+    obs_per_unit: float = typer.Option(
+        ..., "--obs-per-unit", min=1.0, help="Osservazioni per unita analizzate come n."
+    ),
+    groups: int = typer.Option(2, "--groups", min=2),
+    alpha: float = typer.Option(0.05, "--alpha"),
+    icc: float | None = typer.Option(None, "--icc", help="ICC dichiarata (opzionale)."),
+    one_sided: bool = typer.Option(False, "--one-sided"),
+) -> None:
+    """Alpha effettiva se le osservazioni annidate sono analizzate come indipendenti.
+
+    Esempio: 6 animali x 50 cellule analizzate come n = 300. Senza ``--icc``
+    riporta la sensitivity sulla griglia di ICC (mai ICC = 0 implicita).
+    """
+
+    from ntruth.power.calculator import PowerComputationError
+    from ntruth.power.pseudoreplication import pseudoreplication_risk
+    from ntruth.power.schema import PseudoreplicationRiskInput, Tail
+
+    try:
+        result = pseudoreplication_risk(
+            PseudoreplicationRiskInput(
+                total_units=units,
+                mean_obs_per_unit=obs_per_unit,
+                groups=groups,
+                alpha=alpha,
+                tail=Tail.ONE_SIDED if one_sided else Tail.TWO_SIDED,
+                icc=icc,
+            )
+        )
+    except (ValidationError, PowerComputationError) as exc:
+        typer.secho(f"Diagnostica non emessa: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2) from exc
+
+    typer.echo(
+        f"Analisi naive su {units * obs_per_unit:g} osservazioni da {units} unita "
+        f"({groups} gruppi, alpha nominale {alpha:g}, df naive {result.naive_df:g})"
+    )
+    for row in result.sensitivity:
+        marker = "  <- ICC dichiarata" if result.declared and row.icc == result.declared.icc else ""
+        typer.echo(
+            f"  ICC {row.icc:<5g} -> falsi positivi {row.alpha_actual:.3f} "
+            f"(x{row.alpha_actual / alpha:.1f}){marker}"
+        )
+    typer.echo(f"Metodo: {result.method}")
+    for caveat in result.caveats:
+        typer.echo(f"  - {caveat}")
+
+
+@power_app.command("plan-sim")
+def power_plan_sim(
+    submission: Path = typer.Argument(..., help="SimulatedPowerRequest JSON locale."),
+    out: Path = typer.Option(Path("./ntruth-power-sim"), "--out", "-o"),
+) -> None:
+    """Piano via simulazione gerarchica sul modello dichiarato (candidate-only).
+
+    Da usare quando `power plan` risponde simulation_required. Frequenza Monte
+    Carlo ±MCSE, mai probabilita calibrata; richiede conferma umana.
+    """
+
+    import json
+
+    from ntruth.power.planner import PowerBlockedError, build_power_plan
+    from ntruth.power.schema import PowerMethod
+    from ntruth.power.simulation import SimulatedPowerRequest
+
+    try:
+        parsed = SimulatedPowerRequest.model_validate_json(
+            submission.expanduser().read_text(encoding="utf-8")
+        )
+        plan = build_power_plan(parsed.plan, simulation=parsed.simulation)
+    except (OSError, ValidationError, PowerBlockedError) as exc:
+        typer.secho(f"Piano simulato non emesso: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2) from exc
+    if plan.method is not PowerMethod.MONTE_CARLO_HIERARCHICAL:
+        typer.secho(
+            "La formula chiusa e applicabile: usare `power plan`.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
+    out = out.expanduser()
+    out.mkdir(parents=True, exist_ok=True)
+    plan_path = out / "power-plan-simulated.json"
+    plan_path.write_text(
+        json.dumps(plan.model_dump(mode="json"), ensure_ascii=False, indent=2, sort_keys=True)
+        + "\n",
+        encoding="utf-8",
+    )
+    typer.echo(
+        f"EU indipendenti richieste: {plan.required_total_eu} totale "
+        f"({', '.join(str(item) for item in plan.required_per_group)} per gruppo)"
+    )
+    typer.echo(
+        f"Potenza simulata: {plan.achieved_power:.4f} ±{plan.simulation_mcse or 0:.4f} "
+        f"(N_sim={plan.simulation_n}, seed {plan.simulation_seed_root})"
+    )
+    typer.echo(f"Strategy: {plan.strategy} · validazione: {plan.scientific_validation_status}")
+    typer.echo(str(plan_path))
 
 
 @app.command()

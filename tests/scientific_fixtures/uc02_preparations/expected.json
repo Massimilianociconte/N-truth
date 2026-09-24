@@ -3,7 +3,8 @@
   "description": "3 preparazioni, 4 pozzetti ciascuna: n = 3 per variabilita tra preparazioni, pozzetti tecnici.",
   "factor": "treatment",
   "expect": {
-    "experimental_unit": "CellCulture",
+    "allocation_unit_candidate": "CellCulture",
+    "experimental_unit": null,
     "observational_unit": "Cell",
     "analytical_unit": "Cell",
     "n_declared": 120,
@@ -11,11 +12,12 @@
     "n_allocated": 3,
     "n_independent": null,
     "inferability": "requires_confirmation",
-    "risk": "likely_pseudoreplication",
+    "risk": "insufficient_information",
     "alerts_include": [
-      "MIC-004",
       "GEN-002",
-      "GEN-010"
+      "GEN-004",
+      "GEN-010",
+      "MIC-001"
     ],
     "alerts_exclude": [
       "CC-001"
