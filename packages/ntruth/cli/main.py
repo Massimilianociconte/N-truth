@@ -51,8 +51,13 @@ sample_sheet_app = typer.Typer(
     add_completion=False,
     help="Generazione e validazione del SampleSheetSpec v6.",
 )
+power_app = typer.Typer(
+    add_completion=False,
+    help="Piano a priori di EU indipendenti (candidate-only, HANDOFF_ONLY).",
+)
 app.add_typer(rules_app, name="rules")
 app.add_typer(sample_sheet_app, name="sample-sheet")
+app.add_typer(power_app, name="power")
 app.add_typer(quick_design_app, name="quick-design")
 
 _SEVERITY_MARK = {
@@ -791,6 +796,156 @@ def quick_design_reality_gate_v7() -> None:
     typer.echo("EXPECTED_CURRENT_STATE:")
     for key, value in EXPECTED_CURRENT_STATE_V7.items():
         typer.echo(f"  {key}: {value}")
+
+
+@power_app.command("plan")
+def power_plan(
+    submission: Path = typer.Argument(..., help="PowerPlanInput JSON locale."),
+    out: Path = typer.Option(Path("./ntruth-power-plan"), "--out", "-o"),
+) -> None:
+    """Piano a priori candidate-only: EU indipendenti + assunzioni + sensitivity.
+
+    Il calcolo avviene solo dopo EU-gate, SESOI e applicability gate. Nessun
+    test o modello viene raccomandato (HANDOFF_ONLY); il piano richiede
+    conferma umana/biostatistica prima dell'esecuzione.
+    """
+
+    import json
+
+    from ntruth.power.planner import PowerBlockedError, build_power_plan
+    from ntruth.power.schema import PowerPlanInput
+
+    try:
+        parsed = PowerPlanInput.model_validate_json(
+            submission.expanduser().read_text(encoding="utf-8")
+        )
+        plan = build_power_plan(parsed)
+    except (OSError, ValidationError, PowerBlockedError) as exc:
+        typer.secho(f"Piano di potenza non emesso: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2) from exc
+
+    out = out.expanduser()
+    out.mkdir(parents=True, exist_ok=True)
+    plan_path = out / "power-plan-candidate.json"
+    plan_path.write_text(
+        json.dumps(plan.model_dump(mode="json"), ensure_ascii=False, indent=2, sort_keys=True)
+        + "\n",
+        encoding="utf-8",
+    )
+    typer.echo(
+        f"EU indipendenti richieste: {plan.required_total_eu} totale "
+        f"({', '.join(str(item) for item in plan.required_per_group)} per gruppo)"
+    )
+    typer.echo(
+        f"Potenza raggiunta: {plan.achieved_power:.4f} "
+        f"(target {plan.target_power:g}, metodo {plan.method.value})"
+    )
+    typer.echo(f"Strategy: {plan.strategy} · validazione: {plan.scientific_validation_status}")
+    typer.echo(str(plan_path))
+
+
+@power_app.command("false-positive")
+def power_false_positive(
+    units: int = typer.Option(..., "--units", min=2, help="Unita sperimentali totali."),
+    obs_per_unit: float = typer.Option(
+        ..., "--obs-per-unit", min=1.0, help="Osservazioni per unita analizzate come n."
+    ),
+    groups: int = typer.Option(2, "--groups", min=2),
+    alpha: float = typer.Option(0.05, "--alpha"),
+    icc: float | None = typer.Option(None, "--icc", help="ICC dichiarata (opzionale)."),
+    one_sided: bool = typer.Option(False, "--one-sided"),
+) -> None:
+    """Alpha effettiva se le osservazioni annidate sono analizzate come indipendenti.
+
+    Esempio: 6 animali x 50 cellule analizzate come n = 300. Senza ``--icc``
+    riporta la sensitivity sulla griglia di ICC (mai ICC = 0 implicita).
+    """
+
+    from ntruth.power.calculator import PowerComputationError
+    from ntruth.power.pseudoreplication import pseudoreplication_risk
+    from ntruth.power.schema import PseudoreplicationRiskInput, Tail
+
+    try:
+        result = pseudoreplication_risk(
+            PseudoreplicationRiskInput(
+                total_units=units,
+                mean_obs_per_unit=obs_per_unit,
+                groups=groups,
+                alpha=alpha,
+                tail=Tail.ONE_SIDED if one_sided else Tail.TWO_SIDED,
+                icc=icc,
+            )
+        )
+    except (ValidationError, PowerComputationError) as exc:
+        typer.secho(f"Diagnostica non emessa: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2) from exc
+
+    typer.echo(
+        f"Analisi naive su {units * obs_per_unit:g} osservazioni da {units} unita "
+        f"({groups} gruppi, alpha nominale {alpha:g}, df naive {result.naive_df:g})"
+    )
+    for row in result.sensitivity:
+        marker = "  <- ICC dichiarata" if result.declared and row.icc == result.declared.icc else ""
+        typer.echo(
+            f"  ICC {row.icc:<5g} -> falsi positivi {row.alpha_actual:.3f} "
+            f"(x{row.alpha_actual / alpha:.1f}){marker}"
+        )
+    typer.echo(f"Metodo: {result.method}")
+    for caveat in result.caveats:
+        typer.echo(f"  - {caveat}")
+
+
+@power_app.command("plan-sim")
+def power_plan_sim(
+    submission: Path = typer.Argument(..., help="SimulatedPowerRequest JSON locale."),
+    out: Path = typer.Option(Path("./ntruth-power-sim"), "--out", "-o"),
+) -> None:
+    """Piano via simulazione gerarchica sul modello dichiarato (candidate-only).
+
+    Da usare quando `power plan` risponde simulation_required. Frequenza Monte
+    Carlo ±MCSE, mai probabilita calibrata; richiede conferma umana.
+    """
+
+    import json
+
+    from ntruth.power.planner import PowerBlockedError, build_power_plan
+    from ntruth.power.schema import PowerMethod
+    from ntruth.power.simulation import SimulatedPowerRequest
+
+    try:
+        parsed = SimulatedPowerRequest.model_validate_json(
+            submission.expanduser().read_text(encoding="utf-8")
+        )
+        plan = build_power_plan(parsed.plan, simulation=parsed.simulation)
+    except (OSError, ValidationError, PowerBlockedError) as exc:
+        typer.secho(f"Piano simulato non emesso: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2) from exc
+    if plan.method is not PowerMethod.MONTE_CARLO_HIERARCHICAL:
+        typer.secho(
+            "La formula chiusa e applicabile: usare `power plan`.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
+    out = out.expanduser()
+    out.mkdir(parents=True, exist_ok=True)
+    plan_path = out / "power-plan-simulated.json"
+    plan_path.write_text(
+        json.dumps(plan.model_dump(mode="json"), ensure_ascii=False, indent=2, sort_keys=True)
+        + "\n",
+        encoding="utf-8",
+    )
+    typer.echo(
+        f"EU indipendenti richieste: {plan.required_total_eu} totale "
+        f"({', '.join(str(item) for item in plan.required_per_group)} per gruppo)"
+    )
+    typer.echo(
+        f"Potenza simulata: {plan.achieved_power:.4f} ±{plan.simulation_mcse or 0:.4f} "
+        f"(N_sim={plan.simulation_n}, seed {plan.simulation_seed_root})"
+    )
+    typer.echo(f"Strategy: {plan.strategy} · validazione: {plan.scientific_validation_status}")
+    typer.echo(str(plan_path))
 
 
 @app.command()

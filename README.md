@@ -147,9 +147,49 @@ confirmation:
 
 ```bash
 uv run ntruth quick-design run ./quick-design.json --out ./ntruth-out
-uv run ntruth reality-gate          # canonical gate status (currently HOLD)
+uv run ntruth quick-design reality-gate   # canonical gate status (currently HOLD)
+uv run ntruth power plan ./power-input.json --out ./ntruth-power-out
 uv run ntruth analyze-v7 ./methods.md --out ./ntruth-v7-out \
   --acknowledge-unvalidated-domain  # DEPRECATED_V7_ADAPTER, historical only
+```
+
+### A-priori power planning (prospective sidecar, HANDOFF_ONLY)
+
+`ntruth power plan` (or `POST /v1/power/plan`) computes the required number
+of **independent experimental units** for a human-declared planning family
+(t / F / chi2 noncentral, exact binomial, large-sample approximations —
+G*Power 3.1 style, stdlib-only, offline). Planning runs only after the
+EU-eligibility gate, an explicit SESOI on the planned effect scale, and an
+applicability gate; hierarchical/repeated structures without ICC fail closed
+toward simulation-based planning (`ntruth power plan-sim` /
+`POST /v1/power/plan-simulated`: hierarchical Monte Carlo on the declared
+generative model with SHA-256 deterministic draws, EU-aggregate decision
+rules only, MCSE always reported). Cohen conventions are always flagged as
+weak planning assumptions, the design effect is a variance diagnostic that
+never redefines the EU, and no test or model is ever recommended. Output is
+a candidate (`PowerPlanCandidate`) requiring human/biostatistician
+confirmation; scientific validation stays `not_performed`.
+
+`ntruth power false-positive` (or `POST /v1/power/pseudoreplication-risk`)
+quantifies what pseudoreplication costs: the exact type I error of a two-sample
+t test or one-way ANOVA that treats nested observations as independent, under a
+balanced random-intercept model. Example: 6 animals × 50 cells analysed as
+n = 300 give a real false-positive rate of 0.11–0.72 for ICC 0.01–0.5 instead
+of the nominal 0.05. Without a declared ICC only the sensitivity grid is
+reported (never ICC = 0). Cluster diagnostics in power plans report the same
+rate plus observation-level counts (`n·m` observations ≡ `n·m/DEFF`
+independent observations), never an EU count.
+
+```bash
+uv run ntruth power false-positive --units 6 --obs-per-unit 50 --icc 0.1
+```
+
+Preprint-vs-published evidence pairs (bioRxiv/medRxiv + Crossref/Europe
+PMC/OpenAlex) are fetched only explicitly and cached locally, never by the
+core:
+
+```bash
+python scripts/fetch_biorxiv.py --doi 10.1101/XXXX --server medrxiv --refresh
 ```
 
 ### Local API and desktop

@@ -18,6 +18,7 @@ modules:
   - licenses
   - data_use_lineage
   - synthetic_policy
+  - evidence_pair_cache
 dependencies:
   - CP-EPI
 current_evidence:
@@ -41,6 +42,9 @@ current_evidence:
     - docs/data-card-v0.1.md
   synthetic_policy:
     - docs/synthetic-data-generation-specification.md
+  evidence_pair_cache:
+    - packages/ntruth/evidence/biorxiv.py
+    - scripts/fetch_biorxiv.py
 known_gaps:
   - "Parser Gold: contratti target pronti (GoldParserTarget v1.0.0 adjudicato, staged parser_ai candidate, docs/parser-ai-contract.md) ma nessun corpus gold adjudicato esiste ancora: assenza di dati, non di contratti"
   - "train/dev/test lineage non congelato: split ancora provvisori (PRD Reality Gate v9)"

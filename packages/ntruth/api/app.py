@@ -49,6 +49,8 @@ from ntruth.governance import (
     scan_text,
 )
 from ntruth.ingest.safety import SafetyError
+from ntruth.power.schema import PowerMethod, PowerPlanInput, PseudoreplicationRiskInput
+from ntruth.power.simulation import SimulatedPowerRequest
 from ntruth.prospective import (
     MAX_PROSPECTIVE_D0_BODY_BYTES,
     MAX_PROSPECTIVE_D0_ROWS,
@@ -1416,6 +1418,84 @@ def _ui_directory() -> Path | None:
 
     candidates = (
         Path(__file__).resolve().parents[1] / "_ui",
+    @api.post("/v1/power/plan")
+    def power_plan(payload: PowerPlanInput) -> dict[str, Any]:
+        """Piano a priori candidate-only su EU indipendenti (HANDOFF_ONLY).
+
+        Il calcolo avviene solo dopo EU-gate, SESOI e applicability gate.
+        Nessun test/modello e raccomandato; nessuna validita certificata.
+        """
+
+        from ntruth.power.planner import PowerBlockedError, build_power_plan
+
+        try:
+            plan = build_power_plan(payload)
+        except PowerBlockedError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": exc.code, "message": str(exc)},
+            ) from exc
+        return {
+            "power_plan_candidate": plan.model_dump(mode="json"),
+            "strategy": "HANDOFF_ONLY",
+            "input_mode": "HUMAN_DECLARED",
+        }
+
+    @api.post("/v1/power/pseudoreplication-risk")
+    def power_pseudoreplication_risk(payload: PseudoreplicationRiskInput) -> dict[str, Any]:
+        """Alpha effettiva di un'analisi che tratta osservazioni annidate come indipendenti.
+
+        Diagnostica esatta (intercetto casuale, disegno bilanciato) sull'ICC
+        dichiarata e su una griglia di sensitivity; non modifica EU o claim.
+        """
+
+        from ntruth.power.calculator import PowerComputationError
+        from ntruth.power.pseudoreplication import pseudoreplication_risk
+
+        try:
+            result = pseudoreplication_risk(payload)
+        except PowerComputationError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "pseudoreplication_risk_invalid", "message": str(exc)},
+            ) from exc
+        return {
+            "pseudoreplication_risk": result.model_dump(mode="json"),
+            "strategy": "HANDOFF_ONLY",
+            "input_mode": "HUMAN_DECLARED",
+        }
+
+    @api.post("/v1/power/plan-simulated")
+    def power_plan_simulated(payload: SimulatedPowerRequest) -> dict[str, Any]:
+        """Piano via simulazione gerarchica sul modello dichiarato (HANDOFF_ONLY).
+
+        Usare quando /v1/power/plan risponde 409 simulation_required.
+        Frequenza Monte Carlo ±MCSE, mai probabilita calibrata.
+        """
+
+        from ntruth.power.planner import PowerBlockedError, build_power_plan
+
+        try:
+            plan = build_power_plan(payload.plan, simulation=payload.simulation)
+        except PowerBlockedError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": exc.code, "message": str(exc)},
+            ) from exc
+        if plan.method != PowerMethod.MONTE_CARLO_HIERARCHICAL:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "simulation_not_required",
+                    "message": "La formula chiusa e applicabile: usare /v1/power/plan.",
+                },
+            )
+        return {
+            "power_plan_candidate": plan.model_dump(mode="json"),
+            "strategy": "HANDOFF_ONLY",
+            "input_mode": "HUMAN_DECLARED",
+        }
+
         Path(__file__).resolve().parents[3] / "apps" / "desktop" / "dist",
     )
     return next((path for path in candidates if (path / "index.html").is_file()), None)
