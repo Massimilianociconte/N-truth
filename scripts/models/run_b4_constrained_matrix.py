@@ -30,7 +30,7 @@ from typing import Any, Literal
 REPO = Path(__file__).resolve().parents[2]
 SUITE = REPO / "benchmarks" / "fewshot_p0"
 OUT = REPO / "benchmarks" / "fewshot_p0" / "constrained"
-PROFILE = REPO / "models" / "configs" / "granite-4.1-3b-mlx-qlora.json"
+PROFILE = REPO / "models" / "configs" / "legacy" / "granite-4.1-3b-mlx-qlora.json"
 
 Condition = Literal["A", "B", "C", "D"]
 StageName = Literal[

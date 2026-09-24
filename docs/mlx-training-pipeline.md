@@ -76,51 +76,65 @@ Riferimenti ufficiali:
 
 ## Modello primario provvisorio (Train A)
 
-**Stato:** migrazione architetturale/configurativa completata; validazione runtime
-e scientifica **in corso** (vedi [granite-migration-report.md](granite-migration-report.md)).
+**Stato:** migrazione architetturale/configurativa completata (ADR-0019);
+acquisizione pesi, validazione runtime e scientifica **da svolgere** (vedi
+[report migrazione](minicpm-migration-report.md)).
 
-IBM Granite 4.1 3B Instruct è il modello principale **provvisorio** del Train A.
+MiniCPM5-2B è il modello principale **provvisorio** del Train A.
 La sua adozione definitiva rimane subordinata ai benchmark N-Truth sui task
-decisivi, al confronto con la cascata B5 e alla validazione su dati reali
-indipendenti.
+decisivi, al confronto con il braccio legacy Granite e la cascata B5 e alla
+validazione su dati reali indipendenti.
 
-Checkpoint canonico Instruct: [`ibm-granite/granite-4.1-3b`](https://huggingface.co/ibm-granite/granite-4.1-3b)
-(Apache-2.0). Su macOS il bootstrap usa una **conversione MLX della community**
-(non artefatto ufficiale IBM):
-[`mlx-community/granite-4.1-3b-4bit`](https://huggingface.co/mlx-community/granite-4.1-3b-4bit).
+Checkpoint canonico: [`openbmb/MiniCPM5-2B`](https://huggingface.co/openbmb/MiniCPM5-2B)
+(Apache-2.0). Su macOS il bootstrap usa la distribuzione MLX 4-bit
+**ufficiale del vendor** (non una conversione community):
+[`openbmb/MiniCPM5-2B-MLX`](https://huggingface.co/openbmb/MiniCPM5-2B-MLX).
 
 | Proprietà | Valore verificabile |
 |---|---|
-| Repository canonico Instruct | [`ibm-granite/granite-4.1-3b`](https://huggingface.co/ibm-granite/granite-4.1-3b) |
-| Revisione canonica osservata | `c0650403e44e78ec0262dab1c90914c65b196c4e` |
-| Repository MLX 4-bit | [`mlx-community/granite-4.1-3b-4bit`](https://huggingface.co/mlx-community/granite-4.1-3b-4bit) (**community conversion**) |
-| Revisione MLX fissata | `b1b476b5a17c46b7d6cd663b4a8ed44b66720aef` |
-| Parametri | 3,402,836,480 (~3.40B) |
-| **Configured maximum context** | **131 072 token** (config modello; non capacità host-validata) |
-| Quantizzazione MLX bootstrap | 4 bit (community) |
-| Pesi `model.safetensors` MLX | 2,127,162,429 byte |
-| SHA-256 pesi MLX | `cff9d052cc3c68ea66b3d364788eb96fca2be82868d9ad92bd968e73b125194d` |
-| GGUF ufficiale | [`ibm-granite/granite-4.1-3b-GGUF`](https://huggingface.co/ibm-granite/granite-4.1-3b-GGUF) |
-| Base (ablation only) | [`ibm-granite/granite-4.1-3b-base`](https://huggingface.co/ibm-granite/granite-4.1-3b-base) |
+| Repository canonico | [`openbmb/MiniCPM5-2B`](https://huggingface.co/openbmb/MiniCPM5-2B) |
+| Revisione canonica osservata | `12a3808a956f869c767195e9266b59c4d21d92e2` |
+| Repository MLX 4-bit | [`openbmb/MiniCPM5-2B-MLX`](https://huggingface.co/openbmb/MiniCPM5-2B-MLX) (**ufficiale OpenBMB**) |
+| Revisione MLX fissata | `8a9ad7539ac86281d0ac2b017ba04a5de53fe9a3` |
+| Parametri | 2,516,756,480 (~2.52B) |
+| Architettura | `LlamaForCausalLM` standard, nessun kernel custom |
+| **Configured maximum context** | **131 072 token** (config modello; non capacità host-validata) |
+| Quantizzazione MLX bootstrap | 4 bit (ufficiale vendor) |
+| Pesi `model.safetensors` MLX | 1,416,035,216 byte |
+| SHA-256 pesi MLX | `c207798696a4a454e7ac211b25227625466c693335941cee8904fb922f295cc1` |
+| GGUF ufficiale | [`openbmb/MiniCPM5-2B-GGUF`](https://huggingface.co/openbmb/MiniCPM5-2B-GGUF) |
+| Base (ablation only) | [`openbmb/MiniCPM5-2B-Base`](https://huggingface.co/openbmb/MiniCPM5-2B-Base) |
+| Ablation 1B (+ MLX ufficiale) | `openbmb/MiniCPM5-1B` / `openbmb/MiniCPM5-1B-MLX` (profilo `models/configs/minicpm5-1b-mlx-qlora.json`) |
 | Licenza | Apache-2.0 |
-| Profilo | [`models/configs/granite-4.1-3b-mlx-qlora.json`](../models/configs/granite-4.1-3b-mlx-qlora.json) |
-| Path locale MLX | `models/local/granite-4.1-3b-4bit/` |
-| Interfaccia | `ntruth.model_backends.GraniteBackend` (`ModelBackend`) |
-| LoRA targets | verificati su architettura/state dict Granite (non ereditati da Qwen) |
+| Profilo | [`models/configs/minicpm5-2b-mlx-qlora.json`](../models/configs/minicpm5-2b-mlx-qlora.json) |
+| Path locale MLX | `models/local/minicpm5-2b-4bit/` |
+| Interfaccia | `ntruth.model_backends.MiniCPMBackend` (`ModelBackend`) |
+| Chat template | `minicpm5_chatml_no_think`: sempre `enable_thinking=false` (JSON diretto) |
+| LoRA targets | chiavi standard arch Llama, stessi nomi del profilo Granite |
 
 Acquisizione:
 
 ```bash
-uv run python scripts/models/acquire_granite.py --confirm-license-and-download
+uv run python scripts/models/acquire_minicpm.py --confirm-license-and-download
 # oppure
 uv run ntruth-ml download-model --confirm-license-and-download
 ```
+
+### Legacy Granite (braccio di confronto, opt-in)
+
+IBM Granite 4.1 3B Instruct resta disponibile per head-to-head storici
+(ADR-0010 → legacy da ADR-0019): profili in `models/configs/legacy/`,
+backend `GraniteBackend`, acquisizione `scripts/models/acquire_granite.py`,
+qualifica `scripts/models/qualify_granite_runtime.py`. Uso solo con
+`allow_legacy=True` oppure `NTRUTH_ALLOW_LEGACY_GRANITE=1`.
 
 ### Altri candidati (non default)
 
 | Candidato | Ruolo |
 |---|---|
-| Granite 4.1 3B Base | ablation experimental only |
+| MiniCPM5-2B Base | ablation experimental only |
+| MiniCPM5-1B | ablation arm (`models/configs/minicpm5-1b-mlx-qlora.json`), mai default |
+| Granite 4.1 3B (legacy) | braccio di confronto storico; profili in `models/configs/legacy/`, opt-in `NTRUTH_ALLOW_LEGACY_GRANITE=1` |
 | Cascata encoder + small LLM (B5) | baseline preferita ADR-0002 da confrontare |
 | Qwen3-4B (legacy) | disabilitato; profilo in `models/configs/legacy/` |
 
@@ -205,7 +219,7 @@ Per rendere leggibili i comandi successivi, in zsh o bash:
 
 ```bash
 NTRUTH_REPO="$(pwd)"
-NTRUTH_PROFILE="$NTRUTH_REPO/models/configs/granite-4.1-3b-mlx-qlora.json"
+NTRUTH_PROFILE="$NTRUTH_REPO/models/configs/minicpm5-2b-mlx-qlora.json"
 ```
 
 ## Doctor, download e verifica del modello
@@ -245,7 +259,7 @@ uv run ntruth-ml verify-model \
   --repo "$NTRUTH_REPO"
 
 shasum -a 256 \
-  models/local/granite-4.1-3b-4bit/model.safetensors
+  models/local/minicpm5-2b-4bit/model.safetensors
 ```
 
 Il primo comando deve restituire `"valid": true` e `"problems": []`; il secondo deve
@@ -731,7 +745,7 @@ Su una directory nuova:
 
 ```bash
 NTRUTH_SMOKE_DATA="$NTRUTH_REPO/local-data/smoke/mlx-runtime-v1"
-NTRUTH_SMOKE_RUN="$NTRUTH_REPO/local-data/smoke/run-granite-4.1-3b-v1"
+NTRUTH_SMOKE_RUN="$NTRUTH_REPO/local-data/smoke/run-minicpm5-2b-v1"
 
 uv run ntruth-ml make-smoke-data --out "$NTRUTH_SMOKE_DATA"
 uv run ntruth-ml tokenize "$NTRUTH_SMOKE_DATA" \

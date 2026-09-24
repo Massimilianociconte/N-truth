@@ -66,7 +66,7 @@ packages = ["packages/ntruth"]
 "theories" = "ntruth/_bundled/theories"
 "ontology" = "ntruth/_bundled/ontology"
 "apps/desktop/dist" = "ntruth/_ui"
-"models/configs/granite-4.1-3b-mlx-qlora.json" = "ntruth/_bundled/models/granite-4.1-3b-mlx-qlora.json"
+"models/configs/minicpm5-2b-mlx-qlora.json" = "ntruth/_bundled/models/minicpm5-2b-mlx-qlora.json"
 
 [tool.hatch.build.targets.sdist.force-include]
 # Il wheel viene ricostruito dalla sdist: gli asset compilati devono attraversare

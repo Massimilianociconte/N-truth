@@ -168,26 +168,27 @@ def _record(record_id: str, split: CorpusSplit) -> SupervisedRecord:
 
 
 def test_profile_has_consistent_storage_budget(tmp_path: Path) -> None:
-    path = Path("models/configs/granite-4.1-3b-mlx-qlora.json")
+    path = Path("models/configs/minicpm5-2b-mlx-qlora.json")
     profile = load_profile(path)
     budget = storage_budget(profile)
 
-    assert profile["model"]["provider"] == "granite"
-    assert profile["model"]["canonical_repository"] == "ibm-granite/granite-4.1-3b"
-    assert profile["model"]["repository"] == "mlx-community/granite-4.1-3b-4bit"
-    assert profile["model"]["revision"] == "b1b476b5a17c46b7d6cd663b4a8ed44b66720aef"
-    assert profile["model"]["expected_weight_bytes"] == 2_127_162_429
+    assert profile["model"]["provider"] == "minicpm"
+    assert profile["model"]["canonical_repository"] == "openbmb/MiniCPM5-2B"
+    assert profile["model"]["repository"] == "openbmb/MiniCPM5-2B-MLX"
+    assert profile["model"]["revision"] == "8a9ad7539ac86281d0ac2b017ba04a5de53fe9a3"
+    assert profile["model"]["expected_weight_bytes"] == 1_416_035_216
     assert (
         profile["model"]["expected_weight_sha256"]
-        == "cff9d052cc3c68ea66b3d364788eb96fca2be82868d9ad92bd968e73b125194d"
+        == "c207798696a4a454e7ac211b25227625466c693335941cee8904fb922f295cc1"
     )
     assert profile["model"]["selection_role"] == "provisional_primary_train_a"
     assert profile["model"]["scientifically_selected"] is False
     assert "qwen" not in profile["model"]["repository"].casefold()
     assert profile["data"]["format"] == "chat_jsonl"
+    assert "granite" not in profile["model"]["repository"].casefold()
     assert budget["total_gib"] <= budget["workspace_cap_gib"]
     assert DEFAULT_PROFILE.is_file()
-    assert DEFAULT_PROFILE.name == "granite-4.1-3b-mlx-qlora.json"
+    assert DEFAULT_PROFILE.name == "minicpm5-2b-mlx-qlora.json"
 
     legacy = json.loads(path.read_text(encoding="utf-8"))
     legacy["data"]["contract_version"] = "2.0.0"
@@ -197,14 +198,15 @@ def test_profile_has_consistent_storage_budget(tmp_path: Path) -> None:
         load_profile(legacy_path)
 
 
-def test_default_profile_is_granite_not_qwen() -> None:
+def test_default_profile_is_minicpm_not_qwen() -> None:
     from ntruth.model_backends.base import ModelProvider
     from ntruth.model_backends.registry import DEFAULT_MODEL_ID, resolve_provider
 
-    assert resolve_provider() is ModelProvider.GRANITE
-    assert DEFAULT_MODEL_ID == "ibm-granite/granite-4.1-3b"
+    assert resolve_provider() is ModelProvider.MINICPM
+    assert DEFAULT_MODEL_ID == "openbmb/MiniCPM5-2B"
     assert "qwen" not in DEFAULT_PROFILE.name.casefold()
 
+    assert "granite" not in DEFAULT_PROFILE.name.casefold()
 
 def test_runtime_environment_records_lock_and_source_without_secrets() -> None:
     environment = runtime_environment(Path(".").resolve())

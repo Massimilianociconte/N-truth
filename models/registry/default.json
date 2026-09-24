@@ -1,7 +1,14 @@
 {
-  "default_model_id": "ibm-granite/granite-4.1-3b",
-  "default_provider": "granite",
+  "default_model_id": "openbmb/MiniCPM5-2B",
+  "default_provider": "minicpm",
   "legacy_disabled": {
+    "granite-4.1-3b": {
+      "current_profile": "models/configs/legacy/granite-4.1-3b-mlx-qlora.json",
+      "former_profile": "models/configs/granite-4.1-3b-mlx-qlora.json",
+      "opt_in": "allow_legacy=True or NTRUTH_ALLOW_LEGACY_GRANITE=1",
+      "reason": "Replaced by MiniCPM5-2B as provisional primary (ADR-0019)",
+      "status": "disabled_default"
+    },
     "qwen3-4b-instruct-2507": {
       "former_profile": "models/configs/legacy/qwen3-4b-instruct-2507-mlx-qlora.json",
       "reason": "Replaced by IBM Granite 4.1 3B Instruct as provisional primary",
@@ -24,6 +31,7 @@
       "context_window_tokens": 131072,
       "dtype": "bf16",
       "gguf_repository": "ibm-granite/granite-4.1-3b-GGUF",
+      "legacy_opt_in_env": "NTRUTH_ALLOW_LEGACY_GRANITE",
       "license": "Apache-2.0",
       "local_path": "models/local/granite-4.1-3b-4bit",
       "migration_status": "ARCHITECTURE_MIGRATED",
@@ -37,12 +45,14 @@
       "model_card_url": "https://huggingface.co/ibm-granite/granite-4.1-3b",
       "model_id": "ibm-granite/granite-4.1-3b",
       "notes": [
-        "IBM Granite 4.1 3B Instruct is the provisional primary Train A model.",
+        "IBM Granite 4.1 3B Instruct demoted to legacy comparison arm (ADR-0019).",
+        "Historical PARTIALLY_VERIFIED fingerprint below remains artifact-bound and valid",
+        "for those exact weights; it does not transfer to MiniCPM or to any other artifact.",
         "ARCHITECTURE_MIGRATED does not imply runtime or scientific qualification.",
         "Qualification is bound to exact artifact fingerprints, not to the model name alone."
       ],
       "parameter_count": 3402836480,
-      "profile_path": "models/configs/granite-4.1-3b-mlx-qlora.json",
+      "profile_path": "models/configs/legacy/granite-4.1-3b-mlx-qlora.json",
       "provider": "granite",
       "qualified_artifact": {
         "adapter_sha256": null,
@@ -73,7 +83,7 @@
         "mlx_default": "4bit_community_conversion"
       },
       "revision": "c0650403e44e78ec0262dab1c90914c65b196c4e",
-      "role": "provisional_primary_train_a",
+      "role": "legacy_opt_in_only",
       "runtime_qualification_status": "PARTIALLY_VERIFIED",
       "scientific_validation_status": "NOT_STARTED",
       "scientifically_selected": false,
@@ -88,6 +98,96 @@
         "Base variant reserved for experimental ablation only; not default."
       ],
       "provider": "granite",
+      "role": "ablation_base_only",
+      "runtime_qualification_status": "UNVERIFIED",
+      "scientific_validation_status": "NOT_STARTED",
+      "scientifically_selected": false,
+      "verification_status": "UNVERIFIED"
+    },
+    "openbmb/MiniCPM5-1B": {
+      "license": "Apache-2.0",
+      "local_path": "models/local/minicpm5-1b-4bit",
+      "migration_status": "ARCHITECTURE_MIGRATED",
+      "mlx_repository": "openbmb/MiniCPM5-1B-MLX",
+      "mlx_revision": "9879b18bf2928355fcdf4287635388a3665a40cb",
+      "mlx_weight_bytes": 608026621,
+      "mlx_weight_sha256": "a23e0c5c79944a0b2cc92cb9ab79376b4dce41e2312383727e21ee43fe19cb4f",
+      "model_card_url": "https://huggingface.co/openbmb/MiniCPM5-1B",
+      "model_id": "openbmb/MiniCPM5-1B",
+      "notes": [
+        "1B ablation arm for the MiniCPM5-2B primary (ADR-0019); never default."
+      ],
+      "parameter_count": 1080632832,
+      "profile_path": "models/configs/minicpm5-1b-mlx-qlora.json",
+      "provider": "minicpm",
+      "role": "reproducible_bootstrap_candidate",
+      "runtime_qualification_status": "UNVERIFIED",
+      "scientific_validation_status": "NOT_STARTED",
+      "scientifically_selected": false,
+      "verification_status": "UNVERIFIED"
+    },
+    "openbmb/MiniCPM5-2B": {
+      "acquired_at": null,
+      "architecture": "LlamaForCausalLM_standard_no_custom_kernels",
+      "backend": {
+        "linux": "llama.cpp|transformers|vllm-server",
+        "macos": "mlx-lm-official-or-llama-cpp-metal",
+        "windows": "llama.cpp-gguf-cpu-cuda-vulkan"
+      },
+      "chat_template": "minicpm5_chatml_no_think",
+      "chat_template_hash": null,
+      "checksum": "c207798696a4a454e7ac211b25227625466c693335941cee8904fb922f295cc1",
+      "configured_maximum_context_tokens": 131072,
+      "context_window_status": "configured_from_model_card_not_host_validated",
+      "context_window_tokens": 131072,
+      "dtype": "bf16",
+      "gguf_repository": "openbmb/MiniCPM5-2B-GGUF",
+      "license": "Apache-2.0",
+      "local_path": "models/local/minicpm5-2b-4bit",
+      "migration_status": "ARCHITECTURE_MIGRATED",
+      "mlx_kind": "official_vendor_mlx_openbmb",
+      "mlx_official_openbmb": true,
+      "mlx_repository": "openbmb/MiniCPM5-2B-MLX",
+      "mlx_revision": "8a9ad7539ac86281d0ac2b017ba04a5de53fe9a3",
+      "mlx_weight_bytes": 1416035216,
+      "mlx_weight_file": "model.safetensors",
+      "mlx_weight_sha256": "c207798696a4a454e7ac211b25227625466c693335941cee8904fb922f295cc1",
+      "model_card_url": "https://huggingface.co/openbmb/MiniCPM5-2B",
+      "model_id": "openbmb/MiniCPM5-2B",
+      "notes": [
+        "MiniCPM5-2B is the provisional primary Train A model (ADR-0019).",
+        "ARCHITECTURE_MIGRATED does not imply runtime or scientific qualification.",
+        "Qualification is bound to exact artifact fingerprints, not to the model name alone.",
+        "Weights not yet acquired: runtime UNVERIFIED until qualify_minicpm_runtime.py passes."
+      ],
+      "parameter_count": 2516756480,
+      "profile_path": "models/configs/minicpm5-2b-mlx-qlora.json",
+      "provider": "minicpm",
+      "qualified_artifact": null,
+      "quantization": {
+        "canonical": "bf16_safetensors",
+        "gguf_recommended": [
+          "Q4_K_M",
+          "Q5_K_M"
+        ],
+        "mlx_default": "4bit_official_vendor"
+      },
+      "revision": "12a3808a956f869c767195e9266b59c4d21d92e2",
+      "role": "provisional_primary_train_a",
+      "runtime_qualification_status": "UNVERIFIED",
+      "scientific_validation_status": "NOT_STARTED",
+      "scientifically_selected": false,
+      "tokenizer_id": "openbmb/MiniCPM5-2B",
+      "verification_status": "UNVERIFIED"
+    },
+    "openbmb/MiniCPM5-2B-Base": {
+      "license": "Apache-2.0",
+      "migration_status": "ARCHITECTURE_MIGRATED",
+      "model_id": "openbmb/MiniCPM5-2B-Base",
+      "notes": [
+        "Base variant reserved for experimental ablation only; not default."
+      ],
+      "provider": "minicpm",
       "role": "ablation_base_only",
       "runtime_qualification_status": "UNVERIFIED",
       "scientific_validation_status": "NOT_STARTED",
@@ -125,11 +225,12 @@
     ],
     "migration_status": "ARCHITECTURE_MIGRATED",
     "next_activities_order": [
-      "download_and_verify_canonical_weights",
-      "real_inference_transformers_backend",
+      "download_and_verify_minicpm_weights",
+      "real_inference_minicpm_backend_no_think_template",
       "verify_chat_template_stop_tokens_structured_output",
-      "benchmark_macbook_pro_m5_24gb",
+      "benchmark_macbook_pro_m5_24gb_minicpm",
       "compare_mlx_and_gguf_on_same_small_set",
+      "minicpm_vs_granite_legacy_head_to_head",
       "activate_ci_windows_and_linux",
       "few_shot_baseline_on_ntruth_cases",
       "prepare_lora_qlora_and_b5_b6_comparison",
@@ -155,29 +256,10 @@
       "no_critical_load_unload_resource_manager_errors",
       "artifact_fingerprint_registered"
     ],
-    "qualified_artifact": {
-      "adapter_sha256": null,
-      "backend": "mlx-lm",
-      "backend_version": "0.31.3",
-      "canonical_fingerprint_sha256": "6ad3457ada70cc957e339af73847dfe0b72168c728185dbd7b8e71c4845ac3d2",
-      "canonical_model_revision": "c0650403e44e78ec0262dab1c90914c65b196c4e",
-      "chat_template_hash": "fed2756d2d24e127b951dcf139d0b03ab7db8ef23a456128ebc9c2db4901d476",
-      "domain_profile": "runtime_smoke_only",
-      "local_path": "models/local/granite-4.1-3b-4bit",
-      "mlx_kind": "community_conversion_not_official_ibm",
-      "mlx_repository": "mlx-community/granite-4.1-3b-4bit",
-      "model_id": "ibm-granite/granite-4.1-3b",
-      "model_revision": "b1b476b5a17c46b7d6cd663b4a8ed44b66720aef",
-      "quantization": "4bit_mlx_community",
-      "schema_version": "candidate_graph_set_1.0.0",
-      "task_profile": "parser_candidate_graph_v6",
-      "tokenizer_revision": "b1b476b5a17c46b7d6cd663b4a8ed44b66720aef",
-      "weight_bytes": 2127162429,
-      "weights_sha256": "cff9d052cc3c68ea66b3d364788eb96fca2be82868d9ad92bd968e73b125194d"
-    },
-    "runtime_qualification_status": "PARTIALLY_VERIFIED",
+    "qualified_artifact": null,
+    "runtime_qualification_status": "UNVERIFIED",
     "scientific_validation_status": "NOT_STARTED",
-    "summary": "Il codice è migrato a Granite. Il runtime Granite è PARTIALLY_VERIFIED solo per l'artefatto MLX community 4-bit con fingerprint registrato; il modello non è ancora scientificamente validato come modello definitivo di N-Truth (scientific_validation_status=NOT_STARTED).",
+    "summary": "Il codice e migrato a MiniCPM5-2B (ADR-0019). Il runtime MiniCPM e UNVERIFIED (pesi mai acquisiti/verificati su host); il modello non e ancora scientificamente validato come modello definitivo di N-Truth (scientific_validation_status=NOT_STARTED). Il fingerprint Granite resta valido solo per l'artefatto Granite storico.",
     "transition_log": [
       {
         "actor": "ntruth-maintainers",
@@ -234,9 +316,23 @@
         "timestamp": "2026-08-02T00:18:57.302394Z",
         "to_status": "PARTIALLY_VERIFIED",
         "transition_hash": "6f7c60af0d8e62dfb1b1b5968a7572831deefbca718166e9cc6928115adaefe1"
+      },
+      {
+        "actor": "ntruth-maintainers",
+        "dimension": "runtime_qualification_status",
+        "evidence_relative_path": "sha256/aa/aa06722cdb32b10ba2e16d0b797eba85b7ba4ecaa3c455b21baa70a5415afc75",
+        "evidence_sha256": "aa06722cdb32b10ba2e16d0b797eba85b7ba4ecaa3c455b21baa70a5415afc75",
+        "from_status": "PARTIALLY_VERIFIED",
+        "previous_transition_hash": "6f7c60af0d8e62dfb1b1b5968a7572831deefbca718166e9cc6928115adaefe1",
+        "rationale": "ADR-0019: default Train A moved from Granite 4.1 3B to MiniCPM5-2B. The Granite PARTIALLY_VERIFIED fingerprint stays valid only for the historical Granite artifact; the new MiniCPM artifact was never acquired or host-verified, hence UNVERIFIED. Scientific validation NOT_STARTED.",
+        "registry_id": "default",
+        "sequence": 5,
+        "timestamp": "2026-09-17T00:31:25.633675Z",
+        "to_status": "UNVERIFIED",
+        "transition_hash": "1ece455f578e3c7d5e5240b1063b8a398a9fcc004dcfad68ead68036d2cf450e"
       }
     ]
   },
   "schema_version": "1.3.0",
-  "updated_at": "2026-08-02"
+  "updated_at": "2026-09-17"
 }

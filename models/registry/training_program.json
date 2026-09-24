@@ -56,7 +56,7 @@
       "structured_decoding"
     ],
     "arms_to_compare": [
-      "base_granite_plus_constrained_decoding",
+      "base_minicpm_plus_constrained_decoding",
       "lora_synthetic_only",
       "lora_real_only_small",
       "lora_synthetic_plus_real_anchor"
@@ -149,7 +149,7 @@
       "TASK_EXPLICIT_RELATIONS"
     ],
     "adapter_name": "p0-alpha",
-    "base_model": "ibm-granite/granite-4.1-3b",
+    "base_model": "openbmb/MiniCPM5-2B",
     "runtime_fingerprint_binding": "models/registry/default.json#qualification.qualified_artifact",
     "experiment_class": "synthetic_pre_adaptation"
   },

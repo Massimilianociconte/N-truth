@@ -727,6 +727,7 @@ def _tokenize_verified_report(
                 messages,
                 tokenize=False,
                 add_generation_prompt=False,
+                enable_thinking=False,
             )
             tokens = tokenizer.encode(str(rendered), add_special_tokens=False)
             lengths.append(len(tokens))
@@ -753,15 +754,22 @@ def _tokenize_verified_report(
 
 
 def _chat_prompt(tokenizer: Any, messages: list[dict[str, Any]]) -> str:
-    """Chat template provider-agnostic (Granite; no Qwen enable_thinking)."""
+    """Chat template provider-agnostic con thinking disabilitato (MiniCPM JSON diretto)."""
 
-    return str(
-        tokenizer.apply_chat_template(
-            messages,
-            tokenize=False,
-            add_generation_prompt=True,
+    try:
+        return str(
+            tokenizer.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=True,
+                enable_thinking=False,
+            )
         )
-    )
+    except TypeError as exc:
+        raise MLXPipelineError(
+            "tokenizer non supporta enable_thinking=false: thinking mode non "
+            f"ammesso per output JSON candidate-only ({exc})"
+        ) from exc
 
 
 def _gold_and_prompt(

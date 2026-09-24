@@ -18,6 +18,7 @@ from typing import Any
 
 
 class ModelProvider(StrEnum):
+    MINICPM = "minicpm"
     GRANITE = "granite"
     LEGACY_QWEN = "legacy_qwen"
     GENERIC = "generic"

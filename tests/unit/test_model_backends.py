@@ -1,4 +1,4 @@
-"""Backend modello: Granite default, legacy opt-in, confini candidate-only."""
+"""Backend modello: MiniCPM default, legacy opt-in, confini candidate-only."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ import pytest
 
 from ntruth.model_backends import (
     GRANITE_CANONICAL_MODEL_ID,
+    MINICPM_CANONICAL_MODEL_ID,
     MODEL_MUST_NOT_EMIT,
     ModelProvider,
     create_model_backend,
@@ -16,23 +17,26 @@ from ntruth.model_backends import (
 )
 from ntruth.model_backends.granite import GraniteBackend
 from ntruth.model_backends.legacy.qwen_backend import LegacyQwenBackend
+from ntruth.model_backends.minicpm import MiniCPMBackend
 from ntruth.model_backends.registry import (
     ModelRegistryError,
     assert_not_legacy_default,
     default_profile_path,
+    legacy_granite_opt_in_enabled,
     legacy_opt_in_enabled,
     load_registry,
 )
 from ntruth.training.mlx_runtime import MLXPipelineError, load_profile
 
 
-def test_default_provider_is_granite() -> None:
-    assert resolve_provider() is ModelProvider.GRANITE
+def test_default_provider_is_minicpm() -> None:
+    assert resolve_provider() is ModelProvider.MINICPM
+    assert MINICPM_CANONICAL_MODEL_ID == "openbmb/MiniCPM5-2B"
     assert GRANITE_CANONICAL_MODEL_ID == "ibm-granite/granite-4.1-3b"
-    assert "granite" in default_profile_path().name
+    assert "minicpm" in default_profile_path().name
 
 
-def test_registry_lists_granite_primary_and_community_mlx() -> None:
+def test_registry_lists_minicpm_primary_and_official_mlx() -> None:
     from ntruth.model_backends.registry import (
         MigrationStatus,
         RuntimeQualificationStatus,
@@ -47,19 +51,22 @@ def test_registry_lists_granite_primary_and_community_mlx() -> None:
 
     registry = load_registry()
     assert registry["schema_version"] == "1.3.0"
-    assert registry["default_model_id"] == "ibm-granite/granite-4.1-3b"
-    entry = registry["models"]["ibm-granite/granite-4.1-3b"]
+    assert registry["default_model_id"] == "openbmb/MiniCPM5-2B"
+    entry = registry["models"]["openbmb/MiniCPM5-2B"]
     assert entry["license"] == "Apache-2.0"
     assert entry["scientifically_selected"] is False
-    assert entry.get("mlx_official_ibm") is False
+    assert entry.get("mlx_official_openbmb") is True
     assert entry.get("configured_maximum_context_tokens") == 131_072
+    # Granite storico conservato come legacy artifact-bound.
+    assert "ibm-granite/granite-4.1-3b" in registry["models"]
+    assert registry["legacy_disabled"]["granite-4.1-3b"]["status"] == "disabled_default"
 
     status = qualification_status(registry)
     assert status["migration_status"] == MigrationStatus.ARCHITECTURE_MIGRATED
     # Lo stato atteso e quello REGISTRATO in models/registry/default.json,
-    # unica fonte autorevole: PARTIALLY_VERIFIED per il fingerprint MLX
-    # community 4-bit (mirror di README e docs/status-snapshot.md).
-    assert status["runtime_qualification_status"] == RuntimeQualificationStatus.PARTIALLY_VERIFIED
+    # unica fonte autorevole: UNVERIFIED per il nuovo artefatto MiniCPM
+    # (pesi mai acquisiti su host).
+    assert status["runtime_qualification_status"] == RuntimeQualificationStatus.UNVERIFIED
     assert status["scientific_validation_status"] == ScientificValidationStatus.NOT_STARTED
     assert "non è ancora" in status["summary"] or "non e ancora" in status["summary"].replace(
         "è", "e"
@@ -67,13 +74,13 @@ def test_registry_lists_granite_primary_and_community_mlx() -> None:
     assert is_scientifically_releasable(registry) is False
     # Fail-closed sui claim, non sulla ricerca esplorativa
     assert can_run_exploratory_benchmarks(registry) is True
-    # PARTIALLY_VERIFIED abilita i pilot interni, NON la validazione esterna.
-    assert can_run_internal_pilot(registry) is True
+    # UNVERIFIED: niente pilot interni, niente validazione esterna.
+    assert can_run_internal_pilot(registry) is False
     assert can_run_external_validation(registry) is False
     gates = claim_gates(registry)
     assert gates["exploratory_benchmark"]["allowed"] is True
-    assert gates["internal_pilot"]["allowed"] is True
-    assert gates["internal_pilot"]["reason"] == "OK_INTERNAL_PILOT"
+    assert gates["internal_pilot"]["allowed"] is False
+    assert gates["internal_pilot"]["reason"] == "RUNTIME_UNVERIFIED"
     assert gates["external_validation"]["allowed"] is False
     assert gates["external_validation"]["required_next_state"] == "VERIFIED"
     assert gates["scientifically_releasable"]["allowed"] is False
@@ -333,16 +340,16 @@ def test_model_must_not_emit_scientific_verdicts() -> None:
     assert "determinability_verdict" in MODEL_MUST_NOT_EMIT
 
 
-def test_factory_default_is_granite_backend() -> None:
+def test_factory_default_is_minicpm_backend() -> None:
     backend = create_model_backend(
-        model_path=Path("/tmp/granite-placeholder"),
+        model_path=Path("/tmp/minicpm-placeholder"),
         allow_legacy=False,
     )
-    assert isinstance(backend, GraniteBackend)
+    assert isinstance(backend, MiniCPMBackend)
     meta = backend.model_metadata()
-    assert meta.provider is ModelProvider.GRANITE
+    assert meta.provider is ModelProvider.MINICPM
     assert meta.scientifically_selected is False
-    assert any("community" in note.casefold() for note in meta.notes)
+    assert any("official" in note.casefold() for note in meta.notes)
 
 
 def test_legacy_provider_without_opt_in_raises(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -378,14 +385,55 @@ def test_legacy_backend_without_enabled_flag_raises() -> None:
         LegacyQwenBackend(model_path=Path("/tmp/x"), enabled=False)
 
 
-def test_assert_not_legacy_default_ok_for_granite() -> None:
+def test_granite_legacy_without_opt_in_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NTRUTH_MODEL_PROVIDER", "granite")
+    monkeypatch.delenv("NTRUTH_ALLOW_LEGACY_GRANITE", raising=False)
+    with pytest.raises(ModelRegistryError, match=r"legacy Granite|opt-in|ALLOW_LEGACY"):
+        create_model_backend(model_path=Path("/tmp/granite"), allow_legacy=False)
+
+
+def test_granite_legacy_with_allow_legacy_flag(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NTRUTH_MODEL_PROVIDER", "granite")
+    monkeypatch.delenv("NTRUTH_ALLOW_LEGACY_GRANITE", raising=False)
+    backend = create_model_backend(
+        model_path=Path("/tmp/granite-opt-in"),
+        allow_legacy=True,
+    )
+    assert isinstance(backend, GraniteBackend)
+    assert backend.model_metadata().provider is ModelProvider.GRANITE
+
+
+def test_granite_legacy_with_env_opt_in(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NTRUTH_MODEL_PROVIDER", "granite")
+    monkeypatch.setenv("NTRUTH_ALLOW_LEGACY_GRANITE", "1")
+    backend = create_model_backend(
+        model_path=Path("/tmp/granite-env"),
+        allow_legacy=False,
+    )
+    assert isinstance(backend, GraniteBackend)
+
+
+def test_assert_not_legacy_default_ok_for_minicpm() -> None:
     assert_not_legacy_default()
     assert legacy_opt_in_enabled(allow_legacy=False) is False
     assert legacy_opt_in_enabled(allow_legacy=True) is True
+    assert legacy_granite_opt_in_enabled(allow_legacy=False) is False
+    assert legacy_granite_opt_in_enabled(allow_legacy=True) is True
 
 
-def test_granite_profile_rejects_qwen_repository(tmp_path: Path) -> None:
-    path = Path("models/configs/granite-4.1-3b-mlx-qlora.json")
+def test_assert_not_legacy_default_rejects_granite_without_opt_in(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ntruth.model_backends.registry import assert_not_legacy_default as _assert
+
+    monkeypatch.setenv("NTRUTH_MODEL_PROVIDER", "granite")
+    monkeypatch.delenv("NTRUTH_ALLOW_LEGACY_GRANITE", raising=False)
+    with pytest.raises(ModelRegistryError, match=r"Granite|opt-in"):
+        _assert()
+
+
+def test_granite_legacy_profile_rejects_qwen_repository(tmp_path: Path) -> None:
+    path = Path("models/configs/legacy/granite-4.1-3b-mlx-qlora.json")
     profile = json.loads(path.read_text(encoding="utf-8"))
     profile["model"]["repository"] = "mlx-community/Qwen3-4B-Instruct-2507-4bit"
     bad = tmp_path / "bad.json"
@@ -394,8 +442,37 @@ def test_granite_profile_rejects_qwen_repository(tmp_path: Path) -> None:
         load_profile(bad)
 
 
+def test_minicpm_profile_rejects_foreign_repository(tmp_path: Path) -> None:
+    path = Path("models/configs/minicpm5-2b-mlx-qlora.json")
+    profile = json.loads(path.read_text(encoding="utf-8"))
+    profile["model"]["repository"] = "mlx-community/granite-4.1-3b-4bit"
+    bad = tmp_path / "bad.json"
+    bad.write_text(json.dumps(profile), encoding="utf-8")
+    with pytest.raises(MLXPipelineError, match="Granite"):
+        load_profile(bad)
+
+
+def test_minicpm_profile_documents_configured_context_and_official_mlx() -> None:
+    profile = load_profile(Path("models/configs/minicpm5-2b-mlx-qlora.json"))
+    model = profile["model"]
+    assert model["provider"] == "minicpm"
+    assert model["canonical_repository"] == "openbmb/MiniCPM5-2B"
+    assert model["repository"] == "openbmb/MiniCPM5-2B-MLX"
+    assert model["revision"] == "8a9ad7539ac86281d0ac2b017ba04a5de53fe9a3"
+    assert model["expected_weight_bytes"] == 1_416_035_216
+    assert model["configured_maximum_context_tokens"] == 131_072
+    assert model["mlx_distribution"]["official_openbmb"] is True
+    assert model["mlx_distribution"]["kind"] == "official_vendor_mlx"
+    assert model["expected_weight_sha256"] == (
+        "c207798696a4a454e7ac211b25227625466c693335941cee8904fb922f295cc1"
+    )
+    assert model["chat_template"] == "minicpm5_chatml_no_think"
+    assert "not_inherited_from_prior_qwen" not in model["lora_target_modules_source"]
+    assert "llama_arch_standard_keys" in model["lora_target_modules_source"]
+
+
 def test_granite_profile_documents_configured_context_and_community_mlx() -> None:
-    profile = load_profile(Path("models/configs/granite-4.1-3b-mlx-qlora.json"))
+    profile = load_profile(Path("models/configs/legacy/granite-4.1-3b-mlx-qlora.json"))
     model = profile["model"]
     assert model["configured_maximum_context_tokens"] == 131_072
     assert model["mlx_distribution"]["official_ibm"] is False

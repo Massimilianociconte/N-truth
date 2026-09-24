@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-CONFIG = REPO / "models" / "configs" / "granite-4.1-3b-p0-lora.json"
+CONFIG = REPO / "models" / "configs" / "legacy" / "granite-4.1-3b-p0-lora.json"
 DATA = REPO / "data" / "training" / "p0-alpha"
 PROGRAM = REPO / "models" / "registry" / "training_program.json"
 
@@ -109,7 +109,8 @@ def main() -> int:
         "dev_benchmark": cfg["data"]["dev_benchmark"],
         "dev_training_eligible": False,
         "next_command_hint": (
-            "Dopo preflight: avviare QLoRA con profilo granite-4.1-3b-p0-lora.json "
+            "Dopo preflight: avviare QLoRA con profilo legacy/granite-4.1-3b-p0-lora.json "
+            "(braccio legacy Granite, opt-in NTRUTH_ALLOW_LEGACY_GRANITE=1) "
             "e dati data/training/p0-alpha/; valutare su B4_CONSTRAINED_DEV con "
             "semantic_stage_scorer 1.0.0. Non aggiornare scientific_validation_status."
         ),

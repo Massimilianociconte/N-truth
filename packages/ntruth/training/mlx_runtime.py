@@ -627,13 +627,23 @@ def load_profile(path: Path) -> dict[str, Any]:
         raise MLXPipelineError(
             "il profilo non puo dichiarare una selezione scientifica prima del benchmark gold"
         )
-    # Blocca profili Qwen sul percorso predefinito se provider=granite.
+    # Blocca repository incoerenti col provider dichiarato (fail-closed, no mismatch).
     repository = str(profile["model"].get("repository") or "").casefold()
-    provider = str(profile["model"].get("provider") or "granite").casefold()
+    provider = str(profile["model"].get("provider") or "minicpm").casefold()
     if provider == "granite" and "qwen" in repository:
         raise MLXPipelineError(
             "profilo Granite non puo puntare a un repository Qwen; "
             "usare ibm-granite/granite-4.1-3b o mlx-community/granite-4.1-3b-4bit"
+        )
+    if provider == "granite" and "minicpm" in repository:
+        raise MLXPipelineError(
+            "profilo Granite non puo puntare a un repository MiniCPM; "
+            "usare ibm-granite/granite-4.1-3b o mlx-community/granite-4.1-3b-4bit"
+        )
+    if provider == "minicpm" and ("qwen" in repository or "granite" in repository):
+        raise MLXPipelineError(
+            "profilo MiniCPM non puo puntare a un repository Qwen o Granite; "
+            "usare openbmb/MiniCPM5-2B o openbmb/MiniCPM5-2B-MLX"
         )
     expected_data_contract = {
         "format": "chat_jsonl",

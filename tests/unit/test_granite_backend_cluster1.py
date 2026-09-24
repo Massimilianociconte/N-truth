@@ -1,4 +1,4 @@
-"""Cluster 1: Granite backend available, not default, no registry/constrained."""
+"""Cluster 1: MiniCPM default, Granite legacy opt-in, confini candidate-only."""
 
 from __future__ import annotations
 
@@ -11,11 +11,13 @@ import pytest
 
 from ntruth.model_backends import (
     GRANITE_CANONICAL_MODEL_ID,
+    MINICPM_CANONICAL_MODEL_ID,
     MODEL_MUST_NOT_EMIT,
     ComponentLoadError,
     ConstrainedDecodingUnavailable,
     GenerationRequest,
     GraniteBackend,
+    MiniCPMBackend,
     ModelProvider,
     create_model_backend,
     resolve_provider,
@@ -23,32 +25,38 @@ from ntruth.model_backends import (
 from ntruth.model_backends.profile import (
     ProfileValidationError,
     default_granite_profile_path,
+    default_minicpm_profile_path,
     load_backend_profile,
     validate_backend_profile,
 )
 
 
-def test_default_provider_is_granite_and_legacy_is_opt_in() -> None:
-    # Contratto post-migrazione (README + ADR-0010 + registry): Granite e il
-    # provider default; legacy_qwen richiede opt-in esplicito.
-    assert resolve_provider() is ModelProvider.GRANITE
+def test_default_provider_is_minicpm_and_legacy_is_opt_in() -> None:
+    # Contratto post-migrazione (ADR-0019 + registry): MiniCPM e il
+    # provider default; legacy_qwen e legacy granite richiedono opt-in.
+    assert resolve_provider() is ModelProvider.MINICPM
+    assert MINICPM_CANONICAL_MODEL_ID == "openbmb/MiniCPM5-2B"
     import pytest as _pytest
 
     from ntruth.model_backends.registry import ModelRegistryError as _MRE
 
     with _pytest.raises(_MRE):
         create_model_backend(model_path=Path("/tmp/qwen"), provider="legacy_qwen")
+    with _pytest.raises(_MRE):
+        create_model_backend(model_path=Path("/tmp/granite"), provider="granite")
 
 
 def test_granite_provider_explicit_only() -> None:
     assert resolve_provider(provider="granite") is ModelProvider.GRANITE
 
 
-def test_import_model_backend_and_granite() -> None:
+def test_import_model_backend_and_backends() -> None:
     from ntruth.model_backends.base import ModelBackend
     from ntruth.model_backends.granite import GraniteBackend as GB
+    from ntruth.model_backends.minicpm import MiniCPMBackend as MB
 
     assert issubclass(GB, ModelBackend)
+    assert issubclass(MB, ModelBackend)
 
 
 def test_forbidden_outputs_policy() -> None:
@@ -57,14 +65,22 @@ def test_forbidden_outputs_policy() -> None:
 
 
 def test_technical_profile_validates_and_forbids_operational_status() -> None:
-    path = default_granite_profile_path()
+    path = default_minicpm_profile_path()
     assert path.is_file(), f"missing technical profile {path}"
     data = load_backend_profile(path)
-    assert data["model"]["canonical_repository"] == GRANITE_CANONICAL_MODEL_ID
+    assert data["model"]["canonical_repository"] == MINICPM_CANONICAL_MODEL_ID
     bad = json.loads(path.read_text(encoding="utf-8"))
     bad["model"]["runtime_qualification_status"] = "UNVERIFIED"
     with pytest.raises(ProfileValidationError, match="operational status"):
         validate_backend_profile(bad)
+
+
+def test_granite_legacy_profile_still_validates_from_legacy_dir() -> None:
+    path = default_granite_profile_path()
+    assert "legacy" in path.parts, f"granite profile must live in legacy/: {path}"
+    assert path.is_file(), f"missing legacy technical profile {path}"
+    data = load_backend_profile(path)
+    assert data["model"]["canonical_repository"] == GRANITE_CANONICAL_MODEL_ID
 
 
 def test_granite_missing_weights_explicit_error(tmp_path: Path) -> None:
@@ -85,11 +101,11 @@ def test_granite_constrained_request_fails_closed() -> None:
     assert backend.supports_constrained_decoding() is False
 
 
-def test_factory_default_is_granite_and_legacy_requires_opt_in(tmp_path: Path) -> None:
+def test_factory_default_is_minicpm_and_legacy_requires_opt_in(tmp_path: Path) -> None:
     from ntruth.model_backends.registry import ModelRegistryError
 
-    backend = create_model_backend(model_path=tmp_path / "granite")
-    assert isinstance(backend, GraniteBackend)
+    backend = create_model_backend(model_path=tmp_path / "minicpm")
+    assert isinstance(backend, MiniCPMBackend)
 
     import pytest as _pytest
 
@@ -99,17 +115,43 @@ def test_factory_default_is_granite_and_legacy_requires_opt_in(tmp_path: Path) -
             provider="legacy_qwen",
             allow_legacy=False,
         )
+    with _pytest.raises(ModelRegistryError):
+        create_model_backend(
+            model_path=tmp_path / "granite",
+            provider="granite",
+            allow_legacy=False,
+        )
 
 
-def test_factory_granite_explicit(tmp_path: Path) -> None:
+def test_factory_granite_explicit_requires_opt_in(tmp_path: Path) -> None:
+    from ntruth.model_backends.registry import ModelRegistryError
+
+    with pytest.raises(ModelRegistryError, match=r"Granite|opt-in|LEGACY"):
+        create_model_backend(
+            model_path=tmp_path / "granite",
+            provider="granite",
+        )
     backend = create_model_backend(
         model_path=tmp_path / "granite",
         provider="granite",
+        allow_legacy=True,
     )
     assert isinstance(backend, GraniteBackend)
     meta = backend.model_metadata()
     assert meta.scientifically_selected is False
     assert meta.provider is ModelProvider.GRANITE
+
+
+def test_factory_minicpm_explicit(tmp_path: Path) -> None:
+    backend = create_model_backend(
+        model_path=tmp_path / "minicpm",
+        provider="minicpm",
+    )
+    assert isinstance(backend, MiniCPMBackend)
+    meta = backend.model_metadata()
+    assert meta.scientifically_selected is False
+    assert meta.provider is ModelProvider.MINICPM
+    assert meta.parameter_count == 2_516_756_480
 
 
 def test_granite_load_unload_reload_with_mock(tmp_path: Path) -> None:

@@ -1,0 +1,149 @@
+{
+  "schema_version": "1.0.0",
+  "status": "implementation_ready_training_blocked_until_gold",
+  "runtime": {
+    "name": "mlx-lm",
+    "version": "0.31.3",
+    "platform": "macOS Apple Silicon",
+    "network_during_training": false
+  },
+  "model": {
+    "provider": "minicpm",
+    "selection_role": "reproducible_bootstrap_candidate",
+    "scientifically_selected": false,
+    "role_note": "1B ablation arm for the MiniCPM5-2B primary (ADR-0019): size/cost lower bound, never default.",
+    "canonical_repository": "openbmb/MiniCPM5-1B",
+    "canonical_revision": "87179e5c1f455ef22e6223592d2d61351b525bfc",
+    "repository": "openbmb/MiniCPM5-1B-MLX",
+    "revision": "9879b18bf2928355fcdf4287635388a3665a40cb",
+    "local_path": "models/local/minicpm5-1b-4bit",
+    "expected_download_bytes": 609000000,
+    "expected_weight_file": "model.safetensors",
+    "expected_weight_bytes": 608026621,
+    "expected_weight_sha256": "a23e0c5c79944a0b2cc92cb9ab79376b4dce41e2312383727e21ee43fe19cb4f",
+    "quantization_bits": 4,
+    "quantization_group_size": null,
+    "base_repository": "openbmb/MiniCPM5-1B",
+    "base_revision_observed": "87179e5c1f455ef22e6223592d2d61351b525bfc",
+    "base_parameter_count": 1080632832,
+    "configured_maximum_context_tokens": 131072,
+    "context_window_tokens": 131072,
+    "context_window_notes": "Configured maximum from model config.json (131072). Not a validated host capability; hierarchical chunking remains required.",
+    "mlx_distribution": {
+      "kind": "official_vendor_mlx",
+      "official_openbmb": true,
+      "converter": "openbmb-official",
+      "repository": "openbmb/MiniCPM5-1B-MLX",
+      "revision": "9879b18bf2928355fcdf4287635388a3665a40cb",
+      "weight_file": "model.safetensors",
+      "weight_bytes": 608026621,
+      "weight_sha256": "a23e0c5c79944a0b2cc92cb9ab79376b4dce41e2312383727e21ee43fe19cb4f"
+    },
+    "gguf_repository": "openbmb/MiniCPM5-1B-GGUF",
+    "base_ablation_repository": "openbmb/MiniCPM5-1B-Base",
+    "license": "Apache-2.0",
+    "license_url": "https://www.apache.org/licenses/LICENSE-2.0",
+    "model_card_url": "https://huggingface.co/openbmb/MiniCPM5-1B",
+    "architecture": "LlamaForCausalLM_standard_no_custom_kernels",
+    "chat_template": "minicpm5_chatml_no_think",
+    "chat_template_notes": "ChatML-style <|im_start|>/<|im_end|> with enable_thinking flag. N-Truth always renders with enable_thinking=false (empty <think></think> block, direct JSON). Thinking must stay disabled: reasoning traces would break JSON parsing and leak non-evidence text into candidate facts.",
+    "chat_template_hash": null,
+    "chat_template_hash_note": "Pinned at acquisition by scripts/models/acquire_minicpm.py provenance and qualify_minicpm_runtime.py fingerprint; null until first verified download.",
+    "lora_target_modules_source": "llama_arch_standard_keys_same_layer_names_as_granite_profile_qkv_o_gate_up_down",
+    "output_policy": {
+      "candidate_facts_only": true,
+      "forbidden_direct_outputs": [
+        "final_independent_n",
+        "definitive_pseudoreplication_verdict",
+        "experiment_validity_judgement",
+        "statistical_test_choice",
+        "paper_quality_score",
+        "determinability_verdict"
+      ]
+    }
+  },
+  "hardware": {
+    "minimum_unified_memory_gib": 16,
+    "required_free_disk_gib": 40,
+    "maximum_ntruth_workspace_gib": 40,
+    "device": "metal"
+  },
+  "data": {
+    "format": "chat_jsonl",
+    "task": "parser_candidate_graph_v6",
+    "parser_input_contract_version": "2.0.0",
+    "candidate_graph_contract_version": "1.0.0",
+    "gold_target_contract_version": "1.0.0",
+    "max_sequence_length": 1024,
+    "generation_max_tokens": 1024,
+    "split_group_fields": [
+      "publication_family",
+      "leakage_group",
+      "laboratory_group",
+      "source_bundle"
+    ],
+    "synthetic_train_only": true,
+    "curriculum_task_tags": [
+      "TASK_EVIDENCE",
+      "TASK_ENTITY_COUNT",
+      "TASK_PROCEDURAL_EVENTS",
+      "TASK_RELATIONS",
+      "TASK_ALLOCATION",
+      "TASK_CONTRADICTION",
+      "TASK_GRAPH_ASSEMBLY",
+      "TASK_ALTERNATIVES",
+      "TASK_MISSING_FACTS",
+      "TASK_QUESTION_TEMPLATE"
+    ]
+  },
+  "training": {
+    "fine_tune_type": "lora",
+    "quantized_base_means_qlora": true,
+    "num_layers": 8,
+    "batch_size": 1,
+    "gradient_accumulation_steps": 8,
+    "effective_batch_size": 8,
+    "learning_rate": 0.00001,
+    "optimizer": "adamw",
+    "mask_prompt": true,
+    "gradient_checkpointing": true,
+    "iterations_per_phase": 100,
+    "maximum_phases": 20,
+    "validation_batches": -1,
+    "test_batches": -1,
+    "early_stopping_patience": 3,
+    "early_stopping_min_delta": 0.001,
+    "maximum_observed_peak_memory_gib": 18,
+    "keep_checkpoints": 3,
+    "seeds": [13, 37, 101],
+    "lora_parameters": {
+      "keys": [
+        "self_attn.q_proj",
+        "self_attn.k_proj",
+        "self_attn.v_proj",
+        "self_attn.o_proj",
+        "mlp.gate_proj",
+        "mlp.up_proj",
+        "mlp.down_proj"
+      ],
+      "rank": 16,
+      "scale": 32.0,
+      "dropout": 0.05
+    },
+    "training_blocked_until": [
+      "stable_core_profile",
+      "parser_gold",
+      "anti_leakage_splits",
+      "audited_synthetic",
+      "baseline",
+      "evaluation_protocol",
+      "measured_runtime_resource_budget"
+    ]
+  },
+  "calibration": {
+    "method": "temperature_scaling",
+    "fit_split": "validation",
+    "report": ["brier", "ece", "risk_coverage"],
+    "never_fit_on": ["test", "external_challenge"]
+  }
+}

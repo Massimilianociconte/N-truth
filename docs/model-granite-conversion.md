@@ -1,5 +1,10 @@
 # Conversione e distribuzione Granite 4.1 3B
 
+> **LEGACY (ADR-0019).** Granite è il braccio di confronto storico, non il
+> default. Distribuzione corrente: `docs/minicpm-migration-report.md`.
+> Questo documento resta il riferimento operativo per il percorso legacy
+> (opt-in `NTRUTH_ALLOW_LEGACY_GRANITE=1`).
+
 ## Canonical (Safetensors)
 
 ```text

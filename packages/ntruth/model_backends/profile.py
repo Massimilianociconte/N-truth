@@ -1,4 +1,4 @@
-"""Caricamento e validazione della config tecnica Granite (senza stato operativo)."""
+"""Caricamento e validazione della config tecnica modello (senza stato operativo)."""
 
 from __future__ import annotations
 
@@ -6,7 +6,10 @@ import json
 from pathlib import Path
 from typing import Any
 
-from ntruth.model_backends.constants import GRANITE_MLX_PROFILE_FILENAME
+from ntruth.model_backends.constants import (
+    GRANITE_MLX_PROFILE_FILENAME,
+    MINICPM_MLX_PROFILE_FILENAME,
+)
 
 # Fields that must not appear (qualification belongs to registry).
 _FORBIDDEN_OPERATIONAL_KEYS = frozenset(
@@ -24,9 +27,16 @@ class ProfileValidationError(ValueError):
     pass
 
 
-def default_granite_profile_path(repo_root: Path | None = None) -> Path:
+def default_minicpm_profile_path(repo_root: Path | None = None) -> Path:
     root = repo_root or Path(__file__).resolve().parents[3]
-    return root / "models" / "configs" / GRANITE_MLX_PROFILE_FILENAME
+    return root / "models" / "configs" / MINICPM_MLX_PROFILE_FILENAME
+
+
+def default_granite_profile_path(repo_root: Path | None = None) -> Path:
+    """Profilo tecnico legacy Granite (ADR-0019): vive in models/configs/legacy/."""
+
+    root = repo_root or Path(__file__).resolve().parents[3]
+    return root / "models" / "configs" / "legacy" / GRANITE_MLX_PROFILE_FILENAME
 
 
 def load_backend_profile(path: Path) -> dict[str, Any]:
@@ -60,6 +70,7 @@ def validate_backend_profile(data: dict[str, Any]) -> None:
 __all__ = [
     "ProfileValidationError",
     "default_granite_profile_path",
+    "default_minicpm_profile_path",
     "load_backend_profile",
     "validate_backend_profile",
 ]

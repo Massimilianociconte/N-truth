@@ -22,7 +22,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 PROGRAM = REPO / "models" / "registry" / "training_program.json"
-PROFILE = REPO / "models" / "configs" / "granite-4.1-3b-mlx-qlora.json"
+PROFILE = REPO / "models" / "configs" / "legacy" / "granite-4.1-3b-mlx-qlora.json"
 SMOKE_DATA = REPO / "local-data" / "smoke" / "engineering-pipe-granite"
 SMOKE_RUN = REPO / "models" / "runs" / "engineering-smoke-p0-pipe"
 

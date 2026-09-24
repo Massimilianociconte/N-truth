@@ -31,15 +31,31 @@ def _apply_device_preference(device: RuntimeDevice) -> None:
 
 
 def _render_chat_prompt(tokenizer: Any, messages: list[dict[str, Any]]) -> str:
-    """Chat template provider-agnostic (Granite role tags; no Qwen thinking flags)."""
+    """Chat template provider-agnostic con thinking disabilitato.
 
-    return str(
-        tokenizer.apply_chat_template(
-            messages,
-            tokenize=False,
-            add_generation_prompt=True,
+    ``enable_thinking=False`` e richiesto dal template MiniCPM5 (blocco think
+    vuoto, JSON diretto); per i template legacy che ignorano i kwargs extra e
+    innocuo. Se il tokenizer rifiuta il flag, fallisce esplicito: il thinking
+    silenzioso romperebbe il parsing JSON dei candidate facts.
+    """
+
+    apply = getattr(tokenizer, "apply_chat_template", None)
+    if not callable(apply):
+        raise ValueError("tokenizer senza apply_chat_template")
+    try:
+        return str(
+            apply(
+                messages,
+                tokenize=False,
+                add_generation_prompt=True,
+                enable_thinking=False,
+            )
         )
-    )
+    except TypeError as exc:
+        raise ValueError(
+            "tokenizer non supporta enable_thinking=false: thinking mode non "
+            f"ammesso per output JSON candidate-only ({exc})"
+        ) from exc
 
 
 def _estimate_output_tokens(tokenizer: Any, text: str) -> int:
@@ -55,10 +71,10 @@ def _estimate_output_tokens(tokenizer: Any, text: str) -> int:
 
 
 class MLXGenerateComponent:
-    """Componente di generazione MLX-LM (default Granite) con load lazy e release.
+    """Componente di generazione MLX-LM (default MiniCPM) con load lazy e release.
 
-    Preferisce ``GraniteBackend`` quando il path/modello e compatibile; resta un
-    adapter RuntimeComponent generico senza importare token Qwen.
+    Preferisce ``MiniCPMBackend`` quando il path/modello e compatibile; resta un
+    adapter RuntimeComponent generico senza importare token provider-specifici.
     """
 
     def __init__(

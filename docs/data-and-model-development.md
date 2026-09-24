@@ -13,14 +13,14 @@ esportare un adapter. Non esistono ancora un corpus gold N-Truth, un modello N-T
 scientificamente addestrato o metriche su dati reali. Il runtime smoke sintetico verifica
 soltanto che il percorso tecnico funzioni.
 
-Il modello primario **provvisorio** Train A è IBM Granite 4.1 3B Instruct
-(`ibm-granite/granite-4.1-3b`); profilo MLX:
-`models/configs/granite-4.1-3b-mlx-qlora.json`. Guida operativa:
-[mlx-training-pipeline.md](mlx-training-pipeline.md), conversione:
-[model-granite-conversion.md](model-granite-conversion.md), ADR-0010.
-Granite non è dichiarato scientificamente selezionato: l'adozione definitiva resta
-subordinata a gold, benchmark decisivi N-Truth, confronto con la cascata B5 e
-validazione su dati reali indipendenti.
+Il modello primario **provvisorio** Train A è MiniCPM5-2B
+(`openbmb/MiniCPM5-2B`); profilo MLX:
+`models/configs/minicpm5-2b-mlx-qlora.json`. Guida operativa:
+[mlx-training-pipeline.md](mlx-training-pipeline.md), report e pin:
+[minicpm-migration-report.md](minicpm-migration-report.md), ADR-0019.
+MiniCPM non è dichiarato scientificamente selezionato: l'adozione definitiva resta
+subordinata a gold, benchmark decisivi N-Truth, confronto con il braccio legacy
+Granite e la cascata B5 e validazione su dati reali indipendenti.
 
 ## Layout locale
 

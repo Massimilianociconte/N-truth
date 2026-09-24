@@ -20,12 +20,12 @@ from ntruth.model_backends.qualification import (
 REGISTRY_SCHEMA_VERSION = "1.3.0"
 
 # Canonical IDs — non duplicare altrove senza passare da qui / env.
-DEFAULT_PROVIDER = ModelProvider.GRANITE
-DEFAULT_MODEL_ID = "ibm-granite/granite-4.1-3b"
-DEFAULT_MLX_REPO = "mlx-community/granite-4.1-3b-4bit"
-DEFAULT_GGUF_REPO = "ibm-granite/granite-4.1-3b-GGUF"
-DEFAULT_BASE_ABLATION_ID = "ibm-granite/granite-4.1-3b-base"
-DEFAULT_PROFILE_FILENAME = "granite-4.1-3b-mlx-qlora.json"
+DEFAULT_PROVIDER = ModelProvider.MINICPM
+DEFAULT_MODEL_ID = "openbmb/MiniCPM5-2B"
+DEFAULT_MLX_REPO = "openbmb/MiniCPM5-2B-MLX"
+DEFAULT_GGUF_REPO = "openbmb/MiniCPM5-2B-GGUF"
+DEFAULT_BASE_ABLATION_ID = "openbmb/MiniCPM5-2B-Base"
+DEFAULT_PROFILE_FILENAME = "minicpm5-2b-mlx-qlora.json"
 
 # Campi che, se cambiano rispetto al fingerprint qualificato, invalidano lo stato.
 ARTIFACT_FINGERPRINT_KEYS: tuple[str, ...] = (
@@ -80,7 +80,7 @@ def _repo_root() -> Path:
 
 
 def default_profile_path() -> Path:
-    """Profilo ML predefinito (Granite). Override: NTRUTH_ML_PROFILE / NTRUTH_MODEL_PROFILE_PATH."""
+    """Profilo ML predefinito (MiniCPM). Override: NTRUTH_ML_PROFILE / NTRUTH_MODEL_PROFILE_PATH."""
 
     explicit = os.environ.get("NTRUTH_ML_PROFILE") or os.environ.get("NTRUTH_MODEL_PROFILE_PATH")
     if explicit:
@@ -94,7 +94,9 @@ def default_profile_path() -> Path:
 
 
 def resolve_provider() -> ModelProvider:
-    raw = (os.environ.get("NTRUTH_MODEL_PROVIDER") or "granite").strip().lower()
+    raw = (os.environ.get("NTRUTH_MODEL_PROVIDER") or "minicpm").strip().lower()
+    if raw in {"minicpm", "minicpm5", "openbmb", "minicpm5-2b"}:
+        return ModelProvider.MINICPM
     if raw in {"granite", "ibm-granite", "ibm"}:
         return ModelProvider.GRANITE
     if raw in {"legacy_qwen", "qwen", "qwen3"}:
@@ -102,7 +104,7 @@ def resolve_provider() -> ModelProvider:
     if raw == "generic":
         return ModelProvider.GENERIC
     raise ModelRegistryError(
-        f"NTRUTH_MODEL_PROVIDER non supportato: {raw!r} (attesi granite|legacy_qwen|generic)"
+        f"NTRUTH_MODEL_PROVIDER non supportato: {raw!r} (attesi minicpm|granite|legacy_qwen|generic)"
     )
 
 
@@ -442,7 +444,7 @@ def qualification_status(registry: dict[str, Any] | None = None) -> dict[str, st
         "summary": str(
             block.get("summary")
             or (
-                "Il codice e migrato a Granite. Il runtime Granite non e ancora "
+                "Il codice e migrato a MiniCPM. Il runtime MiniCPM non e ancora "
                 "qualificato e il modello non e ancora scientificamente validato "
                 "come modello definitivo di N-Truth."
             )
@@ -849,12 +851,21 @@ def legacy_opt_in_enabled(*, allow_legacy: bool = False) -> bool:
     return raw in {"1", "true", "yes", "on"}
 
 
-def assert_not_legacy_default(*, allow_legacy: bool = False) -> None:
-    """Fail-closed: Qwen non e mai selezionato senza opt-in esplicito.
+def legacy_granite_opt_in_enabled(*, allow_legacy: bool = False) -> bool:
+    """Opt-in esplicito Granite (legacy da ADR-0019): flag API o env dedicata."""
 
-    - Default e percorsi generici → solo Granite.
-    - ``NTRUTH_MODEL_PROVIDER=legacy_qwen`` senza opt-in → errore.
-    - ``allow_legacy=True`` o ``NTRUTH_ALLOW_LEGACY_QWEN`` → opt-in ammesso.
+    if allow_legacy:
+        return True
+    raw = (os.environ.get("NTRUTH_ALLOW_LEGACY_GRANITE") or "").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
+def assert_not_legacy_default(*, allow_legacy: bool = False) -> None:
+    """Fail-closed: Qwen e Granite legacy non sono mai selezionati senza opt-in.
+
+    - Default e percorsi generici → solo MiniCPM.
+    - ``NTRUTH_MODEL_PROVIDER=legacy_qwen|granite`` senza opt-in → errore.
+    - ``allow_legacy=True`` o env dedicate → opt-in ammesso.
     """
 
     provider = resolve_provider()
@@ -864,13 +875,26 @@ def assert_not_legacy_default(*, allow_legacy: bool = False) -> None:
         raise ModelRegistryError(
             "legacy_qwen richiede opt-in esplicito "
             "(allow_legacy=True oppure NTRUTH_ALLOW_LEGACY_QWEN=1); "
-            "default supportato: NTRUTH_MODEL_PROVIDER=granite"
+            "default supportato: NTRUTH_MODEL_PROVIDER=minicpm"
+        )
+    if provider is ModelProvider.GRANITE and not legacy_granite_opt_in_enabled(
+        allow_legacy=allow_legacy
+    ):
+        raise ModelRegistryError(
+            "legacy Granite richiede opt-in esplicito "
+            "(allow_legacy=True oppure NTRUTH_ALLOW_LEGACY_GRANITE=1); "
+            "default supportato: NTRUTH_MODEL_PROVIDER=minicpm"
         )
     model_id = resolve_model_id().casefold()
     if "qwen" in model_id and not legacy_opt_in_enabled(allow_legacy=allow_legacy):
         raise ModelRegistryError(
             "model ID Qwen non ammesso senza opt-in legacy esplicito "
             "(nessun fallback silenzioso al percorso Qwen)"
+        )
+    if "granite" in model_id and not legacy_granite_opt_in_enabled(allow_legacy=allow_legacy):
+        raise ModelRegistryError(
+            "model ID Granite non ammesso senza opt-in legacy esplicito "
+            "(nessun fallback silenzioso al percorso Granite)"
         )
 
 
@@ -903,6 +927,7 @@ __all__ = [
     "evaluate_qualification_against_artifact",
     "fingerprints_equal",
     "is_scientifically_releasable",
+    "legacy_granite_opt_in_enabled",
     "legacy_opt_in_enabled",
     "load_registry",
     "qualification_status",

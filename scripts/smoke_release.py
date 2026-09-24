@@ -77,13 +77,13 @@ from ntruth.training.mlx_runtime import load_profile
 
 assert DEFAULT_PROFILE.is_file(), DEFAULT_PROFILE
 profile = load_profile(DEFAULT_PROFILE)
-# Profilo Granite (ADR-0010): conversione community MLX con revision registrata.
-assert profile["model"]["repository"] == "mlx-community/granite-4.1-3b-4bit", profile[
+# Profilo MiniCPM (ADR-0019): MLX ufficiale OpenBMB con revision registrata.
+assert profile["model"]["repository"] == "openbmb/MiniCPM5-2B-MLX", profile[
     "model"
 ].get("repository")
 assert (
     profile["model"]["revision"]
-    == "b1b476b5a17c46b7d6cd663b4a8ed44b66720aef"
+    == "8a9ad7539ac86281d0ac2b017ba04a5de53fe9a3"
 ), profile["model"].get("revision")
 print(f"ML profile ok · {DEFAULT_PROFILE.name}")
 """.strip()

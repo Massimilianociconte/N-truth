@@ -21,7 +21,7 @@ from typing import Any
 REPO = Path(__file__).resolve().parents[2]
 SUITE = REPO / "benchmarks" / "fewshot_p0"
 CONSTR = SUITE / "constrained"
-PROFILE = REPO / "models" / "configs" / "granite-4.1-3b-mlx-qlora.json"
+PROFILE = REPO / "models" / "configs" / "legacy" / "granite-4.1-3b-mlx-qlora.json"
 STAGES = (
     "evidence_extraction",
     "entity_count",

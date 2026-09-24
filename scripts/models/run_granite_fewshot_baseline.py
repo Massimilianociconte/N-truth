@@ -21,7 +21,7 @@ from typing import Any, Literal
 
 REPO = Path(__file__).resolve().parents[2]
 DEFAULT_SUITE = REPO / "benchmarks" / "fewshot_p0"
-DEFAULT_PROFILE = REPO / "models" / "configs" / "granite-4.1-3b-mlx-qlora.json"
+DEFAULT_PROFILE = REPO / "models" / "configs" / "legacy" / "granite-4.1-3b-mlx-qlora.json"
 DEFAULT_OUT = REPO / "benchmarks" / "fewshot_p0" / "results"
 
 
