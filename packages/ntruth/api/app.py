@@ -232,6 +232,9 @@ class V9DesignPreflightRequest(BaseModel):
 
     assignments: dict[str, dict[str, str]]
     declared_levels: dict[str, tuple[str, ...]]
+    # None = blocking non documentato (variazione intra-blocco non valutabile:
+    # al massimo PARTIALLY_SUPPORTED). Un disegno senza blocchi per costruzione
+    # si dichiara con un unico blocco che contiene tutte le unita.
     blocks: dict[str, str] | None = None
     factor_id: str = Field(min_length=1)
     query_id: str = Field(min_length=1)
@@ -896,6 +899,8 @@ def create_app() -> Any:
             shared_exposure=payload.shared_exposure,
             exposure_collapses_separability=payload.exposure_collapses_separability,
             exposure_cluster=payload.exposure_cluster,
+            assignment_complete=gate_inputs["assignment_complete"],
+            between_cluster_only=gate_inputs["between_cluster_only"],
         )
         return {
             "design_matrix": {
@@ -907,6 +912,14 @@ def create_app() -> Any:
                 "within_block_variation": dict(check.within_block_variation),
                 "blocks_count": check.blocks_count,
                 "smallest_block_size": check.smallest_block_size,
+                "aliased_with_factor": list(check.aliased_with(payload.factor_id)),
+                "unassigned_units": {
+                    factor: list(units) for factor, units in check.unassigned_units.items()
+                },
+                "constant_within_levels_of": {
+                    factor: list(others)
+                    for factor, others in check.constant_within_levels_of.items()
+                },
             },
             "gate_inputs": gate_inputs,
             "decision": {
@@ -926,6 +939,12 @@ def create_app() -> Any:
     def quick_design_v8(payload: QuickDesignV8Submission) -> dict[str, Any]:
         """Raw author-asserted prospective flow; never a guided confirmation lane."""
 
+        from ntruth.verification_scope import verification_scope
+
+        with verification_scope():
+            return _quick_design_v8(payload)
+
+    def _quick_design_v8(payload: QuickDesignV8Submission) -> dict[str, Any]:
         from ntruth.derivation_theory.runtime import load_runtime_bundle
 
         try:
@@ -965,6 +984,15 @@ def create_app() -> Any:
     ) -> dict[str, Any]:
         """Preview, or atomically confirm and execute, reviewed guided fields."""
 
+        from ntruth.verification_scope import verification_scope
+
+        # One scope for build and serialization: dumping the response re-validates
+        # every nested knowledge envelope, which would otherwise re-execute the
+        # already verified pipeline contexts from scratch.
+        with verification_scope():
+            return _build_quick_design_submission(payload)
+
+    def _build_quick_design_submission(payload: GuidedQuickDesignBuildRequest) -> dict[str, Any]:
         try:
             response = build_guided_quick_design(payload)
         except QuickDesignScientificReviewRequired as exc:
@@ -1390,34 +1418,6 @@ def create_app() -> Any:
             ),
         )
 
-    ui_dir = _ui_directory()
-    if ui_dir is not None:
-        api.mount("/app", StaticFiles(directory=ui_dir, html=True), name="desktop-ui")
-
-        @api.get("/", include_in_schema=False)
-        def root() -> Any:
-            return RedirectResponse(url="/app/")
-
-    else:
-
-        @api.get("/", include_in_schema=False)
-        def root_without_ui() -> Any:
-            return JSONResponse(
-                {
-                    "service": "ntruth",
-                    "ui": "not_built",
-                    "message": "Eseguire il build in apps/desktop per la UI locale.",
-                }
-            )
-
-    return api
-
-
-def _ui_directory() -> Path | None:
-    """Trova gli asset React nel checkout o nel wheel, senza accesso di rete."""
-
-    candidates = (
-        Path(__file__).resolve().parents[1] / "_ui",
     @api.post("/v1/power/plan")
     def power_plan(payload: PowerPlanInput) -> dict[str, Any]:
         """Piano a priori candidate-only su EU indipendenti (HANDOFF_ONLY).
@@ -1496,6 +1496,34 @@ def _ui_directory() -> Path | None:
             "input_mode": "HUMAN_DECLARED",
         }
 
+    ui_dir = _ui_directory()
+    if ui_dir is not None:
+        api.mount("/app", StaticFiles(directory=ui_dir, html=True), name="desktop-ui")
+
+        @api.get("/", include_in_schema=False)
+        def root() -> Any:
+            return RedirectResponse(url="/app/")
+
+    else:
+
+        @api.get("/", include_in_schema=False)
+        def root_without_ui() -> Any:
+            return JSONResponse(
+                {
+                    "service": "ntruth",
+                    "ui": "not_built",
+                    "message": "Eseguire il build in apps/desktop per la UI locale.",
+                }
+            )
+
+    return api
+
+
+def _ui_directory() -> Path | None:
+    """Trova gli asset React nel checkout o nel wheel, senza accesso di rete."""
+
+    candidates = (
+        Path(__file__).resolve().parents[1] / "_ui",
         Path(__file__).resolve().parents[3] / "apps" / "desktop" / "dist",
     )
     return next((path for path in candidates if (path / "index.html").is_file()), None)

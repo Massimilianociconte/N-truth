@@ -828,6 +828,47 @@ def test_whitelisted_row_context_cluster_is_checked_for_confounding(dimension: s
     assert not any(item.kind is CountKind.INDEPENDENT_N for item in result.block.count_records)
 
 
+def test_missing_context_values_make_confounding_undeterminable_not_absent() -> None:
+    """Le righe dichiarate separano i livelli: la riga vuota non prova l'assenza."""
+    payload = _payload()
+    rows = list(payload["rows"])  # type: ignore[arg-type]
+    rows[0] = {**rows[0], "extraFields": {"day_id": "DAY-1"}}
+    rows[1] = {**rows[1], "extraFields": {}}
+    for index in (2, 3):
+        rows[index] = {**rows[index], "extraFields": {"day_id": "DAY-2"}}
+    payload["rows"] = rows
+
+    result = compile_prospective_d0(_request(payload))
+
+    assert "day_id" not in result.block.factors[0].confounded_with
+    warnings = [
+        issue
+        for issue in result.issues
+        if issue.code == "confounding_undeterminable_missing_values"
+    ]
+    assert len(warnings) == 1
+    assert warnings[0].field == "day_id"
+    assert warnings[0].severity.value == "warning"
+    assert "(2)" in warnings[0].message
+    assert "non escluso" in warnings[0].message
+
+
+def test_shared_context_value_across_levels_is_not_flagged_as_undeterminable() -> None:
+    payload = _payload()
+    rows = list(payload["rows"])  # type: ignore[arg-type]
+    rows[0] = {**rows[0], "extraFields": {"day_id": "DAY-1"}}
+    rows[1] = {**rows[1], "extraFields": {}}
+    rows[2] = {**rows[2], "extraFields": {"day_id": "DAY-1"}}
+    rows[3] = {**rows[3], "extraFields": {"day_id": "DAY-2"}}
+    payload["rows"] = rows
+
+    result = compile_prospective_d0(_request(payload))
+
+    assert not any(
+        issue.code == "confounding_undeterminable_missing_values" for issue in result.issues
+    )
+
+
 @pytest.mark.parametrize("independence", ["UNKNOWN", "FALSE"])
 def test_confounding_without_true_independence_is_risk_not_false_contradiction(
     independence: str,

@@ -5,11 +5,13 @@ NORMATIVE marker line precedes or follows the fence, or the enclosing heading
 contains "normative". Blocks under HISTORICAL headings or with HISTORICAL
 markers are excluded from the normative scan per PRD Appendix AI.2.
 
-Checks: payload parses as JSON/YAML; when the canonical v9 registry is
-importable, string values under canonical field names must belong to the
-registered vocabularies. The checker fails closed with an error list, exits 0
-with an explicit note when zero normative blocks are found so that CI stays
-green until markers are introduced.
+Checks: payload parses as JSON/YAML; string values under canonical field
+names must belong to the canonical v9 registry vocabularies (an unavailable
+registry is an error, never a silently skipped check). The checker fails closed
+with an error list. Zero normative blocks yield status NO_COVERAGE, not PASS:
+nothing was validated, so the result cannot support the Reality Gate predicate
+``all_normative_examples_schema_valid``. NO_COVERAGE exits 0 so CI stays green
+until markers are introduced, unless ``--require-coverage`` is given.
 """
 
 from __future__ import annotations
@@ -175,8 +177,11 @@ def validate_block(block: NormativeBlock) -> str | None:
 
     try:
         from ntruth.schemas.v9_registry import REGISTRY_CATEGORIES
-    except Exception:
-        return None
+    except Exception as exc:
+        return (
+            f"{block.source}:{block.line_start}: canonical v9 registry unavailable "
+            f"({type(exc).__name__}); vocabulary check cannot run"
+        )
 
     for key, value in _iter_payload_values(payload):
         category = _CANONICAL_KEY_TO_CATEGORY.get(key)
@@ -210,17 +215,23 @@ def run_checks(repository_root: Path) -> dict[str, Any]:
         error = validate_block(block)
         if error is not None:
             errors.append(error)
+    if errors:
+        status = "FAIL"
+    elif not blocks:
+        status = "NO_COVERAGE"
+    else:
+        status = "PASS"
     summary = {
         "schema_version": "9.0.0",
         "files_scanned": files_scanned,
         "normative_blocks": len(blocks),
         "errors": errors,
-        "status": "FAIL" if errors else "PASS",
+        "status": status,
     }
     if not blocks:
         summary["note"] = (
-            "no normative examples found; PRD v9 §26.5 validation stays green "
-            "until NORMATIVE markers are added"
+            "no normative examples found: nothing was validated (NO_COVERAGE), so this "
+            "result is not evidence for all_normative_examples_schema_valid"
         )
     return summary
 
@@ -228,10 +239,19 @@ def run_checks(repository_root: Path) -> dict[str, Any]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
+    parser.add_argument(
+        "--require-coverage",
+        action="store_true",
+        help="exit non-zero when no normative example is found (release gates)",
+    )
     args = parser.parse_args()
     summary = run_checks(args.root.resolve())
     print(json.dumps(summary, ensure_ascii=False, sort_keys=True))
-    return 0 if summary["status"] == "PASS" else 1
+    if summary["status"] == "PASS":
+        return 0
+    if summary["status"] == "NO_COVERAGE" and not args.require_coverage:
+        return 0
+    return 1
 
 
 if __name__ == "__main__":

@@ -403,6 +403,22 @@ def _model_accounts_for_assignment(ctx: RuleContext, args: list[str]) -> bool:
     return any(ancestor in levels for ancestor in ctx.index.ancestors(unit))
 
 
+@predicate("model_accounts_for_experimental_unit")
+def _model_accounts_for_experimental_unit(ctx: RuleContext, args: list[str]) -> bool:
+    """Il modello dichiara un termine proprio per l'unita sperimentale.
+
+    Quando l'analisi e piu fine dell'assegnazione, la dipendenza da
+    rappresentare e quella tra osservazioni della stessa unita sperimentale.
+    Un effetto casuale per un livello superiore (per esempio il donatore
+    quando il trattamento e assegnato alla coltura) non la rappresenta: le
+    osservazioni della stessa coltura restano trattate come indipendenti e
+    l'errore standard del contrasto resta sottostimato. Per questo, a
+    differenza di ``model_accounts_for_assignment``, un antenato non basta.
+    """
+    unit = ctx.assessment.experimental_unit
+    return unit is not None and unit in ctx.model_levels()
+
+
 # ------------------------------------------------------------------ processo
 
 

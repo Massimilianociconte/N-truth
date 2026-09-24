@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from ntruth.conformance.harness import ConformanceFailureCode
 from ntruth.derivation_theory.contracts import ConformanceBundle
+from ntruth.derivation_theory.loader import canonical_checksum
 from ntruth.derivation_theory.runtime import (
     V8DerivationInput,
     build_execution_manifest,
@@ -28,6 +29,11 @@ from ntruth.schemas.report_resolution import (
     ReportResolutionPolicy,
     ReportResolutionState,
     TrivialExplicitReportResolutionPolicy,
+)
+from ntruth.verification_scope import (
+    memoized_results,
+    verification_scope,
+    within_verification_scope,
 )
 
 V8PipelineRequest = V8DerivationInput
@@ -76,6 +82,11 @@ class V8PipelineConformanceError(ValueError):
         super().__init__("PRD v8 runtime bundle failed Theory/Rulebook conformance")
 
 
+# Backwards-friendly aliases: the scope lives in ``ntruth.verification_scope``.
+pipeline_verification_scope = verification_scope
+within_pipeline_verification_scope = within_verification_scope
+
+
 def run_v8_pipeline(
     request: V8PipelineRequest,
     *,
@@ -84,11 +95,7 @@ def run_v8_pipeline(
 ) -> V8PipelineResult:
     """Run only with one complete, content-addressed, conformant bundle."""
 
-    from ntruth.verifier.v8 import (
-        _runtime_tree_failure,
-        verify_v8_derived_claim_set,
-        verify_v8_pipeline_request,
-    )
+    from ntruth.verifier.v8 import _runtime_tree_failure
 
     try:
         request = canonicalize_exact_model(
@@ -103,6 +110,40 @@ def run_v8_pipeline(
         )
     except ExactRuntimeTreeError as error:
         raise V8PipelineVerificationError(_runtime_tree_failure()) from error
+    memo = memoized_results() if resolution_policy is None else None
+    memo_key: tuple[str, ...] | None = None
+    if memo is not None:
+        # Full and set-field dumps: asset checksums use ``exclude_unset``, so two
+        # objects with equal values but different field sets must stay distinct.
+        memo_key = (
+            "v8-pipeline",
+            *(
+                canonical_checksum(model.model_dump(mode="json", exclude_unset=unset_only))
+                for model in (request, conformance_bundle)
+                for unset_only in (False, True)
+            ),
+        )
+        cached = memo.get(memo_key)
+        if isinstance(cached, V8PipelineResult):
+            return cached
+    result = _execute_v8_pipeline(
+        request,
+        conformance_bundle=conformance_bundle,
+        resolution_policy=resolution_policy,
+    )
+    if memo is not None and memo_key is not None:
+        memo[memo_key] = result
+    return result
+
+
+def _execute_v8_pipeline(
+    request: V8PipelineRequest,
+    *,
+    conformance_bundle: ConformanceBundle,
+    resolution_policy: ReportResolutionPolicy | None,
+) -> V8PipelineResult:
+    from ntruth.verifier.v8 import verify_v8_derived_claim_set, verify_v8_pipeline_request
+
     conformance = verify_runtime_bundle(conformance_bundle)
     if not conformance.passed:
         if any(
@@ -162,5 +203,7 @@ __all__ = [
     "V8PipelineRequest",
     "V8PipelineResult",
     "V8PipelineVerificationError",
+    "pipeline_verification_scope",
     "run_v8_pipeline",
+    "within_pipeline_verification_scope",
 ]

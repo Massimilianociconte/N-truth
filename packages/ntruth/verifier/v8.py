@@ -15,12 +15,14 @@ from ntruth.derivation_theory.runtime import (
     verify_runtime_bundle,
 )
 from ntruth.runtime_tree import ExactRuntimeTreeError, canonicalize_exact_model
+from ntruth.schemas.causal_context import InterferenceStatus
 from ntruth.schemas.claims import DerivedClaimSet
 from ntruth.schemas.count_registry import (
     CanonicalCountKind,
     CanonicalCountRecord,
     CountQuantifier,
 )
+from ntruth.schemas.coverage import CounterexampleSearchStatus, ScenarioCoverageStatus
 from ntruth.schemas.execution import V8ExecutionManifest
 from ntruth.schemas.graph_v8 import V8GraphNodeType, V8GraphRelation, V8GraphRelationType
 from ntruth.schemas.kernel import KernelModel, NonBlankStr
@@ -48,6 +50,8 @@ class V8VerificationCode(StrEnum):
     CLAIM_COVERAGE_MISMATCH = "CLAIM_COVERAGE_MISMATCH"
     CLAIM_OUTPUT_MISMATCH = "CLAIM_OUTPUT_MISMATCH"
     BUNDLE_CONFORMANCE_FAILED = "BUNDLE_CONFORMANCE_FAILED"
+    DUPLICATE_FACT_CONFLICT = "DUPLICATE_FACT_CONFLICT"
+    PREDICATE_DOMAIN_MISMATCH = "PREDICATE_DOMAIN_MISMATCH"
 
 
 class V8VerificationIssue(KernelModel):
@@ -263,6 +267,78 @@ def _count_scope_issues(
     return tuple(errors)
 
 
+#: Facts recorded both as a Theory predicate and in the query causal context.
+#: The two copies must agree; a divergence is a conflict to resolve upstream,
+#: never a silent choice of one side (audit 2026-09-12, A06).
+_CAUSAL_CONTEXT_DUPLICATE_PREDICATES: tuple[str, ...] = ("interference_status",)
+
+
+#: Predicates the derivation consumes as booleans (``value is True``). A PRESENT
+#: value outside the domain (e.g. the string "false") would silently read as
+#: "not established"; it is a malformed fact and must be reported as such.
+_BOOLEAN_PREDICATES: tuple[str, ...] = (
+    "assignment_separability",
+    "assignment_separability_support",
+    "realized_exposure_separability",
+)
+_INTERFERENCE_TOKENS = frozenset(status.value for status in InterferenceStatus)
+
+
+def _predicate_domain_issues(request: V8DerivationInput) -> tuple[tuple[str, str], ...]:
+    issues: list[tuple[str, str]] = []
+    for predicate_id, value in request.predicate_values.items():
+        if value.knowledge_state is not KnowledgeState.PRESENT:
+            continue
+        if predicate_id in _BOOLEAN_PREDICATES and not isinstance(value.value, bool):
+            issues.append(
+                (
+                    predicate_id,
+                    f"Predicate {predicate_id} must be a boolean when PRESENT; "
+                    f"received {value.value!r}.",
+                )
+            )
+        if predicate_id == "interference_status" and str(value.value) not in _INTERFERENCE_TOKENS:
+            issues.append(
+                (
+                    predicate_id,
+                    f"Predicate interference_status must be one of "
+                    f"{sorted(_INTERFERENCE_TOKENS)}; received {value.value!r}.",
+                )
+            )
+    return tuple(issues)
+
+
+def _epistemic_reading(value: KnowledgeValue[Any]) -> str:
+    """Comparable reading of one fact copy; equivalent encodings of "unknown" agree."""
+
+    if value.knowledge_state is KnowledgeState.PRESENT:
+        return str(value.value).strip().casefold()
+    if value.knowledge_state in {KnowledgeState.UNKNOWN, KnowledgeState.NOT_REPORTED}:
+        # Same reading as a PRESENT "unknown" token (e.g. InterferenceStatus.UNKNOWN).
+        return "unknown"
+    return value.knowledge_state.value
+
+
+def _duplicate_fact_conflicts(request: V8DerivationInput) -> tuple[tuple[str, str], ...]:
+    conflicts: list[tuple[str, str]] = []
+    context = request.causal_aggregate.causal_context
+    for predicate_id in _CAUSAL_CONTEXT_DUPLICATE_PREDICATES:
+        predicate = request.predicate_values.get(predicate_id)
+        if predicate is None:
+            continue
+        recorded: KnowledgeValue[Any] = getattr(context, predicate_id)
+        if _epistemic_reading(predicate) != _epistemic_reading(recorded):
+            conflicts.append(
+                (
+                    predicate_id,
+                    f"Predicate {predicate_id} ({predicate.knowledge_state.value}: "
+                    f"{str(predicate.value)!r}) contradicts the causal context "
+                    f"({recorded.knowledge_state.value}: {str(recorded.value)!r}).",
+                )
+            )
+    return tuple(conflicts)
+
+
 def verify_v8_pipeline_request(
     request: V8DerivationInput,
     *,
@@ -353,6 +429,20 @@ def verify_v8_pipeline_request(
                     "ScenarioCoverage must reference this profile, Theory and real clauses.",
                 )
             )
+        # PRD v9 §7.20: completeness requires a counterexample search that ran
+        # and found nothing; NOT_PERFORMED cannot support the claim.
+        if (
+            coverage.status is ScenarioCoverageStatus.COMPLETE_UNDER_DECLARED_ASSUMPTION_SET
+            and coverage.counterexample_search_status
+            is not CounterexampleSearchStatus.BOUNDED_SEARCH_COMPLETED_NO_COUNTEREXAMPLE
+        ):
+            issues.append(
+                _fact_issue(
+                    V8VerificationCode.SCENARIO_COVERAGE_MISMATCH,
+                    "COMPLETE_UNDER_DECLARED_ASSUMPTION_SET requires a completed bounded "
+                    "counterexample search with no counterexample.",
+                )
+            )
     expected_ruleset = (
         f"{conformance_bundle.rulebook.rulebook_id}-{conformance_bundle.rulebook.rulebook_version}"
     )
@@ -372,6 +462,22 @@ def verify_v8_pipeline_request(
                     predicate_id=predicate_id,
                 )
             )
+    for predicate_id, message in _predicate_domain_issues(request):
+        issues.append(
+            _fact_issue(
+                V8VerificationCode.PREDICATE_DOMAIN_MISMATCH,
+                message,
+                predicate_id=predicate_id,
+            )
+        )
+    for predicate_id, message in _duplicate_fact_conflicts(request):
+        issues.append(
+            _fact_issue(
+                V8VerificationCode.DUPLICATE_FACT_CONFLICT,
+                message,
+                predicate_id=predicate_id,
+            )
+        )
     for clause in theory.clauses:
         if clause.clause_id not in request.support_by_clause:
             issues.append(

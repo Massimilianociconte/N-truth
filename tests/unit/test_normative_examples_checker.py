@@ -34,22 +34,43 @@ def _run(root: Path) -> dict[str, object]:
     return checker.run_checks(root)
 
 
-def test_repository_scan_is_green_with_zero_blocks() -> None:
+def test_repository_scan_has_no_errors() -> None:
     summary = _run(REPOSITORY_ROOT)
 
-    assert summary["status"] == "PASS"
+    # Zero blocchi marcati: nessuna validazione eseguita, quindi mai PASS.
+    expected = "PASS" if summary["normative_blocks"] else "NO_COVERAGE"
+    assert summary["status"] == expected
     assert summary["errors"] == []
     assert isinstance(summary["files_scanned"], int)
     assert summary["files_scanned"] > 0
 
 
-def test_zero_normative_blocks_exit_pass_with_note(tmp_path: Path) -> None:
+def test_zero_normative_blocks_is_no_coverage_not_pass(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     _write_doc(tmp_path, "docs/plain.md", "# Plain\n\nNo fenced blocks at all.\n")
     summary = _run(tmp_path)
 
-    assert summary["status"] == "PASS"
+    assert summary["status"] == "NO_COVERAGE"
     assert summary["normative_blocks"] == 0
     assert "no normative examples found" in str(summary["note"])
+
+    monkeypatch.setattr(sys, "argv", ["check", "--root", str(tmp_path)])
+    assert checker.main() == 0
+    monkeypatch.setattr(sys, "argv", ["check", "--root", str(tmp_path), "--require-coverage"])
+    assert checker.main() == 1
+
+
+def test_unavailable_registry_is_an_error_not_a_skipped_check(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_doc(tmp_path, "docs/spec.md", f"NORMATIVE\n```json\n{GOOD_JSON}\n```\n")
+    monkeypatch.setitem(sys.modules, "ntruth.schemas.v9_registry", None)
+
+    summary = _run(tmp_path)
+
+    assert summary["status"] == "FAIL"
+    assert "registry unavailable" in str(summary["errors"])
 
 
 def test_marker_before_fence_is_normative_and_valid(tmp_path: Path) -> None:
@@ -93,7 +114,7 @@ def test_unmarked_block_is_ignored(tmp_path: Path) -> None:
     _write_doc(tmp_path, "docs/spec.md", f"```json\n{BAD_ENUM_JSON}\n```\n")
     summary = _run(tmp_path)
 
-    assert summary["status"] == "PASS"
+    assert summary["status"] == "NO_COVERAGE"
     assert summary["normative_blocks"] == 0
 
 
@@ -105,7 +126,7 @@ def test_historical_marker_excludes_block(tmp_path: Path) -> None:
     )
     summary = _run(tmp_path)
 
-    assert summary["status"] == "PASS"
+    assert summary["status"] == "NO_COVERAGE"
     assert summary["normative_blocks"] == 0
 
 

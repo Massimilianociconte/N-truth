@@ -6,6 +6,74 @@ ontologia; queste versioni possono avanzare indipendentemente.
 
 ## [Unreleased]
 
+### 2026-09-23 — remediation dell'audit scientifico 2026-09-12
+
+Correzioni di correttezza del software con controesempi conservati come test;
+nessun blocker scientifico chiuso (validation `NOT_STARTED`, Reality Gate
+`HOLD`). Dettaglio per finding in
+`docs/audits/scientific-audit-2026-09-12/REMEDIATION-2026-09-23.md`.
+
+#### Fixed
+
+- `confidence`: la metrica di errori critici ad alta confidenza contava i casi
+  corretti; la curva rischio/copertura non spezza piu i pareggi di score.
+- `training/calibration`: la soglia di astensione e scelta solo ai confini dei
+  pareggi e riproduce esattamente coverage e rischio quando applicata.
+- `scientific/design_matrix`: missingness non e variazione; aliasing
+  per-fattore; un fattore costante dentro cluster multi-unita di un altro
+  fattore limita il supporto del contrasto a `PARTIALLY_SUPPORTED`.
+- `parsers`: collisioni di intestazioni non cancellano piu celle (CSV/XLSX/PDF);
+  righe vuote CSV non diventano record; troncamenti PDF e pagine senza testo
+  sono dichiarati con stato `PARTIAL`; la pipeline legacy tratta `PARTIAL` in
+  modo coerente (contenuto utilizzabile, report `partial`, limite esplicito).
+- `verifier/v8`: fatti duplicati discordanti (`DUPLICATE_FACT_CONFLICT`),
+  completezza senza ricerca di controesempi e valori di predicato fuori dominio
+  (`PREDICATE_DOMAIN_MISMATCH`) sono rifiutati al confine dei fatti.
+- `graph/index`: assegnazioni parziali non producono conteggi esatti di gruppo.
+- `power`: cache della t noncentrale per df non interi, `t_ppf` in coda
+  sinistra, allocazione G*Power (bilanciamento e ratio rispettati), McNemar
+  secondo Connor (1987), Poisson con allocazione reale, minimo esatto per il
+  binomiale con N stabile dichiarato, caveat di validita per logistica/Poisson;
+  chi2/F noncentrali esatti anche per lambda grandi (niente approssimazione
+  normale ne underflow) e beta incompleta stabile per parametri grandi.
+- `scripts/check_normative_examples.py`: zero esempi e `NO_COVERAGE`, non
+  `PASS`; registry non importabile e un errore.
+- README: comando `ntruth quick-design reality-gate`; i comandi documentati
+  sono verificati da test contro la CLI.
+- Desktop: pin di conformance del client fermi al registry 0.1.0 (ogni anteprima
+  guidata reale falliva); fixture rigenerata dal backend e test anti-drift;
+  navigazione coerente con un ReportBundle v8 aperto (niente badge della demo);
+  voce attiva evidenziata, etichette non troncate, campi obbligatori con
+  `aria-required`; test desktop isolati dal checkpoint in localStorage; proxy
+  Vite per `/v9`.
+- `power/simulation`: il pattern sbilanciato dei cluster segue l'indice ordinale
+  dichiarato invece di un hash del percorso.
+
+#### Pseudoreplicazione e falsi positivi (2026-09-24)
+
+- Ruleset `ntruth-core@0.3.0` (default; `0.2.0` invariato e riproducibile): nelle
+  regole di sottocampionamento un effetto casuale per un livello superiore
+  all'unita sperimentale non sopprime piu l'alert (nuovo predicato
+  `model_accounts_for_experimental_unit()`). Client D0 e compiler allineati.
+- Estrazione dei termini del modello: riconosce formule lme4/nlme, "X incluso
+  come effetto casuale", liste coordinate e identificatori (`animal_id`);
+  ignora frasi di disegno e menzioni negate.
+- Power planner: diagnostica cluster in osservazioni (`n·m`, `n·m/DEFF`) invece
+  di dividere il numero di EU per il design effect.
+- Nuovo: alpha effettiva esatta di un'analisi pseudoreplicata
+  (`ntruth power false-positive`, `POST /v1/power/pseudoreplication-risk`,
+  `naive_false_positive_rate` nei piani con cluster) e card on demand nella
+  verifica D0 del desktop.
+- D0: valori mancanti in una dimensione di contesto non escludono piu il
+  confondimento in silenzio (`confounding_undeterminable_missing_values`).
+- Sviluppo: il proxy Vite accetta `NTRUTH_API_URL` (default invariato).
+
+#### Performance
+
+- Scope di verifica per operazione (`ntruth/verification_scope.py`): la conferma
+  guidata passa da 20,5 s a 6,0 s (API da ~34 s a 8,2 s) senza indebolire i
+  controlli anti-manomissione; fuori scope ogni validazione riverifica da capo.
+
 ### 2026-08-25 — baseline unificata PRD v9 (`integration/prd-v9-unified`)
 
 Merge di unificazione della linea v8-hardening con i contratti sidecar v8/v9 e

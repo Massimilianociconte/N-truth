@@ -46,12 +46,15 @@ from ntruth.schemas.support import (
     SensitivityRecord,
     SourceRecord,
 )
+from ntruth.verification_scope import already_verified, record_verified
 
 if TYPE_CHECKING:
     from ntruth.derivation_theory.contracts import ConformanceBundle
     from ntruth.pipeline_v8 import V8PipelineRequest, V8PipelineResult
 
 Sha256 = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
+_CONTEXT_NAMESPACE = "verified-pipeline-context"
+_REPORT_NAMESPACE = "report-bundle"
 
 RETROSPECTIVE_EPISTEMIC_BOUNDARY = (
     "N-Truth ha valutato i record e le conferme disponibili; non ha osservato "
@@ -468,6 +471,11 @@ class VerifiedPipelineContext(KernelModel):
             raise ValueError("verified pipeline context checksum mismatch")
         if self.context_id != f"PIPELINE-CONTEXT-{expected[:20]}":
             raise ValueError("verified pipeline context ID mismatch")
+        # The recomputed checksum covers every payload below; inside one
+        # verification scope, identical content was already re-executed and
+        # matched, and the deterministic checks would return the same verdict.
+        if already_verified(_CONTEXT_NAMESPACE, expected):
+            return self
         expected_bundle_checksum = content_checksum(self.conformance_bundle.model_dump(mode="json"))
         if self.conformance_bundle_checksum != expected_bundle_checksum:
             raise ValueError("verified pipeline context conformance bundle checksum mismatch")
@@ -482,6 +490,7 @@ class VerifiedPipelineContext(KernelModel):
             raise ValueError("verified pipeline context request failed Task4 verification") from exc
         if verified != self.result:
             raise ValueError("verified pipeline context result differs from Task4 re-execution")
+        record_verified(_CONTEXT_NAMESPACE, expected)
         return self
 
 
@@ -752,6 +761,15 @@ class ReportBundle(KernelModel):
 
     @model_validator(mode="after")
     def _neutral_cross_contract_integrity(self) -> Self:
+        expected_checksum = _report_checksum(self)
+        if (
+            self.content_checksum == expected_checksum
+            and self.report_id == f"REPORT-{expected_checksum[:20]}"
+            and already_verified(_REPORT_NAMESPACE, expected_checksum)
+        ):
+            # Byte-identical content already passed every check below in this
+            # verification scope; the checks are deterministic.
+            return self
         for context in self.verified_pipeline_contexts:
             VerifiedPipelineContext.model_validate(context.model_dump(mode="python"))
         source_ids = [source.source_id for source in self.source_records]
@@ -1294,11 +1312,11 @@ class ReportBundle(KernelModel):
             self.design_record_context.mode
         ):
             raise ValueError("ReportBundle epistemic boundary conflicts with its source mode")
-        expected_checksum = _report_checksum(self)
         if self.content_checksum != expected_checksum:
             raise ValueError("ReportBundle content checksum mismatch")
         if self.report_id != f"REPORT-{expected_checksum[:20]}":
             raise ValueError("ReportBundle ID must be derived from its content checksum")
+        record_verified(_REPORT_NAMESPACE, expected_checksum)
         return self
 
 

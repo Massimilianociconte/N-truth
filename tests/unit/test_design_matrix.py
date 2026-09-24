@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from ntruth.scientific.design_matrix import evaluate_design_matrix
+from ntruth.schemas.contrast_support import ContrastSupportStatus
+from ntruth.scientific.assignment_anchor import evaluate_contrast_support
+from ntruth.scientific.design_matrix import DesignMatrixCheck, evaluate_design_matrix
 
 
 def _assignments(treatment: dict[str, str], batch: dict[str, str] | None = None):
@@ -116,3 +118,127 @@ def test_undeclared_factors_and_levels_fail_closed() -> None:
             declared_levels={"treatment": ("control", "drug")},
             blocks={"u2": "b1"},
         )
+
+
+# --- Audit 2026-09-12 A02/A03: controesempi preservati come regressioni. ---
+
+
+def _status(check: DesignMatrixCheck, factor_id: str = "treatment") -> ContrastSupportStatus:
+    return evaluate_contrast_support(
+        **check.gate_inputs_for_factor(factor_id),
+        exposure_separable=True,
+        information_sufficient=True,
+    )
+
+
+def test_missing_assignment_is_not_level_variation() -> None:
+    # b1 contiene solo un control registrato e un'unita senza assegnazione.
+    check = evaluate_design_matrix(
+        assignments={"u1": {"treatment": "control"}, "u2": {}, "u3": {"treatment": "drug"}},
+        declared_levels={"treatment": ("control", "drug")},
+        blocks={"u1": "b1", "u2": "b1", "u3": "b2"},
+    )
+    assert check.within_block_variation["treatment"] is False
+    assert check.unassigned_units["treatment"] == ("u2",)
+    inputs = check.gate_inputs_for_factor("treatment")
+    assert inputs["assignment_complete"] is False
+    assert _status(check) is ContrastSupportStatus.PARTIALLY_SUPPORTED
+
+
+def test_removing_information_never_strengthens_support() -> None:
+    complete = {
+        "u1": {"treatment": "control"},
+        "u2": {"treatment": "drug"},
+        "u3": {"treatment": "control"},
+        "u4": {"treatment": "drug"},
+    }
+    blocks = {"u1": "b1", "u2": "b1", "u3": "b2", "u4": "b2"}
+    declared = {"treatment": ("control", "drug")}
+    full = evaluate_design_matrix(assignments=complete, declared_levels=declared, blocks=blocks)
+    assert _status(full) is ContrastSupportStatus.SUPPORTED_WITHIN_RECORDED_DESIGN
+    for unit_id in complete:
+        degraded = {**complete, unit_id: {}}
+        check = evaluate_design_matrix(
+            assignments=degraded, declared_levels=declared, blocks=blocks
+        )
+        assert _status(check) is not ContrastSupportStatus.SUPPORTED_WITHIN_RECORDED_DESIGN
+
+
+def test_unrelated_nuisance_alias_does_not_alias_the_treatment() -> None:
+    # batch e day coincidono, ma il trattamento varia dentro entrambi.
+    check = evaluate_design_matrix(
+        assignments={
+            "u1": {"treatment": "control", "batch": "b1", "day": "d1"},
+            "u2": {"treatment": "drug", "batch": "b1", "day": "d1"},
+            "u3": {"treatment": "control", "batch": "b2", "day": "d2"},
+            "u4": {"treatment": "drug", "batch": "b2", "day": "d2"},
+        },
+        declared_levels={
+            "treatment": ("control", "drug"),
+            "batch": ("b1", "b2"),
+            "day": ("d1", "d2"),
+        },
+        blocks={"u1": "b1", "u2": "b1", "u3": "b2", "u4": "b2"},
+    )
+    assert check.fully_aliased is True
+    assert check.aliased_factor_pairs == (("batch", "day"),)
+    assert check.aliased_with("treatment") == ()
+    assert check.aliased_with("batch") == ("day",)
+    assert check.gate_inputs_for_factor("treatment")["fully_aliased"] is False
+    assert check.gate_inputs_for_factor("batch")["fully_aliased"] is True
+    assert _status(check) is ContrastSupportStatus.SUPPORTED_WITHIN_RECORDED_DESIGN
+
+
+def test_treatment_constant_within_multi_unit_clusters_caps_support() -> None:
+    # Trattamento per gabbia, topi come unita: il contrasto e solo fra gabbie.
+    check = evaluate_design_matrix(
+        assignments={
+            "m1": {"treatment": "control", "cage": "c1"},
+            "m2": {"treatment": "control", "cage": "c1"},
+            "m3": {"treatment": "control", "cage": "c2"},
+            "m4": {"treatment": "drug", "cage": "c3"},
+            "m5": {"treatment": "drug", "cage": "c3"},
+            "m6": {"treatment": "drug", "cage": "c4"},
+        },
+        declared_levels={"treatment": ("control", "drug"), "cage": ("c1", "c2", "c3", "c4")},
+        blocks={unit: "all" for unit in ("m1", "m2", "m3", "m4", "m5", "m6")},
+    )
+    assert check.aliased_factor_pairs == ()
+    assert check.constant_within_levels_of["treatment"] == ("cage",)
+    assert check.gate_inputs_for_factor("treatment")["between_cluster_only"] is True
+    assert _status(check) is ContrastSupportStatus.PARTIALLY_SUPPORTED
+
+
+def test_per_unit_identifier_is_not_a_cluster() -> None:
+    # Una gabbia per topo: la gabbia e un identificativo, non un cluster.
+    check = evaluate_design_matrix(
+        assignments={
+            "m1": {"treatment": "control", "cage": "c1"},
+            "m2": {"treatment": "control", "cage": "c2"},
+            "m3": {"treatment": "drug", "cage": "c3"},
+            "m4": {"treatment": "drug", "cage": "c4"},
+        },
+        declared_levels={"treatment": ("control", "drug"), "cage": ("c1", "c2", "c3", "c4")},
+        blocks={unit: "all" for unit in ("m1", "m2", "m3", "m4")},
+    )
+    assert check.constant_within_levels_of["treatment"] == ()
+    assert _status(check) is ContrastSupportStatus.SUPPORTED_WITHIN_RECORDED_DESIGN
+
+
+def test_design_matrix_is_invariant_to_unit_order() -> None:
+    assignments = {
+        "u1": {"treatment": "control", "batch": "b1"},
+        "u2": {"treatment": "drug", "batch": "b1"},
+        "u3": {"treatment": "control", "batch": "b2"},
+    }
+    declared = {"treatment": ("control", "drug"), "batch": ("b1", "b2")}
+    blocks = {"u1": "b1", "u2": "b1", "u3": "b2"}
+    forward = evaluate_design_matrix(
+        assignments=assignments, declared_levels=declared, blocks=blocks
+    )
+    backward = evaluate_design_matrix(
+        assignments=dict(reversed(list(assignments.items()))),
+        declared_levels=declared,
+        blocks=dict(reversed(list(blocks.items()))),
+    )
+    assert forward == backward

@@ -35,11 +35,14 @@ from ntruth.schemas.support import (
     SourceRecord,
     SupportDescriptor,
 )
+from ntruth.verification_scope import already_verified, record_verified
 
 if TYPE_CHECKING:
     from ntruth.derivation_theory.runtime import V8DerivationInput
 
 Sha256 = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
+_PROSPECTIVE_LEDGER_NAMESPACE = "prospective-input-ledger"
+_PLANNED_DESIGN_NAMESPACE = "planned-design-record"
 INPUT_CLOSURE_REVIEW_ISSUE_ID = "QD-V8-INPUT-EVIDENCE-CLOSURE"
 COUNT_RECONCILIATION_REVIEW_ISSUE_ID = "SRR-V8-011"
 
@@ -164,8 +167,19 @@ class ProspectiveInputLedger(KernelModel):
 
     @model_validator(mode="after")
     def _closed_and_addressed(self) -> Self:
+        expected = content_checksum(
+            self.model_dump(mode="json", exclude={"ledger_id", "content_checksum"})
+        )
+        if (
+            self.content_checksum == expected
+            and self.ledger_id == f"PROSPECTIVE-LEDGER-{expected[:20]}"
+            and already_verified(_PROSPECTIVE_LEDGER_NAMESPACE, expected)
+        ):
+            # Byte-identical ledger already closed and addressed in this scope.
+            return self
         request = self.request
-        expected_request = content_checksum(request.model_dump(mode="json"))
+        request_json = request.model_dump(mode="json")
+        expected_request = content_checksum(request_json)
         if self.request_checksum != expected_request:
             raise ValueError("prospective ledger request checksum mismatch")
         _require_ledger_closure(
@@ -175,14 +189,13 @@ class ProspectiveInputLedger(KernelModel):
             confirmation_events=self.confirmation_events,
             support_bindings=self.support_bindings,
             artifacts=self.artifacts,
-        )
-        expected = content_checksum(
-            self.model_dump(mode="json", exclude={"ledger_id", "content_checksum"})
+            request_evidence_ids=_referenced_evidence_ids(request_json),
         )
         if self.content_checksum != expected:
             raise ValueError("prospective input ledger checksum mismatch")
         if self.ledger_id != f"PROSPECTIVE-LEDGER-{expected[:20]}":
             raise ValueError("prospective input ledger ID mismatch")
+        record_verified(_PROSPECTIVE_LEDGER_NAMESPACE, expected)
         return self
 
 
@@ -329,6 +342,7 @@ def _require_ledger_closure(
     confirmation_events: tuple[ConfirmationEvent, ...],
     support_bindings: tuple[SupportEvidenceBinding, ...],
     artifacts: tuple[ProspectiveArtifact, ...],
+    request_evidence_ids: set[str] | None = None,
 ) -> None:
     source_ids = [source.source_id for source in sources]
     evidence_ids = [record.evidence_id for record in evidence_records]
@@ -352,7 +366,9 @@ def _require_ledger_closure(
     if any(record.source_id not in known_sources for record in evidence_records):
         raise ValueError("prospective evidence references a source outside the ledger")
     known_evidence = set(evidence_ids)
-    missing_request_evidence = _referenced_evidence_ids(request) - known_evidence
+    if request_evidence_ids is None:
+        request_evidence_ids = _referenced_evidence_ids(request)
+    missing_request_evidence = request_evidence_ids - known_evidence
     if missing_request_evidence:
         raise ProspectiveInputScientificReviewRequired(
             "Task4 request evidence is not closed by the prospective ledger: "
@@ -605,6 +621,14 @@ class PlannedDesignRecord(KernelModel):
 
     @model_validator(mode="after")
     def _plan_contract(self) -> Self:
+        expected_checksum = _record_checksum(self)
+        if (
+            self.content_checksum == expected_checksum
+            and self.plan_id == f"PLAN-{expected_checksum[:20]}"
+            and already_verified(_PLANNED_DESIGN_NAMESPACE, expected_checksum)
+        ):
+            # Byte-identical plan already passed every check below in this scope.
+            return self
         if len(set(self.inferential_query_ids)) != len(self.inferential_query_ids):
             raise ValueError("inferential_query_ids contains duplicates")
         expected_query_checksums = tuple(
@@ -675,11 +699,11 @@ class PlannedDesignRecord(KernelModel):
             semantic_count_scopes.add(identity)
         if any(count < 1 for count in counts_by_query.values()):
             raise ValueError("each inferential query requires a planned_unit_count")
-        expected_checksum = _record_checksum(self)
         if self.content_checksum != expected_checksum:
             raise ValueError("planned design content checksum mismatch")
         if self.plan_id != f"PLAN-{expected_checksum[:20]}":
             raise ValueError("planned design ID must be derived from its content checksum")
+        record_verified(_PLANNED_DESIGN_NAMESPACE, expected_checksum)
         return self
 
 

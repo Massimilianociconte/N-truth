@@ -558,10 +558,12 @@ def _parser_warnings(document: DocumentIR) -> tuple[str, ...]:
 
 
 def _has_usable_parser_output(document: DocumentIR) -> bool:
+    # PARTIAL content enters the Document IR like any other parsed content:
+    # the gate must agree, and the report marks the run partial instead.
     usable_file_ids = {
         source.id
         for source in document.files
-        if source.status in {ParserStatus.OK, ParserStatus.DEGRADED}
+        if source.status in {ParserStatus.OK, ParserStatus.PARTIAL, ParserStatus.DEGRADED}
     }
     return bool(
         any(document.texts.get(file_id, "").strip() for file_id in usable_file_ids)
@@ -603,7 +605,13 @@ def _report_status(
     ):
         return "failed"
     parser_partial = any(
-        source.status in {ParserStatus.DEGRADED, ParserStatus.FAILED, ParserStatus.IGNORED}
+        source.status
+        in {
+            ParserStatus.PARTIAL,
+            ParserStatus.DEGRADED,
+            ParserStatus.FAILED,
+            ParserStatus.IGNORED,
+        }
         for source in document.files
     )
     verifier_partial = any(
@@ -677,6 +685,12 @@ def _analysis_limits(analysis: BlockAnalysis) -> tuple[str, ...]:
         limits.append(
             "Almeno un file ha prodotto testo di bassa qualita: le evidenze relative sono "
             "a confidenza ridotta e non sostengono alert critical da sole."
+        )
+    if any(source.status is ParserStatus.PARTIAL for source in analysis.document.files):
+        limits.append(
+            "Almeno un file e stato estratto solo in parte (troncamenti, righe non "
+            "rettangolari o pagine senza testo): le conclusioni non coprono il contenuto "
+            "mancante, che non e da ritenersi assente."
         )
     return tuple(dict.fromkeys(limits))
 

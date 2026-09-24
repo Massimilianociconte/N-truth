@@ -95,6 +95,20 @@ class PdfParser:
                 f"densita testuale bassa ({density:.0f} caratteri/pagina): "
                 "estrazione incerta, evidenze a bassa confidenza"
             )
+        # La densita media puo nascondere una singola pagina scansionata: ogni
+        # pagina senza testo e dichiarata, mai interpretata come assenza di
+        # contenuto scientifico (pagina bianca oppure immagine da ispezionare).
+        empty_pages = [index + 1 for index, text in enumerate(pages_text) if not text.strip()]
+        if empty_pages:
+            listed = ", ".join(str(number) for number in empty_pages[:20])
+            more = " ..." if len(empty_pages) > 20 else ""
+            doc.warnings.append(
+                f"pagine senza testo estraibile: {listed}{more} "
+                f"({len(empty_pages)}/{len(pages_text)}); pagina bianca o scansione: "
+                "ispezionare o eseguire OCR esplicito, il contenuto non e da ritenersi assente"
+            )
+            if doc.status is ParserStatus.OK:
+                doc.status = ParserStatus.PARTIAL
 
         plumber = _load_pdfplumber()
         if plumber is None:
@@ -152,41 +166,70 @@ def _extract_page_tables(page: Any, page_number: int, doc: RawDocument) -> None:
         table = _grid_to_table(grid, f"pdf-page-{page_number}-table-{table_index}")
         if table is None:
             continue
+        if table.warnings:
+            doc.warnings.extend(f"{table.name}: {warning}" for warning in table.warnings)
+            if doc.status is ParserStatus.OK:
+                doc.status = ParserStatus.PARTIAL
         doc.tables.append(table)
 
 
 def _grid_to_table(grid: list[list[str | None]], name: str) -> RawTable | None:
-    """Normalizza la griglia pdfplumber in RawTable; scarta i falsi positivi."""
+    """Normalizza la griglia pdfplumber in RawTable; scarta i falsi positivi.
+
+    I limiti di righe/colonne troncano l'output con un warning esplicito che
+    riporta le dimensioni originali: una tabella parziale non deve sembrare
+    completa (audit 2026-09-12, A09).
+    """
 
     rows = [[("" if cell is None else str(cell)).strip() for cell in row] for row in grid if row]
     rows = [row for row in rows if any(row)]
     if len(rows) < 2 or max(len(row) for row in rows) < 2:
         return None
-    width = min(max(len(row) for row in rows), MAX_PDF_TABLE_COLUMNS)
+    original_width = max(len(row) for row in rows)
+    original_data_rows = len(rows) - 1
+    width = min(original_width, MAX_PDF_TABLE_COLUMNS)
     rows = [row[:width] + [""] * (width - len(row[:width])) for row in rows]
-    if len(rows) > MAX_PDF_TABLE_ROWS:
-        rows = rows[: MAX_PDF_TABLE_ROWS + 1]
     header = _unique_headers(rows[0])
     if not header:
         return None
     table = RawTable(name=name, columns=header)
     for row in rows[1 : MAX_PDF_TABLE_ROWS + 1]:
-        table.rows.append(dict(zip(header, row, strict=False)))
-    if len(rows) - 1 > MAX_PDF_TABLE_ROWS:
-        table.warnings.append(f"righe oltre {MAX_PDF_TABLE_ROWS} ignorate")
+        table.rows.append(dict(zip(header, row, strict=True)))
+    if original_data_rows > MAX_PDF_TABLE_ROWS:
+        table.warnings.append(
+            f"tabella troncata: {original_data_rows} righe, conservate le prime "
+            f"{MAX_PDF_TABLE_ROWS}"
+        )
+    if original_width > MAX_PDF_TABLE_COLUMNS:
+        table.warnings.append(
+            f"tabella troncata: {original_width} colonne, conservate le prime "
+            f"{MAX_PDF_TABLE_COLUMNS}"
+        )
     return table
 
 
 def _unique_headers(header: list[str]) -> list[str]:
-    """Rende le colonne univoche mantenendo l'etichetta originale quando c'e."""
+    """Colonne univoche senza collisioni fra etichette originali e generate.
 
-    seen: dict[str, int] = {}
+    La prima occorrenza conserva l'etichetta; duplicati e celle vuote ricevono
+    il primo suffisso ``(n)`` libero anche rispetto alle etichette originali
+    (``x, x, x (2)`` -> ``x, x (3), x (2)``).
+    """
+
+    reserved = {value for value in header if value}
+    taken: set[str] = set()
     out: list[str] = []
     for index, value in enumerate(header):
         label = value or f"colonna {index + 1}"
-        count = seen.get(label, 0)
-        seen[label] = count + 1
-        out.append(label if count == 0 else f"{label} ({count + 1})")
+        free = label not in taken and (bool(value) or label not in reserved)
+        candidate = label
+        count = 1
+        while not free:
+            count += 1
+            candidate = f"{label} ({count})"
+            free = candidate not in taken and candidate not in reserved
+        taken.add(candidate)
+        out.append(candidate)
     return out
 
 

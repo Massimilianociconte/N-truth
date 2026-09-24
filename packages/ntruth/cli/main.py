@@ -706,11 +706,11 @@ def quick_design_reality_gate_v9() -> None:
         f"authorized_for_training: {str(composition.authorizes_substantive_training).lower()}"
     )
     typer.echo("v8_readiness_dimensions:")
-    for item in composition.v8_assessment.dimensions:
-        typer.echo(f"  {item.dimension.value}: {item.status.knowledge_state.value}")
+    for dimension in composition.v8_assessment.dimensions:
+        typer.echo(f"  {dimension.dimension.value}: {dimension.status.knowledge_state.value}")
     typer.echo("v9_predicates:")
-    for item in composition.v9_evidence_ledger.predicate_assessments:
-        typer.echo(f"  {item.name.value}: {item.value.knowledge_state.value}")
+    for predicate in composition.v9_evidence_ledger.predicate_assessments:
+        typer.echo(f"  {predicate.name.value}: {predicate.value.knowledge_state.value}")
     typer.echo(
         "unsatisfied_v9_predicates: "
         + ", ".join(

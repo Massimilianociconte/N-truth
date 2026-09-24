@@ -12,8 +12,16 @@ def evaluate_contrast_support(
     fully_aliased: bool,
     exposure_separable: bool | None,
     information_sufficient: bool,
+    assignment_complete: bool = True,
+    between_cluster_only: bool = False,
 ) -> ContrastSupportStatus:
-    """Map recorded design facts to ContrastSupportStatus. Deterministic; no ML."""
+    """Map recorded design facts to ContrastSupportStatus. Deterministic; no ML.
+
+    ``assignment_complete=False`` (units without a recorded level) and
+    ``between_cluster_only=True`` (the factor varies only between multi-unit
+    clusters of another recorded factor) cap the status at PARTIALLY_SUPPORTED:
+    full support would rest on facts or assumptions that are not recorded.
+    """
 
     if not information_sufficient:
         return ContrastSupportStatus.INSUFFICIENT_INFORMATION
@@ -23,7 +31,12 @@ def evaluate_contrast_support(
         return ContrastSupportStatus.NO_LEVEL_VARIATION
     if exposure_separable is False:
         return ContrastSupportStatus.EXPOSURE_MAPPING_INADEQUATE
-    if not within_block_variation or exposure_separable is None:
+    if (
+        not within_block_variation
+        or exposure_separable is None
+        or not assignment_complete
+        or between_cluster_only
+    ):
         return ContrastSupportStatus.PARTIALLY_SUPPORTED
     return ContrastSupportStatus.SUPPORTED_WITHIN_RECORDED_DESIGN
 

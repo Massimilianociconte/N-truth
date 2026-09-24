@@ -16,7 +16,7 @@ from ntruth.schemas.rules import Rule, RuleFixture, RuleFixtureKind
 
 RULESET = load_ruleset()
 ROOT = Path(__file__).resolve().parents[2]
-RULESET_PATH = Path(__file__).resolve().parents[2] / "rulesets" / "ntruth-core-0.2.0.json"
+RULESET_PATH = Path(__file__).resolve().parents[2] / "rulesets" / "ntruth-core-0.3.0.json"
 EXPECTED_ALERT_CLASSES = {
     AlertClass.DESIGN_REPLICATION: {
         "GEN-001",
@@ -84,6 +84,37 @@ def test_v6_semantic_changes_are_versioned_without_rewriting_historical_rules() 
     assert historical_versions["GEN-002"] == "1.0.0"
     assert current_versions["GEN-001"] == "1.1.0"
     assert current_versions["GEN-002"] == "1.1.0"
+
+
+#: Regole di sottocampionamento la cui eccezione e diventata stretta in 0.3.0.
+SUBSAMPLING_RULES = frozenset(
+    {"GEN-002", "CC-001", "MIC-003", "MIC-004", "SC-001", "ANI-001", "ANI-003"}
+)
+
+
+def test_v03_strict_model_exception_is_versioned_without_rewriting_0_2_0() -> None:
+    """0.2.0 resta byte-identico; 0.3.0 cambia solo le eccezioni dichiarate."""
+    historical_path = ROOT / "rulesets" / "ntruth-core-0.2.0.json"
+    assert hashlib.sha256(historical_path.read_bytes()).hexdigest() == (
+        "8b360b50ac322e4622fbe53dec93d5dd1c9c858139fd2813760457ff1d7e4a2a"
+    )
+    historical = {rule.rule_id: rule for rule in load_ruleset("ntruth-core", "0.2.0").rules}
+    current = {rule.rule_id: rule for rule in load_ruleset("ntruth-core", "0.3.0").rules}
+    assert historical.keys() == current.keys()
+    for rule_id, rule in current.items():
+        before = historical[rule_id]
+        if rule_id in SUBSAMPLING_RULES:
+            assert "model_accounts_for_assignment()" in before.exceptions
+            assert "model_accounts_for_experimental_unit()" in rule.exceptions
+            assert "model_accounts_for_assignment()" not in rule.exceptions
+            assert rule.version != before.version
+            unchanged = {"exceptions", "version"}
+        else:
+            unchanged = {"fixtures"}
+            assert rule.version == before.version
+        assert rule.model_dump(exclude=unchanged) == before.model_dump(exclude=unchanged), rule_id
+    # GEN-009 descrive ancora "unita sperimentale o livelli superiori": resta invariata.
+    assert current["GEN-009"] == historical["GEN-009"]
 
 
 @pytest.mark.parametrize(

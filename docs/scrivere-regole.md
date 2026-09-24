@@ -96,7 +96,15 @@ Ogni espressione puo essere negata con `not `:
 
 **Modello statistico**
 `model_declared()`, `model_is_mixed()`, `model_is_simple()`, `model_accounts_for(X)`,
-`model_accounts_for_assignment()`
+`model_accounts_for_assignment()`, `model_accounts_for_experimental_unit()`
+
+`model_accounts_for_assignment()` accetta un termine per l'unita sperimentale **o per un
+livello superiore**: descrive se il modello cita un livello pertinente (GEN-009).
+`model_accounts_for_experimental_unit()` accetta solo il termine per l'unita sperimentale ed e
+l'eccezione corretta quando l'analisi e piu fine dell'assegnazione: un effetto casuale per il
+donatore non rappresenta la correlazione tra cellule della stessa coltura trattata. Dal ruleset
+`ntruth-core@0.3.0` le sette regole di sottocampionamento (GEN-002, CC-001, MIC-003, MIC-004,
+SC-001, ANI-001, ANI-003) usano il predicato stretto; `0.2.0` resta byte-identico e riproducibile.
 
 **Processo**
 `pooling_present()`, `aggregation_present()`, `repeated_measures_present()`,

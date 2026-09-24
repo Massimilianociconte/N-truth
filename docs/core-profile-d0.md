@@ -109,6 +109,16 @@ separato.
     export precedenti non vengono riscritti.
 12. Nessun input viene eseguito e nessun dato viene inviato in rete dal core
     locale.
+13. Il confondimento fattore/dimensione (sorgente, preparazione, coltura,
+    piastra, batch, giorno, operatore, incubatore) e dichiarato solo quando tutte
+    le righe riportano la dimensione. Se le righe che la riportano separano gia
+    perfettamente i due livelli e altre righe sono vuote, il compiler emette
+    `confounding_undeterminable_missing_values`: il confondimento non e ne
+    affermato ne escluso.
+14. La card "Rischio di falsi positivi da pseudoreplicazione" della verifica e
+    una diagnostica on demand (`POST /v1/power/pseudoreplication-risk`): mostra
+    l'alpha reale di un test che trattasse le righe come indipendenti per una
+    griglia di ICC; non entra nel compiler e non sostituisce `independent_n`.
 
 ## Comandi verificabili
 
@@ -164,7 +174,7 @@ uv run ntruth-api
 
 Aprire `http://127.0.0.1:8765/app/`, completare i quattro passi D0 e usare
 **Compila con verificatore D0**. Il client invia il contratto a
-`POST /v1/prospective/d0/compile` con `ntruth-core@0.2.0`; stato, capability,
+`POST /v1/prospective/d0/compile` con `ntruth-core@0.3.0`; stato, capability,
 hard-verifier e readiness mostrati come canonici provengono dalla risposta Python.
 La API rifiuta body oltre 8 MiB, piu di 10.000 righe e oltre 64 campi extra per
 riga. Le sessioni prospettiche sono effimere nella memoria del processo.

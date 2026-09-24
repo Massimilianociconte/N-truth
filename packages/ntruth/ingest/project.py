@@ -30,6 +30,7 @@ from ntruth.ingest.safety import (
     discover_ingest_candidates,
     resolve_inside,
 )
+from ntruth.rules.loader import DEFAULT_RULESET_ID, DEFAULT_RULESET_VERSION
 from ntruth.schemas.core import stable_id
 from ntruth.schemas.manifest import ProjectFile, ProjectManifest, ReleaseProfile
 from ntruth.storage import BlobIntegrityError, BlobStore, StorageDatabase
@@ -222,8 +223,8 @@ class Project:
         name: str | None = None,
         domain: str = "quantitative_microscopy",
         language: str = "en",
-        ruleset_id: str = "ntruth-core",
-        ruleset_version: str = "0.2.0",
+        ruleset_id: str = DEFAULT_RULESET_ID,
+        ruleset_version: str = DEFAULT_RULESET_VERSION,
         release_profile: ReleaseProfile = ReleaseProfile.D0_CORE,
     ) -> Project:
         root = root.expanduser()

@@ -1014,7 +1014,9 @@ def _extract_process(text: str, evidence_for: EvidenceFactory, result: Extractio
     mixed = MIXED_MODEL_HINTS.search(text)
     if mixed:
         evidence = evidence_for(mixed.start(), min(len(text), mixed.end() + 120))
-        accounts = _model_accounts_for(text[mixed.start() : mixed.start() + 220])
+        # I pattern del modello sono specifici: si legge l'intero paragrafo, cosi
+        # un termine dichiarato prima della menzione del modello non va perso.
+        accounts = _model_accounts_for(text)
         result.models.append(
             StatisticalModelFact(
                 kind="mixed",
@@ -1050,22 +1052,113 @@ def _extract_process(text: str, evidence_for: EvidenceFactory, result: Extractio
             )
 
 
-def _model_accounts_for(window: str) -> tuple[NodeType, ...]:
-    """Livelli citati come random effect o cluster nel modello (GEN-009)."""
+_RANDOM_TERM = r"random[- ](?:effects?|intercepts?|slopes?|factors?|terms?)"
+_RE_RANDOM_FOR = re.compile(
+    rf"\b{_RANDOM_TERM}\s+(?:(?:was|were)\s+(?:included|fitted|specified|used)\s+)?"
+    r"(?:for|of|per|by|on|at the level of|accounting for)\s+(?P<terms>[^.;:()\[\]]{2,90})",
+    re.IGNORECASE,
+)
+_RE_AS_RANDOM = re.compile(
+    r"(?P<terms>[A-Za-z][\w\- ,]{1,60}?)\s+(?:was|were|is|are)\s+(?P<gap>(?:\w+\s+){0,2}?)"
+    r"(?:included|modell?ed|entered|specified|treated|fitted|added|incorporated|considered)"
+    rf"\s+as\s+(?:an?\s+)?(?:(?:crossed|nested)\s+)?{_RANDOM_TERM}",
+    re.IGNORECASE,
+)
+_RE_WITH_AS_RANDOM = re.compile(
+    rf"\b(?:with|including)\s+(?P<terms>[A-Za-z][\w\- ,]{{1,60}}?)\s+as\s+(?:an?\s+)?"
+    rf"(?:(?:crossed|nested)\s+)?{_RANDOM_TERM}",
+    re.IGNORECASE,
+)
+_GROUPING_EXPR = r"[A-Za-z_][\w.]*(?:\s*[/:]\s*[A-Za-z_][\w.]*)*"
+#: lme4/glmmTMB/brms: ``(1 | animal)``, ``(1 + time || subject)``, ``(1|mouse/cell)``.
+_RE_LME4 = re.compile(rf"\(\s*[^()|]*?\|\|?\s*(?P<group>{_GROUPING_EXPR})\s*\)")
+#: nlme: ``random = ~1 | animal``.
+_RE_NLME = re.compile(rf"\brandom\s*=\s*~\s*[^|,)]*\|\s*(?P<group>{_GROUPING_EXPR})", re.IGNORECASE)
+_RE_CLUSTERED = re.compile(
+    r"\b(?:clustered|grouped)\s+(?:(?:robust\s+)?standard\s+errors\s+)?"
+    r"(?:by|on|at the level of)\s+(?P<terms>[^.;:()]{2,60})",
+    re.IGNORECASE,
+)
+_TERM_SPLIT = re.compile(
+    r",|&|/|\band\b|\bas well as\b|\bnested\s+(?:with)?in\b|\bwithin\b|\bcrossed with\b",
+    re.IGNORECASE,
+)
+_TERM_STOP = re.compile(
+    r"\b(?:was|were|is|are|to|that|which|with|using|in order|because|accounting|"
+    r"respectively|while|whereas|but)\b",
+    re.IGNORECASE,
+)
+_NEGATION = re.compile(
+    r"\b(?:no|not|without|omit(?:ted|ting)?|ignor(?:ed|ing)|rather than|instead of|"
+    r"excluding|neither|nor)\b",
+    re.IGNORECASE,
+)
+_ID_SUFFIXES = frozenset({"id", "ids", "no", "nr", "number", "code", "idx", "index"})
+
+
+def _identifier_phrase(identifier: str) -> str:
+    """``animal_id`` -> ``animal``; ``MouseID`` -> ``mouse``; ``cage.nr`` -> ``cage``."""
+    spaced = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", identifier)
+    tokens = [t for t in re.split(r"[\s_.]+", spaced.lower()) if t]
+    while len(tokens) > 1 and tokens[-1] in _ID_SUFFIXES:
+        tokens.pop()
+    return " ".join(tokens)
+
+
+_NEGATED_TAIL = re.compile(
+    r"^\s*(?:was|were|is|are)\s+(?:not|never)\b|"
+    r"^\s*(?:was|were)\s+(?:omitted|removed|dropped|excluded)\b",
+    re.IGNORECASE,
+)
+
+
+def _resolve_model_term(term: str) -> NodeType | None:
+    stop = _TERM_STOP.search(term)
+    if stop is not None:
+        if _NEGATED_TAIL.search(term[stop.start() :]):
+            return None
+        term = term[: stop.start()]
+    term = term.strip(" .,:;")
+    if not term or _NEGATION.search(term):
+        return None
+    node_type, _ = resolve_head_noun(term)
+    return node_type
+
+
+def _negated_before(text: str, start: int) -> bool:
+    return _NEGATION.search(text[max(0, start - 30) : start]) is not None
+
+
+def _model_accounts_for(text: str) -> tuple[NodeType, ...]:
+    """Livelli dichiarati come effetto casuale o cluster nel modello (GEN-009).
+
+    Solo formulazioni specifiche del modello contano: effetti casuali per/di X,
+    "X incluso come effetto casuale", formule lme4/nlme e errori standard
+    clusterizzati. Frasi di disegno ("30 cells per animal", "cells nested within
+    cultures") non dichiarano un termine del modello: contarle sopprimerebbe
+    alert di pseudoreplicazione su una struttura che l'analisi ignora. Le
+    menzioni negate ("without a random effect for animal") sono escluse.
+    """
     found: list[NodeType] = []
-    for match in re.finditer(
-        r"\b(?:random (?:effects? |intercepts? )?(?:for|of|per|by)|"
-        r"nested (?:within|in)|grouped by|clustered by|per|for)\s+([a-zA-Z][a-zA-Z \-]{2,24})",
-        window,
-        re.IGNORECASE,
-    ):
-        node_type = resolve_phrase(match.group(1))
+
+    def add(node_type: NodeType | None) -> None:
         if node_type is not None and node_type not in found:
             found.append(node_type)
-    for match in re.finditer(r"\(\s*1\s*\|\s*([A-Za-z_][\w\- ]{1,24})\s*\)", window):
-        node_type = resolve_phrase(match.group(1).replace("_", " "))
-        if node_type is not None and node_type not in found:
-            found.append(node_type)
+
+    for pattern in (_RE_RANDOM_FOR, _RE_AS_RANDOM, _RE_WITH_AS_RANDOM, _RE_CLUSTERED):
+        for match in pattern.finditer(text):
+            if _negated_before(text, match.start()):
+                continue
+            if "gap" in pattern.groupindex and _NEGATION.search(match.group("gap") or ""):
+                continue
+            for term in _TERM_SPLIT.split(match.group("terms")):
+                add(_resolve_model_term(term))
+    for pattern in (_RE_LME4, _RE_NLME):
+        for match in pattern.finditer(text):
+            if _negated_before(text, match.start()):
+                continue
+            for identifier in re.split(r"\s*[/:]\s*", match.group("group")):
+                add(resolve_phrase(_identifier_phrase(identifier)))
     return tuple(found)
 
 

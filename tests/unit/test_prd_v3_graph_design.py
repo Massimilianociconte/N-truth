@@ -449,3 +449,42 @@ def test_effective_n_never_becomes_a_declared_or_independent_count() -> None:
     assert assessments
     assert all(assessment.n_declared is None for assessment in assessments)
     assert all(assessment.n_independent is None for assessment in assessments)
+
+
+def _well_index(assignments: dict[str, dict[str, str]]) -> GraphIndex:
+    provenance = Provenance(origin=ProvenanceKind.USER)
+    nodes = tuple(
+        GraphNode(
+            id=node_id,
+            type=NodeType.WELL,
+            label=node_id,
+            attributes={"instance": True, **attributes},
+            provenance=provenance,
+        )
+        for node_id, attributes in assignments.items()
+    )
+    return GraphIndex(Hierarchy(nodes=nodes))
+
+
+def test_partial_assignment_never_becomes_an_exact_group_count() -> None:
+    # Audit 2026-09-12 A08: un pozzetto control e due senza assegnazione. I
+    # pozzetti non assegnati potrebbero appartenere a qualunque gruppo.
+    index = _well_index(
+        {"w1": {"assignment:drug": "control"}, "w2": {}, "w3": {"assignment:drug": " "}}
+    )
+    assert index.count(NodeType.WELL) == 3
+    assert index.scoped_instance_count(NodeType.WELL, factor_name="drug", group="control") is None
+    assert index.scoped_instance_count(NodeType.WELL, factor_name="drug", group="treated") is None
+
+
+def test_complete_assignment_yields_exact_counts_including_zero() -> None:
+    index = _well_index(
+        {
+            "w1": {"assignment:drug": "control"},
+            "w2": {"assignment:drug": "treated"},
+            "w3": {"assignment:drug": "Control"},
+        }
+    )
+    assert index.scoped_instance_count(NodeType.WELL, factor_name="drug", group="control") == 2
+    assert index.scoped_instance_count(NodeType.WELL, factor_name="drug", group="treated") == 1
+    assert index.scoped_instance_count(NodeType.WELL, factor_name="drug", group="vehicle") == 0

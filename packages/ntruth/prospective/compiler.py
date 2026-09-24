@@ -11,6 +11,7 @@ import json
 import re
 from collections import defaultdict
 from collections.abc import Iterable
+from dataclasses import dataclass
 from typing import Literal
 
 from pydantic import ValidationError
@@ -799,6 +800,7 @@ def _cross_row_issues(
                 field=factor_column,
             )
         )
+    issues.extend(_undeterminable_confounding_issues(request, sample_sheet, factor_column))
     return issues
 
 
@@ -2049,27 +2051,13 @@ def _unique_allocation_count(
     return len(keys) if keys else None
 
 
-def _perfect_confounding_dimensions(
-    request: ProspectiveD0CompileRequest,
-    sample_sheet: SampleSheetSpec,
-    *,
-    factor_column: str,
-) -> tuple[str, ...]:
-    """Rileva solo la coincidenza perfetta osservabile nel D0.
+def _confounding_candidates() -> tuple[tuple[str, int | None], ...]:
+    """Dimensioni che possono coincidere con il fattore.
 
-    Tutte le righe devono dichiarare la dimensione. Il controllo scatta quando
-    gli insiemi di cluster dei due livelli sono non vuoti e disgiunti e almeno
-    un cluster contiene piu unita di allocazione. La condizione di clustering
-    evita di classificare come confondimento una mera chiave uno-a-uno della riga.
+    La profondita e quella del livello fisico; ``None`` indica una dimensione
+    trasversale (batch, giorno, operatore, incubatore), sempre valutata.
     """
-
-    allocation_level = _known_level(request.draft.allocation_level)
-    if allocation_level is None:
-        return ()
-    allocation_depth = _D0_UNIT_DEPTH.get(allocation_level)
-    if allocation_depth is None:
-        return ()
-    candidates: tuple[tuple[str, int | None], ...] = (
+    return (
         ("source_id", -1),
         ("preparation_id", _D0_UNIT_DEPTH[NodeType.PRIMARY_CULTURE]),
         ("culture_id", _D0_UNIT_DEPTH[NodeType.CELL_CULTURE]),
@@ -2079,30 +2067,127 @@ def _perfect_confounding_dimensions(
         ("operator_id", None),
         ("incubator_id", None),
     )
-    dimensions: list[str] = []
+
+
+@dataclass(frozen=True)
+class _ConfoundingPattern:
+    """Esito del confronto fattore/dimensione sulle righe che la dichiarano."""
+
+    field_name: str
+    missing_rows: tuple[int, ...]
+    declared_rows: int
+    separated: bool
+
+
+def _confounding_patterns(
+    request: ProspectiveD0CompileRequest,
+    sample_sheet: SampleSheetSpec,
+    *,
+    factor_column: str,
+) -> tuple[_ConfoundingPattern, ...]:
+    """Per ogni dimensione candidata: righe senza valore e separazione osservata.
+
+    ``separated`` e vero quando, sulle sole righe che dichiarano la dimensione,
+    gli insiemi di valori dei due livelli sono non vuoti e disgiunti e almeno un
+    valore raggruppa piu unita di allocazione. La condizione di clustering evita
+    di classificare come confondimento una mera chiave uno-a-uno della riga.
+    """
+
+    allocation_level = _known_level(request.draft.allocation_level)
+    if allocation_level is None:
+        return ()
+    allocation_depth = _D0_UNIT_DEPTH.get(allocation_level)
+    if allocation_depth is None:
+        return ()
     levels = (request.draft.level_a, request.draft.level_b)
-    for field_name, depth in candidates:
+    patterns: list[_ConfoundingPattern] = []
+    for field_name, depth in _confounding_candidates():
         if depth is not None and depth >= allocation_depth:
             continue
         values_by_level: dict[str, set[str]] = {level: set() for level in levels}
         allocations_by_cluster: dict[str, set[str]] = defaultdict(set)
-        complete = True
-        for row in sample_sheet.rows:
+        missing: list[int] = []
+        declared = 0
+        for index, row in enumerate(sample_sheet.rows, start=1):
             raw_value = _confounding_value(row, field_name)
             allocation_key = _allocation_key(row, allocation_level)
             if raw_value is None or allocation_key is None:
-                complete = False
-                break
-            values_by_level[row.factor_levels[factor_column]].add(raw_value)
+                missing.append(index)
+                continue
+            declared += 1
+            level = row.factor_levels[factor_column]
+            if level in values_by_level:
+                values_by_level[level].add(raw_value)
             allocations_by_cluster[raw_value].add(allocation_key)
-        if not complete or any(not values_by_level[level] for level in levels):
+        left, right = values_by_level[levels[0]], values_by_level[levels[1]]
+        separated = (
+            bool(left)
+            and bool(right)
+            and left.isdisjoint(right)
+            and any(len(keys) > 1 for keys in allocations_by_cluster.values())
+        )
+        patterns.append(
+            _ConfoundingPattern(
+                field_name=field_name,
+                missing_rows=tuple(missing),
+                declared_rows=declared,
+                separated=separated,
+            )
+        )
+    return tuple(patterns)
+
+
+def _perfect_confounding_dimensions(
+    request: ProspectiveD0CompileRequest,
+    sample_sheet: SampleSheetSpec,
+    *,
+    factor_column: str,
+) -> tuple[str, ...]:
+    """Rileva solo la coincidenza perfetta osservabile nel D0.
+
+    Tutte le righe devono dichiarare la dimensione: con valori mancanti il
+    confondimento non e determinabile e viene segnalato a parte
+    (``_undeterminable_confounding_issues``), mai dichiarato.
+    """
+
+    return tuple(
+        pattern.field_name
+        for pattern in _confounding_patterns(request, sample_sheet, factor_column=factor_column)
+        if pattern.separated and not pattern.missing_rows
+    )
+
+
+def _undeterminable_confounding_issues(
+    request: ProspectiveD0CompileRequest,
+    sample_sheet: SampleSheetSpec,
+    factor_column: str,
+) -> list[ProspectiveD0Issue]:
+    """Valori mancanti non diventano assenza di confondimento.
+
+    Se le righe che dichiarano la dimensione separano perfettamente i due
+    livelli, le righe senza valore decidono se il fattore coincide con la
+    dimensione: il compiler non lo afferma ne lo esclude, lo segnala.
+    """
+
+    issues: list[ProspectiveD0Issue] = []
+    for pattern in _confounding_patterns(request, sample_sheet, factor_column=factor_column):
+        if not pattern.separated or not pattern.missing_rows or not pattern.declared_rows:
             continue
-        left = values_by_level[levels[0]]
-        right = values_by_level[levels[1]]
-        genuinely_clustered = any(len(keys) > 1 for keys in allocations_by_cluster.values())
-        if left.isdisjoint(right) and genuinely_clustered:
-            dimensions.append(field_name)
-    return tuple(dimensions)
+        rows = ", ".join(str(index) for index in pattern.missing_rows[:10])
+        more = "" if len(pattern.missing_rows) <= 10 else ", ..."
+        issues.append(
+            _warning(
+                "confounding_undeterminable_missing_values",
+                (
+                    f"{pattern.field_name}: nelle {pattern.declared_rows} righe che lo "
+                    "dichiarano i due livelli del fattore non condividono alcun valore; "
+                    f"le righe senza valore ({rows}{more}) decidono se il fattore coincide "
+                    f"con {pattern.field_name}. Confondimento non determinabile, non escluso."
+                ),
+                field=pattern.field_name,
+            )
+        )
+    return issues
 
 
 def _confounding_value(row: SampleSheetRow, field_name: str) -> str | None:

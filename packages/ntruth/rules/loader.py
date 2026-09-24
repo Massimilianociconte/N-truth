@@ -15,7 +15,7 @@ from pathlib import Path
 from ntruth.schemas.rules import Ruleset
 
 DEFAULT_RULESET_ID = "ntruth-core"
-DEFAULT_RULESET_VERSION = "0.2.0"
+DEFAULT_RULESET_VERSION = "0.3.0"
 ENV_VAR = "NTRUTH_RULESETS"
 
 

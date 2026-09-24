@@ -22,6 +22,7 @@ from ntruth.training.calibration import (
     ConfidenceObservation,
     calibration_report,
     negative_log_likelihood,
+    select_abstention_threshold,
 )
 from ntruth.training.cli import DEFAULT_PROFILE
 from ntruth.training.metrics import (
@@ -184,8 +185,8 @@ def test_profile_has_consistent_storage_budget(tmp_path: Path) -> None:
     assert profile["model"]["selection_role"] == "provisional_primary_train_a"
     assert profile["model"]["scientifically_selected"] is False
     assert "qwen" not in profile["model"]["repository"].casefold()
-    assert profile["data"]["format"] == "chat_jsonl"
     assert "granite" not in profile["model"]["repository"].casefold()
+    assert profile["data"]["format"] == "chat_jsonl"
     assert budget["total_gib"] <= budget["workspace_cap_gib"]
     assert DEFAULT_PROFILE.is_file()
     assert DEFAULT_PROFILE.name == "minicpm5-2b-mlx-qlora.json"
@@ -205,8 +206,8 @@ def test_default_profile_is_minicpm_not_qwen() -> None:
     assert resolve_provider() is ModelProvider.MINICPM
     assert DEFAULT_MODEL_ID == "openbmb/MiniCPM5-2B"
     assert "qwen" not in DEFAULT_PROFILE.name.casefold()
-
     assert "granite" not in DEFAULT_PROFILE.name.casefold()
+
 
 def test_runtime_environment_records_lock_and_source_without_secrets() -> None:
     environment = runtime_environment(Path(".").resolve())
@@ -242,6 +243,37 @@ def test_calibration_improves_validation_nll_and_never_uses_test() -> None:
     assert report["test_used_for_fit"] is False
     assert report["after"]["negative_log_likelihood"] <= negative_log_likelihood(observations, 1.0)
     assert report["temperature"] > 0
+
+
+def test_abstention_threshold_never_splits_tied_confidences() -> None:
+    # Audit 2026-09-12 A05: venti osservazioni a 0.9, dieci corrette poi dieci
+    # errate. Nessuna soglia seleziona solo una parte del pareggio: applicando
+    # davvero confidence >= soglia la copertura sarebbe 20 con rischio 0.5.
+    observations = tuple(ConfidenceObservation(0.9, index < 10) for index in range(20))
+    for ordering in (observations, tuple(reversed(observations))):
+        result = select_abstention_threshold(ordering, maximum_risk=0.10)
+        assert result == {
+            "threshold": None,
+            "covered": 0,
+            "coverage": 0.0,
+            "empirical_risk": None,
+        }
+
+
+def test_abstention_threshold_reproduces_when_applied() -> None:
+    observations = (
+        *(ConfidenceObservation(0.95, True) for _ in range(12)),
+        *(ConfidenceObservation(0.80, True) for _ in range(5)),
+        ConfidenceObservation(0.80, False),
+        *(ConfidenceObservation(0.40, False) for _ in range(6)),
+    )
+    result = select_abstention_threshold(observations, maximum_risk=0.10)
+    threshold = result["threshold"]
+    assert isinstance(threshold, float)
+    selected = [item for item in observations if item.confidence >= threshold]
+    assert result["covered"] == len(selected) == 18
+    errors = sum(not item.correct for item in selected)
+    assert result["empirical_risk"] == pytest.approx(errors / len(selected))
 
 
 def test_calibration_requires_hashed_validation_provenance(tmp_path: Path) -> None:

@@ -18,6 +18,7 @@ from ntruth.pipeline_v8 import (
     V8PipelineResult,
     V8PipelineVerificationError,
     run_v8_pipeline,
+    within_pipeline_verification_scope,
 )
 from ntruth.schemas.authority import AuthorityType
 from ntruth.schemas.count_registry import CanonicalCountKind, CanonicalCountRecord
@@ -207,6 +208,7 @@ def validate_raw_wizard_submission(submission: QuickDesignV8Submission) -> None:
                     )
 
 
+@within_pipeline_verification_scope
 def run_quick_design_v8(
     submission: QuickDesignV8Submission,
     *,

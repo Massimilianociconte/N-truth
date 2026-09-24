@@ -251,7 +251,7 @@ def _set_expression(spec: _Spec, expression: str, desired: bool) -> None:
         else:
             spec.model_levels.discard(node_type)
         return
-    if name == "model_accounts_for_assignment":
+    if name in {"model_accounts_for_assignment", "model_accounts_for_experimental_unit"}:
         if effective:
             if spec.experimental_unit is None:
                 spec.experimental_unit = NodeType.CELL_CULTURE

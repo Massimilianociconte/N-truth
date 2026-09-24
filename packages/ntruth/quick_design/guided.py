@@ -26,7 +26,7 @@ from ntruth.derivation_theory.runtime import (
     verify_runtime_bundle,
 )
 from ntruth.mvt_a.stage_schema import assert_no_final_scientific_fields
-from ntruth.pipeline_v8 import V8PipelineRequest
+from ntruth.pipeline_v8 import V8PipelineRequest, within_pipeline_verification_scope
 from ntruth.quick_design.v8 import (
     QuickDesignScientificReviewRequired,
     QuickDesignV8Result,
@@ -1953,6 +1953,7 @@ def _assert_confirmed_guided_closure(response: GuidedQuickDesignBuildResponse) -
             )
 
 
+@within_pipeline_verification_scope
 def build_guided_quick_design(
     request: GuidedQuickDesignBuildRequest,
     *,

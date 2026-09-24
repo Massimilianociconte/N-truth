@@ -48,6 +48,8 @@ def gate_experimental_unit_claim(
     shared_exposure: bool = False,
     exposure_collapses_separability: bool = False,
     exposure_cluster: str | None = None,
+    assignment_complete: bool = True,
+    between_cluster_only: bool = False,
 ) -> V9ClaimGateDecision:
     """Permit an assignment-anchored EU only when role, type and assignment hold.
 
@@ -87,6 +89,8 @@ def gate_experimental_unit_claim(
         fully_aliased=fully_aliased,
         exposure_separable=exposure_separable,
         information_sufficient=information_sufficient,
+        assignment_complete=assignment_complete,
+        between_cluster_only=between_cluster_only,
     )
     eu_after, interference_status = apply_interference_to_claims(
         eu_claim=eu,

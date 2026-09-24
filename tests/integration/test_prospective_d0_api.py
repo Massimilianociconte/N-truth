@@ -177,7 +177,7 @@ def test_export_blocks_identifiers_without_echoing_sensitive_values() -> None:
 
 @pytest.mark.parametrize(
     ("ruleset_id", "ruleset_version"),
-    [("../secret", "0.2.0"), ("ntruth-core", "0.1.0")],
+    [("../secret", "0.3.0"), ("ntruth-core", "0.1.0"), ("ntruth-core", "0.2.0")],
 )
 def test_noncanonical_ruleset_is_rejected_without_path_disclosure(
     ruleset_id: str, ruleset_version: str
@@ -198,7 +198,7 @@ def test_noncanonical_ruleset_is_rejected_without_path_disclosure(
     assert response.status_code == 422
     detail = response.json()["detail"]
     assert detail["code"] == "prospective_ruleset_not_allowed"
-    assert detail["allowed_ruleset"] == "ntruth-core@0.2.0"
+    assert detail["allowed_ruleset"] == "ntruth-core@0.3.0"
     assert "/Users/" not in response.text
     assert "../secret" not in response.text
 

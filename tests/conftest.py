@@ -84,11 +84,13 @@ def make_project(tmp_path: Path) -> ProjectFactory:
         name: str = "test",
         project_name: str | None = None,
         release_profile: ReleaseProfile = ReleaseProfile.D0_CORE,
+        ruleset_version: str | None = None,
     ) -> Project:
         """`name` isola le cartelle, `project_name` e il nome logico del progetto.
 
         Tenerli distinti permette di creare due workspace diversi con lo stesso
         input logico, che e cio che serve per verificare la riproducibilita.
+        ``ruleset_version`` fissa una versione storica del ruleset.
         """
         source = tmp_path / f"src-{name}"
         source.mkdir(parents=True, exist_ok=True)
@@ -99,6 +101,7 @@ def make_project(tmp_path: Path) -> ProjectFactory:
             name=project_name or name,
             language="en",
             release_profile=release_profile,
+            **({} if ruleset_version is None else {"ruleset_version": ruleset_version}),
         )
         project.add(source)
         return project

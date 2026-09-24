@@ -535,6 +535,85 @@ def test_pipeline_stops_at_typed_fact_verification_failure() -> None:
     assert error.value.report.issues[0].theory_clause_id == "DT-C-EXPERIMENTAL-UNIT-COUNT"
 
 
+def test_divergent_duplicate_interference_fact_is_a_typed_conflict() -> None:
+    """Catches publishing a predicate that contradicts the verified causal aggregate.
+
+    Audit 2026-09-12 A06: same evidence and scope, causal context ``possible``,
+    predicate ``documented``. The fact boundary must reject the contradiction
+    instead of letting adequacy publish one side of it.
+    """
+
+    runtime, request = _request(overrides={"interference_status": _present("documented")})
+    verifier = import_module("ntruth.verifier.v8")
+
+    report = verifier.verify_v8_pipeline_request(request, conformance_bundle=CANONICAL_BUNDLE)
+
+    assert report.passed is False
+    assert report.failed_stage == "FACT_VERIFICATION"
+    assert [issue.code for issue in report.issues] == ["DUPLICATE_FACT_CONFLICT"]
+    assert report.issues[0].predicate_id == "interference_status"
+    with pytest.raises(runtime.V8PipelineVerificationError):
+        runtime.run_v8_pipeline(request, conformance_bundle=CANONICAL_BUNDLE)
+
+
+def test_completeness_without_counterexample_search_is_rejected_at_fact_boundary() -> None:
+    """Catches COMPLETE scenario coverage whose counterexample search never ran (A07)."""
+
+    runtime = import_module("ntruth.pipeline_v8")
+    coverage = runtime.ScenarioCoverage.model_validate(
+        {
+            "status": "COMPLETE_UNDER_DECLARED_ASSUMPTION_SET",
+            "profile_id": PROFILE_ID,
+            "theory_version": "0.1.0",
+            "emitting_clause_ids": ["DT-B-EXPERIMENTAL-UNIT"],
+            "omitted_dimensions": {
+                "knowledge_state": "ABSENT_EXPLICIT",
+                "rationale": "No omitted dimensions within the declared assumption set.",
+                "evidence_ids": ["EV-RUNTIME-001"],
+            },
+            "caveat": {
+                "knowledge_state": "NOT_APPLICABLE",
+                "rationale": "No caveat.",
+                "query_scope_id": QUERY_ID,
+            },
+            "assumption_set_id": "AS-RUNTIME-001",
+            "assumption_set_version": "0.1.0",
+            "assumption_set_finalized": True,
+            "counterexample_search_status": "NOT_PERFORMED",
+        }
+    )
+    _, request = _request(scenario_coverages=(coverage,))
+    verifier = import_module("ntruth.verifier.v8")
+
+    report = verifier.verify_v8_pipeline_request(request, conformance_bundle=CANONICAL_BUNDLE)
+
+    assert report.passed is False
+    assert [issue.code for issue in report.issues] == ["SCENARIO_COVERAGE_MISMATCH"]
+    assert "counterexample search" in report.issues[0].message
+
+
+@pytest.mark.parametrize(
+    ("predicate_id", "malformed"),
+    [
+        ("assignment_separability", "false"),
+        ("realized_exposure_separability", 1),
+        ("interference_status", "DOCUMENTED-ish"),
+    ],
+)
+def test_malformed_present_predicate_is_reported_not_silently_unknown(
+    predicate_id: str, malformed: object
+) -> None:
+    """Catches a PRESENT value outside the domain the derivation consumes (SCI-L01)."""
+
+    _, request = _request(overrides={predicate_id: _present(malformed)})
+    verifier = import_module("ntruth.verifier.v8")
+
+    report = verifier.verify_v8_pipeline_request(request, conformance_bundle=CANONICAL_BUNDLE)
+
+    assert report.passed is False
+    assert "PREDICATE_DOMAIN_MISMATCH" in [issue.code for issue in report.issues]
+
+
 def test_exact_graph_equality_is_identifier_invariant_and_semantic() -> None:
     """Catches comparing local IDs instead of typed semantic graph structure."""
 

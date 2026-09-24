@@ -114,3 +114,54 @@ def test_design_preflight_denies_eu_minted_from_exposure_only(client) -> None:
     assert body["decision"]["eu_emitted"] is False
     assert body["decision"]["denial_reason"] is not None
     assert "assignment_event_id" in body["decision"]["denial_reason"]
+
+
+def test_design_preflight_reports_between_cluster_contrast(client) -> None:
+    # Trattamento costante per gabbia, topi come unita: nessun alias perfetto,
+    # ma il contrasto e solo fra gabbie e non puo essere supporto pieno.
+    payload = {
+        **ALIASED_PAYLOAD,
+        "assignments": {
+            "m1": {"treatment": "control", "cage": "c1"},
+            "m2": {"treatment": "control", "cage": "c1"},
+            "m3": {"treatment": "drug", "cage": "c2"},
+            "m4": {"treatment": "drug", "cage": "c2"},
+            "m5": {"treatment": "control", "cage": "c3"},
+            "m6": {"treatment": "drug", "cage": "c4"},
+        },
+        "declared_levels": {
+            "treatment": ["control", "drug"],
+            "cage": ["c1", "c2", "c3", "c4"],
+        },
+        "blocks": {unit: "all" for unit in ("m1", "m2", "m3", "m4", "m5", "m6")},
+        "unit_type": "mouse",
+        "exposure_separable": True,
+    }
+    response = client.post("/v9/design/preflight", json=payload)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["design_matrix"]["aliased_with_factor"] == []
+    assert body["design_matrix"]["constant_within_levels_of"]["treatment"] == ["cage"]
+    assert body["gate_inputs"]["between_cluster_only"] is True
+    assert body["decision"]["contrast_status"] == "PARTIALLY_SUPPORTED"
+
+
+def test_design_preflight_missing_assignment_is_explicit(client) -> None:
+    payload = {
+        **ALIASED_PAYLOAD,
+        "assignments": {
+            "u1": {"treatment": "control"},
+            "u2": {},
+            "u3": {"treatment": "drug"},
+            "u4": {"treatment": "control"},
+        },
+        "declared_levels": {"treatment": ["control", "drug"]},
+        "blocks": {"u1": "b1", "u2": "b1", "u3": "b2", "u4": "b2"},
+        "exposure_separable": True,
+    }
+    response = client.post("/v9/design/preflight", json=payload)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["design_matrix"]["unassigned_units"]["treatment"] == ["u2"]
+    assert body["gate_inputs"]["assignment_complete"] is False
+    assert body["decision"]["contrast_status"] == "PARTIALLY_SUPPORTED"

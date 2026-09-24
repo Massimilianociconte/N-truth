@@ -328,8 +328,11 @@ def test_v8_derivation_input_requires_canonical_count_registry_records() -> None
 
 
 def test_adequacy_is_a_nonempty_epistemic_evaluation_with_rule_pins() -> None:
+    # Causal context and predicate must record the same epistemic reading of
+    # interference: a divergence is a DUPLICATE_FACT_CONFLICT (audit A06).
     runtime, request = base._request(
-        overrides={"interference_status": base._unknown("interference was not reconstructable")}
+        overrides={"interference_status": base._unknown("interference was not reconstructable")},
+        interference=base.InterferenceStatus.UNKNOWN,
     )
     result = runtime.run_v8_pipeline(request, conformance_bundle=_bundle())
 

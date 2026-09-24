@@ -264,26 +264,40 @@ def compute_error_per_bin(
 
 @dataclass(frozen=True, slots=True)
 class RiskCoveragePoint:
+    """Punto operativo realizzabile: si accettano tutti gli output con score >= soglia."""
+
     selected_count: int
     coverage: float
     cumulative_risk: float
+    score_threshold: float
 
 
 def compute_risk_coverage_curve(
     scores: Sequence[float], labels: Sequence[int]
 ) -> tuple[RiskCoveragePoint, ...]:
+    """Curva rischio/copertura sui soli punti realizzabili da una soglia.
+
+    Gli output con score identico sono accettati o rifiutati insieme: un
+    punto a meta di un gruppo di pareggi non corrisponde ad alcuna soglia e
+    dipenderebbe dall'ordine di input. Un punto per score distinto (1=corretto,
+    0=errore, come nelle altre metriche del modulo).
+    """
+
     pairs = _validated_pairs(scores, labels)
     total = len(pairs)
-    order = sorted(range(total), key=lambda index: (-pairs[index][0], index))
+    ordered = sorted(pairs, key=lambda pair: -pair[0])
     points: list[RiskCoveragePoint] = []
     errors = 0
-    for selected, index in enumerate(order, start=1):
-        errors += 1 - pairs[index][1]
+    for selected, (score, label) in enumerate(ordered, start=1):
+        errors += 1 - label
+        if selected < total and ordered[selected][0] == score:
+            continue
         points.append(
             RiskCoveragePoint(
                 selected_count=selected,
                 coverage=selected / total,
                 cumulative_risk=errors / selected,
+                score_threshold=score,
             )
         )
     return tuple(points)
@@ -294,14 +308,20 @@ def selective_risk_at_coverage(
     labels: Sequence[int],
     coverage: float,
 ) -> float:
+    """Rischio al primo punto realizzabile con copertura >= target.
+
+    I pareggi non vengono spezzati: la copertura effettiva puo superare il
+    target quando l'ultimo gruppo di score uguali lo attraversa.
+    """
+
     _validated_pairs(scores, labels)
     _validate_unit_interval(coverage, "coverage")
     if coverage == 0.0:
         raise ConfidenceRecordError("coverage deve essere > 0")
     curve = compute_risk_coverage_curve(scores, labels)
-    total = len(curve)
-    selected = min(total, max(1, math.ceil(coverage * total)))
-    return curve[selected - 1].cumulative_risk
+    total = curve[-1].selected_count
+    required = min(total, max(1, math.ceil(coverage * total)))
+    return next(point for point in curve if point.selected_count >= required).cumulative_risk
 
 
 def false_high_confidence_critical_error_rate(
@@ -311,6 +331,12 @@ def false_high_confidence_critical_error_rate(
     *,
     threshold: float = DEFAULT_HIGH_CONFIDENCE_THRESHOLD,
 ) -> float:
+    """Quota dei casi critici che sono errori (label 0) emessi con score >= soglia.
+
+    Codifica condivisa col modulo: 1=corretto, 0=errore. Numeratore: errori
+    critici ad alta confidenza; denominatore: tutti i casi critici.
+    """
+
     pairs = _validated_pairs(scores, labels)
     if len(critical_flags) != len(pairs):
         raise ConfidenceRecordError("critical_flags deve avere la stessa lunghezza di scores")
@@ -321,7 +347,7 @@ def false_high_confidence_critical_error_rate(
         if not critical:
             continue
         critical_total += 1
-        if label == 1 and score >= threshold:
+        if label == 0 and score >= threshold:
             false_high_confidence += 1
     if critical_total == 0:
         return 0.0

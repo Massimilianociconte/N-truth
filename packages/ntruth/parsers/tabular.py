@@ -146,8 +146,9 @@ def _iter_sheet_rows(
                 else:
                     uncached += 1
             cells.append(text)
-        if any(value.strip() for value in cells):
-            yield cells
+        # Anche le righe vuote sono emesse: `_build_table` le salta mantenendo
+        # nei warning il numero di riga del foglio.
+        yield cells
     if uncached:
         doc.warnings.append(
             f"foglio '{sheet.title}': {uncached} formule senza valore calcolato in cache "
@@ -166,13 +167,26 @@ def _sniff_delimiter(content: str) -> str:
 def _build_table(
     name: str, rows: Iterable[list[str]], doc: RawDocument, sheet: str | None = None
 ) -> RawTable | None:
-    iterator = iter(rows)
+    """Normalizza le righe in RawTable senza perdere celle in silenzio.
+
+    Righe interamente vuote (tipiche degli export CSV) non sono record: vengono
+    saltate come fa gia il foglio XLSX, mentre i numeri di riga nei warning
+    restano quelli della sorgente.
+    """
+
+    numbered = (
+        (number, raw)
+        for number, raw in enumerate(rows, start=1)
+        if any(str(cell).strip() for cell in raw)
+    )
     try:
-        header_raw = next(iterator)
+        _header_number, header_raw = next(numbered)
     except StopIteration:
         return None
     if len(header_raw) > MAX_COLUMNS:
-        doc.warnings.append(f"{name}: {len(header_raw)} colonne oltre il limite, troncate")
+        message = f"{name}: {len(header_raw)} colonne oltre il limite {MAX_COLUMNS}, troncate"
+        doc.warnings.append(message)
+        doc.status = ParserStatus.PARTIAL
         header_raw = header_raw[:MAX_COLUMNS]
     formula_cells = 0
     safe_header: list[str] = []
@@ -185,14 +199,23 @@ def _build_table(
         return None
 
     table = RawTable(name=name, sheet=sheet, columns=header)
-    for index, raw in enumerate(iterator):
+    renamed = [
+        f"{original or '(vuota)'}->{unique}"
+        for original, unique in zip(safe_header, header, strict=True)
+        if original != unique
+    ]
+    if renamed:
+        message = f"{name}: intestazioni duplicate o vuote rinominate ({', '.join(renamed)})"
+        table.warnings.append(message)
+        doc.warnings.append(message)
+    for index, (number, raw) in enumerate(numbered):
         if index >= MAX_ROWS:
             table.warnings.append(f"righe oltre {MAX_ROWS} ignorate")
             doc.status = ParserStatus.PARTIAL
             break
         if len(raw) != len(header):
             message = (
-                f"{name}: riga {index + 2} non rettangolare "
+                f"{name}: riga {number} non rettangolare "
                 f"({len(raw)} celle, attese {len(header)}); output parziale"
             )
             table.warnings.append(message)
@@ -215,14 +238,33 @@ def _build_table(
 
 
 def _unique_headers(raw: list[str]) -> list[str]:
-    seen: dict[str, int] = {}
+    """Nomi di colonna univoci: nessuna collisione fra nomi originali e generati.
+
+    Il primo uso di un nome originale lo conserva; duplicati e intestazioni
+    vuote ricevono il primo nome libero che non coincide ne con i nomi gia
+    assegnati ne con un nome originale (``animal, animal, animal_1`` ->
+    ``animal, animal_2, animal_1``), cosi ``dict(zip(header, row))`` non
+    sovrascrive mai una cella.
+    """
+
+    stripped = [(value or "").strip() for value in raw]
+    reserved = {name for name in stripped if name}
+    taken: set[str] = set()
     out: list[str] = []
-    for index, value in enumerate(raw):
-        name = (value or "").strip() or f"col_{index + 1}"
-        if name in seen:
-            seen[name] += 1
-            name = f"{name}_{seen[name]}"
+    for index, name in enumerate(stripped):
+        if name and name not in taken:
+            candidate = name
         else:
-            seen[name] = 0
-        out.append(name)
+            candidate = _free_name(name or f"col_{index + 1}", taken, reserved, allow_base=not name)
+        taken.add(candidate)
+        out.append(candidate)
     return out
+
+
+def _free_name(base: str, taken: set[str], reserved: set[str], *, allow_base: bool) -> str:
+    if allow_base and base not in taken and base not in reserved:
+        return base
+    suffix = 1
+    while f"{base}_{suffix}" in taken or f"{base}_{suffix}" in reserved:
+        suffix += 1
+    return f"{base}_{suffix}"

@@ -14,6 +14,7 @@ from pydantic import AliasChoices, ConfigDict, Field, field_validator, model_val
 
 from ntruth.capabilities import CapabilityReason, CapabilityStatus
 from ntruth.design.schema import DesignCompilation
+from ntruth.rules.loader import DEFAULT_RULESET_ID, DEFAULT_RULESET_VERSION
 from ntruth.sample_sheet.schema import SampleLifecycleStatus, SampleSheetSpec
 from ntruth.schemas.core import Determinability, NTruthModel
 from ntruth.schemas.experiment import (
@@ -407,13 +408,13 @@ class ProspectiveD0CompileRequest(_ProspectiveInput):
     # di costruire qualunque path. Restano nel payload per rendere esplicito il
     # contratto richiesto dal client e rifiutare versioni stale con un 4xx.
     ruleset_id: str = Field(
-        default="ntruth-core",
+        default=DEFAULT_RULESET_ID,
         min_length=1,
         max_length=100,
         validation_alias=AliasChoices("ruleset_id", "rulesetId"),
     )
     ruleset_version: str = Field(
-        default="0.2.0",
+        default=DEFAULT_RULESET_VERSION,
         min_length=1,
         max_length=100,
         validation_alias=AliasChoices("ruleset_version", "rulesetVersion"),

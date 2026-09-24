@@ -249,6 +249,8 @@ class ProjectManifest(NTruthModel):
     files: tuple[ProjectFile, ...] = ()
     experiment_bundles: tuple[ExperimentBundleManifest, ...] = ()
     ruleset_id: str = "ntruth-core"
+    # Default storico per manifest legacy privi del campo: i progetti nuovi
+    # registrano sempre la versione esplicita (ntruth.rules.loader).
     ruleset_version: str = "0.2.0"
     notes: str = ""
     integrity: dict[str, str] = Field(default_factory=dict)

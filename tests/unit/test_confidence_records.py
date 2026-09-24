@@ -164,15 +164,20 @@ class TestCalibrationMetrics:
         assert selective_risk_at_coverage(scores, labels, 0.5) == pytest.approx(0.0)
 
     def test_false_high_confidence_critical_error_rate_known_values(self) -> None:
+        # 1=corretto, 0=errore: contano solo gli errori critici ad alta confidenza.
         scores = [0.95, 0.92, 0.5, 0.93]
         labels = [1, 0, 1, 0]
         flags = [True, True, True, True]
         rate = false_high_confidence_critical_error_rate(scores, labels, flags)
-        assert rate == pytest.approx(1 / 4)
+        assert rate == pytest.approx(2 / 4)
         only_one_high = false_high_confidence_critical_error_rate(
             scores, labels, [False, False, False, True]
         )
-        assert only_one_high == 0.0
+        assert only_one_high == pytest.approx(1.0)
+        only_correct_high = false_high_confidence_critical_error_rate(
+            scores, labels, [True, False, False, False]
+        )
+        assert only_correct_high == 0.0
         no_critical = false_high_confidence_critical_error_rate(
             scores, labels, [False, False, False, False]
         )
@@ -188,7 +193,42 @@ class TestCalibrationMetrics:
         assert isinstance(metrics, CalibrationMetrics)
         assert metrics.brier == pytest.approx((0.01 + 0.64 + 0.04) / 3)
         assert metrics.selective_risk_at_target_coverage == pytest.approx(2 / 3)
-        assert metrics.false_high_confidence_critical_error_rate == pytest.approx(1.0)
+        # L'unico caso critico e corretto ad alta confidenza: nessuna falsa sicurezza.
+        assert metrics.false_high_confidence_critical_error_rate == 0.0
+
+    def test_false_high_confidence_truth_table(self) -> None:
+        # Tabella di verita indipendente: corretto/errato x alta/bassa confidence.
+        cases = {
+            (0.99, 0): 1.0,  # errore critico ad alta confidenza
+            (0.99, 1): 0.0,  # corretto ad alta confidenza
+            (0.40, 0): 0.0,  # errore a bassa confidenza (non e falsa sicurezza)
+            (0.40, 1): 0.0,
+        }
+        for (score, label), expected in cases.items():
+            assert false_high_confidence_critical_error_rate(
+                [score], [label], [True]
+            ) == pytest.approx(expected)
+            metrics = compute_calibration_metrics([score], [label], critical_flags=[True])
+            assert metrics.false_high_confidence_critical_error_rate == pytest.approx(expected)
+
+    def test_risk_coverage_never_splits_tied_scores(self) -> None:
+        # Venti score identici: nessuna soglia seleziona un sottoinsieme del pareggio.
+        scores = [0.9] * 20
+        first = [1] * 10 + [0] * 10
+        second = [0] * 10 + [1] * 10
+        for labels in (first, second):
+            curve = compute_risk_coverage_curve(scores, labels)
+            assert [point.selected_count for point in curve] == [20]
+            assert curve[0].cumulative_risk == pytest.approx(0.5)
+            assert curve[0].score_threshold == pytest.approx(0.9)
+            assert selective_risk_at_coverage(scores, labels, 0.5) == pytest.approx(0.5)
+
+    def test_risk_coverage_is_permutation_invariant(self) -> None:
+        scores = [0.9, 0.9, 0.8, 0.8, 0.8, 0.1]
+        labels = [1, 0, 1, 1, 0, 0]
+        reversed_curve = compute_risk_coverage_curve(scores[::-1], labels[::-1])
+        assert compute_risk_coverage_curve(scores, labels) == reversed_curve
+        assert [point.selected_count for point in reversed_curve] == [2, 5, 6]
 
     def test_empty_or_mismatched_inputs_rejected(self) -> None:
         with pytest.raises(ConfidenceRecordError):

@@ -13,6 +13,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from ntruth.ingest.project import Project
 from ntruth.pipeline import analyze_project_v7_adapter
 from ntruth.reporting import report_to_dict
@@ -119,14 +121,28 @@ def _projection(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def test_report_matches_reviewed_software_snapshot(make_project: ProjectFactory) -> None:
+#: Snapshot per versione del ruleset. Lo snapshot 0.2.0 e storico e non va
+#: riscritto: dimostra che un progetto fissato a ``ntruth-core@0.2.0`` riproduce
+#: lo stesso report byte per byte anche dopo l'introduzione di 0.3.0.
+GOLDEN_BY_RULESET = {
+    "0.2.0": GOLDEN_PATH,
+    "0.3.0": GOLDEN_PATH.with_name("report_v3_software_snapshot_ruleset_0.3.0.json"),
+}
+
+
+@pytest.mark.parametrize("ruleset_version", sorted(GOLDEN_BY_RULESET))
+def test_report_matches_reviewed_software_snapshot(
+    make_project: ProjectFactory, ruleset_version: str
+) -> None:
     project = make_project(
         {"methods.md": METHODS},
         name="report-golden-v3",
         project_name="golden-v3",
+        ruleset_version=ruleset_version,
     )
     actual = report_to_dict(analyze_project_v7_adapter(project).report)
-    expected = json.loads(GOLDEN_PATH.read_text(encoding="utf-8"))
+    expected = json.loads(GOLDEN_BY_RULESET[ruleset_version].read_text(encoding="utf-8"))
+    assert actual["versions"]["ruleset_version"] == ruleset_version
 
     assert expected["fixture_kind"] == "deterministic_software_snapshot_not_expert_gold"
     assert _projection(actual) == expected["projection"]
