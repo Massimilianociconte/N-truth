@@ -29,6 +29,7 @@ scientifiche senza il protocollo comparativo e i gate umani previsti.
 | [0017](0017-challenge-feedback-lifecycle.md) | Challenge feedback: no item-level ACTIVE, aggregato solo RETIRED_DIAGNOSTIC, rotation | accepted (2026-08-25) |
 | [0018](0018-ui-defaults-wizard-first.md) | UI defaults: wizard D0 primario, expert opt-in, semantiche neutre, max 3 domande PROVISIONAL | accepted (2026-08-25) |
 | [0019](0019-minicpm5-2b-migration.md) | Migrazione a MiniCPM5-2B primario provvisorio, Granite retrocesso a legacy opt-in | accepted for development (2026-09-17) |
+| [0020](0020-sourcedata-provenance-exporter-aligned-full-unit-hybrid.md) | SourceData provenance: ibrido full-unit allineato all'exporter (candidato Method C) | accepted (decisione progettuale umana, 2026-08-06) |
 
 ## Template minimo
 

@@ -1,0 +1,88 @@
+# Machine-readable summary — SourceData provenance method reconciliation
+# and exporter-lineage adjudication (2026-08-06).
+# NO corpus text: identifiers, counts and SHA-256 hashes only.
+schema_version: 1
+generated: "2026-08-06"
+task_corpus: entity_roles/sourcedata/v2.0.3
+pr_reference: "PR #9 (draft, not merged)"
+
+outcome:
+  adjudication: METHOD_B_LABEL_INDEPENDENT_REPRODUCED_ZERO_IDENTIFIER_CONFLICTS
+  exporter_lineage: EXPORTER_LINEAGE_SUPPORTS_METHOD_B
+  dual_run_byte_identical: true
+  sidecar_regenerated: false
+  pr_status: DRAFT
+
+policy:
+  version: "1.0.0"
+  sha256: e9d09ad6e779953fe510bd4f85392632894b5b1c4869865e718f66868def529b
+
+input_bundle:
+  canonical_records_sha256: 562b6ac933c13f05a0ea536696857e7e11dd5a324503d1fe930d26149d071b10
+  upstream_xml_tarball_sha256: 71f9899211efef62bc523275bbff7ba3e37ec8b4d1fc21405b58f4b68e93ba60
+  record_count: 75163
+
+relations:
+  IDENTICAL: 74026
+  METHOD_B_ONLY: 1090
+  SAME_ARTICLE_DIFFERENT_GRANULARITY: 46
+  BOTH_FALLBACK: 1
+  METHOD_A_ONLY: 0
+  CONFLICTING_ARTICLE: 0
+  CONFLICTING_FIGURE: 0
+  CONFLICTING_PANEL: 0
+
+delta_reasons:
+  none: 74026
+  caption_parser_difference: 1090
+  doi_collapse_difference: 46
+  both_methods_fail_closed_on_this_record: 1
+
+projection_equivalence:
+  units: 77688
+  locked_texts: 73126
+  projections_identical: 74048
+  itertext_matches_exporter: 1114
+  attribute_matches_exporter: 0
+  both_match_distinct_locked_texts: 0
+  neither_matches_exporter: 2492
+  exporter_unavailable_for_unit: 34
+
+method_b_only_analysis:
+  records_analyzed: 1090
+  itertext_equals_locked: 1090
+  attribute_differs_from_locked: 1090
+  attribute_equals_other_locked_text: 0
+  entity_span_signature_matches: 0
+  ambiguous_unit_set: 30
+
+label_assisted_s4:
+  reconstructed: 3
+  historically_reported: 14
+  status: PARTIAL_NOT_HISTORICALLY_REPRODUCIBLE
+  production_eligibility: NON_PRODUCTION
+  valid_for_split_grouping: false
+  valid_for_model_evaluation: false
+  eligibility_changing: false
+
+audit_set:
+  records: 1137
+  sha256: c2cb20fc7745a3ee47a3e10eaa9d5eabd958252bd2caa055e2d0fb4b40ac2194
+
+dossier:
+  method_b_only_records: 1090
+  same_article_different_granularity_records: 46
+  both_fallback_records: 1
+  label_assisted_s4_records: 3
+  exporter_projection_disagreements: 1114
+  human_inspection_sample: 39
+  location: outside Git (scratch work dir, adjudication_dossier/)
+
+external_unchanged:
+  sidecar_sha256: 7cfba6f9f1a49ee5434c60a8510a7e6702e16849666b081323eee9a1894a041a
+  manifest_sha256: 31d4fb939e086726b95b20f998e52756dad4153b62965d02b00f7125176e2ee6
+  records_sha256: 562b6ac933c13f05a0ea536696857e7e11dd5a324503d1fe930d26149d071b10
+
+documents:
+  - docs/task_corpora/sourcedata-provenance-method-reconciliation-2026-08-06.md
+  - docs/task_corpora/sourcedata-exporter-lineage-adjudication-2026-08-06.md
