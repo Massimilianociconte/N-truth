@@ -86,4 +86,5 @@ def freeze_plan(result: QuickDesignResult) -> QuickDesignResult:
         primary_question=result.primary_question,
         plan_frozen=True,
         export_payload=payload,
+        user_confirmation_scopes=result.user_confirmation_scopes,
     )

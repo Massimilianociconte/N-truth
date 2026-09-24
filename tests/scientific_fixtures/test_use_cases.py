@@ -43,6 +43,13 @@ def test_use_case(case: Case, tmp_path: Path) -> None:
     def as_str(value: object | None) -> str | None:
         return str(value) if value is not None else None
 
+    assert as_str(assessment.allocation_unit_candidate) == expected.get(
+        "allocation_unit_candidate"
+    ), (
+        f"{context}: candidato di allocation atteso "
+        f"{expected.get('allocation_unit_candidate')}, "
+        f"ottenuto {assessment.allocation_unit_candidate}. {assessment.rationale}"
+    )
     assert as_str(assessment.experimental_unit) == expected["experimental_unit"], (
         f"{context}: unita sperimentale attesa {expected['experimental_unit']}, "
         f"ottenuta {assessment.experimental_unit}. {assessment.rationale}"
@@ -101,17 +108,30 @@ def test_use_case(case: Case, tmp_path: Path) -> None:
         scoped_assessment = matching[0]
         assert scoped_assessment.n_declared == scoped["n_declared"], context
         assert scoped_assessment.n_observational == scoped["n_observational"], context
+        if "n_analysed" in scoped:
+            assert scoped_assessment.n_analysed == scoped["n_analysed"], context
         assert scoped_assessment.n_independent == scoped["n_independent"], context
 
     assert assessment.inferability.value == expected["inferability"], context
     assert assessment.risk.value == expected["risk"], context
 
-    fired = {alert.rule_id for alert in block.alerts}
+    # Il proof trace interno conserva quali regole hanno materializzato un
+    # output. Questo include sia FIRED sia le regole scattate in astensione
+    # controllata (per esempio ``assignment_unknown()``), che nel rules engine
+    # producono un alert interno evidence-aware. Il blocco pubblico puo invece
+    # sopprimere gli alert decisivi fuori da DETERMINATE.
+    triggered = {
+        evaluation.rule_id
+        for evaluation in result.block_analyses[0].evaluations
+        if evaluation.output_ids
+    }
     for rule_id in expected["alerts_include"]:
-        assert rule_id in fired, f"{context}: regola {rule_id} attesa. Scattate: {sorted(fired)}"
+        assert rule_id in triggered, (
+            f"{context}: regola {rule_id} attesa. Scattate: {sorted(triggered)}"
+        )
     for rule_id in expected["alerts_exclude"]:
-        assert rule_id not in fired, (
-            f"{context}: regola {rule_id} non doveva scattare. Scattate: {sorted(fired)}"
+        assert rule_id not in triggered, (
+            f"{context}: regola {rule_id} non doveva scattare. Scattate: {sorted(triggered)}"
         )
 
     assert result.abstention.abstained == expected["abstained"], (

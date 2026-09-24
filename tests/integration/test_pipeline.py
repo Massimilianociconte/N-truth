@@ -11,14 +11,18 @@ import pytest
 from conftest import ProjectFactory
 
 import ntruth.pipeline as pipeline_module
+from ntruth.capabilities import CORE_PROFILE_REFERENCE
+from ntruth.design import CompilationStatus
 from ntruth.extract.facts import ExtractionResult
 from ntruth.graph.builder import BuildResult
-from ntruth.graph.validation import GraphValidationError
-from ntruth.pipeline import AnalysisResult, analyze_project
+from ntruth.pipeline import AnalysisResult
+from ntruth.pipeline import analyze_project_v7_adapter as analyze_project
 from ntruth.reporting import write_all
 from ntruth.reporting.html_report import render_html
-from ntruth.schemas.core import Provenance, ProvenanceKind
+from ntruth.schemas.core import Determinability, Provenance, ProvenanceKind, Severity
+from ntruth.schemas.experiment import Alert, GraphStatus
 from ntruth.schemas.graph import GraphRelation, RelationType
+from ntruth.schemas.report import PositivePathStatus
 
 METHODS = (
     "# Materials and Methods\n\n"
@@ -138,7 +142,8 @@ def test_rules_can_change_without_touching_the_code(
                 "version": "1.0.0",
                 "domain": "general",
                 "title": "regola locale",
-                "preconditions": ["analysis_finer_than_assignment()"],
+                "preconditions": [],
+                "requires_evidence": False,
                 "inference": "local rule",
                 "message_it": "regola locale attiva su {experimental_unit}",
                 "message_en": "local rule active on {experimental_unit}",
@@ -206,6 +211,152 @@ def test_invalid_graph_is_rejected_before_unit_resolution(
     monkeypatch.setattr(pipeline_module, "build_graph", invalid_build)
     monkeypatch.setattr(pipeline_module, "resolve_units", forbidden_resolver)
 
-    with pytest.raises(GraphValidationError, match="dangling_relation_endpoint"):
-        pipeline_module.analyze_project(project)
+    # Il confine della pipeline non propaga l'eccezione del validatore: proietta
+    # il blocco in stato fail-closed INVALID e registra la causa hard nel
+    # verificatore pubblico, senza mai lasciare che resolver o regole leggano
+    # un grafo non valido.
+    result = pipeline_module.analyze_project_v7_adapter(project)
+
     assert not resolver_called
+    block = result.block
+    assert block.graph_status is GraphStatus.INVALID
+    assert block.determinability is Determinability.INVALID_GRAPH
+    assert result.block_analyses[0].evaluations == ()
+    assert result.block_analyses[0].rule_warnings == (
+        "Regole non eseguite: il verificatore hard ha rifiutato il grafo.",
+    )
+    verification = result.report.verifier_results[block.id]
+    assert "dangling_relation_endpoint" in verification.violation_codes
+    assert any(item.code == "dangling_relation_endpoint" for item in result.report.graph_violations)
+    assert not block.unit_assessments
+
+
+def test_repeated_measure_pipeline_is_gated_outside_core_profile(
+    make_project: ProjectFactory,
+    tmp_path: Path,
+) -> None:
+    repeated_methods = METHODS.replace(
+        "Intensity per cell was quantified.",
+        "The same cell culture was measured at two timepoints. Intensity per cell was quantified.",
+    )
+
+    result = analyze_project(
+        make_project({"repeated.md": repeated_methods}, name="repeated-out-of-scope")
+    )
+
+    assert result.block.determinability is Determinability.OUT_OF_SCOPE
+    assert any(process.kind == "repeated_measure" for process in result.block.processes)
+    assert all(item.n_independent is None for item in result.block.unit_assessments)
+    compilation = result.report.design_compilations[result.block.id]
+    assert compilation.status is CompilationStatus.ABSTAINED
+    assert compilation.abstained is True
+    assert compilation.elicitation.complete is False
+    assert compilation.analysis_handoff.unresolved_assumptions
+    decisive_alerts = [
+        item for item in result.block.alerts if item.rule_id in {"GEN-001", "CC-006"}
+    ]
+    assert decisive_alerts == []
+    public_gen001 = next(
+        item
+        for item in result.report.rule_evaluations[result.block.id]
+        if item.rule_id == "GEN-001"
+    )
+    assert public_gen001.outcome.value == "abstained"
+    assert not public_gen001.scope_label
+    assert not public_gen001.matched
+    assert not public_gen001.output_ids
+    assert any(CORE_PROFILE_REFERENCE in limit for limit in result.report.limits)
+
+    stale = compilation.model_copy(
+        update={
+            "status": CompilationStatus.READY,
+            "abstained": False,
+            "elicitation": compilation.elicitation.model_copy(update={"complete": True}),
+        }
+    )
+    leaking_alert = Alert(
+        id="stale-alert-single-output",
+        rule_id="GEN-001",
+        ruleset_version=result.block.versions.ruleset_version,
+        severity=Severity.INFO,
+        message="Il livello Well e l'unita candidata; n indipendente = 4.",
+        missing_information=("stale_export_fixture",),
+        provenance=Provenance(
+            origin=ProvenanceKind.DERIVED,
+            rule_id="GEN-001",
+            ruleset_version=result.block.versions.ruleset_version,
+            derivation="fixture di export deliberatamente stale",
+        ),
+    )
+    stale_block = result.block.model_copy(update={"alerts": (*result.block.alerts, leaking_alert)})
+    current_positive = result.report.positive_outputs[result.block.id]
+    assert current_positive.n_table
+    stale_positive = current_positive.model_copy(
+        update={
+            "determinability": Determinability.DETERMINATE,
+            "path_status": PositivePathStatus.READY_FOR_REVIEW,
+            "methods_statement": current_positive.methods_statement.model_copy(
+                update={
+                    "text": "LEAKED_METHODS_SENTINEL; independent n = 99991.",
+                    "status": PositivePathStatus.READY_FOR_REVIEW,
+                }
+            ),
+            "n_table": tuple(
+                row.model_copy(
+                    update={
+                        "experimental_unit": "CellCulture",
+                        "n_independent": 99991,
+                    }
+                )
+                for row in current_positive.n_table
+            ),
+        }
+    )
+    stale_summary = result.report.summaries[0].model_copy(
+        update={
+            "n_alerts": 99991,
+            "assessments_with_independent_n": 99991,
+            "abstained": False,
+        }
+    )
+    stale_report = result.report.model_copy(
+        update={
+            "blocks": (stale_block,),
+            "summaries": (stale_summary,),
+            "design_compilations": {result.block.id: stale},
+            "rule_evaluations": {result.block.id: result.evaluations},
+            "positive_outputs": {result.block.id: stale_positive},
+        }
+    )
+    written = write_all(stale_report, tmp_path / "reconciled-export")
+    exported_report = json.loads(written["json"].read_text(encoding="utf-8"))
+    exported_compilation = json.loads(written["compilation_0"].read_text(encoding="utf-8"))
+    assert exported_report["design_compilations"][result.block.id]["status"] == "abstained"
+    assert exported_compilation["status"] == "abstained"
+    serialized_alerts = json.dumps(
+        exported_report["blocks"][0]["alerts"], ensure_ascii=False
+    ).casefold()
+    assert "unita candidata" not in serialized_alerts
+    assert "puo essere l'unita sperimentale" not in serialized_alerts
+    assert not any(
+        item["id"] == leaking_alert.id for item in exported_report["blocks"][0]["alerts"]
+    )
+    exported_gen001 = next(
+        item
+        for item in exported_report["rule_evaluations"][result.block.id]
+        if item["rule_id"] == "GEN-001"
+    )
+    assert exported_gen001["outcome"] == "abstained"
+    assert exported_gen001["scope_label"] == ""
+    assert exported_gen001["matched"] == []
+    assert exported_gen001["output_ids"] == []
+    exported_positive = exported_report["positive_outputs"][result.block.id]
+    assert exported_positive["determinability"] == "OUT_OF_SCOPE"
+    assert all(item["experimental_unit"] is None for item in exported_positive["n_table"])
+    assert all(item["n_independent"] is None for item in exported_positive["n_table"])
+    assert exported_report["summaries"][0]["assessments_with_independent_n"] == 0
+    assert exported_report["summaries"][0]["abstained"] is True
+    for artifact_name in ("json", "yaml", "html"):
+        serialized = written[artifact_name].read_text(encoding="utf-8")
+        assert "LEAKED_METHODS_SENTINEL" not in serialized
+        assert "99991" not in serialized

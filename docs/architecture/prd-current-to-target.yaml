@@ -1,0 +1,301 @@
+# PRD v9 current-to-target map v0.2 (PRD §20.3)
+# Unified integration tree. The predecessor map docs/architecture/prd-v8-current-to-target.yaml
+# is HISTORICAL and frozen verbatim (see prd-v8-current-to-target.HISTORICAL.md):
+# it stays untouched because its root literals are pinned by the v8 repository-truth validator.
+schema_version: 9.0.0
+map_id: NTRUTH-PRD-CURRENT-TARGET-V0.2-20260826
+map_version: 0.2.0
+target_contract: N-Truth PRD v9.0 unified tree
+status_semantics: Engineering implementation status only; scientific and data readiness stay HOLD wherever the PRD 0.8 Reality Gate flags are unresolved.
+historical_predecessor: docs/architecture/prd-v8-current-to-target.yaml
+historical_note_file: docs/architecture/prd-v8-current-to-target.HISTORICAL.md
+components:
+  kernel:
+    prd_section: '20.1'
+    contract_package: CP-SCI
+    description: Profile-invariant strict kernel with explicit open-world KnowledgeState.
+    current_paths:
+      - packages/ntruth/schemas/kernel.py
+      - packages/ntruth/schemas/knowledge.py
+    public_api:
+      - 'python:ntruth.schemas.kernel:KernelModel'
+      - 'python:ntruth.schemas.knowledge:KnowledgeValue'
+    state: IMPLEMENTED
+    owner_role: semantic-lead
+    adr_paths:
+      - docs/adr/0013-prd-v8-scientific-contract-migration.md
+    migration_issue: none open; v9 registry extends the kernel additively without touching pinned schemas
+    clean_checkout_evidence: uv sync --frozen && uv run pytest tests/unit/test_prd_v8_kernel_contracts.py tests/unit/test_prd_v9_registry.py -q -p no:cacheprovider
+  scientific-semantics:
+    prd_section: '7'
+    contract_package: CP-SCI
+    description: FactorRole, ContrastType, MaterialLineage, SupportProfile, scenario completeness, assignment anchoring and the v9 claim gate.
+    current_paths:
+      - packages/ntruth/schemas/factor_role.py
+      - packages/ntruth/schemas/contrast_support.py
+      - packages/ntruth/schemas/material_lineage.py
+      - packages/ntruth/schemas/support_profile.py
+      - packages/ntruth/schemas/coverage.py
+      - packages/ntruth/schemas/adequacy.py
+      - packages/ntruth/scientific/assignment_anchor.py
+      - packages/ntruth/scientific/v9_gates.py
+    public_api:
+      - 'python:ntruth.scientific.v9_gates:gate_experimental_unit_claim'
+    state: PARTIAL
+    owner_role: methodology-lead
+    adr_paths:
+      - docs/adr/0013-prd-v8-scientific-contract-migration.md
+    migration_issue: ObservedEvidenceScope and TargetPopulationClaim schemas are still MISSING_EXPLICIT (FR-009); DesignDiagnosticFinding type absent (FR-010)
+    clean_checkout_evidence: uv sync --frozen && uv run pytest tests/unit -q -k "factor_role or contrast_support or material_lineage or support_profile or v9_gates" -p no:cacheprovider
+  derivation-rulebook:
+    prd_section: '20.4'
+    contract_package: CP-SCI
+    description: Immutable Derivation Theory separate from the Rulebook with conformance harness closure.
+    current_paths:
+      - packages/ntruth/derivation_theory/contracts.py
+      - packages/ntruth/conformance/harness.py
+      - theories/ntruth-derivation-theory-0.1.0.json
+      - rulesets/ntruth-v8-core-0.1.0.json
+    public_api:
+      - 'python:ntruth.conformance.harness:evaluate_conformance'
+    state: PARTIAL
+    owner_role: rulebook-maintainers
+    adr_paths:
+      - docs/adr/0013-prd-v8-scientific-contract-migration.md
+      - docs/adr/0008-rules-engine-language.md
+    migration_issue: assignment-anchored Derivation Theory clause rewrite pending (SRR-V8-021 and SRR-V8-022); theory bundle pinned in the meantime
+    clean_checkout_evidence: uv sync --frozen && uv run pytest tests/unit/test_prd_v8_derivation_theory_conformance.py -q -p no:cacheprovider
+  workflow-quick-design:
+    prd_section: '6.1'
+    contract_package: CP-EPI
+    description: Quick Design Session, sample sheet spec, planned/executed reconciliation and safe export boundary.
+    current_paths:
+      - packages/ntruth/quick_design/session.py
+      - packages/ntruth/quick_design/guided.py
+      - packages/ntruth/quick_design/v9.py
+      - packages/ntruth/sample_sheet/v9_schema.py
+      - packages/ntruth/schemas/prospective.py
+    public_api:
+      - 'python:ntruth.quick_design.v9:start_session'
+    state: PARTIAL
+    owner_role: prospective-workflow
+    adr_paths:
+      - docs/adr/0009-prospective-plan-versus-execution.md
+    migration_issue: v9 guided flow lacks the desktop writer-schema fields for SupportProfile and scope claims
+    clean_checkout_evidence: uv sync --frozen && uv run pytest tests/unit/test_prd_v9_quick_design.py tests/unit/test_sample_sheet_v9.py -q -p no:cacheprovider
+  ai-parser:
+    prd_section: '13'
+    contract_package: CP-DATA
+    description: Candidate-only parser AI with constrained decoding and no derived verdict targets.
+    current_paths:
+      - packages/ntruth/parser_ai/contract.py
+      - packages/ntruth/parser_ai/stages.py
+      - packages/ntruth/mvt_a/stage_schema.py
+      - packages/ntruth/model_backends/base.py
+    public_api:
+      - 'python:ntruth.parser_ai.contract:ParserCandidateOutput'
+    state: PARTIAL
+    owner_role: inference-compiler
+    adr_paths:
+      - docs/adr/0005-structured-decoding-and-semantic-validity.md
+      - docs/adr/0011-constrained-decoding-outlines-mlx.md
+    migration_issue: ConfidenceRecord wiring into candidate stages incomplete for OOD states (FR-046 partial)
+    clean_checkout_evidence: uv sync --frozen && uv run pytest tests/unit/test_prd_v8_parser_candidate_contract.py tests/unit/test_confidence_records.py -q -p no:cacheprovider
+  confidence-ood:
+    prd_section: '10'
+    contract_package: CP-EVAL
+    description: Task-scoped ConfidenceRecords with explicit score semantics and OOD abstention triggers.
+    current_paths:
+      - packages/ntruth/confidence/records.py
+    public_api:
+      - 'python:ntruth.confidence.records:ConfidenceRecord'
+    state: IMPLEMENTED
+    owner_role: evaluation-lead
+    adr_paths: []
+    migration_issue: calibration pilot data does not exist yet so records stay UNQUALIFIED_MODEL_SCORE by default
+    clean_checkout_evidence: uv sync --frozen && uv run pytest tests/unit/test_confidence_records.py -q -p no:cacheprovider
+  team-evaluation:
+    prd_section: '24'
+    contract_package: CP-EVAL
+    description: Counterbalanced human-only versus AI-only versus human-plus-AI protocol contracts.
+    current_paths:
+      - packages/ntruth/team_evaluation/models.py
+    public_api:
+      - 'python:ntruth.team_evaluation.models:TeamEvaluationProtocolRecord'
+    state: IMPLEMENTED
+    owner_role: validation-lead
+    adr_paths: []
+    migration_issue: protocol contracts exist but no preregistered study has been executed or frozen
+    clean_checkout_evidence: uv sync --frozen && uv run pytest tests/unit/test_team_evaluation_protocol.py -q -p no:cacheprovider
+  data-eval:
+    prd_section: '14'
+    contract_package: CP-DATA
+    description: Protected training records, splits custody, end-to-end scoring and clustered precision.
+    current_paths:
+      - packages/ntruth/training/records.py
+      - packages/ntruth/training/preparation.py
+      - packages/ntruth/evaluation_v8/scoring.py
+      - packages/ntruth/evaluation_v8/cluster.py
+    public_api:
+      - 'python:ntruth.training.records:SupervisedRecord'
+      - 'python:ntruth.evaluation_v8.scoring:evaluate_end_to_end'
+    state: PARTIAL
+    owner_role: data-governance
+    adr_paths:
+      - docs/adr/0013-prd-v8-scientific-contract-migration.md
+    migration_issue: substantive training remains blocked by the Reality Gate pending a real anchor portfolio
+    clean_checkout_evidence: uv sync --frozen && uv run pytest tests/unit/test_prd_v8_training_records_splits.py tests/unit/test_prd_v8_task7_evaluation.py -q -p no:cacheprovider
+  ingest-security:
+    prd_section: '20.8'
+    contract_package: CP-RUN
+    description: Local bounded ingest with hostile-format rejection and read-only source handling.
+    current_paths:
+      - packages/ntruth/ingest/safety.py
+      - packages/ntruth/ingest/project.py
+    public_api:
+      - 'python:ntruth.ingest.safety:check_file'
+      - 'python:ntruth.ingest.safety:detect_injection'
+    state: PARTIAL
+    owner_role: input-safety
+    adr_paths: []
+    migration_issue: isolated worker process, parser resource quotas and canonical decompression service are MISSING_EXPLICIT per PRD 20.8
+    clean_checkout_evidence: uv sync --frozen && uv run pytest tests/security/test_hostile_input.py tests/integration/test_ingest_blocks_formats.py -q -p no:cacheprovider
+  verifier-conformance:
+    prd_section: '20.4'
+    contract_package: CP-RUN
+    description: Hard independent verification with canonical enum and invariant checks before any report.
+    current_paths:
+      - packages/ntruth/verifier/v8.py
+      - packages/ntruth/conformance/harness.py
+    public_api:
+      - 'python:ntruth.verifier.v8:verify_v8_pipeline_request'
+    state: IMPLEMENTED
+    owner_role: rulebook-maintainers
+    adr_paths:
+      - docs/adr/0006-independent-verifier-boundary.md
+    migration_issue: none open; verifier consumes v9 registry vocabularies through adapters
+    clean_checkout_evidence: uv sync --frozen && uv run pytest tests/unit/test_semantic_verifier.py -q -p no:cacheprovider
+  reality-gate:
+    prd_section: '0.8'
+    contract_package: CP-RUN
+    description: Fail-closed v8 gate composed with the complete 23-flag PRD v9 section 0.8 ledger.
+    current_paths:
+      - packages/ntruth/reality_gate/v8.py
+      - packages/ntruth/reality_gate/v9.py
+      - packages/ntruth/governance/repository_policy.py
+    public_api:
+      - 'python:ntruth.reality_gate.v9:compose_reality_gate_v9'
+      - 'python:ntruth.reality_gate.v9:build_default_evidence_ledger_v9'
+    state: IMPLEMENTED
+    owner_role: release-governance
+    adr_paths:
+      - docs/adr/0013-prd-v8-scientific-contract-migration.md
+    migration_issue: all substantive training flags are HOLD by default until content-addressed evidence is registered; this is the intended fail-closed behavior
+    clean_checkout_evidence: uv sync --frozen && uv run pytest tests/unit -q -k reality -p no:cacheprovider
+  governance:
+    prd_section: '29'
+    contract_package: CP-RUN
+    description: Challenge lifecycle, contamination custody, data-use grants and repository policy truth.
+    current_paths:
+      - packages/ntruth/governance/challenge_lifecycle.py
+      - packages/ntruth/governance/contamination.py
+      - packages/ntruth/governance/data_use.py
+      - packages/ntruth/governance/repository_truth.py
+    public_api:
+      - 'python:ntruth.governance.contamination:ContaminationAttestationV8'
+    state: IMPLEMENTED
+    owner_role: challenge-custodian
+    adr_paths: []
+    migration_issue: external challenge authority remains external; lifecycle records never self-authorize
+    clean_checkout_evidence: uv sync --frozen && uv run pytest tests/unit/test_challenge_lifecycle.py tests/unit/test_data_use_grants.py -q -p no:cacheprovider
+  contracts-packages:
+    prd_section: '0.6'
+    contract_package: CP-RUN
+    description: Five canonical Contract Package manifests with fail-closed validation script.
+    current_paths:
+      - contracts/cp-sci.yaml
+      - contracts/cp-epi.yaml
+      - contracts/cp-data.yaml
+      - contracts/cp-eval.yaml
+      - contracts/cp-run.yaml
+      - scripts/check_contract_packages.py
+    public_api: []
+    state: IMPLEMENTED
+    owner_role: contract-governance
+    adr_paths: []
+    migration_issue: manifests still carry DRAFT status for CP-SCI and CP-EPI pending first reviewed release of each package
+    clean_checkout_evidence: uv sync --frozen && uv run python scripts/check_contract_packages.py
+  migrations-compat:
+    prd_section: '22'
+    contract_package: CP-RUN
+    description: Explicit typed v7 to v8 migrations plus local storage schema migrations.
+    current_paths:
+      - packages/ntruth/migrations/v7_to_v8.py
+      - packages/ntruth/storage/migrations.py
+    public_api:
+      - 'python:ntruth.migrations.v7_to_v8:migrate_v7_count_kind'
+    state: PARTIAL
+    owner_role: migration-maintainers
+    adr_paths:
+      - docs/adr/0013-prd-v8-scientific-contract-migration.md
+    migration_issue: v9 writer-schema migration path is not designed yet; legacy v8 records remain immutable and adapter-readable
+    clean_checkout_evidence: uv sync --frozen && uv run pytest tests/unit/test_prd_v8_kernel_migrations.py tests/unit/test_prd_v8_count_event_migrations.py -q -p no:cacheprovider
+  runtime-resources:
+    prd_section: '20.7'
+    contract_package: CP-RUN
+    description: Stage-sequenced runtime resource manager with benchmark-derived profiles.
+    current_paths:
+      - packages/ntruth/runtime_resources/profiles.py
+      - packages/ntruth/runtime_resources/manager.py
+      - packages/ntruth/runtime_resources/schema.py
+    public_api:
+      - 'python:ntruth.runtime_resources.manager:RuntimeResourceManager'
+    state: IMPLEMENTED
+    owner_role: performance-engineer
+    adr_paths:
+      - docs/adr/0003-runtime-backend-and-resource-management.md
+    migration_issue: budget refresh cadence from benchmarks/runtime is undefined
+    clean_checkout_evidence: uv sync --frozen && uv run pytest tests/unit/test_runtime_resource_manager.py -q -p no:cacheprovider
+  traceability-rtm:
+    prd_section: '28'
+    contract_package: CP-RUN
+    description: Requirements Traceability Matrix baseline with fail-closed checker (Appendix AP, FR-091).
+    current_paths:
+      - docs/requirements-traceability-matrix-v0.1.md
+      - data/rtm-v0.1.csv
+      - scripts/check_rtm.py
+    public_api: []
+    state: PARTIAL
+    owner_role: contract-governance
+    adr_paths: []
+    migration_issue: only FR-001..FR-015 and NFR-01..NFR-10 are tracked; expansion to all 91 FR required before release scope claims
+    clean_checkout_evidence: uv sync --frozen && uv run python scripts/check_rtm.py && uv run pytest tests/unit/test_rtm_checker.py -q -p no:cacheprovider
+  persistence-storage:
+    prd_section: '20.5'
+    contract_package: CP-RUN
+    description: Local SQLite database with content-addressed blob store.
+    current_paths:
+      - packages/ntruth/storage/database.py
+      - packages/ntruth/storage/blobs.py
+    public_api:
+      - 'python:ntruth.storage.blobs:BlobStore'
+    state: PARTIAL
+    owner_role: storage-maintainer
+    adr_paths:
+      - docs/adr/0007-local-storage-backend.md
+    migration_issue: manifest bundle exchange format not yet aligned with the five Contract Packages
+    clean_checkout_evidence: uv sync --frozen && uv run pytest tests/unit -q -k storage -p no:cacheprovider
+  desktop-ui:
+    prd_section: '23'
+    contract_package: CP-EPI
+    description: Guided desktop consumer rendering neutral HANDOFF_ONLY reports.
+    current_paths:
+      - apps/desktop/src/App.tsx
+      - apps/desktop/src/QuickDesignWizard.tsx
+      - apps/desktop/src/api.ts
+    public_api: []
+    state: PARTIAL
+    owner_role: desktop-ui
+    adr_paths: []
+    migration_issue: v9 writer fields for FactorRole, ContrastType and SupportProfile are not surfaced yet
+    clean_checkout_evidence: npm ci && npm run test --prefix apps/desktop

@@ -11,12 +11,12 @@ Un predicato sconosciuto non e mai vero per default: la regola diventa
 from __future__ import annotations
 
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
 from ntruth.graph.builder import BuildResult
 from ntruth.graph.index import GraphIndex
-from ntruth.schemas.core import Confidence
+from ntruth.schemas.core import Confidence, EvidenceSpan
 from ntruth.schemas.experiment import (
     Contrast,
     DataSufficiency,
@@ -24,6 +24,7 @@ from ntruth.schemas.experiment import (
     Factor,
     ProcessFact,
     StatisticalModelFact,
+    TriState,
     UnitAssessment,
 )
 from ntruth.schemas.graph import TECHNICAL_TYPES, NodeType, rank_of
@@ -94,6 +95,7 @@ class RuleContext:
     factor: Factor | None
     contrast: Contrast | None
     endpoint: Endpoint | None
+    evidence_by_id: Mapping[str, EvidenceSpan]
 
     # ---------------------------------------------------------------- helpers
 
@@ -132,7 +134,13 @@ def predicate(name: str) -> Callable[[PredicateFn], PredicateFn]:
 
 
 def evaluate(expression: str, context: RuleContext) -> bool:
-    """Valuta un predicato normalizzato. Solleva UnknownPredicate se ignoto."""
+    """Valuta un predicato normalizzato. Solleva UnknownPredicate se ignoto.
+
+    Una espressione malformata (per esempio arity errata) non deve mai produrre
+    un IndexError grezzo: resta ``UnknownPredicate``, quindi unevaluable e
+    fail-closed secondo il contratto del rules engine.
+    """
+
     match = _CALL.match(expression.strip())
     if not match:
         raise UnknownPredicate(expression)
@@ -141,7 +149,10 @@ def evaluate(expression: str, context: RuleContext) -> bool:
     if fn is None:
         raise UnknownPredicate(expression)
     args = [a.strip() for a in match.group("args").split(",") if a.strip()]
-    value = fn(context, args)
+    try:
+        value = fn(context, args)
+    except IndexError as exc:
+        raise UnknownPredicate(expression) from exc
     return not value if match.group("negated") else value
 
 
@@ -242,7 +253,21 @@ def _assigned_at_or_below(ctx: RuleContext, args: list[str]) -> bool:
 
 @predicate("assignment_unknown")
 def _assignment_unknown(ctx: RuleContext, args: list[str]) -> bool:
-    return ctx.assessment.experimental_unit is None
+    return (
+        ctx.factor is None
+        or ctx.factor.independently_assigned is not TriState.TRUE
+        or ctx.assessment.experimental_unit is None
+    )
+
+
+@predicate("independently_assigned")
+def _independently_assigned(ctx: RuleContext, args: list[str]) -> bool:
+    return bool(
+        ctx.factor is not None
+        and ctx.factor.independently_assigned is TriState.TRUE
+        and ctx.factor.independence_mechanism
+        and ctx.factor.independence_mechanism.strip()
+    )
 
 
 @predicate("analyzed_as")
@@ -280,6 +305,13 @@ def _analysis_finer(ctx: RuleContext, args: list[str]) -> bool:
         and analyzed is not None
         and analyzed <= allocated
     )
+
+
+@predicate("analysis_finer_or_assignment_unknown")
+def _analysis_finer_or_assignment_unknown(ctx: RuleContext, args: list[str]) -> bool:
+    """Rende raggiungibile l'astensione senza confondere un negativo noto."""
+
+    return _assignment_unknown(ctx, []) or _analysis_finer(ctx, [])
 
 
 @predicate("observation_finer_than_assignment")
@@ -369,6 +401,22 @@ def _model_accounts_for_assignment(ctx: RuleContext, args: list[str]) -> bool:
     if unit in levels:
         return True
     return any(ancestor in levels for ancestor in ctx.index.ancestors(unit))
+
+
+@predicate("model_accounts_for_experimental_unit")
+def _model_accounts_for_experimental_unit(ctx: RuleContext, args: list[str]) -> bool:
+    """Il modello dichiara un termine proprio per l'unita sperimentale.
+
+    Quando l'analisi e piu fine dell'assegnazione, la dipendenza da
+    rappresentare e quella tra osservazioni della stessa unita sperimentale.
+    Un effetto casuale per un livello superiore (per esempio il donatore
+    quando il trattamento e assegnato alla coltura) non la rappresenta: le
+    osservazioni della stessa coltura restano trattate come indipendenti e
+    l'errore standard del contrasto resta sottostimato. Per questo, a
+    differenza di ``model_accounts_for_assignment``, un antenato non basta.
+    """
+    unit = ctx.assessment.experimental_unit
+    return unit is not None and unit in ctx.model_levels()
 
 
 # ------------------------------------------------------------------ processo

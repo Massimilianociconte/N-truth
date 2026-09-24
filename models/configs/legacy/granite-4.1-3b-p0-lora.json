@@ -1,0 +1,100 @@
+{
+  "schema_version": "1.0.0",
+  "status": "p0_lora_experiment_ready_synthetic_pre_adaptation",
+  "adapter_name": "p0-alpha",
+  "experiment_class": "synthetic_pre_adaptation",
+  "scientific_validation_status": "NOT_STARTED",
+  "training_program_status": "P0_LORA_APPROVED",
+  "runtime": {
+    "name": "mlx-lm",
+    "platform": "macOS Apple Silicon",
+    "network_during_training": false
+  },
+  "model": {
+    "provider": "granite",
+    "canonical_repository": "ibm-granite/granite-4.1-3b",
+    "repository": "mlx-community/granite-4.1-3b-4bit",
+    "revision": "b1b476b5a17c46b7d6cd663b4a8ed44b66720aef",
+    "local_path": "models/local/granite-4.1-3b-4bit",
+    "expected_weight_sha256": "cff9d052cc3c68ea66b3d364788eb96fca2be82868d9ad92bd968e73b125194d",
+    "quantization_bits": 4,
+    "lora_target_modules_source": "verified_on_granite_architecture_and_state_dict_not_inherited_from_prior_qwen_profile"
+  },
+  "data": {
+    "snapshot": "p0-alpha",
+    "train_path": "data/training/p0-alpha/train.chat.jsonl",
+    "validation_path": "data/training/p0-alpha/validation.chat.jsonl",
+    "dev_benchmark": "benchmarks/fewshot_p0",
+    "dev_role": "B4_CONSTRAINED_DEV",
+    "dev_training_eligible": false,
+    "tasks": [
+      "TASK_EVIDENCE",
+      "TASK_ENTITY_COUNT",
+      "TASK_FACTOR_ENDPOINT",
+      "TASK_EXPLICIT_RELATIONS"
+    ],
+    "target_schema": "stage_schemas_v1",
+    "format": "chat_jsonl"
+  },
+  "curriculum": {
+    "phase_a": ["TASK_EVIDENCE", "TASK_ENTITY_COUNT", "TASK_FACTOR_ENDPOINT"],
+    "phase_b": ["TASK_EXPLICIT_RELATIONS"],
+    "phase_c": ["multi_task_mix_with_replay"]
+  },
+  "inference": {
+    "constrained_decoding": "outlines+mlx-lm",
+    "temperature": 0.0,
+    "keep_outlines_mandatory": true
+  },
+  "training": {
+    "fine_tune_type": "lora",
+    "quantized_base_means_qlora": true,
+    "num_layers": 8,
+    "batch_size": 1,
+    "gradient_accumulation_steps": 8,
+    "effective_batch_size": 8,
+    "learning_rate": 1e-5,
+    "optimizer": "adamw",
+    "mask_prompt": true,
+    "gradient_checkpointing": true,
+    "iterations_per_phase": 200,
+    "maximum_phases": 12,
+    "early_stopping_patience": 3,
+    "early_stopping_min_delta": 0.001,
+    "maximum_observed_peak_memory_gib": 18,
+    "seeds": [13],
+    "lora_parameters": {
+      "keys": [
+        "self_attn.q_proj",
+        "self_attn.k_proj",
+        "self_attn.v_proj",
+        "self_attn.o_proj",
+        "mlp.gate_proj",
+        "mlp.up_proj",
+        "mlp.down_proj"
+      ],
+      "rank": 16,
+      "scale": 32.0,
+      "dropout": 0.05
+    }
+  },
+  "success_criteria_vs_baseline_c": {
+    "metric_suite": "semantic_stage_scorer_1.0.0",
+    "require_schema_validity_ge": 0.99,
+    "require_candidate_only": 1.0,
+    "expect_improvement_on": [
+      "evidence_f1",
+      "entity_f1",
+      "count_fully_correct",
+      "relation_f1",
+      "empty_output_rate_reduction"
+    ],
+    "not_scientific_validation": true
+  },
+  "post_training_decisions": [
+    "PROMOTE_P0_ADAPTER_FOR_B5_EVALUATION",
+    "REVISE_DATA_MIX",
+    "REVISE_TRAINING",
+    "CHANGE_MODEL_OR_ARCHITECTURE"
+  ]
+}

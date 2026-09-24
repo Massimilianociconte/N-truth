@@ -225,13 +225,25 @@ class GraphIndex:
     # ------------------------------------------------------------------ derivati
 
     def derived_count(self, node_type: NodeType) -> int | None:
-        """Conteggio totale, ricavato se necessario risalendo la gerarchia."""
+        """Conteggio totale, ricavato se necessario risalendo la gerarchia.
+
+        Il guard ``_seen`` rende la funzione totale anche su gerarchie non
+        validate a monte (cicli): senza di esso una catena circolare produrrebbe
+        ``RecursionError`` invece di un risultato assente/unevaluable.
+        """
+
+        return self._derived_count(node_type, frozenset())
+
+    def _derived_count(self, node_type: NodeType, seen: frozenset[NodeType]) -> int | None:
+        if node_type in seen:
+            return None
         direct = self.count(node_type)
         if direct is not None:
             return direct
+        next_seen = seen | {node_type}
         for parent in self.direct_parents(node_type):
             per = self.per_parent(node_type, parent)
-            parent_count = self.derived_count(parent)
+            parent_count = self._derived_count(parent, next_seen)
             if per is not None and parent_count is not None:
                 return per * parent_count
         return None
@@ -244,6 +256,11 @@ class GraphIndex:
         L'assegnazione puo trovarsi sul nodo stesso o su un suo antenato reale
         nel grafo instance-level. In assenza di una catena esplicita restituisce
         ``None`` invece di usare il totale aggregato.
+
+        Se anche una sola istanza target non ha alcuna assegnazione per il
+        fattore, potrebbe appartenere al gruppo: il numero di match e solo un
+        limite inferiore, quindi il conteggio esatto resta ``None`` (silenzio
+        non e zero; audit 2026-09-12, A08).
         """
 
         key = "assignment:" + "_".join(factor_name.strip().casefold().split())
@@ -265,11 +282,14 @@ class GraphIndex:
             closure = {node.id}
             if node.id in self._instance_graph:
                 closure.update(nx.descendants(self._instance_graph, node.id))
-            if any(
-                str(self._by_id[item].attributes.get(key, "")).strip().casefold()
-                == normalized_group
+            recorded = {
+                value
                 for item in closure
-            ):
+                if (value := str(self._by_id[item].attributes.get(key, "")).strip().casefold())
+            }
+            if not recorded:
+                return None
+            if normalized_group in recorded:
                 matched += 1
         return matched
 

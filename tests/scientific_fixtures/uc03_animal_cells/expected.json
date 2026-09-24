@@ -3,7 +3,8 @@
   "description": "50 cellule per 6 animali: n allocato = 6, ma n indipendente richiede conferma.",
   "factor": "treatment",
   "expect": {
-    "experimental_unit": "Animal",
+    "allocation_unit_candidate": "Animal",
+    "experimental_unit": null,
     "observational_unit": "Cell",
     "analytical_unit": "Cell",
     "n_declared": 300,
@@ -11,10 +12,10 @@
     "n_allocated": 6,
     "n_independent": null,
     "inferability": "requires_confirmation",
-    "risk": "likely_pseudoreplication",
+    "risk": "insufficient_information",
     "alerts_include": [
-      "ANI-003",
       "GEN-002",
+      "GEN-004",
       "GEN-010"
     ],
     "alerts_exclude": [],

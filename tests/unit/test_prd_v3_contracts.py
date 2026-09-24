@@ -56,12 +56,15 @@ def _versions() -> Versions:
     )
 
 
-def test_evidence_taxonomy_has_exactly_the_eight_v3_categories() -> None:
+def test_evidence_taxonomy_has_the_v6_categories() -> None:
     assert {item.value for item in EvidenceType} == {
         "STRUCTURAL_FACT",
+        "PROCEDURAL_EVENT",
         "AUTHOR_ASSERTION",
         "SAMPLE_METADATA",
+        "IMAGE_METADATA",
         "STATISTICAL_CODE",
+        "REVIEW_COMMENT",
         "USER_CONFIRMATION",
         "MODEL_INFERENCE",
         "DERIVED_FACT",
@@ -351,6 +354,7 @@ def test_rules_propagate_alert_class_and_rank_decisive_questions() -> None:
         severity=Severity.HIGH,
         alert_class=AlertClass.INFERENCE_SCOPE,
         questions=("Qual e la popolazione target?",),
+        requires_evidence=False,
     )
     result = apply_rules(
         "blk",

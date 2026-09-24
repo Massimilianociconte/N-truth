@@ -1,5 +1,10 @@
 # Decisione: HOLD training P0 sostanziale
 
+> **HISTORICAL_NON_NORMATIVE.** Questa decisione P0 pre-v8 resta evidenza storica del
+> blocco, ma i suoi stati e GO parziali non sono autorità corrente. Il PRD v8 mantiene
+> training ed External Challenge interamente HOLD; vedere
+> [../prd-v8-data-training-evaluation-boundary.md](../prd-v8-data-training-evaluation-boundary.md).
+
 **Data:** 2026-08-02  
 **Aggiornamento strategico:** 2026-08-02 (post first real-source trial + AI diagnostic comparison)
 

@@ -1,5 +1,10 @@
 # N-Truth System Card v0.1
 
+> **HISTORICAL_NON_NORMATIVE.** Questa card descrive contratti v6/v7 e non rappresenta
+> lo stato PRD v8. La verità corrente è in [status-snapshot.md](status-snapshot.md),
+> [../GOVERNANCE.md](../GOVERNANCE.md) e nella
+> [matrice finale v8](audits/prd-v8-full-migration/FINAL_IMPLEMENTATION_MATRIX.md).
+
 **Stato:** alpha in sviluppo; **non** è una release scientificamente validata  
 (`scientific_validation_status=NOT_STARTED`).  
 Gate runtime (artefatto MLX community 4-bit registrato): `PARTIALLY_VERIFIED`.  

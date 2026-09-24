@@ -152,7 +152,15 @@ def select_abstention_threshold(
     maximum_risk: float = 0.10,
     minimum_coverage_count: int = 10,
 ) -> dict[str, float | int | None]:
-    """Sceglie sul validation set la copertura massima entro il rischio richiesto."""
+    """Sceglie sul validation set la copertura massima entro il rischio richiesto.
+
+    La soglia si applica come ``confidence >= threshold``: i candidati sono
+    valutati solo ai confini dei gruppi di confidence identica, cosi coverage
+    e rischio riportati coincidono con quelli ottenuti applicando davvero la
+    soglia e non dipendono dall'ordine delle osservazioni a pari score.
+    ``empirical_risk`` e il rischio osservato sullo stesso split usato per la
+    selezione: descrive il campione, non garantisce il rischio futuro.
+    """
 
     if not 0.0 <= maximum_risk < 1.0:
         raise ValueError("maximum_risk deve essere in [0, 1)")
@@ -168,6 +176,8 @@ def select_abstention_threshold(
     errors = 0
     for index, observation in enumerate(ordered, start=1):
         errors += int(not observation.correct)
+        if index < len(ordered) and ordered[index].confidence == observation.confidence:
+            continue
         risk = errors / index
         if index >= minimum_coverage_count and risk <= maximum_risk:
             best = {
@@ -210,5 +220,7 @@ def calibration_report(
             maximum_risk=maximum_risk,
             minimum_coverage_count=minimum_coverage_count,
         ),
+        "abstention_rule": "accept when calibrated confidence >= threshold",
+        "abstention_risk_scope": "in-sample on the fit split; no guarantee on future risk",
         "test_used_for_fit": False,
     }

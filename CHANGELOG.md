@@ -6,6 +6,256 @@ ontologia; queste versioni possono avanzare indipendentemente.
 
 ## [Unreleased]
 
+### 2026-09-23 — remediation dell'audit scientifico 2026-09-12
+
+Correzioni di correttezza del software con controesempi conservati come test;
+nessun blocker scientifico chiuso (validation `NOT_STARTED`, Reality Gate
+`HOLD`). Dettaglio per finding in
+`docs/audits/scientific-audit-2026-09-12/REMEDIATION-2026-09-23.md`.
+
+#### Fixed
+
+- `confidence`: la metrica di errori critici ad alta confidenza contava i casi
+  corretti; la curva rischio/copertura non spezza piu i pareggi di score.
+- `training/calibration`: la soglia di astensione e scelta solo ai confini dei
+  pareggi e riproduce esattamente coverage e rischio quando applicata.
+- `scientific/design_matrix`: missingness non e variazione; aliasing
+  per-fattore; un fattore costante dentro cluster multi-unita di un altro
+  fattore limita il supporto del contrasto a `PARTIALLY_SUPPORTED`.
+- `parsers`: collisioni di intestazioni non cancellano piu celle (CSV/XLSX/PDF);
+  righe vuote CSV non diventano record; troncamenti PDF e pagine senza testo
+  sono dichiarati con stato `PARTIAL`; la pipeline legacy tratta `PARTIAL` in
+  modo coerente (contenuto utilizzabile, report `partial`, limite esplicito).
+- `verifier/v8`: fatti duplicati discordanti (`DUPLICATE_FACT_CONFLICT`),
+  completezza senza ricerca di controesempi e valori di predicato fuori dominio
+  (`PREDICATE_DOMAIN_MISMATCH`) sono rifiutati al confine dei fatti.
+- `graph/index`: assegnazioni parziali non producono conteggi esatti di gruppo.
+- `power`: cache della t noncentrale per df non interi, `t_ppf` in coda
+  sinistra, allocazione G*Power (bilanciamento e ratio rispettati), McNemar
+  secondo Connor (1987), Poisson con allocazione reale, minimo esatto per il
+  binomiale con N stabile dichiarato, caveat di validita per logistica/Poisson;
+  chi2/F noncentrali esatti anche per lambda grandi (niente approssimazione
+  normale ne underflow) e beta incompleta stabile per parametri grandi.
+- `scripts/check_normative_examples.py`: zero esempi e `NO_COVERAGE`, non
+  `PASS`; registry non importabile e un errore.
+- README: comando `ntruth quick-design reality-gate`; i comandi documentati
+  sono verificati da test contro la CLI.
+- Desktop: pin di conformance del client fermi al registry 0.1.0 (ogni anteprima
+  guidata reale falliva); fixture rigenerata dal backend e test anti-drift;
+  navigazione coerente con un ReportBundle v8 aperto (niente badge della demo);
+  voce attiva evidenziata, etichette non troncate, campi obbligatori con
+  `aria-required`; test desktop isolati dal checkpoint in localStorage; proxy
+  Vite per `/v9`.
+- `power/simulation`: il pattern sbilanciato dei cluster segue l'indice ordinale
+  dichiarato invece di un hash del percorso.
+
+#### Pseudoreplicazione e falsi positivi (2026-09-24)
+
+- Ruleset `ntruth-core@0.3.0` (default; `0.2.0` invariato e riproducibile): nelle
+  regole di sottocampionamento un effetto casuale per un livello superiore
+  all'unita sperimentale non sopprime piu l'alert (nuovo predicato
+  `model_accounts_for_experimental_unit()`). Client D0 e compiler allineati.
+- Estrazione dei termini del modello: riconosce formule lme4/nlme, "X incluso
+  come effetto casuale", liste coordinate e identificatori (`animal_id`);
+  ignora frasi di disegno e menzioni negate.
+- Power planner: diagnostica cluster in osservazioni (`n·m`, `n·m/DEFF`) invece
+  di dividere il numero di EU per il design effect.
+- Nuovo: alpha effettiva esatta di un'analisi pseudoreplicata
+  (`ntruth power false-positive`, `POST /v1/power/pseudoreplication-risk`,
+  `naive_false_positive_rate` nei piani con cluster) e card on demand nella
+  verifica D0 del desktop.
+- D0: valori mancanti in una dimensione di contesto non escludono piu il
+  confondimento in silenzio (`confounding_undeterminable_missing_values`).
+- Sviluppo: il proxy Vite accetta `NTRUTH_API_URL` (default invariato).
+
+#### Performance
+
+- Scope di verifica per operazione (`ntruth/verification_scope.py`): la conferma
+  guidata passa da 20,5 s a 6,0 s (API da ~34 s a 8,2 s) senza indebolire i
+  controlli anti-manomissione; fuori scope ogni validazione riverifica da capo.
+
+### 2026-08-25 — baseline unificata PRD v9 (`integration/prd-v9-unified`)
+
+Merge di unificazione della linea v8-hardening con i contratti sidecar v8/v9 e
+consolidamento del programma corrente su PRD v9.
+
+#### Added
+
+- Contract Packages canonici: `contracts/cp-sci|epi|data|eval|run.yaml`
+  (owner di ruolo, version, status, gate, dipendenze acicliche, evidenze
+  verificate) con `scripts/check_contract_packages.py` fail-closed.
+- ScenarioCompleteness v9 (§10.8): assumption-set-bounded; rimozione della
+  scrittura `EXHAUSTIVE_WITHIN_PROFILE`.
+- Team protocol preregistrato H/A/H+A: `packages/ntruth/team_evaluation/`
+  (PRD §18.9/§24/Appendice AM) e `docs/team-evaluation-protocol-v0.1.md`.
+- Confidence/OOD/MQR: `ConfidenceRecord` con metriche di calibrazione,
+  risk–coverage e stati OOD (`packages/ntruth/confidence/`);
+  `ModelQualificationRecord` con ledger a catena di stati
+  (`model_backends/qualification.py`, `model_backends/registry.py`).
+- Challenge lifecycle e DataUseGrant: `governance/challenge_lifecycle.py`
+  (FROZEN → ACTIVE → RETIRED_DIAGNOSTIC → PUBLIC_ARCHIVE, item-level feedback
+  `PROHIBITED_WHILE_ACTIVE`) e `governance/data_use.py`.
+- Tier di complessità canonici C0–C4 con mapping legacy
+  (`complexity/tiers.py`).
+- RTM: requirement traceability mantenuta in
+  `docs/audits/prd-v8-full-migration/REQUIREMENT_TRACEABILITY_MATRIX.md`
+  (alla baseline committata non è ancora meccanizzata da uno script dedicato).
+- Reality Gate: sei dimensioni di readiness e blocker tipati confermati sulla
+  baseline unificata; decisione corrente resta HOLD (nessun flag v9 nel gate
+  committato alla baseline).
+- Safe Methods AN: `reporting/safe_methods.py` (frasi con provenanza
+  sentence/claim-level, round-trip non-strengthening).
+- Sample sheet v9: `sample_sheet/v9_schema.py` (in working tree, commit pending
+  su questa linea).
+- Quick Design v9: sessione FactorRole/ContrastType-first
+  (`quick_design/v9.py`).
+- Clean-checkout verifier: `scripts/verify_clean_checkout.sh` (worktree
+  detached effimero di HEAD, sync locked, unit selection, ruff, mypy, lock e
+  SBOM check) con primo report datato
+  `docs/clean-checkout-report-2026-08-25.md`: verdetto onesto
+  CONDITIONAL_FAIL — BLOCKER residuo di portabilità interprete (pin evaluator
+  derivati da bytecode; `uv` risolve Python 3.14 in ambienti freschi);
+  rivalutazione registrata in
+  `docs/documentation-clean-checkout-verification.md`.
+- ADR-0014 package split (modular monolith confermato), ADR-0015 cloud policy
+  local-first hard, ADR-0016 calibration task-specific o UNQUALIFIED, ADR-0017
+  challenge feedback lifecycle, ADR-0018 UI defaults wizard-first.
+
+#### Changed
+
+- README radice e `docs/status-snapshot.md` riallineati alla baseline unificata
+  PRD v9 con stato onesto: scientific validation NOT_STARTED, training
+  HOLD_PENDING_REAL_ANCHOR, gold data non annotati, External Challenge senza
+  custodia reale, crosswalk hash pending first pin.
+
+### Added
+
+- PRD v9 P2: estrazione e validazione dei fenced block normativi in prd/ e
+  docs/ via `scripts/check_normative_examples.py` (PRD v9 §0.4/§26.5/AI.2),
+  tollerante a zero blocchi; step CI dedicato senza rimozioni.
+
+### Changed
+
+- Engineering pin transition `reviewed-evaluator-registry` 0.1.1 -> 0.1.2 per
+  la semantica v9 di ScenarioCompleteness: `EXHAUSTIVE_WITHIN_PROFILE` non è
+  più scrivibile (lettura legacy via adapter fail-closed); nuova terna
+  `COMPLETE_UNDER_DECLARED_ASSUMPTION_SET` / `INCOMPLETE_KNOWN` /
+  `UNKNOWN_COMPLETENESS` con assumption set versionato+finalizzato e
+  counterexample search obbligatori. Transizione registrata in
+  `docs/audits/prd-v8-full-migration/EVALUATOR_PIN_TRANSITIONS.md`.
+
+### Added
+
+- Second hardening sprint: expected-positive/negative tests for the Appendix-A
+  PRD-example scanner (SRR-002/004/005/006/007), qualitative-only boundary
+  status sealed (SRR-016), and the ExternalReferenceFreeze contract giving the
+  reference custodian a fail-closed, checksum-carrying mechanism for the
+  SRR-021 snapshot freeze (rights closure stays external).
+- O_NOFOLLOW hardening on source hashing and manifest reads (TOCTOU).
+- Correction-ledger integrity and materialization memoized per immutable
+  instance (removes the O(n²) replay per correction session).
+- SBOM records the component version and an explicit deterministic
+  timestamp policy; CI adds the ML CLI contract smoke; a dated clean-checkout
+  verification record (3340 tests from a virgin clone) is archived under
+  docs/audits.
+
+### Changed (earlier in this release)
+
+- Executable SRR mechanization matrix: 17 positive/negative conformance tests
+  sealing the code-level mechanisms prescribed by the scientific-review
+  register (vocabulary pinning, legacy-key rejection, state-payload blockers,
+  UNKNOWN_WITH_REASON source classes and more). External scientific closure
+  remains explicitly out of scope.
+- Visual span locator for EvidenceSpan corrections: two-click selection with
+  absolute document coordinates, appended to the immutable correction patch as
+  an auditable `ntruth.evidence_span.refine` entry.
+- Opt-in durable session journal (`NTRUTH_SESSION_JOURNAL_DIR`) with explicit
+  replay via `POST /v1/sessions/{id}/resume`; corrupted lines quarantined,
+  default behaviour unchanged (ephemeral in-memory registry).
+- Optional OCR adapter contract (`ntruth.ocr`) with mandatory per-page
+  provenance and a fail-closed empty registry; no engine bundled.
+- Accessibility invariants for dialogs (Escape-to-close, initial focus) plus a
+  permanent test that every button exposes an accessible name.
+- CI: third-party actions pinned by commit SHA; `CITATION.cff` gains
+  `date-released`.
+
+### Changed
+
+- Engineering pin transition `reviewed-evaluator-registry` 0.1.0 -> 0.1.1 to
+  carry the EvidenceSpan offset-domain hardening onto the canonical line
+  without invalidating SRR-V8-024; transition recorded in
+  `docs/audits/prd-v8-full-migration/EVALUATOR_PIN_TRANSITIONS.md`.
+
+### Fixed
+
+- Graph core: the allocated/analysed count heuristic now requires an exclusion
+  process typed for the same unit type; untyped or foreign-type exclusions keep
+  the conservative contradiction path instead of fabricating an aggregate `n`.
+- Graph core: aggregate node provenance origin is selected via an explicit
+  priority order, never by set iteration (NFR-02 determinism).
+- Graph core: declared-n group matching is casefolded consistently; truncated
+  contrast pairs (>6 per factor) emit an explicit question instead of losing
+  scope silently; `derived_count` gains a cycle guard.
+- Rules: alert conflict linkage no longer depends on precondition text;
+  malformed predicate arity raises `UnknownPredicate` (fail-closed) instead of
+  `IndexError`.
+- Parsers: archive limits are enforced on actually decompressed bytes (zip-bomb
+  route via forged central-directory metadata closed); DOCX/JATS table cells are
+  formula-neutralized like CSV/XLSX; JATS ENTITY scan covers UTF-16/32 ASCII
+  representations; `.csv` delimiter pinned to comma; leading `+` numerics
+  neutralized for spreadsheet round-trips.
+- API: `/v7/report` and `/v8/report` read only paths inside run directories
+  registered in this API process; TrustedHost allowlist drops the test host.
+- Governance: constant-time hash comparisons in the authorization path.
+
+### Desktop
+
+- First-run welcome keeps the synthetic demo behind an explicit action.
+  Determinability, HOLD and HANDOFF_ONLY stay visible as limits, not approval.
+- Replaced the inert settings control with a status sheet. Visual system is a
+  single paper/ink palette; client PREVIEW is labeled non-canonical.
+
+### Added
+
+- PRD v9 engineering sidecar (not a rename of the v8 kernel): Canonical Schema
+  Registry 9.0.0, FactorRole/ContrastType EU eligibility, assignment-anchored
+  ExperimentalUnitClaim, ContrastSupport evaluation, MaterialLineage count
+  identity, SupportProfile writer, Safe Methods sentence contract, Quick Design
+  v9 (role before levels), and combined `gate_experimental_unit_claim`.
+  Strategy remains `HANDOFF_ONLY`. Scientific validation remains `NOT_STARTED`.
+
+### Security
+
+- Directory ingest no longer follows directory or file symlinks
+  (`discover_ingest_candidates`); escaped trees outside the source folder are
+  rejected instead of copied.
+
+### Documentation
+
+- Added the PRD v9 final system review of this v8 tree, including operational
+  dispositions for the four `MISSING` rows and the 48 `PARTIAL` rows. Scientific
+  validation remains `NOT_STARTED`; training and External Challenge remain `HOLD`.
+
+### PRD v8.0 migration
+
+- Migrated the repository to the PRD v8 semantic kernel: query-scoped
+  `DerivedClaimSet`, claim-specific determinability, independent design adequacy,
+  open-world `KnowledgeState`, structured coverage and canonical count registry.
+- Separated Derivation Theory, Rulebook, conformance fixtures and unavailable
+  external reference/gold assets; runtime derivation and adequacy implementations are
+  pinned and fail closed on unreviewed drift.
+- Added candidate-only parser boundaries, protected TEST/EXTERNAL views, Reality Gate
+  v8 custody contracts, neutral planned/executed reports and a `HANDOFF_ONLY`
+  statistical interface. Training and External Challenge use remain `HOLD`.
+- Added a guided, non-JSON Quick Design PREVIEW/CONFIRM workflow. Confirmation emits
+  the canonical result atomically, keeps its audit snapshot non-executable and exposes
+  question priority/evidence ordering as the explicit `SRR-V8-025` review gap.
+- Added packaged runtime-derived JSON Schema, verbatim expected-negative PRD examples,
+  machine-readable current-to-target architecture truth and explicit CI gates.
+- Qualified incompatible v7 behavior behind warning-emitting
+  `DEPRECATED_V7_ADAPTER` surfaces. Current engineering status is
+  `IMPLEMENTED_WITH_EXPLICIT_BLOCKERS`; no scientific validation is claimed.
+
 ### Documentation
 
 - Full documentation refresh (2026-08-02): verified status snapshot
@@ -64,7 +314,7 @@ ontologia; queste versioni possono avanzare indipendentemente.
   `sequence=max+1` in `BEGIN IMMEDIATE`, GENESIS + anti-reseed, hash chaining,
   evidence content-addressed; policy ledger-first (JSON mirror rigenerabile).
 
-### Added
+### Added (PRD v6.1 refresh)
 
 - Revisione PRD v6.1 con Synthetic Task Use Matrix, Runtime Resource Budget, Lean
   Governance Matrix, registro delle affermazioni assolute, response matrix e

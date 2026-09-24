@@ -1,0 +1,179 @@
+{
+  "fixture_kind": "deterministic_software_snapshot_not_expert_gold",
+  "content_checksum": "012d7f14e8b1935ead87598ea3697066c421037af6018fe026bbe47c6fc7622e",
+  "projection": {
+    "report_id": "rep-16af2904ced0",
+    "project_id": "prj-84e9c3c9fa6f",
+    "versions": {
+      "schema_version": "0.3.0",
+      "parser_version": "0.3.0",
+      "graph_version": "0.3.0",
+      "ruleset_id": "ntruth-core",
+      "ruleset_version": "0.3.0",
+      "ontology_version": "0.2.0",
+      "model_version": null
+    },
+    "totals": {
+      "blocks": 1,
+      "compiler_abstained": 1,
+      "alerts": 2,
+      "critical": 0,
+      "insufficient": 1,
+      "questions": 5,
+      "unresolved_conflicts": 0
+    },
+    "summary": {
+      "block_id": "blk-158be3cbe930",
+      "title": "Materials and Methods",
+      "max_severity": "insufficient",
+      "n_alerts": 2,
+      "n_questions": 5,
+      "n_unresolved_conflicts": 0,
+      "assessments_with_independent_n": 0,
+      "assessments_total": 1,
+      "abstained": true
+    },
+    "block": {
+      "id": "blk-158be3cbe930",
+      "title": "Materials and Methods",
+      "determinability": "INSUFFICIENT_INFORMATION",
+      "node_types": [
+        "CellCulture",
+        "Well",
+        "Field",
+        "Cell",
+        "ExperimentBlock",
+        "Factor",
+        "FactorLevel",
+        "FactorLevel",
+        "Endpoint",
+        "Contrast",
+        "StatisticalModel"
+      ],
+      "relation_types": [
+        "nested_in",
+        "derived_from",
+        "nested_in",
+        "nested_in",
+        "has_factor",
+        "has_level",
+        "has_level",
+        "allocated_to",
+        "applied_to",
+        "has_endpoint",
+        "measured_on",
+        "defines_contrast"
+      ],
+      "factor": {
+        "name": "treatment",
+        "levels": [
+          "NGF",
+          "vehicle"
+        ],
+        "allocation_level": "CellCulture",
+        "application_level": "Cell"
+      },
+      "assessment": {
+        "biological_unit": null,
+        "experimental_unit": null,
+        "observational_unit": "Cell",
+        "analytical_unit": "Cell",
+        "n_declared": 120,
+        "n_allocated": 3,
+        "n_analyzed": 120,
+        "n_observational": 120,
+        "n_independent": null,
+        "inferability": "requires_confirmation",
+        "risk": "insufficient_information"
+      },
+      "alerts": [
+        {
+          "rule_id": "GEN-010",
+          "alert_class": "design_replication",
+          "severity": "insufficient"
+        },
+        {
+          "rule_id": "MIC-001",
+          "alert_class": "analytical_dependence",
+          "severity": "info"
+        }
+      ],
+      "questions": [
+        {
+          "id": "qst-0d3705fef718",
+          "priority": 100,
+          "decisive": true,
+          "impact": "Senza tri-state TRUE e meccanismo non e pubblicabile un singolo n."
+        },
+        {
+          "id": "qst-9980f88520bf",
+          "priority": 100,
+          "decisive": true,
+          "impact": "La risposta cambia n indipendente per questo gruppo e contrasto."
+        },
+        {
+          "id": "qst-7c84ad5fac45",
+          "priority": 80,
+          "decisive": true,
+          "impact": "analytical_dependence"
+        },
+        {
+          "id": "qst-cebebdc1f595",
+          "priority": 70,
+          "decisive": true,
+          "impact": "design_replication"
+        },
+        {
+          "id": "qst-7459fe6625b5",
+          "priority": 60,
+          "decisive": true,
+          "impact": "analytical_dependence"
+        }
+      ]
+    },
+    "positive_output": {
+      "path_status": "incomplete",
+      "methods_status": "incomplete",
+      "non_certifying": true,
+      "n_row": {
+        "experimental_unit": null,
+        "observational_unit": "Cell",
+        "analytical_unit": "Cell",
+        "n_declared": 120,
+        "n_allocated": 3,
+        "n_analyzed": 120,
+        "n_observational": 120,
+        "n_independent": null,
+        "inferability": "requires_confirmation"
+      },
+      "driver_statuses": {
+        "DRIVER-1": "missing",
+        "DRIVER-2": "partial",
+        "DRIVER-3": "not_assessed",
+        "DRIVER-4": "partial",
+        "DRIVER-5": "partial",
+        "DRIVER-6": "not_assessed"
+      },
+      "statement_layers": [
+        "assertion",
+        "inference",
+        "limitation",
+        "limitation",
+        "limitation",
+        "limitation"
+      ],
+      "candidate_analysis_strategies": [
+        "Risolvere le domande decisive prima di scegliere qualunque analisi inferenziale."
+      ],
+      "decisive_question_ids": [
+        "qst-0d3705fef718",
+        "qst-0f5682597752",
+        "qst-9980f88520bf",
+        "qst-e46b66cd53f1",
+        "qst-7c84ad5fac45",
+        "qst-cebebdc1f595",
+        "qst-7459fe6625b5"
+      ]
+    }
+  }
+}

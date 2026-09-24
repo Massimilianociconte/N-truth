@@ -1,0 +1,192 @@
+{
+  "declared_checksum": "3919498726b2993594a2302d9f248cab22640d006d54446cd59bb222fbafd86d",
+  "examples": [
+    {
+      "example_id": "PRD-V8-APPENDIX-A-VERBATIM",
+      "expectation": "EXPECTED_NEGATIVE",
+      "expected_diagnostic_ids": [
+        "SRR-V8-001",
+        "SRR-V8-002",
+        "SRR-V8-003",
+        "SRR-V8-004",
+        "SRR-V8-005",
+        "SRR-V8-006",
+        "SRR-V8-007",
+        "SRR-V8-008",
+        "SRR-V8-015"
+      ],
+      "payload": {
+        "derived_claims": [
+          {
+            "claim_id": "CLAIM-EU-01",
+            "claim_type": "EXPERIMENTAL_UNIT",
+            "determinability": "MULTIPLE_PLAUSIBLE_GRAPHS",
+            "profile_coverage": "PARTIAL_PROFILE_COVERAGE",
+            "query_id": "IQ-001",
+            "support_grade": "MIXED_UNRESOLVED",
+            "value": {
+              "knowledge_state": "UNKNOWN"
+            }
+          },
+          {
+            "claim_id": "CLAIM-ADEQUACY-01",
+            "claim_type": "DESIGN_ADEQUACY_FINDING",
+            "determinability": "INSUFFICIENT_INFORMATION",
+            "query_id": "IQ-001",
+            "support_grade": "NOT_SUPPORTED",
+            "value": {
+              "knowledge_state": "UNKNOWN"
+            }
+          }
+        ],
+        "report_resolution_state": "MULTIPLE_PLAUSIBLE_GRAPHS",
+        "scenario_set": {
+          "coverage_basis": [
+            "DT-EU-ASSIGNMENT-01",
+            "DT-SOURCE-SCOPE-02"
+          ],
+          "coverage_caveat": "Other undocumented preparation histories may remain possible.",
+          "exhaustive": false,
+          "id": "SCEN-01"
+        },
+        "sources": [
+          {
+            "id": "methods_01",
+            "source_class": "PUBLISHED_METHODS"
+          },
+          {
+            "id": "sheet_01",
+            "source_class": "SAMPLE_METADATA_EXECUTED"
+          }
+        ]
+      },
+      "prd_location": "Appendix A, PDF pages 117-120",
+      "rationale": "The authoritative example is preserved byte-for-byte but conflicts with the normative v8 claim, adequacy, coverage, resolution and source-class contracts.",
+      "source_kind": "VERBATIM_PRD",
+      "validation_contract": "APPENDIX_A_BUNDLE",
+      "verbatim_source": "bundle_id: NT-EX-0001\nbundle_version: 8.0-example\nprofile:\n  id: simple_cell_culture\n  theory_version: derivation-theory-0.1.0\n  ruleset_version: ntruth-core-0.3.0\n  coverage_status: PARTIAL_PROFILE_COVERAGE\n  known_gaps:\n    - undocumented_culture_origin_across_runs\n\ndomain: simple_cell_culture\nrecord_context: RETROSPECTIVE_DOCUMENT_RECONSTRUCTION\n\nsources:\n  - id: methods_01\n    source_class: PUBLISHED_METHODS\n    planned_or_executed: CLAIMED_EXECUTED\n    license: CC-BY-4.0\n    sha256: example-placeholder\n  - id: sheet_01\n    source_class: SAMPLE_METADATA_EXECUTED\n    planned_or_executed: EXECUTED_RECORD\n    license: LOCAL_PERMISSION\n    sha256: example-placeholder\n\ninferential_query:\n  id: IQ-001\n  factor_id: treatment\n  compared_levels: [vehicle, drug_x]\n  endpoint_id: neurite_length\n  condition_or_timepoint: 48h\n  effect_measure_or_estimand:\n    knowledge_state: PRESENT\n    value: mean_difference\n  inference_population:\n    knowledge_state: PRESENT\n    value: cultures_under_protocol_x\n  inference_level:\n    knowledge_state: PRESENT\n    value: well\n\nfactor:\n  id: treatment\n  levels: [vehicle, drug_x]\n\nassignment_event:\n  id: ASSIGN-01\n  factor_id: treatment\n  assigned_unit_type:\n    knowledge_state: PRESENT\n    value: well\n  mechanism:\n    knowledge_state: UNKNOWN\n  separability:\n    knowledge_state: UNKNOWN\n  timing:\n    relation: AFTER\n    reference_event_id: SPLIT-01\n    knowledge_state: PRESENT\n\napplication_event:\n  id: APPLY-01\n  factor_id: treatment\n  application_unit_type:\n    knowledge_state: PRESENT\n    value: well\n  timing:\n    relation: AFTER\n    reference_event_id: PLATE-01\n    knowledge_state: PRESENT\n\nexposure_assessment:\n  factor_id: treatment\n  exposure_pathway:\n    knowledge_state: UNKNOWN\n  effective_exposure_cluster:\n    knowledge_state: UNKNOWN\n  interference_status:\n    knowledge_state: PRESENT\n    value: POSSIBLE\n  shared_environment:\n    knowledge_state: PRESENT\n    items: [plate_01, day_01]\n\nsource_context:\n  preparation_id:\n    knowledge_state: PRESENT\n    value: culture_batch_01\n  biological_source_independence:\n    knowledge_state: UNKNOWN\n  biological_source_type:\n    knowledge_state: PRESENT\n    value: donor\n\nendpoint:\n  id: neurite_length\n  measured_on: segmented_cell\n\ncontrast:\n  id: drug_vs_vehicle\n  factor_id: treatment\n  compared_levels: [vehicle, drug_x]\n\nunits:\n  - {id: donor_01, type: donor}\n  - {id: culture_01, type: culture}\n  - {id: well_A01, type: well}\n  - {id: field_A01_01, type: field}\n\nrelations:\n  - {source: culture_01, type: derived_from, target: donor_01}\n  - {source: well_A01, type: derived_from, target: culture_01}\n  - {source: field_A01_01, type: acquired_from, target: well_A01}\n\ncounts:\n  - count_id: CNT-DECL-01\n    kind: declared_n\n    knowledge_state: PRESENT\n    value: 3\n    quantifier: EXACT\n    unit_type:\n      knowledge_state: PRESENT\n      value: experiment_run\n    query_id: IQ-001\n    group_id: ALL\n    cohort_id: COHORT-01\n    scope_status: AMBIGUOUS\n    source_evidence: [EV-02]\n  - count_id: CNT-OBS-01\n    kind: observational_n\n    knowledge_state: NOT_REPORTED\n    query_id: IQ-001\n    group_id: ALL\n    cohort_id: COHORT-01\n\nplanned_executed_reconciliation:\n  status: NOT_AVAILABLE\n  rationale: no prospective plan was provided\n\nevidence:\n  - id: EV-01\n    type: STRUCTURAL_FACT\n    text: Each culture was divided into six wells.\n    source_id: methods_01\n  - id: EV-02\n    type: AUTHOR_ASSERTION\n    text: Three independent experiments were performed.\n    source_id: methods_01\n  - id: EV-03\n    type: PROCEDURAL_EVENT\n    text: Drug X was added after plating.\n    source_id: methods_01\n\nmissing_predicates:\n  - predicate_id: PRED-RUN-SOURCE-IDENTITY\n    knowledge_state: UNKNOWN\n    affects_claims: [CLAIM-EU-01, CLAIM-N-01, CLAIM-SCOPE-01]\n\nquestions:\n  - id: Q-001\n    predicate_id: PRED-RUN-SOURCE-IDENTITY\n    priority: PRIMARY\n    text: Were the three experiment runs initiated from distinct biological preparations, and were treatment levels assignable separately within each run?\n\nscenario_set:\n  id: SCEN-01\n  exhaustive: false\n  coverage_basis:\n    - DT-EU-ASSIGNMENT-01\n    - DT-SOURCE-SCOPE-02\n  coverage_caveat: Other undocumented preparation histories may remain possible.\n  scenarios:\n    - id: S-A\n      assumption: distinct_preparations_and_separate_assignment\n    - id: S-B\n      assumption: repeated_runs_from_shared_preparation\n\nderived_claims:\n  - claim_id: CLAIM-EU-01\n    claim_type: EXPERIMENTAL_UNIT\n    query_id: IQ-001\n    determinability: MULTIPLE_PLAUSIBLE_GRAPHS\n    value:\n      knowledge_state: UNKNOWN\n    support_grade: MIXED_UNRESOLVED\n    theory_clauses: [DT-EU-ASSIGNMENT-01, DT-EU-EXPOSURE-02]\n    rule_trace: [EU-WELL-CANDIDATE-01]\n    assumptions:\n      - assignment separability unresolved\n      - effective exposure cluster unresolved\n    profile_coverage: PARTIAL_PROFILE_COVERAGE\n  - claim_id: CLAIM-SOURCE-01\n    claim_type: BIOLOGICAL_SOURCE_COUNT\n    query_id: IQ-001\n    determinability: INSUFFICIENT_INFORMATION\n    value:\n      knowledge_state: UNKNOWN\n    support_grade: NOT_SUPPORTED\n    theory_clauses: [DT-SOURCE-COUNT-01]\n  - claim_id: CLAIM-ADEQUACY-01\n    claim_type: DESIGN_ADEQUACY_FINDING\n    query_id: IQ-001\n    determinability: INSUFFICIENT_INFORMATION\n    value:\n      knowledge_state: UNKNOWN\n    support_grade: NOT_SUPPORTED\n\nreport_resolution_state: MULTIPLE_PLAUSIBLE_GRAPHS\n\nepistemic_boundary:\n  statement: N-Truth evaluated the inspected records and confirmations; it did not observe the experiment directly."
+    },
+    {
+      "example_id": "PRD-V8-APPENDIX-AF-VERBATIM",
+      "expectation": "EXPECTED_NEGATIVE",
+      "expected_diagnostic_ids": [
+        "SRR-V8-001",
+        "SRR-V8-002",
+        "SRR-V8-003",
+        "SRR-V8-008"
+      ],
+      "payload": {
+        "derived_claim": {
+          "assumptions": [
+            {
+              "authority_event_id": "CONF-001",
+              "predicate_id": "PRED-ASSIGN-SEPARABLE",
+              "value": true
+            }
+          ],
+          "claim_id": "CLAIM-EU-001",
+          "claim_type": "EXPERIMENTAL_UNIT",
+          "determinability_state": "DETERMINATE",
+          "profile_coverage": {
+            "known_gaps": [
+              "interference_pathway_not_observed"
+            ],
+            "status": "COVERED_WITH_KNOWN_GAPS"
+          },
+          "query_id": "IQ-001",
+          "rule_trace": [
+            "EU-WELL-001"
+          ],
+          "ruleset_version": "ntruth-core-0.3.0",
+          "sensitivity_records": [
+            "SENS-001"
+          ],
+          "support_grade": "SELF_REPORT_ONLY",
+          "theory_clauses": [
+            "DT-EU-ASSIGNMENT-01"
+          ],
+          "theory_version": "derivation-theory-0.1.0",
+          "value": {
+            "knowledge_state": "PRESENT",
+            "unit_type": "well"
+          }
+        }
+      },
+      "prd_location": "Appendix AF, PDF page 162",
+      "rationale": "AF omits predicate closure fields and uses unresolved query, support-grade and profile-coverage shapes.",
+      "source_kind": "VERBATIM_PRD",
+      "validation_contract": "DERIVED_CLAIM",
+      "verbatim_source": "derived_claim:\n  claim_id: CLAIM-EU-001\n  claim_type: EXPERIMENTAL_UNIT\n  query_id: IQ-001\n  value:\n    knowledge_state: PRESENT\n    unit_type: well\n  determinability_state: DETERMINATE\n  support_grade: SELF_REPORT_ONLY\n  assumptions:\n    - predicate_id: PRED-ASSIGN-SEPARABLE\n      value: true\n      authority_event_id: CONF-001\n  theory_version: derivation-theory-0.1.0\n  theory_clauses: [DT-EU-ASSIGNMENT-01]\n  ruleset_version: ntruth-core-0.3.0\n  rule_trace: [EU-WELL-001]\n  sensitivity_records: [SENS-001]\n  profile_coverage:\n    status: COVERED_WITH_KNOWN_GAPS\n    known_gaps: [interference_pathway_not_observed]"
+    },
+    {
+      "example_id": "PRD-V8-APPENDIX-AG-VERBATIM",
+      "expectation": "EXPECTED_NEGATIVE",
+      "expected_diagnostic_ids": [
+        "SRR-V8-015",
+        "SRR-V8-018"
+      ],
+      "payload": {
+        "backbone": {
+          "model_id": "ibm-granite/granite-4.1-3b",
+          "release_date": "2026-XX-XX"
+        },
+        "challenge_item_id": "ECH-001",
+        "exposure_assessment": {
+          "evidence": [
+            "prospective_private_source"
+          ],
+          "probes_run": [],
+          "residual_risk": "LOW"
+        },
+        "source_class": "PROSPECTIVE_PRIVATE|POST_CUTOFF_PUBLIC|LEGACY_PUBLIC"
+      },
+      "prd_location": "Appendix AG, PDF page 163",
+      "rationale": "AG contains an unresolved source-class union, placeholder release date and bare empty probes list; External Challenge remains HOLD.",
+      "source_kind": "VERBATIM_PRD",
+      "validation_contract": "CONTAMINATION_ATTESTATION",
+      "verbatim_source": "challenge_item_id: ECH-001\nsource_class: PROSPECTIVE_PRIVATE|POST_CUTOFF_PUBLIC|LEGACY_PUBLIC\npublication_or_creation_date: 2026-09-01\nstudy_family_id: SF-9001\ntraining_eligible: false\nmodel_selection_eligible: false\nbackbone:\n  model_id: ibm-granite/granite-4.1-3b\n  release_date: 2026-XX-XX\n  documented_training_cutoff:\n    knowledge_state: UNKNOWN\ntext_exposure_risk: LOW|MEDIUM|HIGH|UNKNOWN\nexposure_assessment:\n  evidence:\n    - prospective_private_source\n  probes_run: []\n  residual_risk: LOW\npermitted_claim:\n  - project_pipeline_generalization\nforbidden_claim:\n  - proof_of_no_pretraining_exposure\ncustodian: external_or_independent\nattested_by: reviewer_id"
+    },
+    {
+      "example_id": "PRD-V8-CANONICAL-SCENARIO-COVERAGE",
+      "expectation": "POSITIVE",
+      "expected_diagnostic_ids": [],
+      "payload": {
+        "caveat": {
+          "evidence_ids": [
+            "EV-RUNTIME-001"
+          ],
+          "knowledge_state": "PRESENT",
+          "query_scope_id": "IQ-RUNTIME-001",
+          "schema_version": "8.0.0",
+          "value": "Additional exposure topologies may exist."
+        },
+        "emitting_clause_ids": [
+          "DT-E-INTERFERENCE-ESTIMAND"
+        ],
+        "omitted_dimensions": {
+          "evidence_ids": [
+            "EV-RUNTIME-001"
+          ],
+          "knowledge_state": "PRESENT",
+          "query_scope_id": "IQ-RUNTIME-001",
+          "schema_version": "8.0.0",
+          "value": [
+            "unreviewed_interference_topology"
+          ]
+        },
+        "profile_id": "simple_cell_culture",
+        "schema_version": "8.0.0",
+        "status": "NON_EXHAUSTIVE",
+        "theory_version": "0.1.0"
+      },
+      "prd_location": "Section 10.7, canonical engineering fixture under SRR-V8-008",
+      "rationale": "Unambiguous NON_EXHAUSTIVE shape with explicit omitted dimensions and caveat KnowledgeState; it does not close profile predicate coverage.",
+      "source_kind": "ENGINEERING_CANONICAL_BLOCKED",
+      "validation_contract": "SCENARIO_COVERAGE",
+      "verbatim_source": "{\n  \"caveat\": {\n    \"evidence_ids\": [\n      \"EV-RUNTIME-001\"\n    ],\n    \"knowledge_state\": \"PRESENT\",\n    \"query_scope_id\": \"IQ-RUNTIME-001\",\n    \"schema_version\": \"8.0.0\",\n    \"value\": \"Additional exposure topologies may exist.\"\n  },\n  \"emitting_clause_ids\": [\n    \"DT-E-INTERFERENCE-ESTIMAND\"\n  ],\n  \"omitted_dimensions\": {\n    \"evidence_ids\": [\n      \"EV-RUNTIME-001\"\n    ],\n    \"knowledge_state\": \"PRESENT\",\n    \"query_scope_id\": \"IQ-RUNTIME-001\",\n    \"schema_version\": \"8.0.0\",\n    \"value\": [\n      \"unreviewed_interference_topology\"\n    ]\n  },\n  \"profile_id\": \"simple_cell_culture\",\n  \"schema_version\": \"8.0.0\",\n  \"status\": \"NON_EXHAUSTIVE\",\n  \"theory_version\": \"0.1.0\"\n}"
+    }
+  ],
+  "registry_id": "PRD-V8-EXAMPLES-3919498726b2993594a2",
+  "schema_version": "8.0.0",
+  "source_document": "N-Truth_PRD_scientifico_completo_v8.0.pdf"
+}

@@ -5,7 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from ntruth.parser_ai.contract import ParserAIInput, ParserAIOutput
+from ntruth.governance.lineage import CorpusSplit
+from ntruth.parser_ai.contract import ParserAIInput, ParserCandidateOutput
 from ntruth.training.calibration import ConfidenceObservation
 from ntruth.training.cli import DEFAULT_PROFILE
 from ntruth.training.metrics import aggregate_scores, confidence_observations, score_output
@@ -16,36 +17,109 @@ from ntruth.training.mlx_inference import (
     export_adapter_bundle,
     predict_and_score,
 )
-from ntruth.training.mlx_runtime import MLXPipelineError, sha256_file
+from ntruth.training.mlx_runtime import (
+    MLXPipelineError,
+    TrainingDesignLineagePins,
+    resolve_training_lineage_inputs,
+    sha256_file,
+)
+from ntruth.training.records import AnnotationStatus, DatasetManifest, ManifestRecord
 
 
-def _parser_output(*, confidence: float = 0.7) -> ParserAIOutput:
-    return ParserAIOutput.model_validate(
+def _protected_release_source_manifest() -> DatasetManifest:
+    return DatasetManifest(
+        record_schema_version="8.0.0",
+        normalization_version="1.0.0",
+        config_checksum="1" * 64,
+        decisions_checksum="2" * 64,
+        report_checksum="3" * 64,
+        records=(
+            ManifestRecord(
+                record_id="protected-1",
+                record_checksum="4" * 64,
+                input_checksum="5" * 64,
+                candidate_target_checksum="6" * 64,
+                exact_fingerprint="7" * 64,
+                near_fingerprint="8" * 64,
+                split=CorpusSplit.TEST,
+                leakage_group_id="protected-group-1",
+                source_id="source-1",
+                source_asset_id="asset-1",
+                source_sha256="9" * 64,
+                governance_hash="a" * 64,
+                annotation_status=AnnotationStatus.CANDIDATE,
+                training_eligible=False,
+                evaluation_eligible=True,
+                release_eligible=True,
+                model_selection_eligible=False,
+                reviewer_count=0,
+            ),
+        ),
+    )
+
+
+def _parser_output(*, confidence: float = 0.7) -> ParserCandidateOutput:
+    return ParserCandidateOutput.model_validate(
         {
-            "contract_version": "2.0.0",
-            "experiment_blocks": [],
-            "evidence_spans": [],
+            "contract_version": "8.0.0",
+            "experiment_blocks": [
+                {
+                    "block_id": "block-1",
+                    "title": "Candidate block",
+                    "evidence_ids": ["evidence-1"],
+                    "confidence": confidence,
+                }
+            ],
+            "block_boundaries": [
+                {
+                    "block_id": "block-1",
+                    "boundary_predicates": [
+                        {
+                            "criterion": "DISTINCT_EXPERIMENT_SOURCE_DOCUMENT",
+                            "internal_query_representability": "NOT_REPRESENTABLE",
+                        }
+                    ],
+                    "rationale": "The source explicitly identifies the candidate block.",
+                    "evidence_ids": ["evidence-1"],
+                    "confidence": confidence,
+                }
+            ],
+            "evidence_spans": [
+                {
+                    "evidence_id": "evidence-1",
+                    "file_id": "fixture",
+                    "evidence_type": "STRUCTURAL_FACT",
+                    "text": "candidate",
+                    "confidence": confidence,
+                    "start": 0,
+                    "end": 9,
+                }
+            ],
             "candidate_nodes": [],
             "candidate_edges": [],
             "factors": [],
             "endpoints": [],
             "contrasts": [],
             "candidate_estimands": [],
-            "determinability": {
-                "status": "INDETERMINATE",
-                "rationale": "No decisive evidence.",
-                "confidence": confidence,
-                "evidence_ids": [],
-            },
+            "candidate_counts": [],
+            "candidate_events": [],
+            "candidate_graphs": [],
             "alternatives": [],
             "clarification_questions": [],
+            "missing_predicates": [],
+            "coverage": {
+                "status": "PARTIAL",
+                "covered_artifact_ids": ["fixture"],
+                "missing_artifact_ids": ["not-reported"],
+                "rationale": "Candidate-only lineage fixture.",
+            },
             "model_metadata": {
                 "adapter_name": "lineage-test",
                 "model_name": "test",
                 "model_version": "1",
                 "model_checksum": None,
                 "prompt_template_version": "lineage-test",
-                "contract_version": "2.0.0",
+                "contract_version": "8.0.0",
                 "local_execution": True,
             },
         }
@@ -58,7 +132,18 @@ def _evaluation_artifacts(
     snapshot_dir = tmp_path / "snapshot"
     snapshot_dir.mkdir()
     evaluation_path = snapshot_dir / "test.jsonl"
-    parser_input = ParserAIInput(metadata={"record": "test-1"}, language="en")
+    parser_input = ParserAIInput(
+        documents=(
+            {
+                "file_id": "fixture",
+                "filename": "fixture.txt",
+                "sha256": "a" * 64,
+                "text": "candidate",
+            },
+        ),
+        metadata={"record": "test-1"},
+        language="en",
+    )
     gold = _parser_output()
     evaluation_row = {
         "record_id": "test-1",
@@ -97,7 +182,7 @@ def _evaluation_artifacts(
     )
 
     run_lineage = {
-        "schema_version": "1.0.0",
+        "schema_version": "8.0.0",
         "profile_path": str(DEFAULT_PROFILE.resolve()),
         "repo_root": str(Path(".").resolve()),
         "run_dir": str((tmp_path / "run").resolve()),
@@ -162,8 +247,30 @@ def _fake_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Pa
     adapter = best / "adapters.safetensors"
     adapter.write_bytes(b"adapter")
     model_hash = "a" * 64
+    design_lineage = TrainingDesignLineagePins(
+        planned_design_artifact_id="planned-1",
+        planned_design_artifact_sha256="d" * 64,
+        executed_design_artifact_id="executed-1",
+        executed_design_artifact_sha256="e" * 64,
+    )
+    design_lineage_path = tmp_path / "task6-training-design-lineage.json"
+    design_lineage_path.write_text(
+        json.dumps(design_lineage.model_dump(mode="json"), sort_keys=True),
+        encoding="utf-8",
+    )
+    protected_source = _protected_release_source_manifest()
+    protected_source_path = tmp_path / "protected-source-dataset-manifest.json"
+    protected_source_path.write_text(
+        json.dumps(protected_source.model_dump(mode="json"), sort_keys=True),
+        encoding="utf-8",
+    )
+    training_lineage = resolve_training_lineage_inputs(
+        design_lineage_pins=design_lineage,
+        design_lineage_artifact_path=design_lineage_path,
+        protected_source_manifest_path=protected_source_path,
+    )
     state = {
-        "schema_version": "2.0.0",
+        "schema_version": "8.0.0",
         "status": "completed_maximum_phases",
         "profile_sha256": sha256_file(DEFAULT_PROFILE),
         "model_provenance_sha256": model_hash,
@@ -174,6 +281,7 @@ def _fake_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Pa
         "best_phase": 1,
         "last_completed_phase": 1,
         "best_adapter_sha256": sha256_file(adapter),
+        **training_lineage.state_payload(),
     }
     (run / "run-state.json").write_text(json.dumps(state), encoding="utf-8")
     monkeypatch.setattr(
@@ -203,7 +311,7 @@ def test_predict_cannot_relabel_test_as_validation(
     assert not (tmp_path / "predictions").exists()
 
 
-def test_export_rejects_test_metrics_from_another_snapshot(
+def test_export_rejects_test_metrics_without_protected_snapshot_contract(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     run_lineage = {
@@ -249,7 +357,7 @@ def test_export_rejects_test_metrics_from_another_snapshot(
         lambda *_args, **_kwargs: {"source_metrics": calibration_source},
     )
 
-    with pytest.raises(MLXPipelineError, match="snapshot test"):
+    with pytest.raises(MLXPipelineError, match="custodial/source manifest"):
         export_adapter_bundle(
             DEFAULT_PROFILE,
             Path(".").resolve(),
@@ -270,7 +378,7 @@ def test_metrics_top_level_cannot_detach_from_hashed_lineage(
     evaluation_path = evaluation_dir / "test.jsonl"
     evaluation_path.write_text("{}\n", encoding="utf-8")
     run_lineage = {
-        "schema_version": "1.0.0",
+        "schema_version": "8.0.0",
         "profile_path": str(DEFAULT_PROFILE.resolve()),
         "repo_root": str(Path(".").resolve()),
         "run_dir": str((tmp_path / "run").resolve()),
@@ -320,7 +428,7 @@ def test_metrics_are_reconstructed_from_predictions_and_snapshot(
     context = _verify_metrics_artifacts(metrics_path)
 
     assert context["metrics"]["micro"]["f1"] == 1.0
-    assert context["metrics"]["confidence_observations"] == 1
+    assert context["metrics"]["confidence_observations"] == 2
 
 
 def test_tampered_micro_f1_is_rejected_even_without_an_external_metrics_hash(
@@ -340,7 +448,7 @@ def test_tampered_prediction_is_rejected_after_predictions_hash_is_updated(
 ) -> None:
     metrics_path, predictions_path, _observations = _evaluation_artifacts(tmp_path, monkeypatch)
     row = json.loads(predictions_path.read_text(encoding="utf-8"))
-    row["prediction"]["determinability"]["confidence"] = 0.1
+    row["prediction"]["experiment_blocks"][0]["confidence"] = 0.1
     predictions_path.write_text(json.dumps(row) + "\n", encoding="utf-8")
     metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
     metrics["predictions_sha256"] = sha256_file(predictions_path)
@@ -355,7 +463,7 @@ def test_tampered_prediction_gold_is_rejected_against_snapshot(
 ) -> None:
     metrics_path, predictions_path, _observations = _evaluation_artifacts(tmp_path, monkeypatch)
     row = json.loads(predictions_path.read_text(encoding="utf-8"))
-    row["gold"]["determinability"]["rationale"] = "Altered gold."
+    row["gold"]["coverage"]["rationale"] = "Altered gold."
     predictions_path.write_text(json.dumps(row) + "\n", encoding="utf-8")
     metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
     metrics["predictions_sha256"] = sha256_file(predictions_path)
@@ -369,12 +477,12 @@ def test_tampered_observation_is_rejected_after_hash_and_count_are_updated(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     metrics_path, _predictions, observations_path = _evaluation_artifacts(tmp_path, monkeypatch)
-    row = json.loads(observations_path.read_text(encoding="utf-8"))
-    row["confidence"] = 0.1
-    observations_path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+    rows = [json.loads(line) for line in observations_path.read_text(encoding="utf-8").splitlines()]
+    rows[0]["confidence"] = 0.1
+    observations_path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
     metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
     metrics["confidence_observations_sha256"] = sha256_file(observations_path)
-    metrics["confidence_observations"] = 1
+    metrics["confidence_observations"] = len(rows)
     metrics_path.write_text(json.dumps(metrics), encoding="utf-8")
 
     with pytest.raises(MLXPipelineError, match="confidence-observations ricalcolate"):
@@ -458,13 +566,41 @@ def test_export_happy_path_copies_verified_bundle(
         "run_dataset_snapshot_sha256": training_snapshot["snapshot_sha256"],
         "run_dataset_manifest_sha256": training_snapshot["manifest_sha256"],
         "adapter_sha256": sha256_file(adapter),
+        "planned_design_artifact_id": "planned-1",
+        "planned_design_artifact_sha256": "d" * 64,
+        "executed_design_artifact_id": "executed-1",
+        "executed_design_artifact_sha256": "e" * 64,
+    }
+    source_manifest = _protected_release_source_manifest()
+    protected_snapshot = {
+        "snapshot_id": "protected-test-1",
+        "snapshot_sha256": "f" * 64,
+        "manifest_sha256": "0" * 64,
+        "protected_evaluation": {
+            "split": "TEST",
+            "snapshot_id": "protected-test-1",
+            "snapshot_sha256": "f" * 64,
+            "record_count": 1,
+            "record_ids_checksum": (
+                "e19fb8e28174c0999f801fbe618e3db0820dab93acb1eb0877db6f40f8cdf50d"
+            ),
+            "lineage": {
+                "source_manifest_id": source_manifest.dataset_id,
+                "source_manifest_sha256": "b" * 64,
+                "planned_design_artifact_id": "planned-1",
+                "planned_design_artifact_sha256": "d" * 64,
+                "executed_design_artifact_id": "executed-1",
+                "executed_design_artifact_sha256": "e" * 64,
+            },
+        },
+        "source_dataset_manifest": source_manifest.model_dump(mode="json"),
     }
     metrics_context = {
         "path": metrics_path.resolve(),
         "sha256": sha256_file(metrics_path),
         "metrics": {"declared_split": "test"},
         "run_lineage": run_lineage,
-        "snapshot": training_snapshot,
+        "snapshot": protected_snapshot,
     }
     calibration_source = {
         "sha256": "c" * 64,

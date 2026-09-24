@@ -13,6 +13,7 @@ authors:
   - family-names: Ciconte
     given-names: Massimiliano
 version: 0.1.0
+date-released: "2026-08-23"
 repository-code: "https://github.com/Massimilianociconte/N-truth"
 url: "https://github.com/Massimilianociconte/N-truth"
 license: Apache-2.0

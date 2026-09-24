@@ -7,17 +7,17 @@ import json
 import pytest
 
 from ntruth.quick_design import (
-    QuickDesignAnswers,
-    export_for_biostatistician,
-    freeze_plan,
-    run_quick_design_session,
+    QuickDesignV7Answers,
+    export_v7_for_biostatistician,
+    freeze_v7_plan,
+    run_quick_design_v7_session,
 )
 from ntruth.schemas.determinability_v7 import DeterminabilityStateV7
 
 
 def test_quick_design_unknowns_are_insufficient() -> None:
-    result = run_quick_design_session(
-        QuickDesignAnswers(source_description="primary human fibroblasts")
+    result = run_quick_design_v7_session(
+        QuickDesignV7Answers(source_description="primary human fibroblasts")
     )
     assert result.determinability is DeterminabilityStateV7.INSUFFICIENT_INFORMATION
     assert result.primary_question
@@ -26,8 +26,8 @@ def test_quick_design_unknowns_are_insufficient() -> None:
 
 
 def test_bio_independence_is_not_assignment_proxy() -> None:
-    result = run_quick_design_session(
-        QuickDesignAnswers(
+    result = run_quick_design_v7_session(
+        QuickDesignV7Answers(
             source_description="line X",
             biological_source_independence="TRUE",
             independently_assigned="UNKNOWN",
@@ -44,8 +44,8 @@ def test_bio_independence_is_not_assignment_proxy() -> None:
 
 
 def test_invalid_allocation_cannot_be_known() -> None:
-    result = run_quick_design_session(
-        QuickDesignAnswers(
+    result = run_quick_design_v7_session(
+        QuickDesignV7Answers(
             source_description="cells",
             allocation_level="not-a-real-level",
             independently_assigned="TRUE",
@@ -60,8 +60,8 @@ def test_invalid_allocation_cannot_be_known() -> None:
 
 
 def test_manual_assignment_has_no_randomization_unit() -> None:
-    result = run_quick_design_session(
-        QuickDesignAnswers(
+    result = run_quick_design_v7_session(
+        QuickDesignV7Answers(
             source_description="cells",
             allocation_level="well",
             assignment_method="manual",
@@ -73,8 +73,8 @@ def test_manual_assignment_has_no_randomization_unit() -> None:
 
 
 def test_no_fabricated_paired_ids_across_levels() -> None:
-    result = run_quick_design_session(
-        QuickDesignAnswers(
+    result = run_quick_design_v7_session(
+        QuickDesignV7Answers(
             source_description="cells",
             planned_units_per_level=2,
             planned_unit_type="well",
@@ -90,14 +90,14 @@ def test_no_fabricated_paired_ids_across_levels() -> None:
 
 def test_n_per_level_non_positive_rejected() -> None:
     with pytest.raises(ValueError):
-        run_quick_design_session(
-            QuickDesignAnswers(source_description="cells", planned_units_per_level=0)
+        run_quick_design_v7_session(
+            QuickDesignV7Answers(source_description="cells", planned_units_per_level=0)
         )
 
 
 def test_top_level_matches_nested_independently_assigned() -> None:
-    result = run_quick_design_session(
-        QuickDesignAnswers(
+    result = run_quick_design_v7_session(
+        QuickDesignV7Answers(
             source_description="cells",
             independently_assigned="FALSE",
             assignment_method="manual",
@@ -109,8 +109,8 @@ def test_top_level_matches_nested_independently_assigned() -> None:
 
 
 def test_quick_design_export_and_freeze() -> None:
-    result = run_quick_design_session(
-        QuickDesignAnswers(
+    result = run_quick_design_v7_session(
+        QuickDesignV7Answers(
             source_description="line X",
             allocation_level="well",
             assignment_timing="before",
@@ -122,16 +122,16 @@ def test_quick_design_export_and_freeze() -> None:
             planned_unit_type="well",
         )
     )
-    payload = export_for_biostatistician(result)
+    payload = export_v7_for_biostatistician(result)
     assert payload["export_kind"] == "quick_design_biostat_handoff"
     assert '"independent_n"' not in json.dumps(payload)
-    frozen = freeze_plan(result)
+    frozen = freeze_v7_plan(result)
     assert frozen.plan_frozen is True
 
 
 def test_quick_design_never_emits_final_independent_n_in_bootstrap() -> None:
-    result = run_quick_design_session(
-        QuickDesignAnswers(
+    result = run_quick_design_v7_session(
+        QuickDesignV7Answers(
             source_description="cells",
             planned_units_per_level=4,
             planned_unit_type="culture",
@@ -141,3 +141,40 @@ def test_quick_design_never_emits_final_independent_n_in_bootstrap() -> None:
     assert "independent_n" not in kinds
     if result.bootstrap.counts:
         assert result.bootstrap.counts[0].unit_type == "culture"
+
+
+def test_declared_randomization_unit_wins_over_allocation() -> None:
+    result = run_quick_design_v7_session(
+        QuickDesignV7Answers(
+            source_description="cells",
+            allocation_level="well",
+            assignment_method="random",
+            randomization_unit="plate",
+        )
+    )
+    mechanism = result.bootstrap.causal_context.assignment_mechanism
+    assert mechanism.randomization_unit == "plate"
+
+
+def test_undeclared_randomization_unit_falls_back_to_allocation() -> None:
+    result = run_quick_design_v7_session(
+        QuickDesignV7Answers(
+            source_description="cells",
+            allocation_level="culture",
+            assignment_method="blocked_random",
+        )
+    )
+    mechanism = result.bootstrap.causal_context.assignment_mechanism
+    assert mechanism.randomization_unit == "culture"
+
+
+def test_undeclared_randomization_unit_without_allocation_stays_absent() -> None:
+    result = run_quick_design_v7_session(
+        QuickDesignV7Answers(
+            source_description="cells",
+            allocation_level="unknown",
+            assignment_method="random",
+        )
+    )
+    mechanism = result.bootstrap.causal_context.assignment_mechanism
+    assert mechanism.randomization_unit is None

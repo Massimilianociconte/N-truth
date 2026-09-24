@@ -11,10 +11,15 @@ import csv
 import io
 from collections.abc import Iterable
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from ntruth.ingest.safety import neutralize_formula
 from ntruth.parsers.base import ParseFailure, RawDocument, RawTable
 from ntruth.schemas.document import ParserStatus
+
+if TYPE_CHECKING:
+    from openpyxl.workbook.workbook import Workbook
+    from openpyxl.worksheet.worksheet import Worksheet
 
 MAX_ROWS = 200_000
 MAX_COLUMNS = 512
@@ -36,7 +41,15 @@ class CsvParser:
         except OSError as exc:  # pragma: no cover
             raise ParseFailure(path, f"lettura fallita ({exc})") from exc
 
-        delimiter = "\t" if path.suffix.lower() == ".tsv" else _sniff_delimiter(content)
+        # Il contratto D0/extended per .csv e il separatore virgola: lo sniffing
+        # resta solo per estensioni non ambigue, perche la prosa puo flippare
+        # il delimiter rilevato e spezzare le righe a meta pipeline.
+        if path.suffix.lower() == ".tsv":
+            delimiter = "\t"
+        elif path.suffix.lower() == ".csv":
+            delimiter = ","
+        else:
+            delimiter = _sniff_delimiter(content)
         reader = csv.reader(io.StringIO(content), delimiter=delimiter)
         table = _build_table(path.stem, reader, doc)
         if table is not None:
@@ -68,13 +81,18 @@ class XlsxParser:
         except Exception as exc:
             raise ParseFailure(path, f"XLSX illeggibile ({type(exc).__name__})") from exc
 
+        # Seconda lettura con data_only=True: recupera i valori calcolati che
+        # Excel ha messo in cache. Le celle formula senza cache restano testo
+        # inerte con un avviso esplicito (audit 2026-09-05, F8).
+        try:
+            values_workbook = load_workbook(str(path), data_only=True, read_only=True)
+        except Exception:
+            values_workbook = None
+
         try:
             for sheet in workbook.worksheets:
-                rows = (
-                    ["" if cell is None else str(cell) for cell in row]
-                    for row in sheet.iter_rows(values_only=True)
-                    if any(value is not None and str(value).strip() for value in row)
-                )
+                values_sheet = _values_sheet(values_workbook, sheet.title)
+                rows = _iter_sheet_rows(sheet, values_sheet, doc)
                 table = _build_table(sheet.title, rows, doc, sheet=sheet.title)
                 if table is None:
                     doc.warnings.append(f"foglio '{sheet.title}' vuoto")
@@ -82,11 +100,60 @@ class XlsxParser:
                 doc.tables.append(table)
         finally:
             workbook.close()
+            if values_workbook is not None:
+                values_workbook.close()
 
         if not doc.tables:
             doc.status = ParserStatus.FAILED
             doc.warnings.append("nessun foglio leggibile")
         return doc
+
+
+def _values_sheet(values_workbook: Workbook | None, title: str) -> Worksheet | None:
+    """Return the cached-value twin of a sheet, or None when unavailable."""
+
+    if values_workbook is None:
+        return None
+    try:
+        return values_workbook[title]
+    except KeyError:
+        return None
+
+
+def _iter_sheet_rows(
+    sheet: Worksheet, values_sheet: Worksheet | None, doc: RawDocument
+) -> Iterable[list[str]]:
+    """Yield text rows, substituting cached values for formula cells.
+
+    La formula resta la fonte quando la cache manca: il valore calcolato non
+    viene mai inventato. Le celle senza cache sono contate e segnalate a fine
+    foglio.
+    """
+
+    value_rows = values_sheet.iter_rows(values_only=True) if values_sheet is not None else None
+    uncached = 0
+    for row in sheet.iter_rows(values_only=True):
+        value_row: tuple[object, ...] | None = None
+        if value_rows is not None:
+            value_row = next(value_rows, None)
+        cells: list[str] = []
+        for index, cell in enumerate(row):
+            text = "" if cell is None else str(cell)
+            if text.startswith("=") and value_row is not None and index < len(value_row):
+                cached = value_row[index]
+                if cached is not None and str(cached).strip():
+                    text = str(cached)
+                else:
+                    uncached += 1
+            cells.append(text)
+        # Anche le righe vuote sono emesse: `_build_table` le salta mantenendo
+        # nei warning il numero di riga del foglio.
+        yield cells
+    if uncached:
+        doc.warnings.append(
+            f"foglio '{sheet.title}': {uncached} formule senza valore calcolato in cache "
+            "(aprire e salvare il file da Excel per generarla)"
+        )
 
 
 def _sniff_delimiter(content: str) -> str:
@@ -100,13 +167,26 @@ def _sniff_delimiter(content: str) -> str:
 def _build_table(
     name: str, rows: Iterable[list[str]], doc: RawDocument, sheet: str | None = None
 ) -> RawTable | None:
-    iterator = iter(rows)
+    """Normalizza le righe in RawTable senza perdere celle in silenzio.
+
+    Righe interamente vuote (tipiche degli export CSV) non sono record: vengono
+    saltate come fa gia il foglio XLSX, mentre i numeri di riga nei warning
+    restano quelli della sorgente.
+    """
+
+    numbered = (
+        (number, raw)
+        for number, raw in enumerate(rows, start=1)
+        if any(str(cell).strip() for cell in raw)
+    )
     try:
-        header_raw = next(iterator)
+        _header_number, header_raw = next(numbered)
     except StopIteration:
         return None
     if len(header_raw) > MAX_COLUMNS:
-        doc.warnings.append(f"{name}: {len(header_raw)} colonne oltre il limite, troncate")
+        message = f"{name}: {len(header_raw)} colonne oltre il limite {MAX_COLUMNS}, troncate"
+        doc.warnings.append(message)
+        doc.status = ParserStatus.PARTIAL
         header_raw = header_raw[:MAX_COLUMNS]
     formula_cells = 0
     safe_header: list[str] = []
@@ -119,11 +199,28 @@ def _build_table(
         return None
 
     table = RawTable(name=name, sheet=sheet, columns=header)
-    for index, raw in enumerate(iterator):
+    renamed = [
+        f"{original or '(vuota)'}->{unique}"
+        for original, unique in zip(safe_header, header, strict=True)
+        if original != unique
+    ]
+    if renamed:
+        message = f"{name}: intestazioni duplicate o vuote rinominate ({', '.join(renamed)})"
+        table.warnings.append(message)
+        doc.warnings.append(message)
+    for index, (number, raw) in enumerate(numbered):
         if index >= MAX_ROWS:
             table.warnings.append(f"righe oltre {MAX_ROWS} ignorate")
             doc.status = ParserStatus.PARTIAL
             break
+        if len(raw) != len(header):
+            message = (
+                f"{name}: riga {number} non rettangolare "
+                f"({len(raw)} celle, attese {len(header)}); output parziale"
+            )
+            table.warnings.append(message)
+            doc.warnings.append(message)
+            doc.status = ParserStatus.PARTIAL
         values = list(raw[: len(header)])
         values.extend([""] * (len(header) - len(values)))
         record: dict[str, str] = {}
@@ -141,14 +238,33 @@ def _build_table(
 
 
 def _unique_headers(raw: list[str]) -> list[str]:
-    seen: dict[str, int] = {}
+    """Nomi di colonna univoci: nessuna collisione fra nomi originali e generati.
+
+    Il primo uso di un nome originale lo conserva; duplicati e intestazioni
+    vuote ricevono il primo nome libero che non coincide ne con i nomi gia
+    assegnati ne con un nome originale (``animal, animal, animal_1`` ->
+    ``animal, animal_2, animal_1``), cosi ``dict(zip(header, row))`` non
+    sovrascrive mai una cella.
+    """
+
+    stripped = [(value or "").strip() for value in raw]
+    reserved = {name for name in stripped if name}
+    taken: set[str] = set()
     out: list[str] = []
-    for index, value in enumerate(raw):
-        name = (value or "").strip() or f"col_{index + 1}"
-        if name in seen:
-            seen[name] += 1
-            name = f"{name}_{seen[name]}"
+    for index, name in enumerate(stripped):
+        if name and name not in taken:
+            candidate = name
         else:
-            seen[name] = 0
-        out.append(name)
+            candidate = _free_name(name or f"col_{index + 1}", taken, reserved, allow_base=not name)
+        taken.add(candidate)
+        out.append(candidate)
     return out
+
+
+def _free_name(base: str, taken: set[str], reserved: set[str], *, allow_base: bool) -> str:
+    if allow_base and base not in taken and base not in reserved:
+        return base
+    suffix = 1
+    while f"{base}_{suffix}" in taken or f"{base}_{suffix}" in reserved:
+        suffix += 1
+    return f"{base}_{suffix}"

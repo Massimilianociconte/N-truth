@@ -10,8 +10,15 @@ from pydantic import ValidationError
 
 from ntruth.cross_domain import DataRole, decide_cross_domain_role
 from ntruth.cross_domain.roles import AnnotationAuthority, GoldEligibility
-from ntruth.reality_gate import DataReadiness, ScientificValidation
-from ntruth.reality_gate.predicates import GateValue
+from ntruth.reality_gate.v7 import (
+    DataReadinessV7 as DataReadiness,
+)
+from ntruth.reality_gate.v7 import (
+    GateValueV7 as GateValue,
+)
+from ntruth.reality_gate.v7 import (
+    ScientificValidationV7 as ScientificValidation,
+)
 from ntruth.task_corpora.authority import AuthorityLevel, LicenseStatus
 from ntruth.task_corpora.config import FORBIDDEN_GOLD_USES, ROOT_REALITY_GATE_REF
 from ntruth.task_corpora.readiness import (

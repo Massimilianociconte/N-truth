@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hmac
 from datetime import UTC, datetime
 
 from ntruth.governance.models import (
@@ -50,12 +51,18 @@ def authorize(
         raise GovernanceDenied("consent_not_valid", f"stato consenso: {record.consent_status}")
     if requested not in record.allowed_uses:
         raise GovernanceDenied("use_not_allowed", f"uso non autorizzato: {requested}")
-    if expected_asset_id is not None and record.asset_id != expected_asset_id:
+    if expected_asset_id is not None and not hmac.compare_digest(
+        record.asset_id, expected_asset_id
+    ):
         raise GovernanceDenied("asset_mismatch", "asset_id diverso dal record autorizzato")
-    if expected_asset_sha256 is not None and record.asset_sha256 != expected_asset_sha256:
+    if expected_asset_sha256 is not None and not hmac.compare_digest(
+        record.asset_sha256, expected_asset_sha256
+    ):
         raise GovernanceDenied("checksum_mismatch", "checksum asset diverso dal record")
     governance_hash = record.governance_hash()
-    if expected_governance_hash is not None and governance_hash != expected_governance_hash:
+    if expected_governance_hash is not None and not hmac.compare_digest(
+        governance_hash, expected_governance_hash
+    ):
         raise GovernanceDenied("governance_changed", "governance record modificato")
     if (
         record.public_asset
@@ -77,7 +84,7 @@ def authorize(
         if license_manifest.asset_id != record.license_manifest_id:
             raise GovernanceDenied("license_id_mismatch", "license_manifest_id non coerente")
         assert record.license_manifest_hash is not None
-        if license_manifest.manifest_hash() != record.license_manifest_hash:
+        if not hmac.compare_digest(license_manifest.manifest_hash(), record.license_manifest_hash):
             raise GovernanceDenied("license_changed", "manifest licenza modificato")
         automated_release = requested in {
             GovernanceAction.TRAIN,

@@ -1,5 +1,10 @@
 # Verifiable governance and distribution workflow
 
+> **HISTORICAL_NON_NORMATIVE.** Questo workflow precede il modello di autorità e
+> Reality Gate PRD v8. Non concede autorizzazioni correnti. Vedere
+> [../GOVERNANCE.md](../GOVERNANCE.md) e
+> [prd-v8-data-training-evaluation-boundary.md](prd-v8-data-training-evaluation-boundary.md).
+
 `distribution-check` evaluates whether the exact artifacts of one revision may be
 shared or redistributed. It is deliberately fail-closed and never performs a transfer.
 The procedure below avoids fabricated IDs and placeholder checksums.

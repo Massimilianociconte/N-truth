@@ -1,8 +1,12 @@
-# Governance dati v3
+# Governance dati v6
+
+> Il nome del file resta invariato per non rompere link e integrazioni esistenti. Il
+> contenuto corrente segue il PRD v6; la storia v3 e documentata nella
+> [riconciliazione precedente](prd-v3-reconciliation.md).
 
 I contratti in `ntruth.governance` implementano i prerequisiti locali delle
-sezioni 15, 18.5, 20.6 e 26 del PRD. Non pubblicano dati, non avviano training e
-non contattano servizi esterni.
+politiche originarie e i gate estesi del PRD v6. Non pubblicano dati, non avviano
+training e non contattano servizi esterni.
 
 ## Gate fail-closed
 
@@ -38,10 +42,13 @@ Methods, caption, group scheme, sample sheet, file-to-sample mapping, codice
 statistico ed expert answer. I mapping possono riferire soltanto file assegnati
 al bundle e un `sample_sheet_file_id` deve avere il relativo ruolo.
 
-Il checksum di `ProjectManifest` comprende manifest licenza, ID e hash del
-record di governance e bundle. Aggiornare correttamente consenso, licenza, ruolo
-o mapping cambia quindi l'identità del progetto. Le dichiarazioni degli autori
-e quelle esperte restano campi distinti dai fatti dichiarati.
+Il checksum v6 di `ProjectManifest` copre l'intero payload canonico eccetto il campo
+auto-riferito `integrity`: metadata del progetto, profilo release, file, manifest
+licenza, ID e hash di governance, bundle, ruleset e note. Aggiornare consenso,
+licenza, ruolo, mapping o metadata cambia quindi l'identità del manifest. Un checksum
+pre-v6 noto o un manifest senza checksum richiede migrazione esplicita e verifica
+preventiva delle copie sorgente; un checksum errato non è migrabile. Le dichiarazioni
+degli autori e quelle esperte restano campi distinti dai fatti dichiarati.
 
 ## Snapshot corpus e lineage
 
@@ -50,17 +57,26 @@ e quelle esperte restano campi distinti dai fatti dichiarati.
 - checksum degli asset e dei rispettivi record di governance;
 - ID e checksum dell'Experiment Bundle, oltre allo split;
 - versioni schema, contratto parser, guideline e ontologia;
-- gruppi anti-leakage per articolo/versione, laboratorio, dataset, supplemento
-  e template sintetico;
+- gruppi anti-leakage per articolo/versione/preprint, laboratorio/corresponding
+  author, dataset/supplemento, facility, famiglia sintetica e famiglia
+  counterfactual;
 - snapshot parent.
 
 Un leakage group non può attraversare split distinti. Gli asset sintetici sono
-ammessi soltanto in `train`. `validate_snapshot_dag()` verifica parent assenti e
-cicli quando viene fornita una collezione di snapshot.
+ammessi soltanto in `train`; `TEST` ed `EXTERNAL_CHALLENGE` non sono mai
+training-eligible. `validate_snapshot_dag()` verifica parent assenti e cicli quando
+viene fornita una collezione di snapshot.
+
+I record della pipeline dati conservano separatamente `training_eligible`,
+`evaluation_eligible` e `release_eligible`. Un'autorizzazione per uno scopo non viene
+promossa automaticamente agli altri e un record con tutti i flag falsi resta in
+quarantena/`UNASSIGNED` finche una decisione verificabile non lo designa.
 
 `ModelRunLineage` registra in modo dichiarativo modello/configurazione, snapshot,
-split, versioni, seed e checksum del lockfile. Il modello non contiene funzioni
-di training né le autorizza.
+split, versioni, seed e checksum del lockfile. Il modello non contiene funzioni di
+training ne le autorizza. Parser Gold e Derivation Gold restano responsabilita
+distinte: il primo valuta fonti verso grafo candidato, il secondo il grafo confermato
+verso conseguenze deterministiche.
 
 ## Scanner privacy locale
 

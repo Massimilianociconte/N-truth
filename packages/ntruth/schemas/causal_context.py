@@ -16,6 +16,15 @@ from typing import Self
 from pydantic import Field, model_validator
 
 from ntruth.schemas.core import FrozenModel
+from ntruth.schemas.events import (
+    ApplicationEvent,
+    AssignmentEvent,
+    EventRecord,
+    EventRegistry,
+    ExposureEvent,
+)
+from ntruth.schemas.kernel import KernelModel, NonBlankStr
+from ntruth.schemas.knowledge import KnowledgeState, KnowledgeValue
 
 
 class AssignmentLevel(StrEnum):
@@ -160,3 +169,84 @@ class IndependenceProfile(FrozenModel):
     def proxy_forbidden(self) -> None:
         """Promemoria normativo: nessuna dimensione e proxy di un'altra."""
         return None
+
+
+class QueryCausalContext(KernelModel):
+    """Query-scoped v8 causal roles, stored without a scientific resolver.
+
+    Assignment, application, effective exposure, experimental and biological-source
+    units are separate facts even when their reported labels happen to match.
+    """
+
+    inferential_query_id: NonBlankStr
+    assignment_event_id: KnowledgeValue[NonBlankStr]
+    application_event_id: KnowledgeValue[NonBlankStr]
+    exposure_event_id: KnowledgeValue[NonBlankStr]
+    assignment_unit_type: KnowledgeValue[NonBlankStr]
+    application_unit_type: KnowledgeValue[NonBlankStr]
+    effective_exposure_unit_type: KnowledgeValue[NonBlankStr]
+    experimental_unit_type: KnowledgeValue[NonBlankStr]
+    biological_source_unit_type: KnowledgeValue[NonBlankStr]
+    interference_status: KnowledgeValue[InterferenceStatus]
+
+    @model_validator(mode="after")
+    def _query_scopes_match(self) -> Self:
+        for field_name in (
+            "assignment_event_id",
+            "application_event_id",
+            "exposure_event_id",
+            "assignment_unit_type",
+            "application_unit_type",
+            "effective_exposure_unit_type",
+            "experimental_unit_type",
+            "biological_source_unit_type",
+            "interference_status",
+        ):
+            value = getattr(self, field_name)
+            if (
+                value.query_scope_id is not None
+                and value.query_scope_id != self.inferential_query_id
+            ):
+                raise ValueError(f"{field_name}.query_scope_id must match inferential query")
+        return self
+
+
+class QueryCausalEventAggregate(KernelModel):
+    """Resolve causal event references and block boundaries without deriving consequences."""
+
+    experiment_block_id: NonBlankStr
+    event_registry: EventRegistry
+    causal_context: QueryCausalContext
+
+    @model_validator(mode="after")
+    def _resolve_typed_event_references(self) -> Self:
+        if any(
+            event.experiment_block_id != self.experiment_block_id
+            for event in self.event_registry.events
+        ):
+            raise ValueError("every event registry entry must share the aggregate Experiment Block")
+        expected_types: tuple[
+            tuple[str, type[EventRecord]],
+            ...,
+        ] = (
+            ("assignment_event_id", AssignmentEvent),
+            ("application_event_id", ApplicationEvent),
+            ("exposure_event_id", ExposureEvent),
+        )
+        for field_name, expected_type in expected_types:
+            reference = getattr(self.causal_context, field_name)
+            if reference.knowledge_state is not KnowledgeState.PRESENT:
+                continue
+            event_id = reference.value
+            try:
+                event = self.event_registry.event(event_id)
+            except KeyError as error:
+                raise ValueError(f"dangling {field_name}: {event_id}") from error
+            if not isinstance(event, expected_type):
+                raise ValueError(f"{field_name} requires {expected_type.__name__}")
+            if event.experiment_block_id != self.experiment_block_id:
+                raise ValueError(
+                    f"cross-block {field_name}: {event.experiment_block_id} != "
+                    f"{self.experiment_block_id}"
+                )
+        return self

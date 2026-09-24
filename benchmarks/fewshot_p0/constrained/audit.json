@@ -1,0 +1,103 @@
+{
+  "constrained": {
+    "backend": "outlines+mlx-lm",
+    "detail": "outlines.from_mlxlm disponibile",
+    "status": "CONSTRAINED_SUPPORTED"
+  },
+  "demo_lengths": [
+    {
+      "case_id": "conf-demo",
+      "full_chars": 1805,
+      "full_tokens": 585,
+      "short_chars": 709,
+      "short_tokens": 228
+    },
+    {
+      "case_id": "count-demo",
+      "full_chars": 1962,
+      "full_tokens": 606,
+      "short_chars": 918,
+      "short_tokens": 277
+    },
+    {
+      "case_id": "empty-demo",
+      "full_chars": 962,
+      "full_tokens": 305,
+      "short_chars": 449,
+      "short_tokens": 134
+    }
+  ],
+  "eos_token": "<|end_of_text|>",
+  "mlx_library_default_max_tokens": 256,
+  "n_demo_available": 8,
+  "n_eval": 39,
+  "official_status": {
+    "migration_status": "ARCHITECTURE_MIGRATED",
+    "runtime_qualification_status": "PARTIALLY_VERIFIED",
+    "scientific_validation_status": "NOT_STARTED"
+  },
+  "schema_compile": {
+    "candidate_graph_minimal": {
+      "schema_bytes": 5471,
+      "schema_keys": [
+        "$defs",
+        "additionalProperties",
+        "description",
+        "properties",
+        "required",
+        "title",
+        "type"
+      ],
+      "schema_title": "MinimalCandidateGraphStage",
+      "status": "CONSTRAINED_SUPPORTED"
+    },
+    "candidate_relations": {
+      "schema_bytes": 1945,
+      "schema_keys": [
+        "$defs",
+        "additionalProperties",
+        "description",
+        "properties",
+        "required",
+        "title",
+        "type"
+      ],
+      "schema_title": "CandidateRelationStage",
+      "status": "CONSTRAINED_SUPPORTED"
+    },
+    "entity_count": {
+      "schema_bytes": 2780,
+      "schema_keys": [
+        "$defs",
+        "additionalProperties",
+        "description",
+        "properties",
+        "required",
+        "title",
+        "type"
+      ],
+      "schema_title": "EntityCountStage",
+      "status": "CONSTRAINED_SUPPORTED"
+    },
+    "evidence_extraction": {
+      "schema_bytes": 1862,
+      "schema_keys": [
+        "$defs",
+        "additionalProperties",
+        "description",
+        "properties",
+        "required",
+        "title",
+        "type"
+      ],
+      "schema_title": "EvidenceExtractionStage",
+      "status": "CONSTRAINED_SUPPORTED"
+    }
+  },
+  "schema_json_bytes": {
+    "candidate_graph_minimal": 5471,
+    "candidate_relations": 1945,
+    "entity_count": 2780,
+    "evidence_extraction": 1862
+  }
+}

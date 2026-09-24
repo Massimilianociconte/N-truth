@@ -3,7 +3,8 @@
   "description": "Esclusioni diverse per endpoint: n resta separato per gruppo, contrasto ed endpoint.",
   "factor": "treatment",
   "expect": {
-    "experimental_unit": "Animal",
+    "allocation_unit_candidate": "Animal",
+    "experimental_unit": null,
     "observational_unit": "Animal",
     "analytical_unit": "Animal",
     "n_declared": 5,
@@ -14,6 +15,8 @@
     "risk": "insufficient_information",
     "alerts_include": [
       "ANI-005",
+      "GEN-002",
+      "GEN-004",
       "GEN-010"
     ],
     "alerts_exclude": [
@@ -34,14 +37,16 @@
         "group": "vehicle",
         "endpoint": "Cell viability per animal",
         "n_declared": 4,
-        "n_observational": 4,
+        "n_observational": 5,
+        "n_analysed": 4,
         "n_independent": null
       },
       {
         "group": "drug",
         "endpoint": "Marker intensity per animal",
         "n_declared": 4,
-        "n_observational": 4,
+        "n_observational": 5,
+        "n_analysed": 4,
         "n_independent": null
       },
       {

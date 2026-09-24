@@ -7,7 +7,11 @@ from pathlib import Path
 import pytest
 
 from ntruth.governance.lineage import CorpusSplit
-from ntruth.parser_ai.contract import ParserAIInput, ParserAIOutput
+from ntruth.parser_ai.contract import (
+    GoldParserTarget,
+    ParserAIInput,
+    ParserCandidateOutput,
+)
 from ntruth.training import (
     AnnotationStatus,
     SupervisedRecord,
@@ -18,6 +22,7 @@ from ntruth.training.calibration import (
     ConfidenceObservation,
     calibration_report,
     negative_log_likelihood,
+    select_abstention_threshold,
 )
 from ntruth.training.cli import DEFAULT_PROFILE
 from ntruth.training.metrics import (
@@ -41,33 +46,68 @@ def _sha(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()
 
 
-def _output(*, confidence: float = 0.5) -> ParserAIOutput:
-    return ParserAIOutput.model_validate(
+def _output(*, confidence: float = 0.5) -> ParserCandidateOutput:
+    return ParserCandidateOutput.model_validate(
         {
-            "contract_version": "2.0.0",
-            "experiment_blocks": [],
-            "evidence_spans": [],
+            "contract_version": "8.0.0",
+            "experiment_blocks": [
+                {
+                    "block_id": "block-1",
+                    "title": "Candidate block",
+                    "evidence_ids": ["evidence-1"],
+                    "confidence": confidence,
+                }
+            ],
+            "block_boundaries": [
+                {
+                    "block_id": "block-1",
+                    "boundary_predicates": [
+                        {
+                            "criterion": "DISTINCT_EXPERIMENT_SOURCE_DOCUMENT",
+                            "internal_query_representability": "NOT_REPRESENTABLE",
+                        }
+                    ],
+                    "rationale": "The source explicitly identifies the candidate block.",
+                    "evidence_ids": ["evidence-1"],
+                    "confidence": confidence,
+                }
+            ],
+            "evidence_spans": [
+                {
+                    "evidence_id": "evidence-1",
+                    "file_id": "fixture",
+                    "evidence_type": "STRUCTURAL_FACT",
+                    "text": "candidate",
+                    "confidence": confidence,
+                    "start": 0,
+                    "end": 9,
+                }
+            ],
             "candidate_nodes": [],
             "candidate_edges": [],
             "factors": [],
             "endpoints": [],
             "contrasts": [],
             "candidate_estimands": [],
-            "determinability": {
-                "status": "INDETERMINATE",
-                "rationale": "No decisive evidence.",
-                "confidence": confidence,
-                "evidence_ids": [],
-            },
+            "candidate_counts": [],
+            "candidate_events": [],
+            "candidate_graphs": [],
             "alternatives": [],
             "clarification_questions": [],
+            "missing_predicates": [],
+            "coverage": {
+                "status": "PARTIAL",
+                "covered_artifact_ids": ["fixture"],
+                "missing_artifact_ids": ["not-reported"],
+                "rationale": "Candidate-only test fixture.",
+            },
             "model_metadata": {
                 "adapter_name": "gold",
                 "model_name": "annotation",
                 "model_version": "1",
                 "model_checksum": None,
                 "prompt_template_version": "test",
-                "contract_version": "2.0.0",
+                "contract_version": "8.0.0",
                 "local_execution": True,
             },
         }
@@ -82,11 +122,32 @@ def _record(record_id: str, split: CorpusSplit) -> SupervisedRecord:
     )
     return SupervisedRecord(
         record_id=record_id,
-        task="parser_ai_v2",
+        task="parser_candidate_v8",
         language="en",
         domain="runtime_test",
         input_text=parser_input.model_dump_json(),
-        target=_output().model_dump(mode="json"),
+        target=GoldParserTarget(
+            candidate_target=_output(),
+            adjudication_id=f"adjudication-{record_id}",
+            reviewer_ids=("wet-lab", "biostatistician"),
+            adjudication_rationale="Candidate facts were reconciled.",
+            submission_references=(
+                {
+                    "submission_id": f"submission-wet-{record_id}",
+                    "submission_sha256": "a" * 64,
+                    "reviewer_id": "wet-lab",
+                    "reviewer_role": "wet-lab",
+                },
+                {
+                    "submission_id": f"submission-stat-{record_id}",
+                    "submission_sha256": "b" * 64,
+                    "reviewer_id": "biostatistician",
+                    "reviewer_role": "biostatistician",
+                },
+            ),
+            comparison_status="AGREED",
+            material_differences=(),
+        ),
         provenance=SupervisionProvenance(
             source_id=f"source-{record_id}",
             source_asset_id=f"asset-{record_id}",
@@ -95,28 +156,57 @@ def _record(record_id: str, split: CorpusSplit) -> SupervisedRecord:
             license_or_authorization_id=f"license-{record_id}",
             guideline_version="test",
             reviewer_count=2,
+            reviewer_ids=("wet-lab", "biostatistician"),
             reviewer_roles=("wet-lab", "biostatistician"),
+            adjudication_id=f"adjudication-{record_id}",
         ),
-        annotation_status=AnnotationStatus.DOUBLE_REVIEWED,
-        training_eligible=True,
-        requested_split=split,
+        annotation_status=AnnotationStatus.ADJUDICATED,
+        training_eligible=split in {CorpusSplit.TRAIN, CorpusSplit.VALIDATION},
+        evaluation_eligible=split is CorpusSplit.TEST,
+        model_selection_eligible=split is CorpusSplit.VALIDATION,
+        split=split,
     )
 
 
-def test_profile_has_consistent_storage_budget() -> None:
-    path = Path("models/configs/qwen3-4b-instruct-2507-mlx-qlora.json")
+def test_profile_has_consistent_storage_budget(tmp_path: Path) -> None:
+    path = Path("models/configs/minicpm5-2b-mlx-qlora.json")
     profile = load_profile(path)
     budget = storage_budget(profile)
 
-    assert profile["model"]["revision"] == "50d427756c6b1b2fe0c0a10f67fbda1fc8e82c1b"
-    assert profile["model"]["expected_weight_bytes"] == 2_263_022_417
+    assert profile["model"]["provider"] == "minicpm"
+    assert profile["model"]["canonical_repository"] == "openbmb/MiniCPM5-2B"
+    assert profile["model"]["repository"] == "openbmb/MiniCPM5-2B-MLX"
+    assert profile["model"]["revision"] == "8a9ad7539ac86281d0ac2b017ba04a5de53fe9a3"
+    assert profile["model"]["expected_weight_bytes"] == 1_416_035_216
     assert (
         profile["model"]["expected_weight_sha256"]
-        == "2a73c6c248601ab904e035548abd8e6abb65ea27dcb5f342fb0a8910eb44173f"
+        == "c207798696a4a454e7ac211b25227625466c693335941cee8904fb922f295cc1"
     )
-    assert budget["total_gib"] == pytest.approx(35.5)
+    assert profile["model"]["selection_role"] == "provisional_primary_train_a"
+    assert profile["model"]["scientifically_selected"] is False
+    assert "qwen" not in profile["model"]["repository"].casefold()
+    assert "granite" not in profile["model"]["repository"].casefold()
+    assert profile["data"]["format"] == "chat_jsonl"
     assert budget["total_gib"] <= budget["workspace_cap_gib"]
     assert DEFAULT_PROFILE.is_file()
+    assert DEFAULT_PROFILE.name == "minicpm5-2b-mlx-qlora.json"
+
+    legacy = json.loads(path.read_text(encoding="utf-8"))
+    legacy["data"]["contract_version"] = "2.0.0"
+    legacy_path = tmp_path / "legacy-profile.json"
+    legacy_path.write_text(json.dumps(legacy), encoding="utf-8")
+    with pytest.raises(MLXPipelineError, match="contract_version e ambiguo"):
+        load_profile(legacy_path)
+
+
+def test_default_profile_is_minicpm_not_qwen() -> None:
+    from ntruth.model_backends.base import ModelProvider
+    from ntruth.model_backends.registry import DEFAULT_MODEL_ID, resolve_provider
+
+    assert resolve_provider() is ModelProvider.MINICPM
+    assert DEFAULT_MODEL_ID == "openbmb/MiniCPM5-2B"
+    assert "qwen" not in DEFAULT_PROFILE.name.casefold()
+    assert "granite" not in DEFAULT_PROFILE.name.casefold()
 
 
 def test_runtime_environment_records_lock_and_source_without_secrets() -> None:
@@ -153,6 +243,37 @@ def test_calibration_improves_validation_nll_and_never_uses_test() -> None:
     assert report["test_used_for_fit"] is False
     assert report["after"]["negative_log_likelihood"] <= negative_log_likelihood(observations, 1.0)
     assert report["temperature"] > 0
+
+
+def test_abstention_threshold_never_splits_tied_confidences() -> None:
+    # Audit 2026-09-12 A05: venti osservazioni a 0.9, dieci corrette poi dieci
+    # errate. Nessuna soglia seleziona solo una parte del pareggio: applicando
+    # davvero confidence >= soglia la copertura sarebbe 20 con rischio 0.5.
+    observations = tuple(ConfidenceObservation(0.9, index < 10) for index in range(20))
+    for ordering in (observations, tuple(reversed(observations))):
+        result = select_abstention_threshold(ordering, maximum_risk=0.10)
+        assert result == {
+            "threshold": None,
+            "covered": 0,
+            "coverage": 0.0,
+            "empirical_risk": None,
+        }
+
+
+def test_abstention_threshold_reproduces_when_applied() -> None:
+    observations = (
+        *(ConfidenceObservation(0.95, True) for _ in range(12)),
+        *(ConfidenceObservation(0.80, True) for _ in range(5)),
+        ConfidenceObservation(0.80, False),
+        *(ConfidenceObservation(0.40, False) for _ in range(6)),
+    )
+    result = select_abstention_threshold(observations, maximum_risk=0.10)
+    threshold = result["threshold"]
+    assert isinstance(threshold, float)
+    selected = [item for item in observations if item.confidence >= threshold]
+    assert result["covered"] == len(selected) == 18
+    errors = sum(not item.correct for item in selected)
+    assert result["empirical_risk"] == pytest.approx(errors / len(selected))
 
 
 def test_calibration_requires_hashed_validation_provenance(tmp_path: Path) -> None:
@@ -198,7 +319,6 @@ def test_structured_score_does_not_require_identical_metadata() -> None:
 
     assert score["schema_valid"] is True
     assert score["micro"]["f1"] == 1.0
-    assert score["determinability_accuracy"] == 1.0
     assert score["exact_contract_match"] is False
 
 
@@ -209,7 +329,7 @@ def test_invalid_empty_prediction_is_not_reported_as_perfect() -> None:
     assert score["micro"]["f1"] == 0.0
     assert aggregate["invalid_output_count"] == 1
     assert aggregate["schema_valid_rate"] == 0.0
-    assert aggregate["determinability_macro_f1"] == 0.0
+    assert "determinability_macro_f1" not in aggregate
     assert aggregate["macro_category_f1"] == 0.0
     assert all(category["f1"] == 0.0 for category in aggregate["categories"].values())
     assert aggregate["micro"]["precision"] == 0.0
@@ -232,10 +352,12 @@ def test_governed_dataset_exports_mlx_chat_and_snapshot(tmp_path: Path) -> None:
 
     assert snapshot["training_approved"] is True
     assert snapshot["leakage_check_passed"] is True
-    assert validated["counts"] == {"train": 1, "valid": 1, "test": 1}
+    assert validated["counts"] == {"train": 1, "valid": 1}
+    assert snapshot["membership_counts"]["TEST"] == 1
+    assert not (output / "test.jsonl").exists()
     train = json.loads((output / "train.jsonl").read_text().splitlines()[0])
     assert train["messages"][-1]["role"] == "assistant"
-    ParserAIOutput.model_validate_json(train["messages"][-1]["content"])
+    ParserCandidateOutput.model_validate_json(train["messages"][-1]["content"])
 
 
 def test_runtime_smoke_dataset_is_allowed_only_with_explicit_smoke_gate(tmp_path: Path) -> None:
@@ -245,5 +367,62 @@ def test_runtime_smoke_dataset_is_allowed_only_with_explicit_smoke_gate(tmp_path
     with pytest.raises(MLXPipelineError, match="training bloccato"):
         validate_mlx_dataset(output)
     result = validate_mlx_dataset(output, smoke_test=True)
-    assert result["counts"] == {"train": 4, "valid": 2, "test": 2}
+    assert result["counts"] == {"train": 4, "valid": 4}
     assert result["smoke_test"] is True
+
+
+def test_substantive_training_blocked_by_registry_hold(tmp_path: Path) -> None:
+    from ntruth.training.mlx_runtime import MLXPipelineError, assert_substantive_training_allowed
+
+    registry = tmp_path / "models" / "registry"
+    registry.mkdir(parents=True)
+    (registry / "training_program.json").write_text(
+        json.dumps(
+            {
+                "training_execution_gate": "HOLD_PENDING_REAL_ANCHOR",
+                "substantive_p0_training_allowed": False,
+                "engineering_smoke_training_allowed": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(MLXPipelineError, match="HOLD_PENDING_REAL_ANCHOR"):
+        assert_substantive_training_allowed(tmp_path, smoke_test=False)
+    summary = assert_substantive_training_allowed(tmp_path, smoke_test=True)
+    assert summary["engineering_smoke_training_allowed"] is True
+
+
+def test_substantive_training_allowed_when_registry_opens(tmp_path: Path) -> None:
+    from ntruth.training.mlx_runtime import assert_substantive_training_allowed
+
+    registry = tmp_path / "models" / "registry"
+    registry.mkdir(parents=True)
+    (registry / "training_program.json").write_text(
+        json.dumps(
+            {
+                "training_execution_gate": "OPEN_AFTER_GATES",
+                "substantive_p0_training_allowed": True,
+                "engineering_smoke_training_allowed": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+    summary = assert_substantive_training_allowed(tmp_path, smoke_test=False)
+    assert summary["substantive_p0_training_allowed"] is True
+
+
+def test_missing_registry_fails_closed_for_both_modes(tmp_path: Path) -> None:
+    from ntruth.training.mlx_runtime import MLXPipelineError, assert_substantive_training_allowed
+
+    with pytest.raises(MLXPipelineError, match="fail-closed"):
+        assert_substantive_training_allowed(tmp_path, smoke_test=False)
+    with pytest.raises(MLXPipelineError, match="fail-closed"):
+        assert_substantive_training_allowed(tmp_path, smoke_test=True)
+
+
+def test_bundled_registry_blocks_substantive_training() -> None:
+    from ntruth.training.mlx_runtime import MLXPipelineError, assert_substantive_training_allowed
+
+    repo_root = Path(__file__).resolve().parents[2]
+    with pytest.raises(MLXPipelineError, match="training_execution_gate"):
+        assert_substantive_training_allowed(repo_root, smoke_test=False)

@@ -1,0 +1,77 @@
+"""Runtime resource management backend-agnostic per N-Truth Train A."""
+
+from ntruth.runtime_resources.budget_io import (
+    RuntimeBudgetIOError,
+    load_runtime_resource_budget,
+    save_runtime_resource_budget,
+)
+from ntruth.runtime_resources.chunking import (
+    HierarchicalChunker,
+    RuntimeChunk,
+    RuntimeSection,
+)
+from ntruth.runtime_resources.manager import (
+    BenchmarkEnvironmentMismatch,
+    BundleExecution,
+    ComponentLoadError,
+    ComponentResult,
+    ContextWindowExceeded,
+    HostResourceProbe,
+    ResourceBudgetExceeded,
+    ResourceMeasurementUnavailable,
+    RuntimeComponent,
+    RuntimeInput,
+    RuntimeResourceError,
+    RuntimeResourceManager,
+    StageInvocation,
+)
+from ntruth.runtime_resources.profiles import runtime_profile
+from ntruth.runtime_resources.schema import (
+    BenchmarkIdentity,
+    BundleRuntimeMetrics,
+    MeasuredStageBudget,
+    ResourceSnapshot,
+    RuntimeDevice,
+    RuntimeEnvironment,
+    RuntimeProfile,
+    RuntimeProfileName,
+    RuntimeResourceBudget,
+    StageBenchmarkObservation,
+    StageRuntimeMetrics,
+    derive_stage_budget,
+)
+
+__all__ = [
+    "BenchmarkEnvironmentMismatch",
+    "BenchmarkIdentity",
+    "BundleExecution",
+    "BundleRuntimeMetrics",
+    "ComponentLoadError",
+    "ComponentResult",
+    "ContextWindowExceeded",
+    "HierarchicalChunker",
+    "HostResourceProbe",
+    "MeasuredStageBudget",
+    "ResourceBudgetExceeded",
+    "ResourceMeasurementUnavailable",
+    "ResourceSnapshot",
+    "RuntimeBudgetIOError",
+    "RuntimeChunk",
+    "RuntimeComponent",
+    "RuntimeDevice",
+    "RuntimeEnvironment",
+    "RuntimeInput",
+    "RuntimeProfile",
+    "RuntimeProfileName",
+    "RuntimeResourceBudget",
+    "RuntimeResourceError",
+    "RuntimeResourceManager",
+    "RuntimeSection",
+    "StageBenchmarkObservation",
+    "StageInvocation",
+    "StageRuntimeMetrics",
+    "derive_stage_budget",
+    "load_runtime_resource_budget",
+    "runtime_profile",
+    "save_runtime_resource_budget",
+]

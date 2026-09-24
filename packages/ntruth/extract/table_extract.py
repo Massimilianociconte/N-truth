@@ -1,9 +1,9 @@
 """Estrazione dal sample sheet (PRD FR-005, 11.2).
 
 Il sample sheet contiene la provenance essenziale: quale campione viene da quale
-sorgente e a quale livello e stato applicato il fattore. Da una tabella queste
-relazioni si derivano in modo esatto, non probabilistico, per questo l'input
-tabulare migliora la ricostruzione rispetto al solo testo (PRD ipotesi H5).
+sorgente e a quale livello e associato un fattore. Le relazioni di contenimento
+si derivano in modo esatto, ma la costanza di un'etichetta di trattamento entro
+un ID non prova ne allocazione ne indipendenza (PRD v6, Appendice O).
 """
 
 from __future__ import annotations
@@ -101,15 +101,28 @@ def extract_from_tables(ir: DocumentIR) -> ExtractionResult:
 
 
 def _evidence(
-    result: ExtractionResult, ir: DocumentIR, table: Table, column: str, row: int, text: str
+    result: ExtractionResult,
+    ir: DocumentIR,
+    table: Table,
+    column: str,
+    row: int,
+    _derivation_description: str,
 ) -> EvidenceSpan | None:
+    """Registra il valore sorgente della cella, mai una frase derivata.
+
+    La descrizione della derivazione appartiene al fact/processo che usa lo
+    span. ``EvidenceSpan.text`` deve invece restare confrontabile byte-per-byte
+    con la cella del Document IR.
+    """
+
     cell = CellRef(table_id=table.id, row=row, column=column, sheet=table.sheet)
+    raw_cell_text = table.rows[row].get(column, "")
     return result.register(
         make_evidence(
             file_id=table.file_id,
             section_title=f"{table.name}",
             cell=cell,
-            text=text,
+            text=raw_cell_text,
             parser_version=ir.parser_version,
             evidence_type=EvidenceType.SAMPLE_METADATA,
             extraction_method="deterministic_table_extraction",
@@ -131,8 +144,14 @@ def _extract_table(ir: DocumentIR, table: Table, result: ExtractionResult) -> No
 
     for column, node_type in level_columns.items():
         values = _distinct(table, column)
+        representative_row = _first_nonempty_row(table, column)
         evidence = _evidence(
-            result, ir, table, column, 0, f"colonna '{column}': {len(values)} valori distinti"
+            result,
+            ir,
+            table,
+            column,
+            representative_row,
+            f"colonna '{column}': {len(values)} valori distinti",
         )
         result.entities.append(
             EntityFact(
@@ -153,18 +172,36 @@ def _extract_table(ir: DocumentIR, table: Table, result: ExtractionResult) -> No
         levels = _distinct(table, column)
         if len(levels) < 2:
             continue
-        assignment, confidence, detail = _assignment_level(table, column, level_columns)
+        association, _confidence, detail = _association_candidate_level(
+            table, column, level_columns
+        )
+        representative_row = _first_nonempty_row(table, column)
         evidence = _evidence(
-            result, ir, table, column, 0, f"colonna '{column}': livelli {sorted(levels)}"
+            result,
+            ir,
+            table,
+            column,
+            representative_row,
+            f"colonna '{column}': livelli {sorted(levels)}",
         )
         result.factors.append(
             FactorFact(
                 name=name,
                 levels=tuple(sorted(levels)),
                 kind=kind,
-                assignment_level=assignment,
-                assignment_confidence=confidence,
-                assignment_evidence=evidence,
+                # Un ID tabulare descrive provenance/contenimento. Anche se il
+                # livello del fattore e costante entro l'ID, non documenta
+                # l'evento di allocazione o un meccanismo di indipendenza.
+                allocation_level=None,
+                allocation_confidence=0.0,
+                allocation_evidence=None,
+                # Il sample sheet prova una associazione riga-livello, non chi
+                # abbia ricevuto materialmente l'intervento. Allocation e
+                # application restano quindi entrambe null finche non arriva
+                # evidenza procedurale o conferma umana.
+                application_level=None,
+                application_confidence=0.0,
+                application_evidence=None,
                 evidence=evidence,
                 origin=ProvenanceKind.TABULAR,
             )
@@ -176,7 +213,7 @@ def _extract_table(ir: DocumentIR, table: Table, result: ExtractionResult) -> No
             table,
             factor_column=column,
             factor_name=name,
-            assignment_level=assignment,
+            association_level=association,
             level_columns=level_columns,
             result=result,
         )
@@ -208,8 +245,14 @@ def _extract_table(ir: DocumentIR, table: Table, result: ExtractionResult) -> No
         elif COUNT_COLUMNS.match(column):
             total = _sum_numeric(table, column)
             if total is not None:
+                representative_row = _first_nonempty_row(table, column)
                 evidence = _evidence(
-                    result, ir, table, column, 0, f"colonna '{column}': somma {total}"
+                    result,
+                    ir,
+                    table,
+                    column,
+                    representative_row,
+                    f"colonna '{column}': somma {total}",
                 )
                 result.processes.append(
                     ProcessFact(
@@ -220,6 +263,20 @@ def _extract_table(ir: DocumentIR, table: Table, result: ExtractionResult) -> No
                         origin=ProvenanceKind.TABULAR,
                     )
                 )
+
+
+def _first_nonempty_row(table: Table, column: str) -> int:
+    """Restituisce una cella rappresentativa verificabile per la colonna.
+
+    Le righe iniziali possono avere metadati mancanti: legare il riepilogo
+    della colonna sempre alla riga zero produrrebbe uno span vuoto pur in
+    presenza di valori successivi validi.
+    """
+
+    return next(
+        (row_index for row_index, row in enumerate(table.rows) if (row.get(column) or "").strip()),
+        0,
+    )
 
 
 def _detect_confounding(
@@ -318,21 +375,26 @@ def _extract_instance_assignments(
     *,
     factor_column: str,
     factor_name: str,
-    assignment_level: NodeType | None,
+    association_level: NodeType | None,
     level_columns: dict[str, NodeType],
     result: ExtractionResult,
 ) -> None:
-    """Lega un gruppo a una istanza solo con una colonna-identita univoca."""
+    """Registra un'etichetta di fattore senza promuoverla ad allocazione.
 
-    if assignment_level is None:
+    ``InstanceAssignmentFact`` e il contenitore legacy usato dal grafo per lo
+    scope di gruppo. Qui rappresenta soltanto un'associazione tabulare
+    candidata al livello di applicazione.
+    """
+
+    if association_level is None:
         return
     candidates = [
-        column for column, node_type in level_columns.items() if node_type is assignment_level
+        column for column, node_type in level_columns.items() if node_type is association_level
     ]
     if len(candidates) != 1:
         result.warnings.append(
             f"sample sheet '{table.name}': impossibile legare '{factor_name}' alle istanze "
-            f"di {assignment_level}; colonne candidate={candidates}"
+            f"di {association_level}; colonne candidate={candidates}"
         )
         return
 
@@ -353,15 +415,17 @@ def _extract_instance_assignments(
             table,
             factor_column,
             row_index,
-            f"{factor_column}='{factor_level}' assegnato a {instance_column}='{instance_value}'",
+            f"{factor_column}='{factor_level}' associato a "
+            f"{instance_column}='{instance_value}' (non prova allocazione)",
         )
         result.instance_assignments.append(
             InstanceAssignmentFact(
                 factor_name=factor_name,
                 factor_level=factor_level,
-                node_type=assignment_level,
+                node_type=association_level,
                 instance_key=_instance_key(table, instance_column, instance_value),
                 evidence=evidence,
+                confidence=0.65,
             )
         )
 
@@ -511,13 +575,14 @@ def _functionally_determines(table: Table, child_col: str, parent_col: str) -> b
     return seen_pairs > 0 and len(mapping) > 1
 
 
-def _assignment_level(
+def _association_candidate_level(
     table: Table, factor_col: str, level_columns: dict[str, NodeType]
 ) -> tuple[NodeType | None, float, str | None]:
-    """Livello di assegnazione = livello piu alto in cui il fattore resta costante.
+    """Candidato neutro di associazione dal livello piu alto costante.
 
-    La scelta del livello piu alto e conservativa: riduce l'n indipendente
-    invece di gonfiarlo quando i dati non distinguono due livelli (PRD 28.3).
+    Questa euristica alimenta soltanto gli attributi di istanza necessari allo
+    scope dei gruppi. Non restituisce mai un livello di allocation o
+    application: la costanza di una colonna non documenta un evento fisico.
     """
     candidates: list[tuple[int, str, NodeType]] = []
     for column, node_type in level_columns.items():
@@ -532,19 +597,22 @@ def _assignment_level(
             0.0,
             (
                 f"nessun livello del sample sheet mantiene costante '{factor_col}': "
-                "il fattore varia entro ogni unita nota"
+                "il fattore varia entro ogni unita nota; associazione non identificata"
             ),
         )
     candidates.sort()
     rank, column, node_type = candidates[0]
     finest = candidates[-1]
-    detail = None
+    detail = (
+        f"la costanza di '{factor_col}' entro '{column}' identifica soltanto una "
+        f"associazione tabulare a {node_type}; non prova allocation, application o indipendenza"
+    )
     if len(candidates) > 1 and finest[2] is not node_type:
-        detail = (
-            f"'{factor_col}' e costante sia a livello '{column}' sia a livello "
-            f"'{finest[1]}': assunto il livello piu alto ({node_type})"
+        detail += (
+            f"; '{factor_col}' e costante sia a livello '{column}' sia a livello "
+            f"'{finest[1]}': mantenuto il candidato piu alto ({node_type})"
         )
-    return node_type, 0.95, detail
+    return node_type, 0.65, detail
 
 
 def _constant_within(table: Table, level_col: str, factor_col: str) -> bool:

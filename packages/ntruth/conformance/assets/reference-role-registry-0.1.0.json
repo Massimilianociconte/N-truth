@@ -1,0 +1,47 @@
+{
+  "schema_version": "8.0.0",
+  "registry_id": "ntruth-reference-role-registry",
+  "registry_version": "0.1.0",
+  "slots": [
+    {
+      "schema_version": "8.0.0",
+      "role": "THEORY_REFERENCE_SET",
+      "purpose": "Expert-reviewed cases and minimal counterfactuals that test Derivation Theory independently of Rulebook output.",
+      "availability": "SCIENTIFIC_REVIEW_REQUIRED",
+      "assets": [],
+      "review_requirement": {
+        "schema_version": "8.0.0",
+        "issue_id": "SRR-V8-021",
+        "rationale": "The required reviewed theory reference cases and DRIVER snapshot are absent."
+      }
+    },
+    {
+      "schema_version": "8.0.0",
+      "role": "IMPLEMENTATION_CONFORMANCE_FIXTURES",
+      "purpose": "Synthetic engineering fixtures that test whether the Rulebook mapping conforms to clauses A-G; never scientific gold.",
+      "availability": "AVAILABLE",
+      "assets": [
+        {
+          "schema_version": "8.0.0",
+          "asset_id": "implementation-conformance-fixtures-simple-cell-culture",
+          "asset_version": "0.1.0",
+          "content_checksum": "f7a9b4c0a009fcbf1ae4c7a2bb3b15d8392225cb6e040ec17e2187cb396918e6",
+          "purpose": "Positive, negative, and minimal-counterfactual fixtures embedded in the isolated v8 Rulebook."
+        }
+      ]
+    },
+    {
+      "schema_version": "8.0.0",
+      "role": "DERIVATION_GOLD",
+      "purpose": "Confirmed real graphs with expected claims, support, findings, and rationale.",
+      "availability": "SCIENTIFIC_REVIEW_REQUIRED",
+      "assets": [],
+      "review_requirement": {
+        "schema_version": "8.0.0",
+        "issue_id": "SRR-V8-021",
+        "rationale": "No reviewed real Derivation Gold exists; conformance fixtures cannot be promoted."
+      }
+    }
+  ],
+  "declared_checksum": "7e573af256a1365ca0e3892786f80a6a8f62710ce0e4dc39d1dfef24d2089db3"
+}

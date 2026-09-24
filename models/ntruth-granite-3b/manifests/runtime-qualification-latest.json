@@ -1,0 +1,175 @@
+{
+  "benchmark": {
+    "result": {
+      "benchmark_id": "m5-pro-24g-20260802T001851Z-8b5f4917f7",
+      "budget_path": "/Users/massimilianociconte/Documents/N-truth/benchmarks/runtime/m5-pro-24g-20260802T001851Z-8b5f4917f7.budget.json",
+      "identity": {
+        "benchmark_id": "m5-pro-24g-20260802T001851Z-8b5f4917f7",
+        "machine_model": "Mac17,9",
+        "measured_at": "2026-08-02T00:18:51.456298Z",
+        "operating_system": "macOS 26.5.2",
+        "runtime_name": "mlx-lm",
+        "runtime_version": "0.31.3",
+        "unified_memory_bytes": 25769803776
+      },
+      "observation_count": 2,
+      "report_path": "/Users/massimilianociconte/Documents/N-truth/benchmarks/runtime/m5-pro-24g-20260802T001851Z-8b5f4917f7.protocol.json",
+      "stage_count": 2
+    },
+    "result_type": "dict"
+  },
+  "chat_template_sample": "<|start_of_role|>system<|end_of_role|>System ping.<|end_of_text|>\n<|start_of_role|>user<|end_of_role|>User ping.<|end_of_text|>\n<|start_of_role|>assistant<|end_of_role|>",
+  "checks": [
+    {
+      "check": "download_and_verify_real_weights",
+      "detail": "bytes=2127162429 sha256=cff9d052cc3c68ea66b3d364788eb96fca2be82868d9ad92bd968e73b125194d expected_bytes=2127162429",
+      "ok": true
+    },
+    {
+      "check": "artifact_fingerprint_registered",
+      "detail": "6ad3457ada70cc957e339af73847dfe0b72168c728185dbd7b8e71c4845ac3d2",
+      "ok": true
+    },
+    {
+      "check": "end_to_end_load",
+      "detail": "load_ms=1423.5",
+      "ok": true
+    },
+    {
+      "check": "chat_template_and_stop_conditions_checked",
+      "detail": "roles=True eot=True no_thinking=True eos='<|end_of_text|>' pad='<|pad|>' chat_template_hash=fed2756d2d24e127b951dcf139d0b03ab7db8ef23a456128ebc9c2db4901d476 file_sha256=fed2756d2d24e127b951dcf139d0b03ab7db8ef23a456128ebc9c2db4901d476",
+      "ok": true
+    },
+    {
+      "check": "end_to_end_inference_success",
+      "detail": "text='ok' latency_ms=166.3632499985397 simple_ok=True",
+      "ok": true
+    },
+    {
+      "check": "structured_output_conforming",
+      "detail": "json_extracted=True schema_valid=False detail=model_json_invalid: 2 validation errors for CandidateGraphSet\nmissing_facts.0\n  Input should be a valid dictionary or instance of MissingFactRecord [type=model_type, input_value='No evidence provided in ...rt any candidate facts.', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/model_type\nchunk_coverage\n  Input should be a valid tuple [type=tuple_type, input_value={}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/tuple_type latency_ms=3987.5382499885745",
+      "ok": true
+    },
+    {
+      "check": "schema_contract_path_verified",
+      "detail": "empty_graph_ok id=qual-graph-01",
+      "ok": true
+    },
+    {
+      "check": "candidate_only_smoke_tests_passed",
+      "detail": "CandidateGraphSet_forbidden_intersection=[] MODEL_MUST_NOT_EMIT=['definitive_pseudoreplication_verdict', 'determinability_verdict', 'experiment_validity_judgement', 'final_independent_n', 'paper_quality_score', 'statistical_test_choice']",
+      "ok": true
+    },
+    {
+      "check": "parser_cannot_emit_n_or_verdicts",
+      "detail": "CandidateGraphSet rejects determinability/verdict/n extras (extra=forbid or ignored+no fields)",
+      "ok": true
+    },
+    {
+      "check": "no_critical_load_unload_resource_manager_errors",
+      "detail": "reload_ms=598.3 ping='pong'",
+      "ok": true
+    },
+    {
+      "check": "initial_benchmark_mac_m5_24gb",
+      "detail": "benchmark completed type=dict",
+      "ok": true
+    }
+  ],
+  "errors": [],
+  "finished_at": "2026-08-02T00:18:57.296751Z",
+  "gate_target": "PARTIALLY_VERIFIED",
+  "host": {
+    "platform": "{'captured_at': datetime.datetime(2026, 8, 2, 0, 18, 43, 990673, tzinfo=datetime.timezone.utc), 'resident_ram_bytes': 46120960, 'peak_resident_ram_bytes': 46120960, 'system_swap_used_bytes': 417008189}",
+    "raw": {
+      "captured_at": "2026-08-02T00:18:43.990673Z",
+      "peak_resident_ram_bytes": 46120960,
+      "resident_ram_bytes": 46120960,
+      "system_swap_used_bytes": 417008189
+    }
+  },
+  "load_ms": 1423.5212079947814,
+  "ok": true,
+  "qualified_artifact": {
+    "adapter_sha256": null,
+    "backend": "mlx-lm",
+    "backend_version": "0.31.3",
+    "canonical_fingerprint_sha256": "6ad3457ada70cc957e339af73847dfe0b72168c728185dbd7b8e71c4845ac3d2",
+    "canonical_model_revision": "c0650403e44e78ec0262dab1c90914c65b196c4e",
+    "chat_template_hash": "fed2756d2d24e127b951dcf139d0b03ab7db8ef23a456128ebc9c2db4901d476",
+    "domain_profile": "runtime_smoke_only",
+    "local_path": "models/local/granite-4.1-3b-4bit",
+    "mlx_kind": "community_conversion_not_official_ibm",
+    "mlx_repository": "mlx-community/granite-4.1-3b-4bit",
+    "model_id": "ibm-granite/granite-4.1-3b",
+    "model_revision": "b1b476b5a17c46b7d6cd663b4a8ed44b66720aef",
+    "quantization": "4bit_mlx_community",
+    "schema_version": "candidate_graph_set_1.0.0",
+    "task_profile": "parser_candidate_graph_v6",
+    "tokenizer_revision": "b1b476b5a17c46b7d6cd663b4a8ed44b66720aef",
+    "weight_bytes": 2127162429,
+    "weights_sha256": "cff9d052cc3c68ea66b3d364788eb96fca2be82868d9ad92bd968e73b125194d"
+  },
+  "reload": {
+    "ping": "pong",
+    "reload_ms": 598.2579580013407
+  },
+  "required_failed": [],
+  "required_missing": [],
+  "scientific_validation_status": "NOT_STARTED",
+  "simple_generation": {
+    "input_tokens": 15,
+    "output_tokens": 1,
+    "raw": {
+      "backend": "granite-mlx",
+      "latency_ms": 166.3632499985397
+    },
+    "text": "ok"
+  },
+  "special_tokens": {
+    "bos": "<|end_of_text|>",
+    "eos": "<|end_of_text|>",
+    "pad": "<|pad|>"
+  },
+  "started_at": "2026-08-02T00:18:43.990462Z",
+  "structured_generation": {
+    "input_tokens": 692,
+    "latency_ms": 3987.5382499885745,
+    "output_tokens": 295,
+    "text": "{\n  \"schema_version\": \"1.0.0\",\n  \"result_id\": \"qual-result-01\",\n  \"stage\": \"candidate_graph_set\",\n  \"status\": \"complete\",\n  \"provenance\": {\n    \"stage_run_id\": \"qual-stage-01\",\n    \"stage\": \"candidate_graph_set\",\n    \"authority\": \"model\",\n    \"producer\": \"granite-qual-runtime\",\n    \"producer_version\": \"1.0.0\"\n  },\n  \"errors\": [],\n  \"warnings\": [],\n  \"graph_set_id\": \"qual-graph-01\",\n  \"source_result_ids\": [],\n  \"experiment_blocks\": [],\n  \"evidence_spans\": [],\n  \"candidate_nodes\": [],\n  \"candidate_edges\": [],\n  \"factors\": [],\n  \"endpoints\": [],\n  \"contrasts\": [],\n  \"candidate_estimands\": [],\n  \"counts\": [],\n  \"operational_independence\": [],\n  \"procedural_events\": [],\n  \"alternatives\": [],\n  \"missing_facts\": [\n    \"No evidence provided in the input to support any candidate facts.\"\n  ],\n  \"chunk_coverage\": {}\n}"
+  },
+  "structured_parsed": {
+    "alternatives": [],
+    "candidate_edges": [],
+    "candidate_estimands": [],
+    "candidate_nodes": [],
+    "chunk_coverage": {},
+    "contrasts": [],
+    "counts": [],
+    "endpoints": [],
+    "errors": [],
+    "evidence_spans": [],
+    "experiment_blocks": [],
+    "factors": [],
+    "graph_set_id": "qual-graph-01",
+    "missing_facts": [
+      "No evidence provided in the input to support any candidate facts."
+    ],
+    "operational_independence": [],
+    "procedural_events": [],
+    "provenance": {
+      "authority": "model",
+      "producer": "granite-qual-runtime",
+      "producer_version": "1.0.0",
+      "stage": "candidate_graph_set",
+      "stage_run_id": "qual-stage-01"
+    },
+    "result_id": "qual-result-01",
+    "schema_version": "1.0.0",
+    "source_result_ids": [],
+    "stage": "candidate_graph_set",
+    "status": "complete",
+    "warnings": []
+  },
+  "summary": "Il codice è migrato a Granite. Runtime PARTIALLY_VERIFIED candidate per questo fingerprint MLX community. Scientific validation: NOT_STARTED."
+}

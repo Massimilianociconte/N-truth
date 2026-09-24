@@ -1,0 +1,209 @@
+"""Thin bundle-gated orchestration for the deterministic PRD v8 lane."""
+
+from __future__ import annotations
+
+from ntruth.conformance.harness import ConformanceFailureCode
+from ntruth.derivation_theory.contracts import ConformanceBundle
+from ntruth.derivation_theory.loader import canonical_checksum
+from ntruth.derivation_theory.runtime import (
+    V8DerivationInput,
+    build_execution_manifest,
+    derive_claim_set,
+    require_reviewed_evaluator_bundle,
+    verify_runtime_bundle,
+)
+from ntruth.rules.v8_engine import evaluate_design_adequacy
+from ntruth.runtime_tree import ExactRuntimeTreeError, canonicalize_exact_model
+from ntruth.schemas.adequacy import DesignAdequacyEvaluation, DesignAdequacyFinding
+from ntruth.schemas.claims import DerivedClaimSet
+from ntruth.schemas.coverage import (
+    PROFILE_COVERAGE_REVIEW_ISSUE_ID,
+    ProfileCoverageStatement,
+    ScenarioCoverage,
+    ScenarioCoverageStatus,
+)
+from ntruth.schemas.execution import V8ExecutionManifest
+from ntruth.schemas.kernel import KernelModel, NonBlankStr
+from ntruth.schemas.report_resolution import (
+    ReportResolutionOutcome,
+    ReportResolutionPolicy,
+    ReportResolutionState,
+    TrivialExplicitReportResolutionPolicy,
+)
+from ntruth.verification_scope import (
+    memoized_results,
+    verification_scope,
+    within_verification_scope,
+)
+
+V8PipelineRequest = V8DerivationInput
+
+
+class V8PipelineResult(KernelModel):
+    execution_manifest: V8ExecutionManifest
+    claim_set: DerivedClaimSet
+    design_adequacy_evaluations: tuple[DesignAdequacyEvaluation, ...]
+    report_resolution: ReportResolutionOutcome
+    profile_coverage: ProfileCoverageStatement
+    scenario_coverages: tuple[ScenarioCoverage, ...]
+    stage_order: tuple[NonBlankStr, ...] = (
+        "FACT_VERIFICATION",
+        "THEORY_DERIVATION",
+        "CLAIM_VERIFICATION",
+        "RULE_ADEQUACY",
+        "REPORT_RESOLUTION",
+    )
+
+    @property
+    def design_adequacy_findings(self) -> tuple[DesignAdequacyEvaluation, ...]:
+        """Deprecated name; evaluations are always non-empty and epistemic."""
+
+        return self.design_adequacy_evaluations
+
+    @property
+    def scenario_space_complete(self) -> bool:
+        if self.profile_coverage.contract_review.issue_id == PROFILE_COVERAGE_REVIEW_ISSUE_ID:
+            return False
+        return bool(self.scenario_coverages) and all(
+            item.status is ScenarioCoverageStatus.COMPLETE_UNDER_DECLARED_ASSUMPTION_SET
+            for item in self.scenario_coverages
+        )
+
+
+class V8PipelineVerificationError(ValueError):
+    def __init__(self, report: object) -> None:
+        self.report = report
+        super().__init__("PRD v8 pipeline failed progressive deterministic verification")
+
+
+class V8PipelineConformanceError(ValueError):
+    def __init__(self, report: object) -> None:
+        self.report = report
+        super().__init__("PRD v8 runtime bundle failed Theory/Rulebook conformance")
+
+
+# Backwards-friendly aliases: the scope lives in ``ntruth.verification_scope``.
+pipeline_verification_scope = verification_scope
+within_pipeline_verification_scope = within_verification_scope
+
+
+def run_v8_pipeline(
+    request: V8PipelineRequest,
+    *,
+    conformance_bundle: ConformanceBundle,
+    resolution_policy: ReportResolutionPolicy | None = None,
+) -> V8PipelineResult:
+    """Run only with one complete, content-addressed, conformant bundle."""
+
+    from ntruth.verifier.v8 import _runtime_tree_failure
+
+    try:
+        request = canonicalize_exact_model(
+            request,
+            V8DerivationInput,
+            path="$.request",
+        )
+        conformance_bundle = canonicalize_exact_model(
+            conformance_bundle,
+            ConformanceBundle,
+            path="$.conformance_bundle",
+        )
+    except ExactRuntimeTreeError as error:
+        raise V8PipelineVerificationError(_runtime_tree_failure()) from error
+    memo = memoized_results() if resolution_policy is None else None
+    memo_key: tuple[str, ...] | None = None
+    if memo is not None:
+        # Full and set-field dumps: asset checksums use ``exclude_unset``, so two
+        # objects with equal values but different field sets must stay distinct.
+        memo_key = (
+            "v8-pipeline",
+            *(
+                canonical_checksum(model.model_dump(mode="json", exclude_unset=unset_only))
+                for model in (request, conformance_bundle)
+                for unset_only in (False, True)
+            ),
+        )
+        cached = memo.get(memo_key)
+        if isinstance(cached, V8PipelineResult):
+            return cached
+    result = _execute_v8_pipeline(
+        request,
+        conformance_bundle=conformance_bundle,
+        resolution_policy=resolution_policy,
+    )
+    if memo is not None and memo_key is not None:
+        memo[memo_key] = result
+    return result
+
+
+def _execute_v8_pipeline(
+    request: V8PipelineRequest,
+    *,
+    conformance_bundle: ConformanceBundle,
+    resolution_policy: ReportResolutionPolicy | None,
+) -> V8PipelineResult:
+    from ntruth.verifier.v8 import verify_v8_derived_claim_set, verify_v8_pipeline_request
+
+    conformance = verify_runtime_bundle(conformance_bundle)
+    if not conformance.passed:
+        if any(
+            failure.code is not ConformanceFailureCode.PIN_MISMATCH
+            for failure in conformance.failures
+        ):
+            raise V8PipelineConformanceError(conformance)
+        require_reviewed_evaluator_bundle(conformance_bundle)
+        raise V8PipelineConformanceError(conformance)
+    manifest = build_execution_manifest(conformance_bundle, conformance)
+    fact_verification = verify_v8_pipeline_request(
+        request,
+        conformance_bundle=conformance_bundle,
+    )
+    if not fact_verification.passed:
+        raise V8PipelineVerificationError(fact_verification)
+    claim_set = derive_claim_set(
+        request,
+        conformance_bundle=conformance_bundle,
+        execution_manifest=manifest,
+    )
+    claim_verification = verify_v8_derived_claim_set(
+        request,
+        claim_set,
+        conformance_bundle=conformance_bundle,
+        execution_manifest=manifest,
+    )
+    if not claim_verification.passed:
+        raise V8PipelineVerificationError(claim_verification)
+    evaluations = evaluate_design_adequacy(
+        request,
+        claim_set,
+        conformance_bundle=conformance_bundle,
+        execution_manifest=manifest,
+    )
+    policy = resolution_policy or TrivialExplicitReportResolutionPolicy()
+    return V8PipelineResult(
+        execution_manifest=manifest,
+        claim_set=claim_set,
+        design_adequacy_evaluations=evaluations,
+        report_resolution=policy.resolve(claim_set),
+        profile_coverage=request.profile_coverage,
+        scenario_coverages=request.scenario_coverages,
+    )
+
+
+__all__ = [
+    "DesignAdequacyEvaluation",
+    "DesignAdequacyFinding",
+    "ProfileCoverageStatement",
+    "ReportResolutionOutcome",
+    "ReportResolutionPolicy",
+    "ReportResolutionState",
+    "ScenarioCoverage",
+    "ScenarioCoverageStatus",
+    "V8PipelineConformanceError",
+    "V8PipelineRequest",
+    "V8PipelineResult",
+    "V8PipelineVerificationError",
+    "pipeline_verification_scope",
+    "run_v8_pipeline",
+    "within_pipeline_verification_scope",
+]

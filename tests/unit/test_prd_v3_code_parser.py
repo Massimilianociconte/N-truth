@@ -11,7 +11,10 @@ from ntruth.ingest.project import Project
 from ntruth.parsers.code import CodeParser
 from ntruth.parsers.registry import build_document_ir
 from ntruth.schemas.core import EvidenceType
-from ntruth.schemas.document import EvidenceTier, ParserStatus, StatisticalCodeLanguage
+from ntruth.schemas.document import EvidenceTier, StatisticalCodeLanguage
+from ntruth.schemas.manifest import ReleaseProfile
+
+_EXPERIMENTAL = ReleaseProfile.EXTENDED_EXPERIMENTAL
 
 
 @pytest.mark.parametrize(
@@ -31,7 +34,9 @@ def test_statistical_code_is_imported_as_read_only_text(
     source = tmp_path / filename
     text = f'open({str(marker)!r}, "w").write("executed")\ngroups = donor\n'
     source.write_text(text, encoding="utf-8")
-    project = Project.create(tmp_path / "project", name="code-read-only")
+    project = Project.create(
+        tmp_path / "project", name="code-read-only", release_profile=_EXPERIMENTAL
+    )
 
     result = project.add(source)
     ir = build_document_ir(project)
@@ -70,7 +75,7 @@ def test_declared_clustering_is_silver_statistical_code_never_allocation(
 ) -> None:
     source = tmp_path / filename
     source.write_text(text, encoding="utf-8")
-    project = Project.create(tmp_path / "project", name="clustering")
+    project = Project.create(tmp_path / "project", name="clustering", release_profile=_EXPERIMENTAL)
     project.add(source)
 
     artifact = build_document_ir(project).statistical_code[0]
@@ -88,7 +93,9 @@ def test_treatment_assignment_syntax_does_not_create_an_allocation_candidate(
 ) -> None:
     source = tmp_path / "assignment.py"
     source.write_text('treatment = "drug"\nrandomize(subjects)\n', encoding="utf-8")
-    project = Project.create(tmp_path / "project", name="no-allocation")
+    project = Project.create(
+        tmp_path / "project", name="no-allocation", release_profile=_EXPERIMENTAL
+    )
     project.add(source)
 
     artifact = build_document_ir(project).statistical_code[0]
@@ -99,7 +106,9 @@ def test_treatment_assignment_syntax_does_not_create_an_allocation_candidate(
 def test_python_union_operator_is_not_misread_as_r_random_effect(tmp_path: Path) -> None:
     source = tmp_path / "types.py"
     source.write_text("Result = Success | Failure\n", encoding="utf-8")
-    project = Project.create(tmp_path / "project", name="python-union")
+    project = Project.create(
+        tmp_path / "project", name="python-union", release_profile=_EXPERIMENTAL
+    )
     project.add(source)
 
     assert build_document_ir(project).statistical_code[0].candidates == ()
@@ -108,13 +117,15 @@ def test_python_union_operator_is_not_misread_as_r_random_effect(tmp_path: Path)
 def test_binary_code_is_failed_explicitly(tmp_path: Path) -> None:
     source = tmp_path / "binary.py"
     source.write_bytes(b"print('safe')\x00malicious")
-    project = Project.create(tmp_path / "project", name="binary")
-    project.add(source)
+    project = Project.create(tmp_path / "project", name="binary", release_profile=_EXPERIMENTAL)
+    ingest = project.add(source)
 
     ir = build_document_ir(project)
 
-    assert ir.files[0].status is ParserStatus.FAILED
-    assert "byte NUL" in ir.files[0].warnings[0]
+    assert not ingest.accepted
+    assert ingest.rejected[0].reason is not None
+    assert "incoerente" in ingest.rejected[0].reason
+    assert ir.files == ()
     assert ir.statistical_code == ()
 
 
